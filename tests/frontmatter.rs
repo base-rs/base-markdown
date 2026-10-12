@@ -6,7 +6,7 @@
 
 use pretty_assertions::assert_eq;
 use socketry_markdown::{
-    mdast::{Node, Root, Toml, Yaml},
+    mdast::{Frontmatter, Node, Root},
     message, to_html, to_html_with_options, to_mdast,
     unist::Position,
     Constructs, Options, ParseOptions,
@@ -148,25 +148,33 @@ fn frontmatter() -> Result<(), message::Message> {
     assert_eq!(
         to_mdast("---\na: b\n---", &frontmatter.parse)?,
         Node::Root(Root {
-            children: vec![Node::Yaml(Yaml {
-                value: "a: b".into(),
+            children: vec![Node::Frontmatter(Frontmatter {
+                info: String::new(),
+                fence: '-',
+                fence_length: 3,
+                closing_fence_length: 3,
+                value: "a: b\n".into(),
                 position: Some(Position::new(1, 1, 0, 3, 4, 12))
             })],
             position: Some(Position::new(1, 1, 0, 3, 4, 12))
         }),
-        "should support yaml as `Yaml`s in mdast"
+        "should support yaml as `Frontmatter` in mdast"
     );
 
     assert_eq!(
         to_mdast("+++\ntitle = \"Jupyter\"\n+++", &frontmatter.parse)?,
         Node::Root(Root {
-            children: vec![Node::Toml(Toml {
-                value: "title = \"Jupyter\"".into(),
+            children: vec![Node::Frontmatter(Frontmatter {
+                info: String::new(),
+                fence: '+',
+                fence_length: 3,
+                closing_fence_length: 3,
+                value: "title = \"Jupyter\"\n".into(),
                 position: Some(Position::new(1, 1, 0, 3, 4, 25))
             })],
             position: Some(Position::new(1, 1, 0, 3, 4, 25))
         }),
-        "should support toml as `Toml`s in mdast"
+        "should support toml as `Frontmatter` in mdast"
     );
 
     Ok(())
@@ -182,11 +190,53 @@ fn parse_options() -> ParseOptions {
     }
 }
 
-fn generic(source: &str) -> socketry_markdown::mdast::Frontmatter {
+fn parse_frontmatter(source: &str) -> Frontmatter {
     let document = to_mdast(source, &parse_options()).unwrap();
     match &document.children().unwrap()[0] {
         Node::Frontmatter(node) => node.clone(),
         node => panic!("expected frontmatter for {:?}, got {:?}", source, node),
+    }
+}
+
+#[test]
+fn delimiter_defaults_keep_the_authored_info_and_body() {
+    for (source, language, info, body) in [
+        ("---\nname: Neptune\n---", "yaml", "", "name: Neptune\n"),
+        (
+            "+++\nname = 'Neptune'\n+++",
+            "toml",
+            "",
+            "name = 'Neptune'\n",
+        ),
+        ("--- \t\n---", "yaml", "", ""),
+        ("+++\n+++", "toml", "", ""),
+        ("---\r\na: b\r\n---", "yaml", "", "a: b\r\n"),
+        ("+++\r\na = 1\r\n+++", "toml", "", "a = 1\r\n"),
+        ("+++\ra = 1\r+++", "toml", "", "a = 1\r"),
+        ("---\n\na: b\n\n---", "yaml", "", "\na: b\n\n"),
+        ("--- json title=x\n{}\n---", "json", "json title=x", "{}\n"),
+        ("+++ yaml\na: b\n+++", "yaml", "yaml", "a: b\n"),
+    ] {
+        let node = parse_frontmatter(source);
+        assert_eq!(node.language(), Some(language), "{source:?}");
+        assert_eq!(node.info, info);
+        assert_eq!(node.value, body);
+        let ast = Node::Frontmatter(node);
+        assert_eq!(ast.code_language(), Some(language));
+        assert_eq!(ast.code_info().as_deref(), Some(info));
+
+        let output = ast.to_markdown();
+        let reparsed = parse_frontmatter(&output);
+        assert_eq!(reparsed.language(), Some(language));
+        assert_eq!(reparsed.info, info);
+        assert_eq!(reparsed.value, body);
+        let fence = reparsed.fence.to_string().repeat(3);
+        let opening = if info.is_empty() {
+            fence
+        } else {
+            format!("{fence} {info}")
+        };
+        assert_eq!(output.lines().next(), Some(opening.as_str()));
     }
 }
 
@@ -258,7 +308,7 @@ fn tagged_frontmatter_keeps_opaque_info_and_literal_body() {
         ),
         ("```json\n{}\n  ```", '`', 3, 3, "json", "{}\n"),
     ] {
-        let node = generic(source);
+        let node = parse_frontmatter(source);
         assert_eq!(node.info, info, "{source:?}");
         assert_eq!(node.value, body, "{source:?}");
         assert_eq!(
@@ -268,7 +318,7 @@ fn tagged_frontmatter_keeps_opaque_info_and_literal_body() {
         assert_eq!(node.language(), info.split_ascii_whitespace().next());
         let document = to_mdast(source, &parse_options()).unwrap();
         let output = document.to_markdown();
-        let reparsed = generic(&output);
+        let reparsed = parse_frontmatter(&output);
         assert_eq!(reparsed.info, info);
         assert_eq!(reparsed.value, body);
         assert_eq!(
@@ -334,19 +384,22 @@ fn only_closed_tagged_fences_at_document_start_are_frontmatter() {
 #[test]
 fn nonclosing_fence_lines_remain_in_the_body() {
     let source = "````json\n```\n~~~~\n```` suffix\n    ````\n`````";
-    assert_eq!(generic(source).value, "```\n~~~~\n```` suffix\n    ````\n");
     assert_eq!(
-        generic("---custom\n----\n--- suffix\n---").value,
+        parse_frontmatter(source).value,
+        "```\n~~~~\n```` suffix\n    ````\n"
+    );
+    assert_eq!(
+        parse_frontmatter("---custom\n----\n--- suffix\n---").value,
         "----\n--- suffix\n"
     );
     assert_eq!(
-        generic("~~~json\nbody\n~~~\n\n```rust\ncode\n```").value,
+        parse_frontmatter("~~~json\nbody\n~~~\n\n```rust\ncode\n```").value,
         "body\n"
     );
 }
 
 #[test]
-fn both_html_paths_omit_generic_frontmatter_and_keep_later_code() {
+fn both_html_paths_omit_frontmatter_and_keep_later_code() {
     let options = Options {
         parse: parse_options(),
         ..Options::default()
@@ -365,7 +418,7 @@ fn both_html_paths_omit_generic_frontmatter_and_keep_later_code() {
 
 #[test]
 fn frontmatter_ast_helpers_and_source_positions() {
-    let mut node = Node::Frontmatter(generic("```json title=x\n{}\n```"));
+    let mut node = Node::Frontmatter(parse_frontmatter("```json title=x\n{}\n```"));
     assert_eq!(node.code_language(), Some("json"));
     assert_eq!(node.code_info().as_deref(), Some("json title=x"));
     assert_eq!(node.text_content(), "{}\n");
@@ -396,13 +449,20 @@ fn serialization_protects_edited_frontmatter_bodies() {
         ("+++ json\n+++", "+++\rbody\r", "~~~json\n+++\rbody\r~~~\n"),
         ("--- json\n---", "value", "--- json\nvalue\n---\n"),
         ("~~~json\n~~~~~", "", "~~~json\n~~~~~\n"),
+        ("---\n---", "---\n", "~~~yaml\n---\n~~~\n"),
+        ("+++\n+++", "+++\n", "~~~toml\n+++\n~~~\n"),
+        ("---\n---", "value", "---\nvalue\n---\n"),
+        ("+++\n+++", "value", "+++\nvalue\n+++\n"),
+        ("---\u{c}\n---", "---\n", "~~~yaml\n---\n~~~\n"),
     ] {
-        let mut frontmatter = generic(source);
+        let mut frontmatter = parse_frontmatter(source);
+        let language = frontmatter.language().map(str::to_owned);
         frontmatter.value = body.into();
         let output = Node::Frontmatter(frontmatter).to_markdown();
         assert_eq!(output, expected);
+        assert_eq!(parse_frontmatter(&output).language(), language.as_deref());
         assert_eq!(
-            generic(&output).value,
+            parse_frontmatter(&output).value,
             if body.is_empty() || body.ends_with(['\r', '\n']) {
                 body.into()
             } else {
@@ -422,7 +482,7 @@ fn serialization_rejects_invalid_edited_frontmatter_metadata() {
         ('~', "json\rother"),
         ('`', "json`other"),
     ] {
-        let mut frontmatter = generic("~~~json\n~~~");
+        let mut frontmatter = parse_frontmatter("~~~json\n~~~");
         frontmatter.fence = fence;
         frontmatter.info = info.into();
         let result = socketry_markdown::to_markdown(&Node::Frontmatter(frontmatter));
@@ -433,7 +493,7 @@ fn serialization_rejects_invalid_edited_frontmatter_metadata() {
 #[cfg(feature = "serde")]
 #[test]
 fn frontmatter_serde_roundtrip_preserves_body_and_fences() {
-    let mut node = generic("~~~~custom title=x\nraw\n~~~~~");
+    let mut node = parse_frontmatter("~~~~custom title=x\nraw\n~~~~~");
     let json = serde_json::to_value(&node).unwrap();
     assert_eq!(json["info"], "custom title=x");
     assert_eq!(json["value"], "raw\n");
@@ -456,7 +516,7 @@ fn frontmatter_serde_roundtrip_preserves_body_and_fences() {
 }
 
 #[test]
-fn generic_frontmatter_does_not_require_the_code_fenced_construct() {
+fn frontmatter_does_not_require_the_code_fenced_construct() {
     let mut options = parse_options();
     options.constructs.code_fenced = false;
     let document = to_mdast("```json\n{}\n```", &options).unwrap();

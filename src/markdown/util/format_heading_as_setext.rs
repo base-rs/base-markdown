@@ -40,9 +40,7 @@ fn include_literal_with_line_break(node: &Node, regex: &Regex) -> bool {
         Node::MdxTextExpression(x) => regex.is_match(&x.value),
         Node::MdxjsEsm(x) => regex.is_match(&x.value),
         Node::Text(x) => regex.is_match(&x.value),
-        Node::Toml(x) => regex.is_match(&x.value),
         Node::Frontmatter(x) => regex.is_match(&x.value),
-        Node::Yaml(x) => regex.is_match(&x.value),
         // Anything else.
         _ => {
             if let Some(children) = node.children() {
@@ -70,7 +68,7 @@ mod tests {
         markdown::{state::State, Options},
         mdast::{
             Break, Code, Frontmatter, Heading, Html, Image, InlineCode, InlineMath, Math,
-            MdxFlowExpression, MdxTextExpression, MdxjsEsm, Node, Text, Toml, Yaml,
+            MdxFlowExpression, MdxTextExpression, MdxjsEsm, Node, Text,
         },
     };
     use alloc::string::String;
@@ -153,14 +151,6 @@ mod tests {
                 fence: '~',
                 fence_length: 3,
                 closing_fence_length: 3,
-                position: None,
-            }),
-            Node::Toml(Toml {
-                value: literal("a\nb"),
-                position: None,
-            }),
-            Node::Yaml(Yaml {
-                value: literal("a\nb"),
                 position: None,
             }),
         ] {

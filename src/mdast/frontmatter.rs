@@ -4,11 +4,11 @@
 use crate::unist::Position;
 use alloc::string::String;
 
-/// Language-agnostic frontmatter with an opaque format hint.
+/// Language-agnostic frontmatter with an optional, opaque format hint.
 ///
-/// The contents are raw text: the Markdown parser does not interpret the
-/// named language. Untagged `---` and `+++` forms retain their legacy `Yaml`
-/// and `Toml` nodes; tagged forms and language-tagged code fences use this node.
+/// The contents are raw text. An explicit info string identifies the language;
+/// untagged `---` and `+++` delimiters imply YAML and TOML respectively.
+/// The Markdown parser leaves decoding the contents to callers.
 ///
 /// Markdown serialization retains the stored info string and body while
 /// normalizing spacing around the info string. Edited content can require a
@@ -25,6 +25,7 @@ pub struct Frontmatter {
     pub value: String,
     /// The whole info string, with surrounding spaces and tabs removed.
     /// Escapes and character references remain literal, as in Markly.
+    /// Empty for an implicit language; use `language()` to resolve the default.
     pub info: String,
     /// Opening fence marker: a backtick, tilde, dash, or plus.
     pub fence: char,
@@ -40,10 +41,18 @@ pub struct Frontmatter {
 }
 
 impl Frontmatter {
-    /// Return the first ASCII-whitespace-separated word as a format or language hint.
-    /// The parser does not validate or interpret this hint.
+    /// Return the explicit language hint, or the delimiter's default language.
+    /// Untagged dash and plus delimiters imply YAML and TOML respectively.
+    /// The parser does not validate or decode the named language.
     #[must_use]
     pub fn language(&self) -> Option<&str> {
-        self.info.split_ascii_whitespace().next()
+        self.info
+            .split_ascii_whitespace()
+            .next()
+            .or(match self.fence {
+                '-' => Some("yaml"),
+                '+' => Some("toml"),
+                _ => None,
+            })
     }
 }

@@ -114,10 +114,11 @@ pub struct Constructs {
     /// Frontmatter with an unindented opening fence on the first document line,
     /// outside list items and blockquotes, and a matching closing fence.
     ///
-    /// Untagged `---` and `+++` produce YAML and TOML nodes. A format hint after
-    /// either delimiter, or a language-tagged backtick/tilde code fence, produces
-    /// a language-agnostic [`Frontmatter`][crate::mdast::Frontmatter] node. The
-    /// parser preserves its raw body and full info string; HTML omits it.
+    /// All forms produce a [`Frontmatter`][crate::mdast::Frontmatter] node.
+    /// Untagged `---` and `+++` imply YAML and TOML. A format hint after either
+    /// delimiter, or a language-tagged backtick/tilde code fence, supplies an
+    /// explicit language. The parser preserves the raw body and authored info
+    /// string; HTML omits the frontmatter.
     ///
     /// ````markdown
     /// > | ---

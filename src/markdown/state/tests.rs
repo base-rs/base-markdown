@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use super::{escape_table_pipes, has_matching_ticks, render_frontmatter, Info, Join, State};
+use super::{escape_table_pipes, has_matching_ticks, Info, Join, State};
 use crate::{
     markdown::{r#unsafe::Unsafe, util::safe::SafeConfig, Options},
     mdast::{
@@ -221,12 +221,6 @@ fn detects_matching_and_nonmatching_code_fences() {
     assert!(has_matching_ticks(b"`code`", 1, 1));
     assert!(!has_matching_ticks(b"plain", 0, 1));
     assert!(!has_matching_ticks(b"``", 0, 1));
-}
-
-#[test]
-fn preserves_existing_line_endings_in_frontmatter() {
-    assert_eq!(render_frontmatter("---", "title\n"), "---\ntitle\n---");
-    assert_eq!(render_frontmatter("+++", "title\r"), "+++\ntitle\r+++");
 }
 
 #[test]

@@ -110,9 +110,9 @@ if let Node::Frontmatter(frontmatter) = &document.children().unwrap()[0] {
 }
 ````
 
-Tagged forms such as `--- json` and `---yaml` use the same node. Untagged `---` and `+++` keep their existing `Yaml` and `Toml` nodes. Fences without a language, fences later in a document, and unclosed fences remain ordinary Markdown.
+All frontmatter uses `Node::Frontmatter`. Untagged `---` and `+++` imply YAML and TOML respectively, with an empty `info` string. Tagged forms such as `--- json` and `---yaml` supply an explicit language hint. `language()` and `Node::code_language()` return the effective language; `Node::code_info()` returns the authored info string. Backtick/tilde fences without a language, fences later in a document, and unclosed fences remain ordinary Markdown.
 
-Markdown serialization retains the stored info string and body while normalizing spacing around the info string. It can lengthen fences or change their marker when edited content would close them prematurely, and adds a line ending before the closing fence when an edited body needs one. Round trips preserve content and metadata while allowing these formatting adjustments.
+Markdown serialization retains the stored info string and body while normalizing spacing around the info string. It can lengthen fences or change their marker when edited content would close them prematurely, and adds a line ending before the closing fence when an edited body needs one. When changing an untagged dash/plus delimiter to a code fence, it writes the implied language explicitly. Round trips preserve the body and effective language while allowing these formatting adjustments.
 
 ## Releasing
 

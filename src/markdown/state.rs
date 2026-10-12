@@ -370,9 +370,7 @@ impl<'a> State<'a> {
             Node::Table(table) => self.render_table(table),
             Node::TableRow(row) => self.render_table_row(&row.children),
             Node::TableCell(_) => self.container_phrasing(node, info),
-            Node::Toml(toml) => Ok(render_frontmatter("+++", &toml.value)),
             Node::Frontmatter(frontmatter) => frontmatter.handle(self, info, parent, node),
-            Node::Yaml(yaml) => Ok(render_frontmatter("---", &yaml.value)),
         }
     }
 
@@ -698,16 +696,6 @@ pub(crate) fn is_phrasing(node: &Node) -> bool {
             | Node::Strong(_)
             | Node::Text(_)
     )
-}
-
-fn render_frontmatter(marker: &str, value: &str) -> String {
-    let mut output = format!("{}\n", marker);
-    output.push_str(value);
-    if !value.ends_with('\n') && !value.ends_with('\r') {
-        output.push('\n');
-    }
-    output.push_str(marker);
-    output
 }
 
 fn render_jsx_attribute(attribute: &AttributeContent) -> String {
