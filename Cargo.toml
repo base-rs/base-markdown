@@ -40,7 +40,7 @@ name = "socketry-markdown"
 readme = "readme.md"
 repository = "https://github.com/socketry/socketry-markdown-rust"
 rust-version = "1.73"
-version = "0.6.0"
+version = "0.7.0"
 
 [workspace]
 members = ["generate", "bake"]
