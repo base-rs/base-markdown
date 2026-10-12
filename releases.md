@@ -1,6 +1,6 @@
 # Releases
 
-## Unreleased
+## v0.7.0
 
 - Unify all frontmatter under `Node::Frontmatter`, replacing `Node::Yaml`, `Node::Toml`, and their structs. Update Rust matches and struct literals; serialized ASTs now use `type: "frontmatter"` with info and fence fields.
 - Return YAML/TOML defaults from `Frontmatter::language()` and `Node::code_language()` for untagged dash/plus delimiters, while keeping the authored info string empty.
