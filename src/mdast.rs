@@ -202,14 +202,10 @@ pub enum Node {
     List(List),
 
     // Frontmatter:
-    /// Language-agnostic frontmatter with an explicit format hint.
+    /// Language-agnostic frontmatter with an optional format hint.
     Frontmatter(Frontmatter),
     /// MDX.js ESM.
     MdxjsEsm(MdxjsEsm),
-    /// Toml.
-    Toml(Toml),
-    /// Yaml.
-    Yaml(Yaml),
 
     // Phrasing:
     /// Break.
@@ -289,9 +285,7 @@ impl fmt::Debug for Node {
             Node::MdxJsxFlowElement(x) => x.fmt(f),
             Node::List(x) => x.fmt(f),
             Node::MdxjsEsm(x) => x.fmt(f),
-            Node::Toml(x) => x.fmt(f),
             Node::Frontmatter(x) => x.fmt(f),
-            Node::Yaml(x) => x.fmt(f),
             Node::Break(x) => x.fmt(f),
             Node::InlineCode(x) => x.fmt(f),
             Node::InlineMath(x) => x.fmt(f),
@@ -353,9 +347,7 @@ impl ToString for Node {
 
             // Literals.
             Node::MdxjsEsm(x) => x.value.clone(),
-            Node::Toml(x) => x.value.clone(),
             Node::Frontmatter(x) => x.value.clone(),
-            Node::Yaml(x) => x.value.clone(),
             Node::InlineCode(x) => x.value.clone(),
             Node::InlineMath(x) => x.value.clone(),
             Node::MdxTextExpression(x) => x.value.clone(),
@@ -440,9 +432,7 @@ impl Node {
             Node::MdxJsxFlowElement(x) => x.position.as_ref(),
             Node::List(x) => x.position.as_ref(),
             Node::MdxjsEsm(x) => x.position.as_ref(),
-            Node::Toml(x) => x.position.as_ref(),
             Node::Frontmatter(x) => x.position.as_ref(),
-            Node::Yaml(x) => x.position.as_ref(),
             Node::Break(x) => x.position.as_ref(),
             Node::InlineCode(x) => x.position.as_ref(),
             Node::InlineMath(x) => x.position.as_ref(),
@@ -481,9 +471,7 @@ impl Node {
             Node::MdxJsxFlowElement(x) => x.position.as_mut(),
             Node::List(x) => x.position.as_mut(),
             Node::MdxjsEsm(x) => x.position.as_mut(),
-            Node::Toml(x) => x.position.as_mut(),
             Node::Frontmatter(x) => x.position.as_mut(),
-            Node::Yaml(x) => x.position.as_mut(),
             Node::Break(x) => x.position.as_mut(),
             Node::InlineCode(x) => x.position.as_mut(),
             Node::InlineMath(x) => x.position.as_mut(),
@@ -522,9 +510,7 @@ impl Node {
             Node::MdxJsxFlowElement(x) => x.position = position,
             Node::List(x) => x.position = position,
             Node::MdxjsEsm(x) => x.position = position,
-            Node::Toml(x) => x.position = position,
             Node::Frontmatter(x) => x.position = position,
-            Node::Yaml(x) => x.position = position,
             Node::Break(x) => x.position = position,
             Node::InlineCode(x) => x.position = position,
             Node::InlineMath(x) => x.position = position,
@@ -613,7 +599,7 @@ impl Node {
             .find(|child| matches!(child, Node::Heading(_)) && child.text_content() == title)
     }
 
-    /// Return the language identifier of inline code, fenced code, or tagged frontmatter.
+    /// Return the language identifier of inline code, fenced code, or frontmatter.
     #[must_use]
     pub fn code_language(&self) -> Option<&str> {
         match self {
@@ -628,8 +614,7 @@ impl Node {
     ///
     /// `indent` is measured in columns relative to the containing block, not
     /// the absolute source column. Inline code, indented code, and nodes without
-    /// retained fence metadata return `None`. Legacy YAML/TOML fences have a
-    /// fixed length of three and no indentation.
+    /// retained fence metadata return `None`. Frontmatter fences have no indentation.
     #[must_use]
     pub fn code_fence(&self) -> Option<CodeFence> {
         match self {
@@ -639,25 +624,15 @@ impl Node {
                 length: node.fence_length,
                 indent: 0,
             }),
-            Node::Yaml(_) => Some(CodeFence {
-                character: '-',
-                length: 3,
-                indent: 0,
-            }),
-            Node::Toml(_) => Some(CodeFence {
-                character: '+',
-                length: 3,
-                indent: 0,
-            }),
             _ => None,
         }
     }
 
-    /// Return the info string for inline code, fenced code, or tagged frontmatter.
+    /// Return the info string for inline code, fenced code, or frontmatter.
     ///
     /// Inline code metadata is its language token. Fenced code metadata is
-    /// reconstructed from `lang` and `meta` when either is present. Tagged
-    /// frontmatter returns its opaque info string.
+    /// reconstructed from `lang` and `meta` when either is present.
+    /// Frontmatter returns its authored info string, empty for an implicit language.
     #[must_use]
     pub fn code_info(&self) -> Option<String> {
         match self {
@@ -1415,48 +1390,6 @@ pub struct Delete {
     pub position: Option<Position>,
 }
 
-/// Frontmatter: yaml.
-///
-/// ```markdown
-/// > | ---
-///     ^^^
-/// > | a: b
-///     ^^^^
-/// > | ---
-///     ^^^
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Yaml {
-    // Void.
-    /// Content model.
-    pub value: String,
-    /// Positional info.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub position: Option<Position>,
-}
-
-/// Frontmatter: toml.
-///
-/// ```markdown
-/// > | +++
-///     ^^^
-/// > | a: b
-///     ^^^^
-/// > | +++
-///     ^^^
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Toml {
-    // Void.
-    /// Content model.
-    pub value: String,
-    /// Positional info.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub position: Option<Position>,
-}
-
 /// MDX: ESM.
 ///
 /// ```markdown
@@ -1858,56 +1791,6 @@ mod tests {
         assert_eq!(
             format!("{node:?}"),
             "MdxjsEsm { value: \"a\", position: Some(1:1-1:2 (0-1)), stops: [] }",
-            "should support `position_set`"
-        );
-    }
-
-    #[test]
-    fn toml() {
-        let mut node = Node::Toml(Toml {
-            value: "a".into(),
-            position: None,
-        });
-
-        assert_eq!(
-            format!("{node:?}"),
-            "Toml { value: \"a\", position: None }",
-            "should support `Debug`"
-        );
-        assert_eq!(node.to_string(), "a", "should support `ToString`");
-        assert_eq!(node.children_mut(), None, "should support `children_mut`");
-        assert_eq!(node.children(), None, "should support `children`");
-        assert_eq!(node.position(), None, "should support `position`");
-        assert_eq!(node.position_mut(), None, "should support `position`");
-        node.position_set(Some(Position::new(1, 1, 0, 1, 2, 1)));
-        assert_eq!(
-            format!("{node:?}"),
-            "Toml { value: \"a\", position: Some(1:1-1:2 (0-1)) }",
-            "should support `position_set`"
-        );
-    }
-
-    #[test]
-    fn yaml() {
-        let mut node = Node::Yaml(Yaml {
-            value: "a".into(),
-            position: None,
-        });
-
-        assert_eq!(
-            format!("{node:?}"),
-            "Yaml { value: \"a\", position: None }",
-            "should support `Debug`"
-        );
-        assert_eq!(node.to_string(), "a", "should support `ToString`");
-        assert_eq!(node.children_mut(), None, "should support `children_mut`");
-        assert_eq!(node.children(), None, "should support `children`");
-        assert_eq!(node.position(), None, "should support `position`");
-        assert_eq!(node.position_mut(), None, "should support `position`");
-        node.position_set(Some(Position::new(1, 1, 0, 1, 2, 1)));
-        assert_eq!(
-            format!("{node:?}"),
-            "Yaml { value: \"a\", position: Some(1:1-1:2 (0-1)) }",
             "should support `position_set`"
         );
     }

@@ -112,7 +112,7 @@ Unresolved footnote fallback [^missing](url).\n\
     assert!(root
         .children
         .iter()
-        .any(|node| matches!(node, Node::Yaml(_))));
+        .any(|node| matches!(node, Node::Frontmatter(_))));
     assert!(root
         .children
         .iter()
@@ -432,7 +432,11 @@ fn propagates_exit_errors_across_jsx_parent_boundaries() {
         value: String::new(),
         position: None,
     });
-    let yaml = Node::Yaml(Yaml {
+    let yaml = Node::Frontmatter(Frontmatter {
+        info: String::new(),
+        fence: '-',
+        fence_length: 3,
+        closing_fence_length: 3,
         value: String::new(),
         position: None,
     });

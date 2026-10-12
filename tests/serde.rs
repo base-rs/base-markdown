@@ -202,7 +202,7 @@ fn serde_toml() -> Result<(), Error> {
         "+++\na: b\n+++",
         r#"{
   "type": "root",
-  "children": [{"type": "toml", "value": "a: b"}]
+  "children": [{"type": "frontmatter", "value": "a: b\n", "info": "", "fence": "+", "fenceLength": 3, "closingFenceLength": 3}]
 }"#,
         ParseOptions {
             constructs: Constructs {
@@ -220,7 +220,7 @@ fn serde_yaml() -> Result<(), Error> {
         "---\na: b\n---",
         r#"{
   "type": "root",
-  "children": [{"type": "yaml", "value": "a: b"}]
+  "children": [{"type": "frontmatter", "value": "a: b\n", "info": "", "fence": "-", "fenceLength": 3, "closingFenceLength": 3}]
 }"#,
         ParseOptions {
             constructs: Constructs {

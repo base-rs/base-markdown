@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Unify all frontmatter under `Node::Frontmatter`, replacing `Node::Yaml`, `Node::Toml`, and their structs. Update Rust matches and struct literals; serialized ASTs now use `type: "frontmatter"` with info and fence fields.
+- Return YAML/TOML defaults from `Frontmatter::language()` and `Node::code_language()` for untagged dash/plus delimiters, while keeping the authored info string empty.
+- Retain the trailing body line ending for untagged YAML/TOML, matching tagged frontmatter, and serialize all forms through the same handler. Edited bodies that require a different fence retain their effective language.
 - Clarify frontmatter placement and serialization, and provide runnable AST renderer examples.
 
 ## v0.6.0

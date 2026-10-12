@@ -14,7 +14,7 @@ use crate::mdast::{
     Html, Image, ImageReference, InlineCode, InlineMath, Link, LinkReference, List, ListItem, Math,
     MdxFlowExpression, MdxJsxAttribute, MdxJsxExpressionAttribute, MdxJsxFlowElement,
     MdxJsxTextElement, MdxTextExpression, MdxjsEsm, Node, Paragraph, ReferenceKind, Root, Strong,
-    Table, TableCell, TableRow, Text, ThematicBreak, Toml, Yaml,
+    Table, TableCell, TableRow, Text, ThematicBreak,
 };
 use crate::message;
 use crate::unist::{Point, Position};
@@ -724,29 +724,17 @@ fn on_enter_hard_break(context: &mut CompileContext) {
 fn on_enter_frontmatter(context: &mut CompileContext) {
     let index = context.events[context.index].point.index;
     let byte = context.bytes[index];
-    let node = if matches!(byte, b'`' | b'~') {
-        Node::Frontmatter(Frontmatter {
-            value: String::new(),
-            info: String::new(),
-            fence: char::from(byte),
-            fence_length: context.bytes[index..]
-                .iter()
-                .take_while(|&&b| b == byte)
-                .count(),
-            closing_fence_length: 0,
-            position: None,
-        })
-    } else if byte == b'+' {
-        Node::Toml(Toml {
-            value: String::new(),
-            position: None,
-        })
-    } else {
-        Node::Yaml(Yaml {
-            value: String::new(),
-            position: None,
-        })
-    };
+    let node = Node::Frontmatter(Frontmatter {
+        value: String::new(),
+        info: String::new(),
+        fence: char::from(byte),
+        fence_length: context.bytes[index..]
+            .iter()
+            .take_while(|&&b| b == byte)
+            .count(),
+        closing_fence_length: 0,
+        position: None,
+    });
 
     context.tail_push(node);
     context.buffer();
@@ -1257,9 +1245,7 @@ fn on_exit_frontmatter(context: &mut CompileContext) -> Result<(), message::Mess
 
     match context.tail_mut() {
         Node::Frontmatter(node) => node.value = trim_eol(raw_value, true, false),
-        Node::Yaml(node) => node.value = trim_eol(raw_value, true, true),
-        Node::Toml(node) => node.value = trim_eol(raw_value, true, true),
-        _ => unreachable!("expected frontmatter/yaml/toml on stack for value"),
+        _ => unreachable!("frontmatter content must belong to a frontmatter node"),
     }
 
     on_exit(context)?;
@@ -1282,25 +1268,8 @@ fn on_exit_frontmatter_info(context: &mut CompileContext) {
     .serialize()
     .trim_matches([' ', '\t'])
     .to_string();
-    let node = frontmatter_tail_mut(context);
-    match node {
+    match frontmatter_tail_mut(context) {
         Node::Frontmatter(node) => node.info = info,
-        Node::Yaml(_) | Node::Toml(_) => {
-            let fence = if matches!(node, Node::Yaml(_)) {
-                '-'
-            } else {
-                '+'
-            };
-            let position = node.position().cloned();
-            *node = Node::Frontmatter(Frontmatter {
-                value: String::new(),
-                info,
-                fence,
-                fence_length: 3,
-                closing_fence_length: 0,
-                position,
-            });
-        }
         _ => unreachable!("frontmatter info must belong to a frontmatter node"),
     }
 }
@@ -1312,8 +1281,9 @@ fn on_exit_frontmatter_sequence(context: &mut CompileContext) {
         &SlicePosition::from_exit_event(context.events, context.index),
     )
     .len();
-    if let Node::Frontmatter(node) = frontmatter_tail_mut(context) {
-        node.closing_fence_length = length;
+    match frontmatter_tail_mut(context) {
+        Node::Frontmatter(node) => node.closing_fence_length = length,
+        _ => unreachable!("frontmatter fences must belong to a frontmatter node"),
     }
 }
 

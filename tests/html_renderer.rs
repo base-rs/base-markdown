@@ -5,11 +5,11 @@ use pretty_assertions::assert_eq;
 use socketry_markdown::{
     mdast::{
         AlignKind, AttributeContent, AttributeValue, AttributeValueExpression, Blockquote, Break,
-        Code, Definition, Delete, Emphasis, FootnoteDefinition, FootnoteReference, Heading, Html,
-        Image, ImageReference, InlineCode, InlineMath, Link, LinkReference, List, ListItem, Math,
-        MdxFlowExpression, MdxJsxAttribute, MdxJsxExpressionAttribute, MdxJsxFlowElement,
-        MdxJsxTextElement, MdxTextExpression, MdxjsEsm, Node, Paragraph, ReferenceKind, Root,
-        Strong, Table, TableCell, TableRow, Text, ThematicBreak, Toml, Yaml,
+        Code, Definition, Delete, Emphasis, FootnoteDefinition, FootnoteReference, Frontmatter,
+        Heading, Html, Image, ImageReference, InlineCode, InlineMath, Link, LinkReference, List,
+        ListItem, Math, MdxFlowExpression, MdxJsxAttribute, MdxJsxExpressionAttribute,
+        MdxJsxFlowElement, MdxJsxTextElement, MdxTextExpression, MdxjsEsm, Node, Paragraph,
+        ReferenceKind, Root, Strong, Table, TableCell, TableRow, Text, ThematicBreak,
     },
     message,
     renderer::Renderer,
@@ -414,11 +414,19 @@ fn renders_ast_node_variants_and_custom_renderer_methods() {
                 position: None,
                 stops: vec![],
             }),
-            Node::Yaml(Yaml {
+            Node::Frontmatter(Frontmatter {
+                info: String::new(),
+                fence: '-',
+                fence_length: 3,
+                closing_fence_length: 3,
                 value: "title: Example".into(),
                 position: None,
             }),
-            Node::Toml(Toml {
+            Node::Frontmatter(Frontmatter {
+                info: String::new(),
+                fence: '+',
+                fence_length: 3,
+                closing_fence_length: 3,
                 value: "title = 'Example'".into(),
                 position: None,
             }),
