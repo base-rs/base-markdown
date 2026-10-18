@@ -12,7 +12,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 honggfuzz = "0.5"
 
-[dependencies.socketry-markdown]
+[dependencies.core-markdown]
 path = ".."
 
 # Prevent this from interfering with workspaces

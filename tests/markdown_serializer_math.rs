@@ -2,11 +2,11 @@
 // Copyright, 2024, by Bnchi.
 // Copyright, 2026, by Samuel Williams.
 
-use pretty_assertions::assert_eq;
-use socketry_markdown::markdown::{
+use core_markdown::markdown::{
     to_markdown as to, to_markdown_with_options as to_md_with_opts, Options,
 };
-use socketry_markdown::mdast::{Definition, InlineMath, Math, Node, Paragraph, Text};
+use core_markdown::mdast::{Definition, InlineMath, Math, Node, Paragraph, Text};
+use pretty_assertions::assert_eq;
 
 #[test]
 fn math() {

@@ -1,8 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use pretty_assertions::assert_eq;
-use socketry_markdown::{
+use core_markdown::{
     mdast::{
         AlignKind, AttributeContent, AttributeValue, AttributeValueExpression, Blockquote, Break,
         Code, Definition, Delete, Emphasis, FootnoteDefinition, FootnoteReference, Frontmatter,
@@ -13,6 +12,7 @@ use socketry_markdown::{
     },
     to_mdast, Constructs, MarkdownOptions, MarkdownRenderer, ParseOptions,
 };
+use pretty_assertions::assert_eq;
 
 fn text(value: &str) -> Node {
     Node::Text(Text {
@@ -29,7 +29,7 @@ fn paragraph(children: Vec<Node>) -> Node {
 }
 
 #[test]
-fn serializes_a_markdown_document() -> Result<(), socketry_markdown::message::Message> {
+fn serializes_a_markdown_document() -> Result<(), core_markdown::message::Message> {
     let node = to_mdast(
         "# Hello *world*!\n\nA [link](/url).",
         &ParseOptions::default(),
@@ -41,7 +41,7 @@ fn serializes_a_markdown_document() -> Result<(), socketry_markdown::message::Me
 }
 
 #[test]
-fn serializes_extracted_fragments() -> Result<(), socketry_markdown::message::Message> {
+fn serializes_extracted_fragments() -> Result<(), core_markdown::message::Message> {
     let mut node = to_mdast("**hello**", &ParseOptions::default())?;
     let fragment = node.extract_children().expect("root has children");
 
@@ -51,7 +51,7 @@ fn serializes_extracted_fragments() -> Result<(), socketry_markdown::message::Me
 }
 
 #[test]
-fn renders_with_custom_markdown_options() -> Result<(), socketry_markdown::message::Message> {
+fn renders_with_custom_markdown_options() -> Result<(), core_markdown::message::Message> {
     let node = to_mdast("*hello*", &ParseOptions::default())?;
     let mut renderer = MarkdownRenderer::with_options(MarkdownOptions {
         emphasis: '_',
@@ -64,7 +64,7 @@ fn renders_with_custom_markdown_options() -> Result<(), socketry_markdown::messa
 }
 
 #[test]
-fn serializes_gfm_constructs() -> Result<(), socketry_markdown::message::Message> {
+fn serializes_gfm_constructs() -> Result<(), core_markdown::message::Message> {
     let node = to_mdast(
         "~~old~~\n\n| A | B |\n| :- | -: |\n| x | y |\n\nCall[^note].\n\n[^note]: Details.",
         &ParseOptions::gfm(),
@@ -79,7 +79,7 @@ fn serializes_gfm_constructs() -> Result<(), socketry_markdown::message::Message
 }
 
 #[test]
-fn serializes_mdx_constructs() -> Result<(), socketry_markdown::message::Message> {
+fn serializes_mdx_constructs() -> Result<(), core_markdown::message::Message> {
     let node = to_mdast("a <b>*c*</b> and {value}.", &ParseOptions::mdx())?;
 
     assert_eq!(node.to_markdown(), "a <b>*c*</b> and {value}.\n");
@@ -88,7 +88,7 @@ fn serializes_mdx_constructs() -> Result<(), socketry_markdown::message::Message
 }
 
 #[test]
-fn serializes_frontmatter() -> Result<(), socketry_markdown::message::Message> {
+fn serializes_frontmatter() -> Result<(), core_markdown::message::Message> {
     let options = ParseOptions {
         constructs: Constructs {
             frontmatter: true,
@@ -105,7 +105,7 @@ fn serializes_frontmatter() -> Result<(), socketry_markdown::message::Message> {
 
 #[test]
 fn serializes_a_node_directly() {
-    let node = Node::Text(socketry_markdown::mdast::Text {
+    let node = Node::Text(core_markdown::mdast::Text {
         value: "hello".into(),
         position: None,
     });
@@ -115,7 +115,7 @@ fn serializes_a_node_directly() {
 
 #[test]
 fn exposes_default_options_and_fallible_rendering() {
-    let node = Node::Text(socketry_markdown::mdast::Text {
+    let node = Node::Text(core_markdown::mdast::Text {
         value: "hello".into(),
         position: None,
     });
@@ -523,7 +523,7 @@ fn serializes_ast_variants_and_custom_markdown_options() {
             Node::ThematicBreak(ThematicBreak { position: None }),
         ],
     });
-    let output = socketry_markdown::markdown::to_markdown_with_options(&custom, &custom_options)
+    let output = core_markdown::markdown::to_markdown_with_options(&custom, &custom_options)
         .expect("custom options serialize");
     assert_eq!(
         output,
@@ -618,7 +618,7 @@ fn propagates_errors_from_nested_markdown_nodes() {
         }),
         list_item,
         paragraph_with_invalid_emphasis,
-        Node::Strong(socketry_markdown::mdast::Strong {
+        Node::Strong(core_markdown::mdast::Strong {
             children: vec![invalid_emphasis.clone()],
             position: None,
         }),
@@ -650,7 +650,7 @@ fn propagates_errors_from_nested_markdown_nodes() {
 
     for node in nodes {
         assert!(
-            socketry_markdown::markdown::to_markdown_with_options(&node, &invalid_emphasis_options)
+            core_markdown::markdown::to_markdown_with_options(&node, &invalid_emphasis_options)
                 .is_err(),
             "expected nested emphasis to fail for {:?}",
             node
@@ -658,7 +658,7 @@ fn propagates_errors_from_nested_markdown_nodes() {
     }
 
     let nested_strong = Node::Emphasis(Emphasis {
-        children: vec![Node::Strong(socketry_markdown::mdast::Strong {
+        children: vec![Node::Strong(core_markdown::mdast::Strong {
             children: vec![text("nested")],
             position: None,
         })],
@@ -679,7 +679,7 @@ fn propagates_errors_from_nested_markdown_nodes() {
             ..invalid_strong_options.clone()
         };
         assert!(
-            socketry_markdown::markdown::to_markdown_with_options(&heading, &options).is_err(),
+            core_markdown::markdown::to_markdown_with_options(&heading, &options).is_err(),
             "expected nested strong to fail for setext={}",
             setext
         );
@@ -704,7 +704,7 @@ fn propagates_errors_from_nested_markdown_nodes() {
             quote: 'x',
             ..MarkdownOptions::default()
         };
-        assert!(socketry_markdown::markdown::to_markdown_with_options(&node, &options).is_err());
+        assert!(core_markdown::markdown::to_markdown_with_options(&node, &options).is_err());
     }
 
     let list = Node::List(List {
@@ -724,7 +724,6 @@ fn propagates_errors_from_nested_markdown_nodes() {
         ..MarkdownOptions::default()
     };
     assert!(
-        socketry_markdown::markdown::to_markdown_with_options(&list, &invalid_rule_options)
-            .is_err()
+        core_markdown::markdown::to_markdown_with_options(&list, &invalid_rule_options).is_err()
     );
 }

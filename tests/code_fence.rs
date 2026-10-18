@@ -1,11 +1,11 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use pretty_assertions::assert_eq;
-use socketry_markdown::{
+use core_markdown::{
     mdast::{CodeFence, Node},
     to_mdast, Constructs, ParseOptions,
 };
+use pretty_assertions::assert_eq;
 
 fn code(source: &str, options: &ParseOptions) -> Node {
     let document = to_mdast(source, options).unwrap();
@@ -105,7 +105,7 @@ fn unfenced_nodes_have_no_code_fence() {
     assert_eq!(node.code_fence(), None);
     let document = to_mdast("# Heading\n\n`code`", &ParseOptions::default()).unwrap();
     document.walk(|node| assert_eq!(node.code_fence(), None));
-    let node = Node::Code(socketry_markdown::mdast::Code {
+    let node = Node::Code(core_markdown::mdast::Code {
         value: "created without source".into(),
         position: None,
         lang: None,

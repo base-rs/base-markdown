@@ -5,8 +5,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod test_utils;
-use pretty_assertions::assert_eq;
-use socketry_markdown::{
+use core_markdown::{
     mdast::{
         AttributeContent, AttributeValue, AttributeValueExpression, Blockquote, MdxFlowExpression,
         MdxJsxAttribute, MdxJsxTextElement, MdxTextExpression, Node, Paragraph, Root, Text,
@@ -15,6 +14,7 @@ use socketry_markdown::{
     unist::Position,
     Constructs, Options, ParseOptions,
 };
+use pretty_assertions::assert_eq;
 use test_utils::swc::{parse_esm, parse_expression};
 
 /// Note: these tests are also in `micromark/micromark-extension-mdx-expression`

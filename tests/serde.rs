@@ -3,7 +3,7 @@
 // Copyright, 2024-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use socketry_markdown::{mdast::Node, message::Message, Constructs, ParseOptions};
+use core_markdown::{mdast::Node, message::Message, Constructs, ParseOptions};
 use test_utils::swc::{parse_esm, parse_expression};
 mod test_utils;
 
@@ -33,7 +33,7 @@ fn serde_compile_options() -> Result<(), Error> {
     use pretty_assertions::assert_eq;
 
     assert_eq!(
-        serde_json::to_string(&socketry_markdown::CompileOptions::gfm()).unwrap(),
+        serde_json::to_string(&core_markdown::CompileOptions::gfm()).unwrap(),
         r#"{"allowAnyImgSrc":false,"allowDangerousHtml":false,"allowDangerousProtocol":false,"defaultLineEnding":"\n","gfmFootnoteBackLabel":null,"gfmFootnoteClobberPrefix":null,"gfmFootnoteLabelAttributes":null,"gfmFootnoteLabelTagName":null,"gfmFootnoteLabel":null,"gfmTaskListItemCheckable":false,"gfmTagfilter":true,"headingIds":false}"#
     );
 
@@ -734,7 +734,7 @@ fn serde_paragraph() -> Result<(), Error> {
 fn assert_serde(input: &str, expected: &str, options: ParseOptions) -> Result<(), Error> {
     use pretty_assertions::assert_eq;
 
-    let mut source = socketry_markdown::to_mdast(input, &options).map_err(Error::Mdast)?;
+    let mut source = core_markdown::to_mdast(input, &options).map_err(Error::Mdast)?;
 
     remove_position(&mut source);
     // Serialize to JSON

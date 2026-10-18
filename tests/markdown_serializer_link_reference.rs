@@ -3,9 +3,9 @@
 // Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+use core_markdown::markdown::to_markdown as to;
+use core_markdown::mdast::{LinkReference, Node, Paragraph, ReferenceKind, Text};
 use pretty_assertions::assert_eq;
-use socketry_markdown::markdown::to_markdown as to;
-use socketry_markdown::mdast::{LinkReference, Node, Paragraph, ReferenceKind, Text};
 
 #[test]
 fn link_reference() {

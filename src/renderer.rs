@@ -24,7 +24,7 @@ use alloc::string::String;
 /// # Example
 ///
 /// ```
-/// use socketry_markdown::{mdast::Node, Renderer};
+/// use core_markdown::{mdast::Node, Renderer};
 ///
 /// struct PlainText;
 ///
@@ -45,8 +45,8 @@ use alloc::string::String;
 ///     }
 /// }
 ///
-/// let node = Node::Fragment(socketry_markdown::mdast::Fragment {
-///     children: vec![Node::Text(socketry_markdown::mdast::Text {
+/// let node = Node::Fragment(core_markdown::mdast::Fragment {
+///     children: vec![Node::Text(core_markdown::mdast::Text {
 ///         value: "hello".into(),
 ///         position: None,
 ///     })],

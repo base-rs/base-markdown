@@ -4,13 +4,13 @@
 // Copyright, 2023, by Fedor Sheremetyev.
 // Copyright, 2026, by Samuel Williams.
 
-use pretty_assertions::assert_eq;
-use socketry_markdown::{
+use core_markdown::{
     mdast::{Image, Link, Node, Paragraph, Root, Text},
     message, to_html, to_html_with_options, to_mdast,
     unist::Position,
     CompileOptions, Options,
 };
+use pretty_assertions::assert_eq;
 
 #[test]
 fn link_resource() -> Result<(), message::Message> {

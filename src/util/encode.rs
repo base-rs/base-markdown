@@ -18,7 +18,7 @@ use alloc::string::String;
 /// ## Examples
 ///
 /// ```rust ignore
-/// use socketry_markdown::util::encode;
+/// use core_markdown::util::encode;
 ///
 /// assert_eq!(encode("I <3 🦀"), "I &lt;3 🦀");
 /// ```

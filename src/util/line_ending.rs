@@ -13,7 +13,7 @@ use alloc::{str::FromStr, string::String};
 /// ## Examples
 ///
 /// ```
-/// use socketry_markdown::LineEnding;
+/// use core_markdown::LineEnding;
 /// # fn main() {
 ///
 /// // Use a CR + LF combination:

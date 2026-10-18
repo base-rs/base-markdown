@@ -4,13 +4,13 @@
 // Copyright, 2024, by Nokome Bentley.
 // Copyright, 2026, by Samuel Williams.
 
-use pretty_assertions::assert_eq;
-use socketry_markdown::{
+use core_markdown::{
     mdast::{Frontmatter, Node, Root},
     message, to_html, to_html_with_options, to_mdast,
     unist::Position,
     Constructs, Options, ParseOptions,
 };
+use pretty_assertions::assert_eq;
 
 #[test]
 fn frontmatter() -> Result<(), message::Message> {
@@ -409,7 +409,7 @@ fn both_html_paths_omit_frontmatter_and_keep_later_code() {
     assert_eq!(to_html_with_options(source, &options).unwrap(), expected);
     let document = to_mdast(source, &options.parse).unwrap();
     assert_eq!(
-        document.render_with(&mut socketry_markdown::HtmlRenderer::new()),
+        document.render_with(&mut core_markdown::HtmlRenderer::new()),
         expected
     );
     assert_eq!(document.children().unwrap().len(), 3);
@@ -485,7 +485,7 @@ fn serialization_rejects_invalid_edited_frontmatter_metadata() {
         let mut frontmatter = parse_frontmatter("~~~json\n~~~");
         frontmatter.fence = fence;
         frontmatter.info = info.into();
-        let result = socketry_markdown::to_markdown(&Node::Frontmatter(frontmatter));
+        let result = core_markdown::to_markdown(&Node::Frontmatter(frontmatter));
         assert_eq!(*result.unwrap_err().rule_id, "invalid-frontmatter");
     }
 }
@@ -500,7 +500,7 @@ fn frontmatter_serde_roundtrip_preserves_body_and_fences() {
     assert_eq!(json["fenceLength"], 4);
     assert_eq!(json["closingFenceLength"], 5);
     assert_eq!(
-        serde_json::from_value::<socketry_markdown::mdast::Frontmatter>(json).unwrap(),
+        serde_json::from_value::<core_markdown::mdast::Frontmatter>(json).unwrap(),
         node
     );
     let ast = Node::Frontmatter(node.clone());

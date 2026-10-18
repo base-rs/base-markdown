@@ -4,13 +4,13 @@
 // Copyright, 2025, by Ophir Lojkine.
 // Copyright, 2026, by Samuel Williams.
 
-use pretty_assertions::assert_eq;
-use socketry_markdown::{
+use core_markdown::{
     mdast::{Definition, Image, ImageReference, Node, Paragraph, ReferenceKind, Root, Text},
     message, to_html, to_html_with_options, to_mdast,
     unist::Position,
     CompileOptions, Constructs, Options, ParseOptions,
 };
+use pretty_assertions::assert_eq;
 
 #[test]
 fn image() -> Result<(), message::Message> {

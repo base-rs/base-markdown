@@ -3,8 +3,8 @@
 // Copyright, 2022, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+use core_markdown::to_html;
 use pretty_assertions::assert_eq;
-use socketry_markdown::to_html;
 
 #[test]
 fn text() {

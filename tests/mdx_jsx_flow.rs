@@ -4,13 +4,13 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod test_utils;
-use pretty_assertions::assert_eq;
-use socketry_markdown::{
+use core_markdown::{
     mdast::{List, ListItem, MdxJsxFlowElement, Node, Paragraph, Root, Text},
     message, to_html_with_options, to_mdast,
     unist::Position,
     Constructs, Options, ParseOptions,
 };
+use pretty_assertions::assert_eq;
 use test_utils::swc::{parse_esm, parse_expression};
 
 #[test]

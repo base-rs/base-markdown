@@ -5,7 +5,7 @@
 
 //! Bridge between `markdown-rs` and SWC.
 use crate::test_utils::swc_utils::{create_span, RewritePrefixContext};
-use socketry_markdown::{MdxExpressionKind, MdxSignal};
+use core_markdown::{MdxExpressionKind, MdxSignal};
 use std::rc::Rc;
 use swc_core::common::{
     comments::{Comment, SingleThreadedComments, SingleThreadedCommentsMap},
