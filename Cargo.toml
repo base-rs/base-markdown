@@ -50,7 +50,7 @@ resolver = "2"
 manifest = "bake/Cargo.toml"
 
 [workspace.metadata.bake.release]
-reviewers = ["socketry/managers"]
+reviewers = ["core-rs/maintainers"]
 
 [workspace.dependencies]
 pretty_assertions = "1"
