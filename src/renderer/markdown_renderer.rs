@@ -15,7 +15,7 @@ use alloc::string::String;
 /// # Example
 ///
 /// ```
-/// use socketry_markdown::{mdast::Node, to_mdast, MarkdownRenderer, ParseOptions};
+/// use core_markdown::{mdast::Node, to_mdast, MarkdownRenderer, ParseOptions};
 ///
 /// let mut tree = to_mdast("# Hello *world*!", &ParseOptions::default()).unwrap();
 /// if let Node::Heading(heading) = &mut tree.children_mut().unwrap()[0] {

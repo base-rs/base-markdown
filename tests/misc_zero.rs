@@ -3,12 +3,12 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use pretty_assertions::assert_eq;
-use socketry_markdown::{
+use core_markdown::{
     mdast::{Node, Root},
     message, to_html, to_mdast,
     unist::Position,
 };
+use pretty_assertions::assert_eq;
 
 #[test]
 fn zero() -> Result<(), message::Message> {

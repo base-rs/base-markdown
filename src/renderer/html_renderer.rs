@@ -28,7 +28,7 @@ use alloc::{
 /// # Example
 ///
 /// ```
-/// use socketry_markdown::{mdast::Node, to_mdast, HtmlRenderer, ParseOptions};
+/// use core_markdown::{mdast::Node, to_mdast, HtmlRenderer, ParseOptions};
 ///
 /// let mut tree = to_mdast("# Hello *world*!", &ParseOptions::default()).unwrap();
 /// if let Node::Heading(heading) = &mut tree.children_mut().unwrap()[0] {

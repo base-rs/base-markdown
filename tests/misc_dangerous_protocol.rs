@@ -4,8 +4,8 @@
 // Copyright, 2025, by Ophir Lojkine.
 // Copyright, 2026, by Samuel Williams.
 
+use core_markdown::to_html;
 use pretty_assertions::assert_eq;
-use socketry_markdown::to_html;
 
 #[test]
 fn dangerous_protocol_autolink() {
@@ -204,7 +204,7 @@ fn dangerous_protocol_link() {
 
 #[test]
 fn dangerous_protocol_image_with_option() {
-    use socketry_markdown::{to_html_with_options, CompileOptions, Options};
+    use core_markdown::{to_html_with_options, CompileOptions, Options};
 
     let options = Options {
         compile: CompileOptions {

@@ -4,7 +4,7 @@
 // Copyright, 2024, by Bnchi.
 // Copyright, 2026, by Samuel Williams.
 
-//! Public API of `socketry-markdown`.
+//! Public API of `core-markdown`.
 //!
 //! This module exposes primarily [`to_html()`][].
 //! It also exposes [`to_html_with_options()`][] and [`to_mdast()`][].
@@ -98,7 +98,7 @@ use alloc::string::String;
 /// ## Examples
 ///
 /// ```
-/// use socketry_markdown::to_html;
+/// use core_markdown::to_html;
 ///
 /// assert_eq!(to_html("# Hi Mercury!"), "<h1>Hi Mercury!</h1>");
 /// ```
@@ -119,8 +119,8 @@ pub fn to_html(value: &str) -> String {
 /// ## Examples
 ///
 /// ```
-/// use socketry_markdown::{to_html_with_options, CompileOptions, Options};
-/// # fn main() -> Result<(), socketry_markdown::message::Message> {
+/// use core_markdown::{to_html_with_options, CompileOptions, Options};
+/// # fn main() -> Result<(), core_markdown::message::Message> {
 ///
 /// // Use GFM:
 /// let result = to_html_with_options("~Venus~Mars!", &Options::gfm())?;
@@ -164,8 +164,8 @@ pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, me
 /// ## Examples
 ///
 /// ```
-/// use socketry_markdown::{to_mdast, ParseOptions};
-/// # fn main() -> Result<(), socketry_markdown::message::Message> {
+/// use core_markdown::{to_mdast, ParseOptions};
+/// # fn main() -> Result<(), core_markdown::message::Message> {
 ///
 /// let tree = to_mdast("# Hi *Earth*!", &ParseOptions::default())?;
 ///

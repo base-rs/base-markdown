@@ -32,15 +32,15 @@ authors = ["Titus Wormer <tituswormer@gmail.com>"]
 categories = ["compilers", "encoding", "parser-implementations", "parsing", "text-processing"]
 description = "CommonMark compliant markdown parser in Rust with ASTs and extensions"
 edition = "2018"
-homepage = "https://github.com/socketry/socketry-markdown-rust"
-include = ["src/**", "context/**", "readme.md", "license.md", "releases.md"]
+homepage = "https://github.com/core-rs/core-markdown"
+include = ["src/**", "context/**", "readme.md", "license.md", "releases.md", "releases/**"]
 keywords = ["commonmark", "markdown", "parse", "render", "tokenize"]
 license = "MIT"
-name = "socketry-markdown"
+name = "core-markdown"
 readme = "readme.md"
-repository = "https://github.com/socketry/socketry-markdown-rust"
+repository = "https://github.com/core-rs/core-markdown"
 rust-version = "1.73"
-version = "0.7.0"
+version = "0.1.0"
 
 [workspace]
 members = ["generate", "bake"]

@@ -1,8 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use pretty_assertions::assert_eq;
-use socketry_markdown::{
+use core_markdown::{
     mdast::{
         AlignKind, AttributeContent, AttributeValue, AttributeValueExpression, Blockquote, Break,
         Code, Definition, Delete, Emphasis, FootnoteDefinition, FootnoteReference, Frontmatter,
@@ -15,6 +14,7 @@ use socketry_markdown::{
     renderer::Renderer,
     to_html_with_options, to_mdast, CompileOptions, HtmlRenderer, Options, ParseOptions,
 };
+use pretty_assertions::assert_eq;
 
 fn text(value: &str) -> Node {
     Node::Text(Text {
@@ -173,7 +173,7 @@ fn renders_ast_node_variants_and_custom_renderer_methods() {
     let tree = Node::Root(Root {
         position: None,
         children: vec![
-            Node::Fragment(socketry_markdown::mdast::Fragment {
+            Node::Fragment(core_markdown::mdast::Fragment {
                 children: vec![paragraph(vec![text("fragment")])],
             }),
             Node::Heading(Heading {

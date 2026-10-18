@@ -1,4 +1,4 @@
-# `socketry-markdown`
+# `core-markdown`
 
 A CommonMark-compliant Markdown parser for Rust with an AST, extensions, and HTML and Markdown renderers. It is based on [`markdown-rs`](https://github.com/wooorm/markdown-rs) and adds Socketry's AST helpers and renderer APIs.
 
@@ -20,14 +20,14 @@ For tools that inspect code blocks and frontmatter, `Node::code_fence()` exposes
 
 Beyond parsing, the fork adds AST traversal, text extraction, heading and section editing, and `Fragment` nodes for working with detached content. `HtmlRenderer`, `MarkdownRenderer`, and the custom `Renderer` interface render edited trees; Markdown serialization preserves language metadata and can unwrap soft line breaks. Optional `CompileOptions::heading_ids` generates unique heading anchors for in-page links and tables of contents.
 
-The fork also includes fixes for stale MDX parser errors and parsing and serialization edge cases, including CRLF handling in inline code and math. See [releases.md](releases.md) for changes and the [API documentation](https://docs.rs/socketry-markdown/latest/socketry_markdown/) for configuration details.
+The fork also includes fixes for stale MDX parser errors and parsing and serialization edge cases, including CRLF handling in inline code and math. See [releases.md](releases.md) for changes and the [API documentation](https://docs.rs/core-markdown/latest/core_markdown/) for configuration details.
 
 ## Usage
 
 ### Install
 
 ```sh
-cargo add socketry-markdown
+cargo add core-markdown
 ```
 
 The library supports Rust 1.73 and later.
@@ -37,14 +37,14 @@ The library supports Rust 1.73 and later.
 For direct conversion from Markdown source to HTML:
 
 ```rust
-let html = socketry_markdown::to_html("## Hello, *world*!");
+let html = core_markdown::to_html("## Hello, *world*!");
 assert_eq!(html, "<h2>Hello, <em>world</em>!</h2>");
 ```
 
 Enable GFM constructs with `Options::gfm()`:
 
 ```rust
-use socketry_markdown::{to_html_with_options, Options};
+use core_markdown::{to_html_with_options, Options};
 
 let html = to_html_with_options("* [x] done", &Options::gfm()).unwrap();
 ```
@@ -54,7 +54,7 @@ let html = to_html_with_options("* [x] done", &Options::gfm()).unwrap();
 Parse to a syntax tree when you need to inspect or transform Markdown:
 
 ```rust
-use socketry_markdown::{to_mdast, ParseOptions};
+use core_markdown::{to_mdast, ParseOptions};
 
 let document = to_mdast("# Introduction\n\nHello, *world*!", &ParseOptions::default()).unwrap();
 assert_eq!(document.text_content(), "IntroductionHello, world!");
@@ -76,7 +76,7 @@ assert!(markdown.starts_with("# Introduction"));
 `Node::code_fence()` exposes the opening marker, length, and indentation, following Markly's fence structure:
 
 ```rust
-use socketry_markdown::{to_mdast, ParseOptions};
+use core_markdown::{to_mdast, ParseOptions};
 
 let document = to_mdast("  ~~~~rust\n  let x = 1;\n  ~~~~", &ParseOptions::default()).unwrap();
 let fence = document.children().unwrap()[0].code_fence().unwrap();
@@ -89,14 +89,14 @@ Indentation is measured in columns relative to the containing block. Fence metad
 
 ### Extensions
 
-The parser inherits support for CommonMark, GFM, MDX, frontmatter, and math constructs from `markdown-rs`. The fork-specific parsing options are described under [Motivation](#motivation). HTML output escapes raw HTML and omits MDX expressions by default. See the [API documentation](https://docs.rs/socketry-markdown/latest/socketry_markdown/) for parser options, renderer configuration, and AST types.
+The parser inherits support for CommonMark, GFM, MDX, frontmatter, and math constructs from `markdown-rs`. The fork-specific parsing options are described under [Motivation](#motivation). HTML output escapes raw HTML and omits MDX expressions by default. See the [API documentation](https://docs.rs/core-markdown/latest/core_markdown/) for parser options, renderer configuration, and AST types.
 
 ### Language-agnostic frontmatter
 
 Enable the existing frontmatter construct to accept any format. The opening fence must be unindented on the first line of the document, outside list items and blockquotes, and have a matching closing fence:
 
 ````rust
-use socketry_markdown::{mdast::Node, to_mdast, Constructs, ParseOptions};
+use core_markdown::{mdast::Node, to_mdast, Constructs, ParseOptions};
 
 let options = ParseOptions {
     constructs: Constructs { frontmatter: true, ..Constructs::default() },
@@ -116,7 +116,7 @@ Markdown serialization retains the stored info string and body while normalizing
 
 ## Releasing
 
-Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or `bump --version X.Y.Z`), then run `cargo bake cargo:release` and open a pull request. After review and merge, GitHub Actions publishes the release when the configured `crates-io` environment approves it. Follow the shared [Releasing skill](https://github.com/socketry/socketry-project-rust/blob/main/context/releasing.md) for the standard process.
+Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or `bump --version X.Y.Z`), commit with a `Release: vVERSION` Git trailer, then run `cargo bake cargo:release` and open a pull request. After review and merge, GitHub Actions publishes the release when the configured `crates-io` environment approves it. Follow the shared [Releasing skill](https://github.com/core-rs/core-project/blob/main/context/releasing.md) for the standard process.
 
 ## Releases
 
@@ -124,22 +124,10 @@ Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or
 
 See [releases.md](releases.md) for the full release history.
 
-### v0.7.0
+### v0.1.0
 
-- Unify all frontmatter under `Node::Frontmatter`, replacing `Node::Yaml`, `Node::Toml`, and their structs. Update Rust matches and struct literals; serialized ASTs now use `type: "frontmatter"` with info and fence fields.
-- Return YAML/TOML defaults from `Frontmatter::language()` and `Node::code_language()` for untagged dash/plus delimiters, while keeping the authored info string empty.
-- Retain the trailing body line ending for untagged YAML/TOML, matching tagged frontmatter, and serialize all forms through the same handler. Edited bodies that require a different fence retain their effective language.
-- Clarify frontmatter placement and serialization, and provide runnable AST renderer examples.
-
-### v0.6.0
-
-- Rename `HTMLRenderer` to `HtmlRenderer` to follow Rust acronym casing. Update imports and type references.
-
-### v0.5.0
-
-- Add `Node::code_fence()` and `mdast::CodeFence`, exposing an opening fence's character, length, and indentation in columns, following Markly's fence structure.
-- Retain fence metadata on ordinary code blocks independently of source positions, and expose existing frontmatter fences through the same helper. Inline and indented code return `None`.
-- Add `Code::fence: Option<CodeFence>`; Rust struct literals must supply this field (use `None` when no source metadata is available). Older serialized ASTs remain readable.
+- Publish as `core-markdown` in the `core-rs` organization, with version numbering restarted at `0.1.0`.
+- Require a `Release: vVERSION` Git trailer on the final release commit; version changes alone no longer trigger publication.
 
 <!-- bake-readme:releases:end -->
 
@@ -150,16 +138,16 @@ See [releases.md](releases.md) for the full release history.
 
 ## Contributing
 
-Please open an issue or pull request on [GitHub](https://github.com/socketry/socketry-markdown-rust).
+Please open an issue or pull request on [GitHub](https://github.com/core-rs/core-markdown).
 
 ### Agent Context
 
 Run `cargo bake agent:context:install` to install shared context and skills. Read `.agents/context/index.md` to find relevant guides, follow `agents.md` if present, and apply skills under `.agents/skills/`. The installer preserves repository-owned `agents.md`; it does not create or regenerate that file.
 
-[badge-build-image]: https://github.com/socketry/socketry-markdown-rust/actions/workflows/test.yml/badge.svg
+[badge-build-image]: https://github.com/core-rs/core-markdown/actions/workflows/test.yml/badge.svg
 
-[badge-build-url]: https://github.com/socketry/socketry-markdown-rust/actions
+[badge-build-url]: https://github.com/core-rs/core-markdown/actions
 
-[badge-coverage-image]: https://github.com/socketry/socketry-markdown-rust/actions/workflows/test.yml/badge.svg
+[badge-coverage-image]: https://github.com/core-rs/core-markdown/actions/workflows/test.yml/badge.svg
 
-[badge-coverage-url]: https://github.com/socketry/socketry-markdown-rust/actions/workflows/test.yml
+[badge-coverage-url]: https://github.com/core-rs/core-markdown/actions/workflows/test.yml

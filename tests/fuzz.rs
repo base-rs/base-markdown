@@ -4,8 +4,8 @@
 // Copyright, 2023, by Mick van Gelderen.
 // Copyright, 2026, by Samuel Williams.
 
+use core_markdown::{mdast, message, to_html, to_html_with_options, to_mdast, Options};
 use pretty_assertions::assert_eq;
-use socketry_markdown::{mdast, message, to_html, to_html_with_options, to_mdast, Options};
 
 #[test]
 fn fuzz() -> Result<(), message::Message> {
@@ -124,10 +124,10 @@ fn fuzz() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        socketry_markdown::to_html_with_options(
+        core_markdown::to_html_with_options(
             "<",
-            &socketry_markdown::Options {
-                parse: socketry_markdown::ParseOptions::mdx(),
+            &core_markdown::Options {
+                parse: core_markdown::ParseOptions::mdx(),
                 ..Default::default()
             }
         ),

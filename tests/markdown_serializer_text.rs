@@ -3,13 +3,11 @@
 // Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+use core_markdown::markdown::to_markdown as to;
+use core_markdown::markdown::{to_markdown_with_options as to_with_options, LineWrapping, Options};
+use core_markdown::mdast::{Node, Text};
+use core_markdown::to_mdast;
 use pretty_assertions::assert_eq;
-use socketry_markdown::markdown::to_markdown as to;
-use socketry_markdown::markdown::{
-    to_markdown_with_options as to_with_options, LineWrapping, Options,
-};
-use socketry_markdown::mdast::{Node, Text};
-use socketry_markdown::to_mdast;
 
 #[test]
 fn text() {

@@ -17,7 +17,7 @@ extern crate std;
 /// ## Examples
 ///
 /// ```rust ignore
-/// use socketry_markdown::util::gfm_tagfilter::gfm_tagfilter;
+/// use core_markdown::util::gfm_tagfilter::gfm_tagfilter;
 ///
 /// assert_eq!(gfm_tagfilter("<iframe>"), "&lt;iframe>");
 /// ```

@@ -3,8 +3,8 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+use core_markdown::{message, to_html, to_html_with_options, CompileOptions, Options};
 use pretty_assertions::assert_eq;
-use socketry_markdown::{message, to_html, to_html_with_options, CompileOptions, Options};
 
 #[test]
 fn tabs_flow() -> Result<(), message::Message> {

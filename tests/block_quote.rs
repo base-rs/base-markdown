@@ -4,13 +4,13 @@
 // Copyright, 2024, by Harsha Teja Kanna.
 // Copyright, 2026, by Samuel Williams.
 
-use pretty_assertions::assert_eq;
-use socketry_markdown::{
+use core_markdown::{
     mdast::{Blockquote, Node, Paragraph, Root, Text},
     message, to_html, to_html_with_options, to_mdast,
     unist::Position,
     Constructs, Options, ParseOptions,
 };
+use pretty_assertions::assert_eq;
 
 #[test]
 fn block_quote() -> Result<(), message::Message> {

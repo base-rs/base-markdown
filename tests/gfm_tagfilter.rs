@@ -7,8 +7,8 @@
 
 // To do: clippy introduced this in 1.72 but breaks when it fixes it.
 // Remove when solved.
+use core_markdown::{message, to_html_with_options, CompileOptions, Options};
 use pretty_assertions::assert_eq;
-use socketry_markdown::{message, to_html_with_options, CompileOptions, Options};
 
 #[test]
 fn gfm_tagfilter() -> Result<(), message::Message> {

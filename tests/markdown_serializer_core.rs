@@ -3,13 +3,13 @@
 // Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use pretty_assertions::assert_eq;
-use socketry_markdown::markdown::{
+use core_markdown::markdown::{
     to_markdown as to, to_markdown_with_options as to_md_with_opts, Options,
 };
-use socketry_markdown::mdast::{
+use core_markdown::mdast::{
     Break, Code, Definition, Heading, List, ListItem, Node, Paragraph, Root, Text, ThematicBreak,
 };
+use pretty_assertions::assert_eq;
 
 #[test]
 fn core() {
