@@ -123,14 +123,7 @@ pub fn after_first(tokenizer: &mut Tokenizer) -> State {
 pub fn at_eol(tokenizer: &mut Tokenizer) -> State {
     if let Some(b'\n') = tokenizer.current {
         if let Some(ref content) = tokenizer.tokenize_state.space_or_tab_eol_content {
-            tokenizer.enter_link(
-                Name::LineEnding,
-                Link {
-                    previous: None,
-                    next: None,
-                    content: content.clone(),
-                },
-            );
+            tokenizer.enter_link(Name::LineEnding, Link::new(None, None, content.clone()));
         } else {
             tokenizer.enter(Name::LineEnding);
         }

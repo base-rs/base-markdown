@@ -314,17 +314,14 @@ pub fn containers_after(tokenizer: &mut Tokenizer) -> State {
         let current = tokenizer.events.len();
         let previous = tokenizer.tokenize_state.document_data_index;
         if let Some(previous) = previous {
-            tokenizer.events[previous].link.as_mut().unwrap().next = Some(current);
+            tokenizer.events[previous]
+                .link
+                .as_mut()
+                .unwrap()
+                .set_next(Some(current));
         }
         tokenizer.tokenize_state.document_data_index = Some(current);
-        tokenizer.enter_link(
-            Name::Data,
-            Link {
-                previous,
-                next: None,
-                content: Content::Flow,
-            },
-        );
+        tokenizer.enter_link(Name::Data, Link::new(previous, None, Content::Flow));
         State::Retry(StateName::DocumentFlowInside)
     }
 }

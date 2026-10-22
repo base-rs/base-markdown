@@ -65,9 +65,9 @@ pub fn link_to(events: &mut [Event], previous: usize, next: usize) {
         .link
         .as_mut()
         .expect("expected `link` on previous");
-    link_previous.next = Some(next);
+    link_previous.set_next(Some(next));
     let link_next = events[next].link.as_mut().expect("expected `link` on next");
-    link_next.previous = Some(previous);
+    link_next.set_previous(Some(previous));
 
     debug_assert_eq!(
         events[previous].link.as_ref().unwrap().content,
@@ -101,7 +101,7 @@ pub fn subtokenize(
             debug_assert_eq!(event.kind, Kind::Enter);
 
             // No need to enter linked events again.
-            if link.previous.is_none()
+            if link.previous().is_none()
                 && (filter.is_none() || &link.content == *filter.as_ref().unwrap())
             {
                 // Index into `events` pointing to a chunk.
@@ -153,7 +153,7 @@ pub fn subtokenize(
                     let link_curr = enter.link.as_ref().expect("expected link");
                     debug_assert_eq!(enter.kind, Kind::Enter);
 
-                    if link_curr.previous.is_some() {
+                    if link_curr.previous().is_some() {
                         tokenizer.define_skip(enter.point.clone());
                     }
 
@@ -165,7 +165,7 @@ pub fn subtokenize(
                         state,
                     );
 
-                    link_index = link_curr.next;
+                    link_index = link_curr.next();
                 }
 
                 let mut result = tokenizer.flush(state, true)?;
@@ -213,12 +213,12 @@ pub fn divide_events(
         if current.index > end.index || (current.index == end.index && current.vs > end.vs) {
             slices.push((link_index, slice_start));
             slice_start = child_index;
-            link_index = events[link_index].link.as_ref().unwrap().next.unwrap();
+            link_index = events[link_index].link.as_ref().unwrap().next().unwrap();
         }
 
         // Fix sublinks.
         if let Some(sublink_curr) = &child_events[child_index].link {
-            if sublink_curr.previous.is_some() {
+            if sublink_curr.previous().is_some() {
                 let old_prev = old_prev.unwrap();
                 let prev_event = &mut child_events[old_prev];
                 // The `index` in `events` where the current link is,
@@ -230,8 +230,11 @@ pub fn divide_events(
                 } else {
                     old_prev + link_index - (slices.len() - 1) * 2
                 };
-                prev_event.link.as_mut().unwrap().next =
-                    Some(new_link + acc_before.1 - acc_before.0);
+                prev_event
+                    .link
+                    .as_mut()
+                    .unwrap()
+                    .set_next(Some(new_link + acc_before.1 - acc_before.0));
             }
         }
 
@@ -240,19 +243,21 @@ pub fn divide_events(
         // If it points to a next event, we also change the next event’s
         // reference back to *this* event.
         if let Some(sublink_curr) = &child_events[child_index].link {
-            if let Some(next) = sublink_curr.next {
+            if let Some(next) = sublink_curr.next() {
                 let sublink_next = child_events[next].link.as_mut().unwrap();
 
-                old_prev = sublink_next.previous;
+                old_prev = sublink_next.previous();
 
-                sublink_next.previous = sublink_next
-                    .previous
-                    // The `index` in `events` where the current link is,
-                    // minus 2 events (the enter and exit) for each removed
-                    // link.
-                    .map(|previous| {
-                        previous + link_index - (slices.len() * 2) + acc_before.1 - acc_before.0
-                    });
+                sublink_next.set_previous(
+                    sublink_next
+                        .previous()
+                        // The `index` in `events` where the current link is,
+                        // minus 2 events (the enter and exit) for each removed
+                        // link.
+                        .map(|previous| {
+                            previous + link_index - (slices.len() * 2) + acc_before.1 - acc_before.0
+                        }),
+                );
             }
         }
 

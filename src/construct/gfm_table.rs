@@ -973,11 +973,7 @@ fn flush_cell(
         debug_assert_ne!(range.3, 0);
 
         if !in_delimiter_row {
-            tokenizer.events[range.2].link = Some(Link {
-                previous: None,
-                next: None,
-                content: Content::Text,
-            });
+            tokenizer.events[range.2].link = Some(Link::new(None, None, Content::Text));
 
             // To do: positional info of the remaining `data` nodes likely have
             // to be fixed.

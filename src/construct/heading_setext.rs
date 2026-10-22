@@ -236,12 +236,13 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
                 // Move new data (was line ending) back to include whole line,
                 // and link data together.
                 tokenizer.events[exit + 1].point = tokenizer.events[enter].point.clone();
-                tokenizer.events[exit + 1].link = Some(Link {
-                    previous: None,
-                    next: Some(exit + 4),
-                    content: Content::Text,
-                });
-                tokenizer.events[exit + 4].link.as_mut().unwrap().previous = Some(exit + 1);
+                tokenizer.events[exit + 1].link =
+                    Some(Link::new(None, Some(exit + 4), Content::Text));
+                tokenizer.events[exit + 4]
+                    .link
+                    .as_mut()
+                    .unwrap()
+                    .set_previous(Some(exit + 1));
                 // Remove *including* HeadingSetextUnderline:Exit, until the line ending.
                 tokenizer.map.add(enter + 1, exit - enter, vec![]);
                 // Remove old Paragraph:Enter.
@@ -259,11 +260,7 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
                             name: Name::Data,
                             kind: Kind::Enter,
                             point: tokenizer.events[enter].point.clone(),
-                            link: Some(Link {
-                                previous: None,
-                                next: None,
-                                content: Content::Text,
-                            }),
+                            link: Some(Link::new(None, None, Content::Text)),
                         },
                         Event {
                             name: Name::Data,

@@ -72,14 +72,7 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
 /// ```
 pub fn line_start(tokenizer: &mut Tokenizer) -> State {
     debug_assert!(tokenizer.current.is_some());
-    tokenizer.enter_link(
-        Name::Data,
-        Link {
-            previous: None,
-            next: None,
-            content: Content::Text,
-        },
-    );
+    tokenizer.enter_link(Name::Data, Link::new(None, None, Content::Text));
 
     if tokenizer.tokenize_state.connect {
         let index = tokenizer.events.len() - 1;

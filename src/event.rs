@@ -6,6 +6,7 @@
 //! Semantic labels of things happening.
 use crate::unist;
 use crate::util::constant::TAB_SIZE;
+use core::num::NonZeroUsize;
 
 /// Semantic label of a span.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -3485,11 +3486,38 @@ pub enum Content {
 #[derive(Clone, Debug)]
 pub struct Link {
     /// Previous event.
-    pub previous: Option<usize>,
+    previous_index: Option<NonZeroUsize>,
     /// Next event.
-    pub next: Option<usize>,
+    next_index: Option<NonZeroUsize>,
     /// Content type.
     pub content: Content,
+}
+
+impl Link {
+    /// Store one-based event indices so absent links use the zero niche instead of a separate discriminant.
+    pub fn new(previous: Option<usize>, next: Option<usize>, content: Content) -> Self {
+        Self {
+            previous_index: previous.and_then(|index| NonZeroUsize::new(index + 1)),
+            next_index: next.and_then(|index| NonZeroUsize::new(index + 1)),
+            content,
+        }
+    }
+
+    pub fn previous(&self) -> Option<usize> {
+        self.previous_index.map(|index| index.get() - 1)
+    }
+
+    pub fn next(&self) -> Option<usize> {
+        self.next_index.map(|index| index.get() - 1)
+    }
+
+    pub fn set_previous(&mut self, previous: Option<usize>) {
+        self.previous_index = previous.and_then(|index| NonZeroUsize::new(index + 1));
+    }
+
+    pub fn set_next(&mut self, next: Option<usize>) {
+        self.next_index = next.and_then(|index| NonZeroUsize::new(index + 1));
+    }
 }
 
 /// Place in the document.
@@ -3578,7 +3606,20 @@ pub struct Event {
 
 #[cfg(test)]
 mod tests {
-    use super::Point;
+    use super::{Content, Link, Point};
+
+    #[test]
+    fn compact_links_preserve_zero_indices_and_absent_neighbors() {
+        let mut link = Link::new(Some(0), Some(7), Content::Text);
+        assert_eq!(link.previous(), Some(0));
+        assert_eq!(link.next(), Some(7));
+        link.set_previous(None);
+        link.set_next(Some(0));
+        assert_eq!(link.previous(), None);
+        assert_eq!(link.next(), Some(0));
+        link.set_next(None);
+        assert_eq!(link.next(), None);
+    }
 
     #[test]
     fn shifts_points_across_tabs() {

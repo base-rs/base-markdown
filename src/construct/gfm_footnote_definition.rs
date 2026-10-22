@@ -248,14 +248,7 @@ pub fn label_at_marker(tokenizer: &mut Tokenizer) -> State {
         tokenizer.consume();
         tokenizer.exit(Name::GfmFootnoteDefinitionMarker);
         tokenizer.enter(Name::GfmFootnoteDefinitionLabelString);
-        tokenizer.enter_link(
-            Name::Data,
-            Link {
-                previous: None,
-                next: None,
-                content: Content::String,
-            },
-        );
+        tokenizer.enter_link(Name::Data, Link::new(None, None, Content::String));
         State::Next(StateName::GfmFootnoteDefinitionLabelInside)
     } else {
         State::Nok
