@@ -17,7 +17,7 @@ use crate::event::{Content, Event, Kind, Link, Name, Point, VOID_EVENTS};
 use crate::message;
 use crate::parser::ParseState;
 use crate::resolve::{call as call_resolve, Name as ResolveName};
-use crate::state::{call, State};
+use crate::state::{call, Name as StateName, State};
 use crate::subtokenize::Subresult;
 
 #[cfg(feature = "log")]
@@ -745,6 +745,34 @@ fn push_impl(
                 }
             }
             State::Next(name) => {
+                // These states only consume ordinary bytes until a delimiter. Scan the run without redispatching the state machine for every byte. Tabs and line endings still use the virtual-byte machinery below, and `to` remains a hard boundary between linked chunks.
+                if matches!(
+                    name,
+                    StateName::DataInside
+                        | StateName::ContentChunkInside
+                        | StateName::DocumentFlowInside
+                        | StateName::ParagraphInside
+                ) {
+                    let start = tokenizer.point.index;
+                    let bytes = tokenizer.parse_state.bytes;
+                    let mut end = start;
+                    while end < to.0
+                        && !matches!(bytes[end], b'\r' | b'\n' | b'\t')
+                        && (name != StateName::DataInside
+                            || !tokenizer.tokenize_state.markers.contains(&bytes[end]))
+                    {
+                        end += 1;
+                    }
+                    if end > start {
+                        tokenizer.point.index = end;
+                        tokenizer.point.column += end - start;
+                        tokenizer.point.vs = 0;
+                        tokenizer.previous = Some(bytes[end - 1]);
+                        tokenizer.current = None;
+                        tokenizer.consumed = true;
+                        continue;
+                    }
+                }
                 let action = if tokenizer.point.index < to.0
                     || (tokenizer.point.index == to.0 && tokenizer.point.vs < to.1)
                 {
@@ -867,6 +895,28 @@ mod tests {
             },
             parse_state,
         )
+    }
+
+    #[test]
+    fn scans_data_runs_within_chunk_and_virtual_space_boundaries() {
+        let options = ParseOptions::default();
+        let (_events, parse_state) = parse("ab\tdef\r\nxyz", &options).unwrap();
+        let mut tokenizer = make_tokenizer(&parse_state);
+        tokenizer.tokenize_state.markers = b"*";
+        tokenizer.enter(Name::Data);
+        let state = tokenizer.push((0, 0), (1, 0), State::Next(StateName::DataInside));
+        assert_eq!(tokenizer.point.index, 1);
+        assert_eq!(tokenizer.point.column, 2);
+        assert_eq!(tokenizer.previous, Some(b'a'));
+        let state = tokenizer.push((1, 0), (2, 1), state);
+        assert_eq!(tokenizer.point.index, 2);
+        assert_eq!(tokenizer.point.vs, 1);
+        assert_eq!(tokenizer.point.column, 4);
+        let state = tokenizer.push((2, 1), (parse_state.bytes.len(), 0), state);
+        tokenizer.flush(state, true).unwrap();
+        assert_eq!(tokenizer.point.line, 2);
+        assert_eq!(tokenizer.point.column, 4);
+        assert_eq!(tokenizer.previous, Some(b'z'));
     }
 
     #[cfg(feature = "log")]
