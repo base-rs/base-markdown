@@ -62,12 +62,17 @@ fn shift_links(events: &mut [Event], jumps: &[(usize, usize, usize)]) {
 pub struct EditMap {
     /// Record of changes.
     map: Vec<(usize, usize, Vec<Event>)>,
+    /// Locate an existing edit without scanning all preceding edits.
+    indices: Vec<usize>,
 }
 
 impl EditMap {
     /// Create a new edit map.
     pub fn new() -> EditMap {
-        EditMap { map: vec![] }
+        EditMap {
+            map: vec![],
+            indices: vec![],
+        }
     }
     /// Create an edit: a remove and/or add at a certain place.
     pub fn add(&mut self, index: usize, remove: usize, add: Vec<Event>) {
@@ -119,33 +124,79 @@ impl EditMap {
         }
 
         self.map.clear();
+        self.indices.clear();
     }
 }
 
 /// Create an edit.
 fn add_impl(edit_map: &mut EditMap, at: usize, remove: usize, mut add: Vec<Event>, before: bool) {
-    let mut index = 0;
-
     if remove == 0 && add.is_empty() {
         return;
     }
 
-    while index < edit_map.map.len() {
-        if edit_map.map[index].0 == at {
-            edit_map.map[index].1 += remove;
+    if let Some(&index) = edit_map
+        .indices
+        .get(at)
+        .filter(|&&index| index != usize::MAX)
+    {
+        edit_map.map[index].1 += remove;
 
-            if before {
-                add.append(&mut edit_map.map[index].2);
-                edit_map.map[index].2 = add;
-            } else {
-                edit_map.map[index].2.append(&mut add);
-            }
-
-            return;
+        if before {
+            add.append(&mut edit_map.map[index].2);
+            edit_map.map[index].2 = add;
+        } else {
+            edit_map.map[index].2.append(&mut add);
         }
+    } else {
+        if at >= edit_map.indices.len() {
+            edit_map.indices.resize(at + 1, usize::MAX);
+        }
+        edit_map.indices[at] = edit_map.map.len();
+        edit_map.map.push((at, remove, add));
+    }
+}
 
-        index += 1;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::event::{Kind, Name, Point};
+
+    fn event(index: usize) -> Event {
+        Event {
+            kind: Kind::Enter,
+            name: Name::Data,
+            point: Point {
+                line: 1,
+                column: index + 1,
+                index,
+                vs: 0,
+            },
+            link: None,
+        }
     }
 
-    edit_map.map.push((at, remove, add));
+    #[test]
+    fn combines_edits_in_call_order_and_reuses_indices() {
+        let mut events = (0..6).map(event).collect();
+        let mut map = EditMap::new();
+        map.add(4, 1, vec![event(40)]);
+        map.add(1, 1, vec![event(10)]);
+        map.add(4, 0, vec![event(41)]);
+        map.add_before(4, 0, vec![event(39)]);
+        map.add(0, 0, vec![]);
+        map.consume(&mut events);
+        assert_eq!(
+            events.iter().map(|e| e.point.index).collect::<Vec<_>>(),
+            vec![0, 10, 2, 3, 39, 40, 41, 5]
+        );
+
+        // Sorting during consumption must not leave stale indices behind.
+        map.add(1, 2, vec![]);
+        map.add(1, 1, vec![event(11)]);
+        map.consume(&mut events);
+        assert_eq!(
+            events.iter().map(|e| e.point.index).collect::<Vec<_>>(),
+            vec![0, 11, 39, 40, 41, 5]
+        );
+    }
 }
