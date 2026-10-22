@@ -247,7 +247,7 @@ pub struct TokenizeState<'a> {
     /// Secondary marker.
     pub marker_b: u8,
     /// Several markers.
-    pub markers: &'static [u8],
+    pub markers: u128,
     /// Whether something was seen.
     pub seen: bool,
     /// Size.
@@ -371,7 +371,7 @@ impl<'a> Tokenizer<'a> {
                 label_starts_loose: vec![],
                 marker: 0,
                 marker_b: 0,
-                markers: &[],
+                markers: 0,
                 labels: vec![],
                 seen: false,
                 size: 0,
@@ -425,6 +425,11 @@ impl<'a> Tokenizer<'a> {
         // A flushed tokenizer has consumed all pending edits.
         core::mem::swap(&mut self.map, &mut next.map);
         *self = next;
+    }
+
+    /// Test the ASCII delimiter bitset without searching a marker slice.
+    pub fn is_data_marker(&self, byte: u8) -> bool {
+        byte < 128 && self.tokenize_state.markers & (1 << byte) != 0
     }
 
     /// Register a resolver.
@@ -782,8 +787,7 @@ fn push_impl(
                     let mut end = start;
                     while end < to.0
                         && !matches!(bytes[end], b'\r' | b'\n' | b'\t')
-                        && (name != StateName::DataInside
-                            || !tokenizer.tokenize_state.markers.contains(&bytes[end]))
+                        && (name != StateName::DataInside || !tokenizer.is_data_marker(bytes[end]))
                     {
                         end += 1;
                     }
@@ -926,7 +930,7 @@ mod tests {
         let options = ParseOptions::default();
         let (_events, parse_state) = parse("ab\tdef\r\nxyz", &options).unwrap();
         let mut tokenizer = make_tokenizer(&parse_state);
-        tokenizer.tokenize_state.markers = b"*";
+        tokenizer.tokenize_state.markers = 1 << b'*';
         tokenizer.enter(Name::Data);
         let state = tokenizer.push((0, 0), (1, 0), State::Next(StateName::DataInside));
         assert_eq!(tokenizer.point.index, 1);

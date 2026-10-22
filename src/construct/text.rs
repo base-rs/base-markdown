@@ -65,7 +65,28 @@ const MARKERS: [u8; 16] = [
 ///     ^
 /// ```
 pub fn start(tokenizer: &mut Tokenizer) -> State {
-    tokenizer.tokenize_state.markers = &MARKERS;
+    let constructs = &tokenizer.parse_state.options.constructs;
+    tokenizer.tokenize_state.markers = 0;
+    for marker in MARKERS {
+        let enabled = match marker {
+            b'!' => constructs.label_start_image,
+            b'$' => constructs.math_text,
+            b'&' => constructs.character_reference,
+            b'*' | b'_' => constructs.attention,
+            b'<' => constructs.autolink || constructs.html_text || constructs.mdx_jsx_text,
+            b'H' | b'W' | b'h' | b'w' => constructs.gfm_autolink_literal,
+            b'[' => constructs.label_start_link || constructs.gfm_label_start_footnote,
+            b'\\' => constructs.character_escape || constructs.hard_break_escape,
+            b']' => constructs.label_end,
+            b'`' => constructs.code_text,
+            b'{' => constructs.mdx_expression_text,
+            b'~' => constructs.gfm_strikethrough,
+            _ => unreachable!("text markers must have a corresponding construct"),
+        };
+        if enabled {
+            tokenizer.tokenize_state.markers |= 1 << marker;
+        }
+    }
     tokenizer.attempt(
         State::Next(StateName::TextBefore),
         State::Next(StateName::TextBefore),
