@@ -11,7 +11,7 @@ use crate::mdast::AlignKind;
 use crate::util::{
     character_reference::decode as decode_character_reference,
     constant::{SAFE_PROTOCOL_HREF, SAFE_PROTOCOL_SRC},
-    encode::encode,
+    encode::{encode, encode_into},
     gfm_tagfilter::gfm_tagfilter,
     infer::{gfm_table_align, list_loose},
     inline_code_info,
@@ -204,10 +204,17 @@ impl<'a> CompileContext<'a> {
         last_buf.push_str(value);
     }
 
+    /// Escape directly into the active buffer without a temporary string.
+    fn push_encoded(&mut self, value: &str) {
+        encode_into(value, self.encode_html, self.buffers.last_mut().unwrap());
+    }
+
     /// Add a line ending.
     fn line_ending(&mut self) {
-        let eol = self.line_ending_default.as_str().to_string();
-        self.push(&eol);
+        self.buffers
+            .last_mut()
+            .unwrap()
+            .push_str(self.line_ending_default.as_str());
     }
 
     /// Add a line ending if needed (as in, there’s no eol/eof already).
@@ -862,21 +869,20 @@ fn on_exit_character_reference_value(context: &mut CompileContext) {
     let value = decode_character_reference(slice.as_str(), marker, true)
         .expect("expected to parse only valid named references");
 
-    context.push(&encode(&value, context.encode_html));
+    context.push_encoded(&value);
 }
 
 /// Handle [`Exit`][Kind::Exit]:{[`CodeFlowChunk`][Name::CodeFlowChunk],[`MathFlowChunk`][Name::MathFlowChunk]}.
 fn on_exit_raw_flow_chunk(context: &mut CompileContext) {
     context.raw_flow_seen_data = Some(true);
-    context.push(&encode(
-        &Slice::from_position(
-            context.bytes,
-            &Position::from_exit_event(context.events, context.index),
-        )
-        // Must serialize to get virtual spaces.
-        .serialize(),
-        context.encode_html,
-    ));
+    let slice = Slice::from_position(
+        context.bytes,
+        &Position::from_exit_event(context.events, context.index),
+    );
+    let buffer = context.buffers.last_mut().unwrap();
+    buffer.extend(core::iter::repeat(' ').take(slice.before));
+    encode_into(slice.as_str(), context.encode_html, buffer);
+    buffer.extend(core::iter::repeat(' ').take(slice.after));
 }
 
 /// Handle [`Exit`][Kind::Exit]:{[`CodeFencedFence`][Name::CodeFencedFence],[`MathFlowFence`][Name::MathFlowFence]}.
@@ -1011,14 +1017,11 @@ fn on_exit_drop_slurp(context: &mut CompileContext) {
 
 /// Handle [`Exit`][Kind::Exit]:{[`CodeTextData`][Name::CodeTextData],[`Data`][Name::Data],[`CharacterEscapeValue`][Name::CharacterEscapeValue]}.
 fn on_exit_data(context: &mut CompileContext) {
-    context.push(&encode(
-        Slice::from_position(
-            context.bytes,
-            &Position::from_exit_event(context.events, context.index),
-        )
-        .as_str(),
-        context.encode_html,
-    ));
+    let slice = Slice::from_position(
+        context.bytes,
+        &Position::from_exit_event(context.events, context.index),
+    );
+    context.push_encoded(slice.as_str());
 }
 
 /// Handle [`Exit`][Kind::Exit]:[`Definition`][Name::Definition].
@@ -1172,7 +1175,7 @@ fn on_exit_gfm_footnote_call(context: &mut CompileContext) {
 
     context.push("<sup><a href=\"#");
     if let Some(ref value) = context.options.gfm_footnote_clobber_prefix {
-        context.push(&encode(value, context.encode_html));
+        context.push_encoded(value);
     } else {
         context.push("user-content-");
     }
@@ -1180,7 +1183,7 @@ fn on_exit_gfm_footnote_call(context: &mut CompileContext) {
     context.push(&safe_id);
     context.push("\" id=\"");
     if let Some(ref value) = context.options.gfm_footnote_clobber_prefix {
-        context.push(&encode(value, context.encode_html));
+        context.push_encoded(value);
     } else {
         context.push("user-content-");
     }
@@ -1645,7 +1648,7 @@ fn generate_footnote_section(context: &mut CompileContext) {
     context.line_ending_if_needed();
     context.push("<section data-footnotes=\"\" class=\"footnotes\"><");
     if let Some(ref value) = context.options.gfm_footnote_label_tag_name {
-        context.push(&encode(value, context.encode_html));
+        context.push_encoded(value);
     } else {
         context.push("h2");
     }
@@ -1657,13 +1660,13 @@ fn generate_footnote_section(context: &mut CompileContext) {
     }
     context.push(">");
     if let Some(ref value) = context.options.gfm_footnote_label {
-        context.push(&encode(value, context.encode_html));
+        context.push_encoded(value);
     } else {
         context.push("Footnotes");
     }
     context.push("</");
     if let Some(ref value) = context.options.gfm_footnote_label_tag_name {
-        context.push(&encode(value, context.encode_html));
+        context.push_encoded(value);
     } else {
         context.push("h2");
     }
@@ -1707,7 +1710,7 @@ fn generate_footnote_item(context: &mut CompileContext, index: usize) {
     context.line_ending();
     context.push("<li id=\"");
     if let Some(ref value) = context.options.gfm_footnote_clobber_prefix {
-        context.push(&encode(value, context.encode_html));
+        context.push_encoded(value);
     } else {
         context.push("user-content-");
     }
@@ -1822,7 +1825,7 @@ fn generate_autolink(
         context.push("\">");
     }
 
-    context.push(&encode(value, context.encode_html));
+    context.push_encoded(value);
 
     if !context.image_alt_inside && (!is_in_link || !is_gfm_literal) {
         context.push("</a>");
