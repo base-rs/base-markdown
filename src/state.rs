@@ -8,6 +8,7 @@
 use crate::construct;
 use crate::message;
 use crate::tokenizer::Tokenizer;
+use alloc::boxed::Box;
 
 /// Result of a state.
 #[derive(Clone, Debug, PartialEq)]
@@ -15,7 +16,7 @@ pub enum State {
     /// Syntax error.
     ///
     /// Only used by MDX.
-    Error(message::Message),
+    Error(Box<message::Message>),
     /// Move to [`Name`][] next.
     Next(Name),
     /// Retry in [`Name`][].
@@ -27,6 +28,11 @@ pub enum State {
 }
 
 impl State {
+    /// Keep rare MDX diagnostics out of the state returned for every parser step.
+    pub fn error(message: message::Message) -> Self {
+        Self::Error(Box::new(message))
+    }
+
     /// Turn a final state into a result.
     ///
     /// This doesn’t work on future states ([`State::Next`], [`State::Retry`]),
@@ -39,7 +45,7 @@ impl State {
                 unreachable!("cannot turn intermediate state into result")
             }
             State::Ok => Ok(()),
-            State::Error(x) => Err(x.clone()),
+            State::Error(x) => Err((**x).clone()),
         }
     }
 }
