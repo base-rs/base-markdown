@@ -92,6 +92,7 @@ pub fn subtokenize(
         definitions: vec![],
     };
     let mut acc = (0, 0);
+    let mut child: Option<Tokenizer> = None;
 
     while index < events.len() {
         let event = &events[index];
@@ -107,7 +108,12 @@ pub fn subtokenize(
                 // Index into `events` pointing to a chunk.
                 let mut link_index = Some(index);
                 // Subtokenizer.
-                let mut tokenizer = Tokenizer::new(event.point.clone(), parse_state);
+                if let Some(tokenizer) = child.as_mut() {
+                    tokenizer.reset(event.point.clone());
+                } else {
+                    child = Some(Tokenizer::new(event.point.clone(), parse_state));
+                }
+                let tokenizer = child.as_mut().unwrap();
                 debug_assert!(
                     !matches!(link.content, Content::Flow),
                     "cannot use flow as subcontent yet"
@@ -281,4 +287,31 @@ pub fn divide_events(
     }
 
     (acc_before.0 + (slices.len() * 2), acc_before.1 + len)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn reused_tokenizers_do_not_leak_construct_state() {
+        let paragraphs = [
+            "Unclosed [bracket\n",
+            "Unclosed *attention\n",
+            "Unclosed `code\n",
+            "**Strong** and [link](/path \"title\")\n",
+            "![image](/image.png) and ~~deleted~~\n",
+            "Text with a hard break  \nnext line\n",
+            "Text with a tab\tand 世界\n",
+        ];
+        for options in [crate::Options::default(), crate::Options::gfm()] {
+            let expected = paragraphs
+                .iter()
+                .map(|paragraph| crate::to_html_with_options(paragraph, &options).unwrap())
+                .collect::<alloc::string::String>();
+            let document = paragraphs.join("\n");
+            assert_eq!(
+                crate::to_html_with_options(&document, &options).unwrap(),
+                expected
+            );
+        }
+    }
 }

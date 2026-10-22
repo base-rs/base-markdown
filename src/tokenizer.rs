@@ -403,6 +403,30 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
+    /// Start another subcontent chunk while retaining scratch allocations from the previous one.
+    pub fn reset(&mut self, point: Point) {
+        let mut next = Self::new(point, self.parse_state);
+        macro_rules! reuse {
+            ($($field:ident).+) => {
+                self.$($field).+.clear();
+                core::mem::swap(&mut self.$($field).+, &mut next.$($field).+);
+            };
+        }
+        reuse!(events);
+        reuse!(stack);
+        reuse!(attempts);
+        reuse!(column_start);
+        reuse!(resolvers);
+        reuse!(tokenize_state.label_starts);
+        reuse!(tokenize_state.label_starts_loose);
+        reuse!(tokenize_state.labels);
+        reuse!(tokenize_state.definitions);
+        reuse!(tokenize_state.gfm_footnote_definitions);
+        // A flushed tokenizer has consumed all pending edits.
+        core::mem::swap(&mut self.map, &mut next.map);
+        *self = next;
+    }
+
     /// Register a resolver.
     pub fn register_resolver(&mut self, name: ResolveName) {
         if !self.resolvers.contains(&name) {
