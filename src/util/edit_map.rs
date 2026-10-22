@@ -106,24 +106,21 @@ impl EditMap {
 
         shift_links(events, &jumps);
 
-        let len_before = events.len();
-        let mut index = self.map.len();
-        let mut vecs = Vec::with_capacity(index * 2 + 1);
-        while index > 0 {
-            index -= 1;
-            vecs.push(events.split_off(self.map[index].0 + self.map[index].1));
-            vecs.push(self.map[index].2.split_off(0));
-            events.truncate(self.map[index].0);
+        // Move each surviving event once, rather than allocating and copying a separate vector for every unchanged span.
+        let mut result = Vec::with_capacity(events.len() + add_acc - remove_acc);
+        let mut source = core::mem::take(events).into_iter();
+        let mut cursor = 0;
+        for (at, remove, mut additions) in self.map.drain(..) {
+            result.extend(source.by_ref().take(at - cursor));
+            for _ in 0..remove {
+                source.next();
+            }
+            result.append(&mut additions);
+            cursor = at + remove;
         }
-        vecs.push(events.split_off(0));
+        result.extend(source);
+        *events = result;
 
-        events.reserve(len_before + add_acc - remove_acc);
-
-        while let Some(mut slice) = vecs.pop() {
-            events.append(&mut slice);
-        }
-
-        self.map.clear();
         self.indices.clear();
     }
 }
