@@ -301,7 +301,7 @@ pub const THEMATIC_BREAK_MARKER_COUNT_MIN: usize = 3;
 
 /// List of names and values that form named [character reference][character_reference]s.
 ///
-/// This list is sensitive to casing.
+/// This list is sensitive to casing and sorted by name for binary search.
 ///
 /// The number of the longest name (`CounterClockwiseContourIntegral`) is also
 /// stored as a constant in [`CHARACTER_REFERENCE_NAMED_SIZE_MAX`][].
@@ -1269,9 +1269,9 @@ pub static CHARACTER_REFERENCES: [(&str, &str); 2125] = [
     ("empty", "∅"),
     ("emptyset", "∅"),
     ("emptyv", "∅"),
+    ("emsp", " "),
     ("emsp13", " "),
     ("emsp14", " "),
-    ("emsp", " "),
     ("eng", "ŋ"),
     ("ensp", " "),
     ("eogon", "ę"),
@@ -2203,10 +2203,10 @@ pub static CHARACTER_REFERENCES: [(&str, &str); 2125] = [
     ("succsim", "≿"),
     ("sum", "∑"),
     ("sung", "♪"),
+    ("sup", "⊃"),
     ("sup1", "¹"),
     ("sup2", "²"),
     ("sup3", "³"),
-    ("sup", "⊃"),
     ("supE", "⫆"),
     ("supdot", "⪾"),
     ("supdsub", "⫘"),
@@ -2447,7 +2447,7 @@ pub static CHARACTER_REFERENCES: [(&str, &str); 2125] = [
 /// in JSX attribute values, only the old HTML 4 character references are
 /// supported.
 ///
-/// This list is sensitive to casing.
+/// This list is sensitive to casing and sorted by name for binary search.
 ///
 /// ## References
 ///
