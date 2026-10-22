@@ -56,14 +56,8 @@
 //! ## Tokens
 //!
 //! * [`Emphasis`][Name::Emphasis]
-//! * [`EmphasisSequence`][Name::EmphasisSequence]
-//! * [`EmphasisText`][Name::EmphasisText]
 //! * [`GfmStrikethrough`][Name::GfmStrikethrough]
-//! * [`GfmStrikethroughSequence`][Name::GfmStrikethroughSequence]
-//! * [`GfmStrikethroughText`][Name::GfmStrikethroughText]
 //! * [`Strong`][Name::Strong]
-//! * [`StrongSequence`][Name::StrongSequence]
-//! * [`StrongText`][Name::StrongText]
 //!
 //! > 👉 **Note**: while parsing, [`AttentionSequence`][Name::AttentionSequence]
 //! > is used, which is later compiled away.
@@ -330,21 +324,15 @@ fn match_sequences(
         between += 1;
     }
 
-    let (group_name, seq_name, text_name) = if sequences[open].marker == b'~' {
-        (
-            Name::GfmStrikethrough,
-            Name::GfmStrikethroughSequence,
-            Name::GfmStrikethroughText,
-        )
+    let group_name = if sequences[open].marker == b'~' {
+        Name::GfmStrikethrough
     } else if take == 1 {
-        (Name::Emphasis, Name::EmphasisSequence, Name::EmphasisText)
+        Name::Emphasis
     } else {
-        (Name::Strong, Name::StrongSequence, Name::StrongText)
+        Name::Strong
     };
     let open_index = sequences[open].index;
     let close_index = sequences[close].index;
-    let open_exit = sequences[open].end_point.clone();
-    let close_enter = sequences[close].start_point.clone();
 
     // No need to worry about `VS`, because sequences are only actual characters.
     sequences[open].size -= take;
@@ -354,68 +342,26 @@ fn match_sequences(
     sequences[close].start_point.column += take;
     sequences[close].start_point.index += take;
 
-    // Opening.
+    // Consumers only need the semantic group. Delimiter and text-wrapper events would add six unused events per match.
     tokenizer.map.add_before(
-        // Add after the current sequence (it might remain).
         open_index + 2,
         0,
-        vec![
-            Event {
-                kind: Kind::Enter,
-                name: group_name.clone(),
-                point: sequences[open].end_point.clone(),
-                link: None,
-            },
-            Event {
-                kind: Kind::Enter,
-                name: seq_name.clone(),
-                point: sequences[open].end_point.clone(),
-                link: None,
-            },
-            Event {
-                kind: Kind::Exit,
-                name: seq_name.clone(),
-                point: open_exit.clone(),
-                link: None,
-            },
-            Event {
-                kind: Kind::Enter,
-                name: text_name.clone(),
-                point: open_exit,
-                link: None,
-            },
-        ],
+        vec![Event {
+            kind: Kind::Enter,
+            name: group_name.clone(),
+            point: sequences[open].end_point.clone(),
+            link: None,
+        }],
     );
-    // Closing.
     tokenizer.map.add(
         close_index,
         0,
-        vec![
-            Event {
-                kind: Kind::Exit,
-                name: text_name,
-                point: close_enter.clone(),
-                link: None,
-            },
-            Event {
-                kind: Kind::Enter,
-                name: seq_name.clone(),
-                point: close_enter,
-                link: None,
-            },
-            Event {
-                kind: Kind::Exit,
-                name: seq_name,
-                point: sequences[close].start_point.clone(),
-                link: None,
-            },
-            Event {
-                kind: Kind::Exit,
-                name: group_name,
-                point: sequences[close].start_point.clone(),
-                link: None,
-            },
-        ],
+        vec![Event {
+            kind: Kind::Exit,
+            name: group_name,
+            point: sequences[close].start_point.clone(),
+            link: None,
+        }],
     );
 
     // Remove closing sequence if fully used.
