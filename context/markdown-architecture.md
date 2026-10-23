@@ -2,6 +2,8 @@
 
 This crate implements a Markdown state machine that tokenizes source, resolves constructs, and can either compile events directly to HTML or build an mdast syntax tree.
 
+The [Pull Parser Architecture](pull-parser.md) specifies the source-backed semantic event contract and migration toward lazy inline parsing, shared HTML rendering, and incremental arena AST construction.
+
 ## Main paths
 
 - `to_html` and `to_html_with_options` stream parser events into the built-in HTML compiler. This path does not construct an AST.
