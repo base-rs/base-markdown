@@ -431,9 +431,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         if self.ended {
             return Err(StreamError::Unbalanced);
         }
-        if self.source.get(event.span).is_none() {
-            return Err(StreamError::InvalidRange);
-        }
+        event.validate(Some(self.source))?;
         if let Some(heading) = &mut self.heading {
             match &event.kind {
                 EventKind::Text(value)

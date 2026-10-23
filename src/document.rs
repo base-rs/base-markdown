@@ -112,13 +112,8 @@ impl AstBuilder {
     }
 
     fn append(&mut self, event: Event<'_>) -> Result<(), StreamError> {
-        if event.span.start > event.span.end {
-            return Err(StreamError::InvalidRange);
-        }
+        event.validate(None)?;
         if let EventKind::End(kind) = event.kind {
-            if !event.span.is_empty() {
-                return Err(StreamError::InvalidRange);
-            }
             let id = self.open.pop().ok_or(StreamError::Unbalanced)?;
             let node = &mut self.nodes[id.0];
             if !matches!(&node.kind, EventKind::Start(tag) if tag.kind() == kind) {
@@ -176,18 +171,7 @@ impl AstBuilder {
         };
         // Public producers can supply arbitrary offsets. Validate their contract once before exposing the document.
         for event in document.events() {
-            let event = event?;
-            if document.source().get(event.span).is_none() {
-                return Err(StreamError::InvalidRange);
-            }
-            let mut valid = true;
-            event.kind.map_text(|text| {
-                valid &= text.resolve(document.source()).is_ok();
-                Text::Literal("")
-            });
-            if !valid {
-                return Err(StreamError::InvalidRange);
-            }
+            event?.validate(Some(document.source()))?;
         }
         Ok(document)
     }
@@ -244,9 +228,23 @@ impl<S: AsRef<str>> Document<S> {
         self.nodes.get(id.0)
     }
 
-    /// Access node values and provenance for editing. Parent/child/sibling links remain private.
-    pub fn node_mut(&mut self, id: NodeId) -> Option<&mut Node> {
-        self.nodes.get_mut(id.0)
+    /// Replace a node's semantic value while preserving the arena's structure and provenance.
+    ///
+    /// # Errors
+    /// Rejects invalid source ranges, end events, changing the root identity,
+    /// and replacing a container with children by a leaf.
+    pub fn set_kind(&mut self, id: NodeId, kind: EventKind<'static>) -> Result<(), StreamError> {
+        kind.validate(Some(self.source()))?;
+        let node = self.nodes.get_mut(id.0).ok_or(StreamError::InvalidRange)?;
+        let document = matches!(&kind, EventKind::Start(crate::stream::Tag::Document(_)));
+        if matches!(&kind, EventKind::End(_))
+            || document != node.parent.is_none()
+            || (node.first_child.is_some() && !matches!(&kind, EventKind::Start(_)))
+        {
+            return Err(StreamError::Unbalanced);
+        }
+        node.kind = kind;
+        Ok(())
     }
 
     /// Edit the text of a text/code/HTML/opaque leaf. Source-backed values detach on first mutation.
@@ -266,7 +264,13 @@ impl<S: AsRef<str>> Document<S> {
             return Err(StreamError::InvalidRange);
         };
         if let Text::Source(range) = text {
-            *text = Text::Value(Cow::Owned(self.source.as_ref()[range.clone()].into()));
+            *text = Text::Value(Cow::Owned(
+                self.source
+                    .as_ref()
+                    .get(range.clone())
+                    .ok_or(StreamError::InvalidRange)?
+                    .into(),
+            ));
         }
         match text {
             Text::Value(value) => Ok(value.to_mut()),

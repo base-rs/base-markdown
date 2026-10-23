@@ -242,6 +242,55 @@ pub enum EventKind<'a> {
 }
 
 impl<'s> EventKind<'s> {
+    pub(crate) fn validate(&self, source: Option<&str>) -> Result<(), StreamError> {
+        let text = |value: &Text<'_>| {
+            if let Some(source) = source {
+                value.resolve(source)?;
+            }
+            Ok(())
+        };
+        let optional = |value: &Option<Text<'_>>| {
+            if let Some(value) = value {
+                text(value)?;
+            }
+            Ok(())
+        };
+        match self {
+            Self::Start(Tag::Heading(level)) if !(1..=6).contains(level) => {
+                Err(StreamError::Unbalanced)
+            }
+            Self::Start(Tag::Link { destination, title } | Tag::Image { destination, title }) => {
+                text(destination)?;
+                optional(title)
+            }
+            Self::Start(Tag::FootnoteDefinition(value))
+            | Self::Text(value)
+            | Self::SoftBreak(value)
+            | Self::Math(value)
+            | Self::Separator { value, .. }
+            | Self::Html { value, .. }
+            | Self::Opaque { value, .. }
+            | Self::FootnoteReference(value) => text(value),
+            Self::Code { value, language }
+            | Self::CodeBlock {
+                value, language, ..
+            } => {
+                text(value)?;
+                optional(language)
+            }
+            Self::Definition {
+                label,
+                destination,
+                title,
+            } => {
+                text(label)?;
+                text(destination)?;
+                optional(title)
+            }
+            _ => Ok(()),
+        }
+    }
+
     pub(crate) fn map_text<'a>(self, mut map: impl FnMut(Text<'s>) -> Text<'a>) -> EventKind<'a> {
         match self {
             Self::Start(tag) => EventKind::Start(tag.map_text(map)),
@@ -302,6 +351,18 @@ pub struct Event<'a> {
     pub kind: EventKind<'a>,
     /// Original byte extent, independent of transformed or edited text.
     pub span: Range<usize>,
+}
+
+impl Event<'_> {
+    pub(crate) fn validate(&self, source: Option<&str>) -> Result<(), StreamError> {
+        if self.span.start > self.span.end
+            || (matches!(self.kind, EventKind::End(_)) && !self.span.is_empty())
+            || source.is_some_and(|source| source.get(self.span.clone()).is_none())
+        {
+            return Err(StreamError::InvalidRange);
+        }
+        self.kind.validate(source)
+    }
 }
 
 /// An error while parsing, consuming, or writing a semantic stream.

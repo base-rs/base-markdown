@@ -228,3 +228,86 @@ fn consumers_reject_broken_streams_and_propagate_writer_errors() {
     assert!(matches!(error, StreamError::Parse(_)));
     assert!(error.to_string().contains("Unexpected end of file"));
 }
+
+#[test]
+fn edits_and_consumers_validate_the_same_contract() {
+    use core_markdown::stream::{Event, EventKind, Tag, TagKind, Text};
+    let options = Options::default();
+    let mut document = Document::parse("abc", &options.parse).unwrap();
+    let root = document.root().unwrap();
+    let paragraph = document.node(root).unwrap().first_child().unwrap();
+    let text = document.node(paragraph).unwrap().first_child().unwrap();
+    for (id, kind) in [
+        (text, EventKind::Text(Text::Source(999..1000))),
+        (paragraph, EventKind::Text(Text::Literal("hidden"))),
+        (root, EventKind::Start(Tag::Paragraph { tight: false })),
+        (text, EventKind::Start(Tag::Document(None))),
+        (text, EventKind::End(TagKind::Paragraph)),
+        (paragraph, EventKind::Start(Tag::Heading(0))),
+    ] {
+        assert!(document.set_kind(id, kind).is_err());
+    }
+    document
+        .set_kind(paragraph, EventKind::Start(Tag::Heading(2)))
+        .unwrap();
+    document
+        .set_kind(text, EventKind::Text(Text::Literal("new")))
+        .unwrap();
+    document.text_mut(text).unwrap().push('!');
+    let mut output = String::new();
+    render_events(
+        document.source(),
+        document.events(),
+        &options.compile,
+        &mut output,
+    )
+    .unwrap();
+    assert_eq!(output, "<h2>new!</h2>");
+    for kind in [
+        EventKind::Opaque {
+            value: Text::Source(1..2),
+            block: true,
+        },
+        EventKind::Definition {
+            label: Text::Literal("x"),
+            destination: Text::Source(1..2),
+            title: None,
+        },
+        EventKind::Separator {
+            value: Text::Source(1..2),
+            conditional: true,
+        },
+        EventKind::Start(Tag::Heading(0)),
+    ] {
+        let input = vec![
+            Ok(Event {
+                kind: EventKind::Start(Tag::Document(None)),
+                span: 0..0,
+            }),
+            Ok(Event { kind, span: 0..0 }),
+            Ok(Event {
+                kind: EventKind::End(TagKind::Document),
+                span: 0..0,
+            }),
+        ];
+        let mut output = String::new();
+        let mut builder = AstBuilder::new();
+        let mut other = input.iter().map(|e| Ok(e.as_ref().unwrap().clone()));
+        assert!(builder
+            .consume(&mut other, usize::MAX)
+            .and_then(|_| builder.finish(""))
+            .is_err());
+        assert!(render_events("", input, &options.compile, &mut output).is_err());
+    }
+    let input = vec![
+        Ok(Event {
+            kind: EventKind::Start(Tag::Document(None)),
+            span: 0..1,
+        }),
+        Ok(Event {
+            kind: EventKind::End(TagKind::Document),
+            span: 0..1,
+        }),
+    ];
+    assert!(render_events("x", input, &options.compile, &mut String::new()).is_err());
+}
