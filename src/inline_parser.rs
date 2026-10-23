@@ -2,10 +2,11 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Compact inline candidates, resolved in reusable storage for the active block.
-use crate::grammar_parser::decode_string;
+use crate::grammar_parser::{decode_string, Definition};
 use crate::stream::{Event, EventKind, Tag, TagKind, Text};
 use crate::util::char::{classify_opt, Kind as CharacterKind};
-use alloc::vec::Vec;
+use crate::util::normalize_identifier::normalize_identifier_into;
+use alloc::{string::String, vec::Vec};
 use core::{convert::TryFrom, ops::Range};
 
 static MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!");
@@ -18,6 +19,7 @@ enum Kind {
     SoftBreak,
     HardBreak,
     Start(TagKind, usize),
+    Reference(TagKind, usize),
     End(TagKind),
 }
 #[derive(Clone, Copy)]
@@ -39,6 +41,7 @@ struct Bracket {
     node: usize,
     delimiters: usize,
     image: bool,
+    label: bool,
 }
 struct Tick {
     start: usize,
@@ -59,6 +62,7 @@ pub(crate) struct InlineParser {
     tick_heads: Vec<usize>,
     ticks: Vec<Tick>,
     values: Vec<Text<'static>>,
+    reference_key: String,
     last: usize,
     cursor: usize,
     link_bottom: usize,
@@ -191,6 +195,7 @@ impl InlineParser {
         &mut self,
         source: &str,
         fragments: impl Iterator<Item = Range<usize>>,
+        definitions: &[Definition],
     ) -> bool {
         self.nodes.clear();
         self.delimiters.clear();
@@ -326,10 +331,16 @@ impl InlineParser {
                         }
                         at += 1 + usize::from(image);
                         let node = self.append(start, at, Kind::Text);
+                        if let Some(parent) = self.brackets.last_mut() {
+                            // An unescaped nested bracket cannot occur in a definition label.
+                            // Mark its parent now instead of rescanning nested labels at every close.
+                            parent.label = false;
+                        }
                         self.brackets.push(Bracket {
                             node,
                             delimiters: self.delimiters.len(),
                             image,
+                            label: true,
                         });
                     }
                     b']' => {
@@ -338,29 +349,68 @@ impl InlineParser {
                             self.append(start, at, Kind::Text);
                             continue;
                         };
-                        if (bracket.image || bracket.node >= self.link_bottom)
-                            && bytes.get(at) == Some(&b'(')
-                        {
-                            if let Some((end, link)) = resource(bytes, at, range.end) {
-                                self.attention(bracket.delimiters);
-                                let tag = if bracket.image {
-                                    TagKind::Image
+                        if !bracket.image && bracket.node < self.link_bottom {
+                            self.append(start, at, Kind::Text);
+                            continue;
+                        }
+                        let tag = if bracket.image {
+                            TagKind::Image
+                        } else {
+                            TagKind::Link
+                        };
+                        let resolved = if bytes.get(at) == Some(&b'(') {
+                            let Some((end, link)) = resource(bytes, at, range.end) else {
+                                return false;
+                            };
+                            let index = self.links.len();
+                            self.links.push(link);
+                            Some((end, Kind::Start(tag, index)))
+                        } else if definitions.is_empty() {
+                            None
+                        } else {
+                            let label_start =
+                                self.nodes[bracket.node].start + 1 + usize::from(bracket.image);
+                            let (end, label) = if bytes.get(at) == Some(&b'[') {
+                                if bytes.get(at + 1) == Some(&b']') {
+                                    (at + 2, bracket.label.then_some(label_start..start))
                                 } else {
-                                    TagKind::Link
-                                };
-                                let index = self.links.len();
-                                self.links.push(link);
-                                self.nodes[bracket.node].kind = Kind::Start(tag, index);
-                                self.nodes[bracket.node].end = end;
-                                self.append(end, end, Kind::End(tag));
-                                at = end;
-                                if !bracket.image {
-                                    // Earlier link openers cannot contain a link. A monotone node boundary invalidates them without walking a deeply nested bracket stack.
-                                    self.link_bottom = self.nodes.len();
+                                    let Some((end, label)) = reference_label(bytes, at, range.end)
+                                    else {
+                                        // Multiline labels and malformed full references retain the grammar's fallback rules.
+                                        return false;
+                                    };
+                                    (end, Some(label))
                                 }
-                                continue;
+                            } else {
+                                (at, bracket.label.then_some(label_start..start))
+                            };
+                            if let Some(label) = label {
+                                if label.start < range.start {
+                                    // Earlier fragments can contain stripped container prefixes.
+                                    return false;
+                                }
+                                normalize_identifier_into(&source[label], &mut self.reference_key);
+                                definitions
+                                    .binary_search_by(|definition| {
+                                        definition.key.cmp(&self.reference_key)
+                                    })
+                                    .ok()
+                                    .map(|index| (end, Kind::Reference(tag, index)))
+                            } else {
+                                None
                             }
-                            return false;
+                        };
+                        if let Some((end, kind)) = resolved {
+                            self.attention(bracket.delimiters);
+                            self.nodes[bracket.node].kind = kind;
+                            self.nodes[bracket.node].end = end;
+                            self.append(end, end, Kind::End(tag));
+                            at = end;
+                            if !bracket.image {
+                                // Earlier link openers cannot contain a link. A monotone node boundary invalidates them without walking a deeply nested bracket stack.
+                                self.link_bottom = self.nodes.len();
+                            }
+                            continue;
                         }
                         self.append(start, at, Kind::Text);
                     }
@@ -379,7 +429,11 @@ impl InlineParser {
     // Paired mixed-document benchmarks justify inlining this event boundary.
     #[allow(clippy::inline_always)]
     #[inline(always)]
-    pub(crate) fn next(&mut self, source: &str) -> Option<Event<'static>> {
+    pub(crate) fn next(
+        &mut self,
+        source: &str,
+        definitions: &[Definition],
+    ) -> Option<Event<'static>> {
         while self.cursor != 0 {
             let node = self.nodes[self.cursor];
             self.cursor = node.next;
@@ -423,6 +477,16 @@ impl InlineParser {
                     _ => unreachable!("inline candidates open only inline containers"),
                 }),
                 Kind::End(tag) => EventKind::End(tag),
+                Kind::Reference(tag, index) => {
+                    let definition = &definitions[index];
+                    let destination = definition.destination.clone();
+                    let title = definition.title.clone();
+                    EventKind::Start(if tag == TagKind::Link {
+                        Tag::Link { destination, title }
+                    } else {
+                        Tag::Image { destination, title }
+                    })
+                }
             };
             return Some(Event {
                 kind,
@@ -431,6 +495,27 @@ impl InlineParser {
         }
         None
     }
+}
+
+/// Scan a single-line full-reference label. The grammar producer handles multiline labels.
+fn reference_label(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Range<usize>)> {
+    let begin = start + 1;
+    let mut at = begin;
+    let mut content = false;
+    while at < end && at - begin <= crate::util::constant::LINK_REFERENCE_SIZE_MAX {
+        match bytes[at] {
+            b']' => return content.then_some((at + 1, begin..at)),
+            b'[' | b'\r' | b'\n' => return None,
+            b'\\' if at + 1 < end && matches!(bytes[at + 1], b'[' | b'\\' | b']') => {
+                content = true;
+                at += 1;
+            }
+            b' ' | b'\t' => {}
+            _ => content = true,
+        }
+        at += 1;
+    }
+    None
 }
 fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
     let mut at = start + 1;

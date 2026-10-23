@@ -47,6 +47,13 @@ use alloc::string::String;
 pub fn normalize_identifier(value: &str) -> String {
     // Note: it’ll grow a bit smaller for consecutive whitespace.
     let mut result = String::with_capacity(value.len());
+    normalize_identifier_into(value, &mut result);
+    result
+}
+
+/// Normalize into reusable storage. ASCII labels need no allocation after capacity is established.
+pub(crate) fn normalize_identifier_into(value: &str, result: &mut String) {
+    result.clear();
     let bytes = value.as_bytes();
     let mut in_whitespace = true;
     let mut index = 0;
@@ -79,9 +86,8 @@ pub fn normalize_identifier(value: &str) -> String {
 
     if result.is_ascii() {
         result.make_ascii_uppercase();
-        result
     } else {
-        result.to_lowercase().to_uppercase()
+        *result = result.to_lowercase().to_uppercase();
     }
 }
 

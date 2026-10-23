@@ -131,7 +131,7 @@ impl CompactParser<'_> {
         }
         if self.inlines {
             if let Some(event) = if self.direct_inline {
-                self.compact_inline.next(self.source).map(Ok)
+                self.compact_inline.next(self.source, &[]).map(Ok)
             } else {
                 self.inline.next()
             } {
@@ -250,7 +250,7 @@ impl CompactParser<'_> {
                     })
                 };
                 self.direct_inline = !self.options.inline_code_info
-                    && self.compact_inline.prepare(self.source, fragments());
+                    && self.compact_inline.prepare(self.source, fragments(), &[]);
                 if !self.direct_inline {
                     self.inline.region(fragments());
                 }
