@@ -2840,3 +2840,95 @@ www.a/~
 
     Ok(())
 }
+
+#[test]
+fn compact_literal_links_preserve_destinations_and_boundaries() {
+    use core_markdown::{
+        render_events,
+        stream::{EventKind, Tag, TagKind},
+        Document, EventParser, Options,
+    };
+    let options = Options::gfm();
+    let mut grammar = Options::gfm();
+    grammar.parse.constructs.math_flow = true;
+    for address in [
+        "https://example.com",
+        "HTTP://localhost",
+        "https://a-b.c",
+        "http://x",
+        "www.example.com",
+        "WWW.example.com",
+        "www.",
+        "www..com",
+        "www.a-",
+        "user@example.com",
+        "USER@EXAMPLE.COM",
+        "a@b.c",
+        "a@b.2",
+        "a@localhost",
+        "a@-b.com",
+        "a@b-.com",
+        "a@b..com",
+        "@example.com",
+        "a.b@example.com",
+        "a+b@example.com",
+        "a_b@example.com",
+        "mailto:a@example.com",
+        "https://example.com/path?q=1&x=2",
+        "https://a_b.com",
+        "https://例子.com",
+        "https:example.com",
+        "ftp://example.com",
+        "http://",
+        "http://-",
+        "http://...",
+    ] {
+        for (before, after) in [
+            ("", ""),
+            ("Visit ", " now"),
+            ("Visit ", "."),
+            ("Visit ", "...\nnext"),
+            ("(", ")"),
+            ("*", "*"),
+            ("[", "](destination)"),
+            ("![", "](image)"),
+            ("a", ""),
+            ("\\", ""),
+            ("&#9;", ""),
+        ] {
+            let source = format!("{before}{address}{after}");
+            let direct = core_markdown::to_html_with_options(&source, &options).unwrap();
+            assert_eq!(
+                direct,
+                core_markdown::to_html_with_options(&source, &grammar).unwrap(),
+                "{source:?}"
+            );
+            let links = |parse: &core_markdown::ParseOptions| {
+                EventParser::new(&source, parse)
+                    .unwrap()
+                    .map(Result::unwrap)
+                    .filter(|event| {
+                        matches!(
+                            event.kind,
+                            EventKind::Start(Tag::Link { .. }) | EventKind::End(TagKind::Link)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(links(&options.parse), links(&grammar.parse), "{source:?}");
+            let mut checked = String::new();
+            render_events(
+                &source,
+                EventParser::new(&source, &options.parse).unwrap(),
+                &options.compile,
+                &mut checked,
+            )
+            .unwrap();
+            assert_eq!(checked, direct);
+            let document = Document::parse(source.as_str(), &options.parse).unwrap();
+            let mut arena = String::new();
+            render_events(&source, document.events(), &options.compile, &mut arena).unwrap();
+            assert_eq!(arena, direct);
+        }
+    }
+}
