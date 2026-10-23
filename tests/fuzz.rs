@@ -73,9 +73,11 @@ fn fuzz() -> Result<(), message::Message> {
         "6-b: container close after unclosed fenced code, with eol (list, GH-16)"
     );
 
+    // An incomplete fence does not interrupt a lazy paragraph continuation.
+    // GFM now shares the compact CommonMark behavior here (also matching Comrak).
     assert_eq!(
         to_html_with_options("> x\n``", &Options::gfm()),
-        Ok("<blockquote>\n<p>x</p>\n</blockquote>\n<p>``</p>".into()),
+        Ok("<blockquote>\n<p>x\n``</p>\n</blockquote>".into()),
         "7: lazy container lines almost starting fenced code (GH-19)"
     );
 

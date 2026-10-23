@@ -16,3 +16,15 @@ fn bom() {
         "should ignore a bom"
     );
 }
+
+#[test]
+fn grammar_preserves_bom_like_unicode() {
+    let mut options = core_markdown::Options::default();
+    options.parse.constructs.math_flow = true;
+    for source in ["\u{fffd}", "\u{fec0}"] {
+        assert_eq!(
+            core_markdown::to_html_with_options(source, &options).unwrap(),
+            format!("<p>{source}</p>")
+        );
+    }
+}

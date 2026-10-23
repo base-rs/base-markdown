@@ -28,16 +28,24 @@ pub(super) enum Body {
     Paragraph(bool),
     Heading(u8),
     Quote,
-    List { tight: bool, marker: u8, start: u32 },
+    List {
+        tight: bool,
+        marker: u8,
+        start: u32,
+    },
     Item(usize),
     Code(usize),
     Definition(usize),
     Html(usize),
     Table,
     TableHead,
+    #[allow(clippy::enum_variant_names)] // This is the semantic HTML table body.
     TableBody,
     TableRow,
-    TableCell { alignment: AlignKind, header: bool },
+    TableCell {
+        alignment: AlignKind,
+        header: bool,
+    },
     Rule,
     Fragment(usize),
 }

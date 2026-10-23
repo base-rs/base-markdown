@@ -2009,6 +2009,12 @@ fn compact_tables_preserve_cells_spans_and_rendering_paths() {
         "item|text\n--|--\na|b",
         "a|b\n--|--\nitem|text",
         "[a]: /a\n:-\nbody",
+        "-\ta|b\n    -|-\n    x|y",
+        "- intro\n\ta|b\n  -|-\n  x|y",
+        "- a|b\n  -|-\n\tx|y",
+        "> a|b\n> -|-\nx|y",
+        "intro\n    a|b\n    -|-",
+        "a|b\n-x|-",
     ];
     let options = Options::gfm();
     let mut grammar = Options::gfm();

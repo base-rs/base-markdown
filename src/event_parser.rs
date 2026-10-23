@@ -203,9 +203,7 @@ impl CompactParser<'_> {
                 return Some(Ok(
                     if !populated
                         || matches!(last.body, Body::List { .. }) && leaf.end != self.source.len()
-                        || leaf.body == Body::Table
-                            && last.end > leaf.end
-                            && last.body != Body::Table
+                        || leaf.body == Body::Table && last.end > leaf.end
                     {
                         Event {
                             kind: EventKind::Separator {

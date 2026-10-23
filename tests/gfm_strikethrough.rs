@@ -494,3 +494,16 @@ fn compact_strikethrough_matches_grammar_across_delimiter_boundaries() {
         }
     }
 }
+
+#[test]
+fn mixed_adjacent_delimiters_preserve_partial_match_precedence() {
+    for (source, expected) in [
+        ("*b***~*", "<p><em>b</em>**~*</p>"),
+        ("**a***~**", "<p><strong>a</strong>*~**</p>"),
+    ] {
+        assert_eq!(
+            to_html_with_options(source, &Options::gfm()).unwrap(),
+            expected
+        );
+    }
+}
