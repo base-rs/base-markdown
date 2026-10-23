@@ -183,6 +183,7 @@ impl CompactParser<'_> {
             if !self.final_separator
                 && !self.suppress_final_separator
                 && self.blocks.nodes[0].child != 0
+                && (!matches!(last.body, Body::Definition(_)) || last.end < self.source.len())
                 && (self.source.ends_with(['\r', '\n'])
                     || (matches!(
                         last.body,
@@ -311,7 +312,17 @@ impl CompactParser<'_> {
                     title: definition.title.clone(),
                 };
                 self.advance();
-                kind
+                let mut end = node.end;
+                if self.source.as_bytes().get(end - 1) == Some(&b'\n') {
+                    end -= 1;
+                }
+                if self.source.as_bytes().get(end - 1) == Some(&b'\r') {
+                    end -= 1;
+                }
+                return Some(Ok(Event {
+                    kind,
+                    span: node.start..end,
+                }));
             }
             Body::Code(metadata) => {
                 let code = &self.blocks.codes[metadata];
