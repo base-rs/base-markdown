@@ -4,7 +4,9 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
-- Resolve same-line reference links and images in reusable compact inline storage. Reuse ASCII label normalization, binary-search definitions, and retain source-backed destinations and titles. Compile out reference handling for the compact block producer's empty definition table. Preserve duplicate-definition precedence and expanded-tab label limits. Apply compact emphasis resolution to reference-bearing paragraphs, correcting cases such as `[a]*a**_` after a defined reference.
+- Prepare ordinary same-line reference definitions in the compact block pass, retaining source-backed metadata and forward-reference resolution. Keep authored definition events, including duplicates, while sorting a separate first-definition-wins lookup index. Share that table with inline parsing and initialize grammar fallback keys only on demand. Preserve definition spans and invisible-definition separators. These documents now use compact container rules for list tightness, indentation tabs, and contiguous indented code; ambiguous and multiline definitions retain grammar preparation.
+
+- Resolve same-line reference links and images in reusable compact inline storage. Reuse ASCII label normalization, binary-search definitions, and retain source-backed destinations and titles. Compile out compact reference handling when no definitions exist. Preserve duplicate-definition precedence and expanded-tab label limits. Apply compact emphasis resolution to reference-bearing paragraphs, correcting cases such as `[a]*a**_` after a defined reference.
 
 - Add a shared pull-based semantic event contract, direct HTML writer, source-backed arena document, and incremental AST builder. Use the same event writer for the default HTML API and document traversal. Ordinary source values retain byte ranges; editing a value detaches it into owned storage.
 

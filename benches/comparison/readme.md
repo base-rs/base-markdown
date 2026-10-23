@@ -24,7 +24,7 @@ target/release/markdown-comparison profile core-markdown commonmark data/bench-c
 bundle exec ruby adapter.rb inkmark render commonmark data/commonmark.json
 ```
 
-The JSON input is an array of objects containing `markdown` and, for timings, `name`. `core-prepare` times parser construction and disposal; `core-events` additionally drains resolved events into `black_box`, without rendering. `core-arena` measures parsing into the source-backed document and rendering its event traversal. `core-ast` measures the separate legacy mdast/HTML-renderer path. These diagnostic modes are separate from the direct-HTML path in the six-engine table. `prepare.py` also generates `bench-scanners.json` (long prose and fenced code), `bench-references.json`, and `bench-linked-attention.json` for focused diagnostics.
+The JSON input is an array of objects containing `markdown` and, for timings, `name`. `core-prepare` times parser construction and disposal; `core-events` additionally drains resolved events into `black_box`, without rendering. `core-arena` measures parsing into the source-backed document and rendering its event traversal. `core-ast` measures the separate legacy mdast/HTML-renderer path. These diagnostic modes are separate from the direct-HTML path in the six-engine table. `prepare.py` also generates `bench-scanners.json` (long prose and fenced code), `bench-references.json`, `bench-definitions.json`, and `bench-linked-attention.json` for focused diagnostics. The definition workload has 256, 1,024, and 4,096 unique labels in reverse authored order, 25% additional case-equivalent duplicates, and two forward references.
 
 Allocation counting uses a separate executable so timing runs retain the system allocator:
 
@@ -47,9 +47,48 @@ The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,
 
 **GFM is not an equal-output throughput comparison:** Inkmark leaves `www.example.com` unlinked in this workload even with autolinking enabled. Its table alignment attributes and empty table bodies also differ. Comrak and Commonmarker do not expose the same independent GFM tag filter as the other adapters. Read GFM timings alongside the output agreement results.
 
-## Reference-resolution follow-up
+## Compact definition-preparation follow-up
 
-The next optimization keeps same-line full, collapsed, and shortcut references in reusable compact inline storage. It reuses ASCII label normalization, binary-searches a sorted definition table, and stores definition indices instead of per-reference metadata. The first authored definition still wins. Ordinary destinations and titles remain source ranges; Unicode normalization and constructed values still allocate. Definition-free compact blocks specialize preparation so reference lookup and label bookkeeping compile out.
+Ordinary same-line reference definitions now stay in compact block storage. The parser keeps source-backed labels, destinations, and titles in authored order, normalizes each label once, and sorts a separate index for first-definition-wins lookup. Duplicate definition events remain available to AST consumers. Both inline producers share the table; grammar inline fallback materializes normalized keys only when it is actually needed. Forward references still resolve before event delivery. Multiline definitions, ambiguous continuations, and container-tab provenance that needs the grammar retain compatibility preparation.
+
+This study compares merged baseline `8463e25128a5f1459793791bd0cd35cc3bb3068e` with production source `a863c3a32c24e07fd11e0618f0cfc242f0635db6`; the new definition fixture generator is `363dc83e56fda10580166503a8adda5295c15399`. [Raw timings, allocation counts, output checks, hashes, and review results](measurements/2026-10-23-definitions/) are retained. The machine and engine versions are the same as in the earlier studies below. These values are medians of three process medians from alternating baseline/candidate/Inkmark sequences, in milliseconds:
+
+| Engine / source | References 80 KB | README 9 KB | Mixed 100 KB | Mixed 1 MB |
+| --- | ---: | ---: | ---: | ---: |
+| core-markdown, merged baseline | 1.078 | 0.068 | 0.428 | 4.290 |
+| core-markdown, compact definitions | 0.632 | 0.068 | 0.434 | 4.383 |
+| Inkmark 0.2.1 | 0.851 | 0.019 | 0.408 | 4.400 |
+
+Reference conversion is **1.71× faster than the merged baseline** and takes **25.8% less time than Inkmark**, with byte-identical HTML. Candidate process medians span 0.632–0.633 ms versus Inkmark's 0.850–0.851 ms. The reference target is met on this workload. **The overall Inkmark target remains unmet:** README remains substantially slower, the largest definition-heavy case below trails Inkmark, and GFM retains grammar preparation. This change does not remove public features or add a runtime dependency.
+
+README latency is unchanged. Mixed 100 KB and 1 MB are respectively 1.5% and 2.2% slower than the baseline in these runs; no mixed-document speedup is claimed. Rust comparisons use the same executable path, arguments, and environment. An additional alternating environment-padding sweep over eight lengths records mixed 1 MB ranges of 4.246–5.676 ms for the baseline and 4.347–4.441 ms for the candidate, with medians of 4.311 and 4.381 ms. The small slowdown remains in the sweep medians, while the wider baseline range also demonstrates the process-layout sensitivity found in the earlier study. Every sample is retained, including exploratory measurements before correctness fixes; those initial measurements are excluded from these final claims. Builds, tests, and independent review workloads finished before timing; normal machine background activity was not isolated.
+
+Reference allocation counts are:
+
+| Phase | Baseline allocation calls / reallocations | Candidate allocation calls / reallocations |
+| --- | ---: | ---: |
+| Block preparation | 2,062 / 119 | 5 / 2 |
+| Pulling after preparation | 4 / 13 | 3 / 13 |
+| Complete HTML conversion | 2,068 / 148 | 10 / 31 |
+| Arena traversal | 0 / 0 | 0 / 0 |
+
+Preparation falls from 0.447 to 0.024 ms; preparation plus event draining falls from 0.822 to 0.453 ms. These are independent complete operations including disposal, not additive phases. Both sources emit 26,005 events. Mixed-document allocation counts are unchanged; README adds one preparation allocation (152 requested bytes) for the shared definition index. Growing buffers and normalized label strings still allocate, so this is not an allocation-free parser.
+
+The new scaling workload authors 256, 1,024, or 4,096 unique definitions in reverse order, followed by 25% case-equivalent duplicates, with two forward references. Each cell below is one process median of seven calibrated batches, so small cross-engine differences need repeated confirmation:
+
+| Unique definitions | Merged baseline | Compact definitions | Inkmark |
+| --- | ---: | ---: | ---: |
+| 256 | 0.462 | 0.041 | 0.043 |
+| 1,024 | 2.501 | 0.169 | 0.169 |
+| 4,096 | 19.851 | 0.741 | 0.708 |
+
+All three workloads produce byte-identical core/Inkmark HTML and preserve baseline output. At 4,096 unique definitions, conversion is **26.8× faster than the baseline** but still about 4.7% slower than Inkmark. Allocation calls fall from 58,425 to 5,129 and reallocations from 197 to 20. The remaining calls mostly normalize authored labels; this work removes repeated linear duplicate searches, not every per-definition allocation.
+
+The final source preserves all **2,117 saved outputs** across direct HTML, checked events, and arena rendering. Fresh six-engine consistency counts match the table below. Independent review exercised **36,446 sources** with no panics or rendering-path mismatches and identical definition values/spans to forced grammar preparation. Both GFM profiles preserve all reviewed baseline outputs. Outside the saved corpus, 371 CommonMark outputs change: 228 now agree with normalized Comrak, 116 differ only in formatting, and 27 improve indentation or list tightness while retaining other pre-existing discrepancies. No reviewed case regresses from matching normalized Comrak to disagreeing. These compact-container corrections and conservative fallback boundaries are documented in the [architecture](../../context/pull-parser.md). Local arm64 all-feature coverage passes **25,925/25,925 measured regions**, with 68 invariant-only unreachable regions excluded; the portable x86_64 path cross-compiles without default features.
+
+## Reference-resolution follow-up (previous study)
+
+This earlier optimization keeps same-line full, collapsed, and shortcut references in reusable compact inline storage. It reuses ASCII label normalization, binary-searches a sorted definition table, and stores definition indices instead of per-reference metadata. The first authored definition still wins. Ordinary destinations and titles remain source ranges; Unicode normalization and constructed values still allocate. Definition-free compact blocks specialize preparation so reference lookup and label bookkeeping compile out.
 
 This study compares merged baseline `6b64e9baaec8e6e5c4a64eef92b76f42a84f801c` with production source `b67d71727d2aabd8e73a6b55f96930e603948a75`, using the unchanged harness on the machine described below. [All samples, revisions, input hashes, output agreement, and validation records](measurements/2026-10-23-references/) are retained. Values below are medians of three process medians from alternating baseline/candidate/Inkmark sequences, in milliseconds:
 
@@ -123,7 +162,7 @@ Focused fixtures expose both strengths and remaining gaps. These are complete Ma
 
 The default HTML API consumes `EventParser` through `EventHtmlRenderer`. `Document` builds a contiguous arena from that iterator; `AstBuilder::consume` can stop after a caller-selected event budget. Arena traversal feeds the same HTML writer without allocating. Ordinary text, code, and attributes retain source byte ranges. Editing a value materializes that value alone. See the [architecture and contract](../../context/pull-parser.md).
 
-Ordinary CommonMark uses compact block records and reusable inline candidates. Blocks are prepared first; inline resolution occurs only when their events are requested. Reference-definition candidates, raw HTML blocks, extension configurations, and disabled constructs select the grammar compatibility producer. That producer can still use compact inline resolution for eligible CommonMark paragraphs. Multiline code/resources, inline HTML, NUL handling, and inline-code language metadata retain per-region grammar fallback. The legacy mdast API remains separate.
+Ordinary CommonMark uses compact block records and reusable inline candidates. Blocks are prepared first; inline resolution occurs only when their events are requested. Ordinary same-line reference definitions also use compact blocks. Raw HTML blocks, unsupported definition forms, extension configurations, and disabled constructs select the grammar compatibility producer. That producer can still use compact inline resolution for eligible CommonMark paragraphs. Multiline code/resources, inline HTML, NUL handling, and inline-code language metadata retain per-region grammar fallback. The legacy mdast API remains separate.
 
 The following diagnostic times include preparation and disposal in every row. They are independent complete operations, not additive phases:
 
@@ -182,13 +221,13 @@ Fresh byte-for-byte checks of final direct HTML output produced the following co
 
 Byte differences do not necessarily imply different HTML meaning. Inkmark's 22 CommonMark differences are formatting and equivalent quote escaping; the original comparison's normalizer, extended to equate literal text quotes with `&quot;`, found agreement on all 652. Markly's differences include numeric entities, emphasis boundaries, and an email autolink. GFM differences additionally include tag filtering, table serialization, and literal autolinks. Footnotes are outside the timed GFM profile; their IDs and markup vary across implementations.
 
-The final source preserves all **2,117 saved original outputs** across direct HTML, checked event rendering, and arena rendering: 652 CommonMark examples, 677 published GFM examples, 672 separate cmark-gfm examples, and 29 targeted inputs in four profiles. [Preservation records](measurements/2026-10-23-compact/preservation.json) include input and output hashes. The architecture and release notes document intentional corrections outside that saved corpus: heading IDs, malformed container closures, tabs and unclosed fences, mixed line-ending separators, frontmatter rollback, escaped emphasis, reference-label spaces, adjacent setext headings, and retained HTML list boundaries. The legacy mdast renderer retains its earlier representation and is not claimed to match the shared writer in every case.
+The final source preserves all **2,117 saved original outputs** across direct HTML, checked event rendering, and arena rendering: 652 CommonMark examples, 677 published GFM examples, 672 separate cmark-gfm examples, and 29 targeted inputs in four profiles. [Preservation records](measurements/2026-10-23-definitions/preservation.json) include input and output hashes. The architecture and release notes document intentional corrections outside that saved corpus: heading IDs, malformed container closures, tabs and unclosed fences, mixed line-ending separators, frontmatter rollback, escaped emphasis, reference-label spaces, adjacent setext headings, and retained HTML list boundaries. The legacy mdast renderer retains its earlier representation and is not claimed to match the shared writer in every case.
 
-Independent review exercised randomized and structured inputs, construct configurations, stream/arena parity, and raw nesting. Regression tests cover bounded AST construction, early drop, source detachment, malformed public streams, writer failures, extension metadata, and scanner boundaries. Final local coverage passed **25,501/25,501 measured regions** on arm64 with all features (68 invariant-only `unreachable!` regions excluded by the shared gate); the portable x86_64 path also cross-compiles without default features. These checks establish coverage and observed agreement, not a proof for all inputs.
+Independent review exercised randomized and structured inputs, construct configurations, stream/arena parity, and raw nesting. Regression tests cover bounded AST construction, early drop, source detachment, malformed public streams, writer failures, extension metadata, and scanner boundaries. Final local coverage passed **25,925/25,925 measured regions** on arm64 with all features (68 invariant-only `unreachable!` regions excluded by the shared gate); the portable x86_64 path also cross-compiles without default features. These checks establish coverage and observed agreement, not a proof for all inputs.
 
 ## Remaining work
 
-The next performance work is extending compact block preparation to reference definitions and raw HTML, avoiding copies of constructed reference values and Unicode normalization intermediates, and supporting GFM directly in the compact representation. Same-line reference resolution now uses compact storage, as described in the follow-up measurements above. These remaining paths account for the clearest gaps against Inkmark. Platform-specific SIMD beyond AArch64 also remains a possible measured optimization.
+The next performance work is extending compact block preparation to raw HTML and the remaining definition forms, avoiding copies of constructed reference values and Unicode normalization intermediates, and supporting GFM directly in the compact representation. Same-line definitions and reference resolution now use compact storage, as described in the follow-up measurements above. Raw HTML comments in the saved README still select grammar block preparation. README and GFM account for the clearest remaining gaps against Inkmark. Platform-specific SIMD beyond AArch64 also remains a possible measured optimization.
 
 No public feature was removed. The old direct HTML token compiler and unused internal attention wrappers were removed; MDX remains opt-in, with disabled recognizers bypassed and diagnostics moved out of hot parser states. The pull API accepts a complete UTF-8 buffer. It does not stream input chunks or incrementally reparse edited source.
 
