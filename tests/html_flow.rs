@@ -1326,3 +1326,99 @@ fn retained_html_preserves_adjacent_sibling_list_items() {
         assert_eq!(arena, output);
     }
 }
+
+#[test]
+fn compact_html_preserves_values_spans_and_rendering_paths() {
+    use core_markdown::{render_events, stream::EventKind, Document, EventParser};
+
+    let mut options = Options::default();
+    options.compile.allow_dangerous_html = true;
+    let mut grammar = Options::default();
+    grammar.compile.allow_dangerous_html = true;
+    // None of these sources contains math. This independently selects grammar
+    // preparation without changing HTML blank-line or namespace semantics.
+    grammar.parse.constructs.math_flow = true;
+    let blocks = [
+        "<!-- comment -->",
+        "<!-->",
+        "<!--->",
+        "<!-- --x\n\n  --> tail",
+        "<!-- unclosed\n\nlast",
+        "<?target?> tail",
+        "<?>\ntext",
+        "<?target\n\n?>",
+        "<!DOCTYPE html>",
+        "<!D\n>",
+        "<![CDATA[<x>]]>",
+        "<![CDATA[\n]\n]]>",
+        "<script>x</StYlE> tail",
+        "<PRE>\n\ncode\n</pre>",
+        "<textarea\ntext",
+        "<style>x</notraw><x></textarea>",
+        "<div>\n**literal**\n</div>",
+        "</DIV> tail",
+        "<div/>\nmore",
+        "<div/ >",
+        "<divx>",
+        "<custom key='value'>\ntext",
+        "<https://example.com>",
+        "<",
+        "</",
+        "<!?x>",
+        "<!-- nul\0 -->",
+        "  <!-- indented -->",
+        "   <div>\n   content",
+        "<!-- first -->\n<!-- second -->",
+        "<!-- first -->\n[a]: /a\n[a]",
+    ];
+    for block in blocks {
+        for ending in ["", "\n", "\n\n", "\r", "\r\n"] {
+            for source in [
+                format!("{block}{ending}"),
+                format!("before\n{block}{ending}"),
+                format!("{block}\n\nafter{ending}"),
+                format!("> {}{ending}", block.replace('\n', "\n> ")),
+                format!("- {}{ending}", block.replace('\n', "\n  ")),
+                format!("- before\n\n  {}{ending}", block.replace('\n', "\n  ")),
+            ] {
+                let expected = to_html_with_options(&source, &grammar).unwrap();
+                let direct = to_html_with_options(&source, &options).unwrap();
+                assert_eq!(direct, expected, "source: {source:?}");
+                let html = |parse: &ParseOptions| {
+                    EventParser::new(&source, parse)
+                        .unwrap()
+                        .filter_map(|event| {
+                            let event = event.unwrap();
+                            match event.kind {
+                                EventKind::Html { value, block } => Some((
+                                    value.resolve(&source).unwrap().to_owned(),
+                                    block,
+                                    event.span,
+                                )),
+                                _ => None,
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(
+                    html(&options.parse),
+                    html(&grammar.parse),
+                    "HTML: {source:?}"
+                );
+                let mut checked = String::new();
+                render_events(
+                    &source,
+                    EventParser::new(&source, &options.parse).unwrap(),
+                    &options.compile,
+                    &mut checked,
+                )
+                .unwrap();
+                assert_eq!(checked, direct, "checked: {source:?}");
+                let document = Document::parse(source.as_str(), &options.parse).unwrap();
+                let mut arena = String::new();
+                render_events(&source, document.events(), &options.compile, &mut arena).unwrap();
+                assert_eq!(arena, direct, "arena: {source:?}");
+            }
+        }
+    }
+}
