@@ -10,7 +10,7 @@ document traversal        → semantic events → the same HTML writer
 
 ## Contract
 
-An event describes resolved Markdown meaning: a container opens or closes, text occurs, or a leaf such as a break occurs. It never exposes speculative delimiters, tokenizer states, or event-buffer edits. A producer implements `Iterator<Item = Result<Event, Error>>`; consumers pull only the events they need. Start events contain the metadata required to render their opening tags, including resolved destinations and list tightness. End events identify the container that closes. Events carry byte ranges for provenance independently of their semantic values.
+An event describes resolved Markdown meaning: a container opens or closes, text occurs, or a leaf such as a break occurs. It never exposes speculative delimiters, tokenizer states, or event-buffer edits. A producer implements `Iterator<Item = Result<Event, Error>>`; consumers pull only the events they need. Start events contain the metadata required to render their opening tags, including resolved destinations and list tightness. End events identify the container that closes. Events carry byte ranges for provenance independently of their semantic values. The root is a single document; container ends match their starts and cannot precede the opening source extent. Heading and footnote-definition capture cannot be nested within a heading or image alternative text. Consumers and checked AST edits enforce these constraints.
 
 HTML rendering must satisfy this invariant with identical source and rendering options:
 
@@ -39,6 +39,12 @@ Migration starts with an adapter over the existing parser so that semantic consu
 The target is no heap allocation merely to yield a start/end event or ordinary source text. The compatibility producer still normalizes reference labels and clones constructed reference destinations when opening links; these allocations remain a measured migration cost. Parser nesting, delimiters, references, block records, AST nodes, and output need storage. Reuse vectors and caller-owned output, grow arenas geometrically, and avoid per-event boxes, trait objects, cloned strings, queues, or reference counts. A strict heap-free mode would need caller-provided capacity and explicit capacity exhaustion; it is not implied by this API.
 
 Scan ordinary byte runs before invoking syntax handlers. Use byte-class tables for syntax candidates, indexed delimiter/bracket resolution, and batched source-to-output copies. SIMD is useful for finding candidate bytes and escaping HTML, not for replacing Markdown semantics. Prefer a small, portable scanner with a measured SIMD implementation and a tested scalar fallback. Keep architecture-specific unsafe code isolated, document its bounds and CPU requirements, and compare scalar and vector results at every boundary and alignment.
+
+## Output compatibility
+
+The default HTML API and arena traversal share one semantic interpretation. Opt-in heading IDs are generated from normalized semantic text, so multiline code and math spans no longer contribute whitespace that has already been removed from their visible value. For example, `` `\nb `\n--- `` produces `id="b"`, where the previous mdast-based heading capture produced `id="-b-"`. The legacy mdast API remains available with its existing representation.
+
+Semantic end tags close their corresponding starts. Mixed ordered/unordered lists following unclosed fences can expose a pre-existing malformed grammar hierarchy; the shared writer balances its closing HTML tags rather than reproducing mismatched legacy closures. This does not repair every list-hierarchy issue in the underlying grammar. Failed frontmatter lookahead also restores correct line positions instead of producing orphan quote closures.
 
 ## Validation and performance acceptance
 
