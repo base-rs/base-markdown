@@ -165,6 +165,14 @@ fn semantic_endings_ignore_trailing_blanks_and_container_prefixes() {
 #[test]
 fn compact_inlines_share_compatibility_document_structure() {
     for (source, expected) in [
+        ("<div>\n</div>\n\n- a  \n\t``` ", "&lt;div&gt;\n&lt;/div&gt;\n<ul>\n<li>a\n<pre><code></code></pre>\n</li>\n</ul>"),
+        ("<div>\n</div>\n\n- # a\n\n   b  ", "&lt;div&gt;\n&lt;/div&gt;\n<ul>\n<li>\n<h1>a</h1>\n<p>b</p>\n</li>\n</ul>"),
+        ("<div>\n</div>\n\n- ```\n  ```\n\n   b  ", "&lt;div&gt;\n&lt;/div&gt;\n<ul>\n<li>\n<pre><code></code></pre>\n<p>b</p>\n</li>\n</ul>"),
+
+        (" [a](u)", "<p><a href=\"u\">a</a></p>"),
+        ("[a](u) ", "<p><a href=\"u\">a</a></p>"),
+        ("[ ", "<p>[</p>"),
+        ("<div>\n</div>\n\na ", "&lt;div&gt;\n&lt;/div&gt;\n<p>a</p>"),
         ("plain *emphasis* and `code`\n\n[id]: /path\n", "<p>plain <em>emphasis</em> and <code>code</code></p>\n"),
         ("plain *emphasis*\n\n[x][id]\n\n[id]: /path 'title'\n", "<p>plain <em>emphasis</em></p>\n<p><a href=\"/path\" title=\"title\">x</a></p>\n"),
         ("plain &copy;\n\n<div>\nraw\n</div>\n", "<p>plain ©</p>\n&lt;div&gt;\nraw\n&lt;/div&gt;\n"),

@@ -205,13 +205,17 @@ impl InlineParser {
             kind: Kind::Text,
         });
         let bytes = source.as_bytes();
-        let mut fragments = fragments.enumerate().peekable();
-        while let Some((line, range)) = fragments.next() {
+        let mut fragments = fragments.peekable();
+        while let Some(mut range) = fragments.next() {
             let mut indexed_ticks = false;
             let mut at = range.start;
-            if line > 0 {
-                while at < range.end && matches!(bytes[at], b' ' | b'\t') {
-                    at += 1;
+            // Grammar-backed text chunks include paragraph padding; compact block fragments usually already omit it. Neither padding nor container indentation is inline content.
+            while at < range.end && matches!(bytes[at], b' ' | b'\t') {
+                at += 1;
+            }
+            if fragments.peek().is_none() {
+                while range.end > at && matches!(bytes[range.end - 1], b' ' | b'\t') {
+                    range.end -= 1;
                 }
             }
             let inline_start = at;
