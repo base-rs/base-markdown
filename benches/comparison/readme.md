@@ -14,7 +14,7 @@ python3 run.py
 python3 check.py --all
 ```
 
-`run.py` runs all six engines sequentially and saves raw batch timings in `results/`. Supply parser names to time a subset, for example `python3 run.py core-markdown inkmark`. `check.py` checks exact core-markdown HTML against all 652 CommonMark 0.31.2 reference examples and the pinned markdown-rs version on all 677 published GFM examples, plus 29 targeted inputs under four profiles. `--all` additionally records the six engines' agreement counts and complete outputs in `results/`. Downloaded specification sources are checked against recorded SHA-256 hashes; an unexpected source change requires inspection. The CommonMark and GFM specifications are attributed to their respective authors and licensed CC BY-SA 4.0; downloaded copies remain under ignored `data/`.
+`run.py` runs all six engines sequentially and saves raw batch timings in `results/`. Supply parser names to time a subset, for example `python3 run.py core-markdown inkmark`. `check.py` checks direct/arena rendering parity and exact core-markdown HTML against all 652 CommonMark 0.31.2 reference examples and the pinned markdown-rs version on all 677 published GFM examples, plus 29 targeted inputs under four profiles. `--all` additionally records the six engines' agreement counts and complete outputs in `results/`. Downloaded specification sources are checked against recorded SHA-256 hashes; an unexpected source change requires inspection. The CommonMark and GFM specifications are attributed to their respective authors and licensed CC BY-SA 4.0; downloaded copies remain under ignored `data/`.
 
 Individual Rust adapters support `bench`, `render`, and a 30-second `profile` loop:
 
@@ -24,7 +24,18 @@ target/release/markdown-comparison profile core-markdown commonmark data/bench-c
 bundle exec ruby adapter.rb inkmark render commonmark data/commonmark.json
 ```
 
-The JSON input is an array of objects containing `markdown` and, for timings, `name`. `core-ast` is an additional diagnostic adapter for the separate mdast/HTML-renderer path; it is not the direct-HTML path measured below.
+The JSON input is an array of objects containing `markdown` and, for timings, `name`. `core-arena` measures parsing into the source-backed document and rendering its event traversal. `core-ast` measures the separate legacy mdast/HTML-renderer path. Neither is the direct-HTML path in the six-engine table. `prepare.py` also generates `bench-scanners.json` (long prose and fenced code) and `bench-references.json` for focused diagnostics.
+
+Allocation counting uses a separate executable so timing runs retain the system allocator:
+
+```sh
+cargo build --release --locked
+target/release/allocations commonmark data/bench-commonmark.json
+target/release/allocations gfm data/bench-gfm.json
+python3 run.py core-arena
+```
+
+Counts exclude input loading and options construction. They report allocation calls, reallocations, and cumulative requested bytes, including reallocation requests; requested bytes are not peak or retained memory. Parser preparation, pulling after preparation, complete arena construction, traversal, cold HTML, HTML with reserved output, and legacy mdast construction are recorded separately. Timing and allocation profiles use the same extension and HTML options.
 
 ## Method
 
@@ -44,20 +55,42 @@ Times are **milliseconds per conversion; lower is faster**.
 
 | Engine | README 9 KB | Mixed 100 KB | Mixed 1 MB | GFM 100 KB |
 | --- | ---: | ---: | ---: | ---: |
-| core-markdown (baseline) | 0.352 | 13.642 | 551.117 | 22.852 |
-| core-markdown (optimized, paired) | 0.132 | 3.801 | 41.874 | 5.951 |
-| core-markdown (optimized) | 0.129 | 3.750 | 41.689 | 5.903 |
-| markdown-rs 1.0.0 | 0.371 | 13.867 | 553.357 | 23.106 |
-| Comrak 0.57.0 | 0.030 | 0.911 | 9.118 | 1.342 |
-| Markly 0.19.0 | 0.041 | 1.086 | 12.066 | 1.579 |
-| Commonmarker 2.10.1 | 0.044 | 1.089 | 10.817 | 1.601 |
-| Inkmark 0.2.1 | 0.019 | 0.397 | 4.230 | 0.703 |
+| core-markdown (pull stream) | 0.120 | 3.749 | 40.757 | 5.981 |
+| markdown-rs 1.0.0 | 0.378 | 14.251 | 564.816 | 23.843 |
+| Comrak 0.57.0 | 0.031 | 0.932 | 9.214 | 1.384 |
+| Markly 0.19.0 | 0.043 | 1.056 | 12.460 | 1.625 |
+| Commonmarker 2.10.1 | 0.044 | 1.104 | 11.076 | 1.634 |
+| Inkmark 0.2.1 | 0.019 | 0.405 | 4.319 | 0.710 |
 
-The baseline is core-markdown at `e5effec59c852861b7b5e96eaf3eefe9e5a6e09b`. Its package version was changed only in a temporary diagnostic worktree to allow baseline and optimized packages in one executable; its implementation was unchanged. The optimized measurements use production source `4f614d0`. Paired results use separate release executables, run sequentially on the same host; the six-engine table is another sequential run. Raw samples and input hashes are preserved in [measurements/2026-10-23-followup](measurements/2026-10-23-followup/). The earlier eleven-optimization stage remains in [measurements/2026-10-23](measurements/2026-10-23/) without changing its samples or source attribution. To reproduce a baseline run without changing its package version, create a detached worktree at that commit, extract this PR's `benches/comparison/` directory into it, then run `python3 run.py core-markdown` there.
+The pull-stream measurement uses production source `7ed5e9d`. Raw samples, supplemental studies, source attribution, and input hashes are preserved in [measurements/2026-10-23-pull](measurements/2026-10-23-pull/). Earlier samples remain unchanged in [measurements/2026-10-23-followup](measurements/2026-10-23-followup/) and [measurements/2026-10-23](measurements/2026-10-23/).
 
-The paired 1 MB run improves from 551.1 ms to 41.9 ms (**13.2× faster**). The README, mixed 100 KB, and GFM fixtures improve by 2.7×, 3.6×, and 3.8× respectively. Increasing the mixed input by approximately 10× increases optimized paired time by 11.0×, versus 40.4× before. This repairs the conspicuous scaling problem on this workload; it is not a worst-case complexity proof.
+The earlier paired comparison measured the original implementation at `e5effec59c852861b7b5e96eaf3eefe9e5a6e09b` against the optimized direct compiler at `4f614d0`: the 1 MB fixture improved from 551.1 ms to 41.9 ms (**13.2× faster**). Growing that input by approximately 10× increased optimized time by 11.0×, versus 40.4× before. This repaired the conspicuous scaling problem on this workload; it is not a worst-case complexity proof. The new pull architecture has comparable end-to-end mixed-document throughput to that optimized compiler; these separate runs do not establish a further throughput gain.
 
-**The Inkmark performance target remains unmet.** In the fresh six-engine run, optimized core-markdown takes 41.69 ms on the 1 MB fixture versus Inkmark’s 4.23 ms, a remaining 9.9× gap. The paired and standalone optimized results also illustrate normal inter-run variation. Further work needs to address the remaining event/tokenizer architecture rather than extrapolate another order of magnitude from these local improvements.
+**The Inkmark performance target remains unmet.** The current six-engine run measures 40.76 ms versus Inkmark’s 4.32 ms on the 1 MB fixture, a remaining **9.4× gap**. Block preparation still uses the existing grammar tokenizer and remains expensive. The shared event contract removes the need to collect the semantic stream or construct an AST for HTML, but is not yet a zero-allocation parser or a replacement for block token production.
+
+## Pull architecture and focused measurements
+
+The default HTML API now consumes `EventParser` through `EventHtmlRenderer`. `Document` incrementally builds a contiguous arena from the same iterator, and arena traversal feeds that same HTML writer. Source text retains byte offsets; editing a value materializes that value alone. See the [architecture and contract](../../context/pull-parser.md). The legacy mdast API remains available.
+
+`memchr` supplies portable SIMD-assisted searches for ordinary block, code, and math runs. There is no custom unsafe scanner and the library retains `no_std` support. Three alternating scalar/SIMD pairs measured long prose at 1.72–1.89 ms versus 1.24–1.30 ms, and fenced code at 1.16–1.38 ms versus 0.62–0.74 ms. The mixed 1 MB fixture was essentially unchanged at 38.4–39.1 ms in that isolated study. Those earlier-source scanner results are supplemental diagnostics, not the final six-engine timings.
+
+Compacting tokenizer rollback checkpoints from a complete position to the necessary source index reduced the isolated mixed fixture from 40.3–40.5 ms to 39.3–39.4 ms. Folding ASCII reference labels in place removes two temporary string allocations per normalization: the reference-heavy fixture improved from 5.99–6.10 ms to 5.73–5.75 ms, approximately 5%; its mixed-document results were noisy. Two additional event-edit storage/reuse experiments were discarded after slowing mixed-document rendering by approximately 4–12%.
+
+A separate diagnostic run of parser → arena → HTML took 0.128 ms for the README, 4.081 ms for mixed 100 KB, 45.146 ms for mixed 1 MB, and 6.497 ms for GFM 100 KB. These include arena construction and output generation; traversal alone is not being timed.
+
+On the mixed 1 MB fixture, the arena has 125,785 nodes at 128 bytes per node on arm64. Traversing it allocates nothing. The full parser still allocates heavily:
+
+| Phase | Allocation calls | Reallocations | Cumulative requested MiB |
+| --- | ---: | ---: | ---: |
+| Block preparation | 118,127 | 189 | 265.2 |
+| Pulling after preparation | 118,094 | 15,406 | 90.9 |
+| Complete arena construction | 236,223 | 15,611 | 388.0 |
+| Arena traversal | 0 | 0 | 0 |
+| Complete HTML conversion | 241,357 | 15,614 | 360.1 |
+| HTML with reserved output | 241,356 | 15,596 | 356.1 |
+| Legacy mdast construction | 408,216 | 38,739 | 466.7 |
+
+Construction and conversion rows are independent complete operations, not additive phases. Requested bytes include repeated requests for growing buffers and must not be read as resident memory. Input storage and output preallocation are outside their respective measurement windows. The large preparation and pulling counts quantify why a source-backed semantic API alone does not achieve the allocation target; ordinary source text and arena traversal already avoid per-value copies.
 
 ## Output consistency
 
@@ -74,11 +107,11 @@ These counts are fresh byte-for-byte comparisons of the direct HTML paths. GFM c
 
 Byte differences do not necessarily imply different HTML meaning. Inkmark's 22 CommonMark differences are formatting and equivalent quote escaping; the earlier comparison's CommonMark reference normalizer, extended to equate literal text quotes with `&quot;`, found agreement on all 652. Markly's differences include numeric entities, emphasis boundaries, and an email autolink. GFM differences additionally include tag filtering, table serialization, and unusual literal autolinks. Footnote IDs and markup vary across implementations and are outside the timed GFM profile. Defaults also differ substantially; in particular, Commonmarker's default syntax highlighting and presentation features are disabled here.
 
-All 2,117 saved core-markdown outputs from the original comparison remained byte-identical after the optimizations: 652 CommonMark examples, 677 published GFM examples, 672 examples from the separate cmark-gfm corpus, and 29 targeted inputs in four profiles. An independent review of the first stage also compared 10,000 randomized Markdown inputs under three profiles and 4,096 construct configurations, including full mdast positions. Review of the final fast paths additionally compared 50,000 randomized inputs and 65,536 construct configurations against the original parser, including exact HTML and full AST positions. These checks supplement the repository's regression suite and complete measured source-region coverage. The separate AST HTML renderer has pre-existing output differences and is not claimed to match the direct compiler.
+The final pull implementation preserves all 2,117 saved core-markdown outputs from the original comparison, and its arena rendering matches them as well (see [preservation.json](measurements/2026-10-23-pull/preservation.json)): 652 CommonMark examples, 677 published GFM examples, 672 examples from the separate cmark-gfm corpus, and 29 targeted inputs in four profiles. An independent review of the first stage also compared 10,000 randomized Markdown inputs under three profiles and 4,096 construct configurations, including full mdast positions. Review of the final fast paths additionally compared 50,000 randomized inputs and 65,536 construct configurations against the original parser, including exact HTML and full AST positions. The pull implementation additionally exercises parser → HTML and parser → arena → HTML parity, bounded construction, source detachment, malformed public streams, writer failures, and extension metadata. Independent review included one million randomized inputs, 65,536 option configurations, and 200,000 sampled arena roundtrips before the final focused fixes. The final-source corpus agreement is recorded above; intentionally corrected heading IDs, malformed container closures, speculative frontmatter positions, and reference-label whitespace are documented in the architecture and release notes. The legacy mdast HTML renderer retains pre-existing differences and is not claimed to match the shared writer.
 
 ## Optimizations and remaining work
 
-Each optimization has its own commit:
+The first fifteen optimizations each have their own commit:
 
 1. Index pending event edits instead of repeatedly scanning all earlier edits. This removes the dominant superlinear behavior on the repeated-section fixture.
 2. Apply edits with one pass over the source event buffer, replacing repeated split allocations and copies.
@@ -98,6 +131,8 @@ Each optimization has its own commit:
 
 The delimiter bitset and byte-run scanning follow the general approach used by [pulldown-cmark's scanners](https://github.com/pulldown-cmark/pulldown-cmark/blob/v0.13.4/pulldown-cmark/src/scanners.rs). No competitor source was copied. [Inkmark's native dependency manifest](https://github.com/yaroslav/inkmark/blob/v0.2.1/ext/inkmark/Cargo.toml) enables pulldown-cmark's HTML and SIMD features; its [release lockfile](https://github.com/yaroslav/inkmark/blob/v0.2.1/Cargo.lock) resolves pulldown-cmark 0.13.4.
 
-No public feature was removed, and no runtime dependency was added. Accelerated line searching, alternate buffer ownership, and deletion-only compaction prototypes did not show worthwhile throughput gains on the mixed workload and were discarded. The low-value grammar wrapper events removed here were private and unused by either compiler. Dropping MDX or math support is not justified by these measurements: disabled markers now stay out of the CommonMark hot path, and rare diagnostics no longer inflate state storage. More substantial candidates are emitting fewer grammar events throughout the parser, borrowing source spans instead of materializing intermediates, and reducing whole-event-buffer rewrites. These are architectural proposals, not measured speedups. An alternate HTML backend would need explicit compatibility decisions for GFM, custom construct flags, callbacks, diagnostics, source positions, and `no_std` before it could replace the current path.
+Subsequent commits introduce the semantic event contract and arena, defer inline resolution and reuse its buffers, replace the default HTML compiler with the shared writer, escape URI runs directly into the writer, add SIMD-assisted scanning, compact arena links and tokenizer checkpoints, and fold ASCII labels in place. Correctness fixes and measurements have separate commits.
+
+No public feature was removed. The `memchr` runtime dependency has default features disabled. Several earlier line-searching and storage prototypes did not justify their cost on the mixed workload and were discarded. Removed grammar wrapper events were private and unused by either compiler. Dropping MDX or math is not justified by the measurements: disabled markers stay out of the CommonMark hot path, and rare diagnostics no longer inflate every state. The remaining substantial work is replacing expensive block grammar events with compact source-backed block records, reducing speculative tokenizer state and edit-buffer allocations, and avoiding normalization/destination clones during repeated link resolution. Those remain unimplemented optimization opportunities. The pull API accepts a complete UTF-8 source; it does not yet parse input chunks or incrementally reparse source edits.
 
 Sources: [CommonMark 0.31.2 examples](https://spec.commonmark.org/0.31.2/spec.json), [published GFM specification](https://github.github.com/gfm/), [markdown-rs](https://github.com/wooorm/markdown-rs), [Comrak](https://github.com/kivikakk/comrak), [Markly](https://github.com/socketry/markly), [Commonmarker](https://github.com/gjtorikian/commonmarker), and [Inkmark](https://github.com/yaroslav/inkmark).

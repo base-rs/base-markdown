@@ -1,0 +1,116 @@
+[
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.040266323,
+    "mib_per_second": 23.684640633627712,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.03995428125,
+      0.04008796875,
+      0.040169396,
+      0.040266323,
+      0.040748698,
+      0.040806802,
+      0.0408573645
+    ],
+    "candidate": "full_progress"
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.039415823,
+    "mib_per_second": 24.195699018959417,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0390450105,
+      0.03917425,
+      0.0391768125,
+      0.039415823,
+      0.03944597925,
+      0.03959104175,
+      0.03993553125
+    ],
+    "candidate": "compact_progress"
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.04054560425,
+    "mib_per_second": 23.521499001771026,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.040424427,
+      0.040450698,
+      0.040494,
+      0.04054560425,
+      0.0406473645,
+      0.0406636875,
+      0.04088297925
+    ],
+    "candidate": "before_pull"
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.0393039375,
+    "mib_per_second": 24.26457628812834,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.03904455225,
+      0.0392793125,
+      0.0392971665,
+      0.0393039375,
+      0.0394995625,
+      0.039516979,
+      0.0395986875
+    ],
+    "candidate": "compact_progress"
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.0404917605,
+    "mib_per_second": 23.552776617173215,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0402712915,
+      0.04036529175,
+      0.04043103125,
+      0.0404917605,
+      0.0408595105,
+      0.040871375,
+      0.041989052
+    ],
+    "candidate": "full_progress"
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.0405811355,
+    "mib_per_second": 23.500904500135984,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.04027429175,
+      0.0403616355,
+      0.04055816675,
+      0.0405811355,
+      0.040606,
+      0.04065754175,
+      0.04087775
+    ],
+    "candidate": "before_pull"
+  }
+]
