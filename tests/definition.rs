@@ -30,6 +30,11 @@ fn compact_definitions_preserve_values_and_inline_fallback() {
         "[a]: /a\n[b]: /b\n[a] [b]".to_string(),
         "before\n\n[a]: /a\n\n".to_string(),
         "[a]: /a\n".to_string(),
+        "  [a]: /a  \r\n\r\n[a]".to_string(),
+        "[a]: /a\r[a]".to_string(),
+        ">\t[a]: /a\n\n[a]".to_string(),
+        ">\t [a]: /a\n\n[a]".to_string(),
+        "-\t[a]: /a\n\n[a]".to_string(),
         "- [a]: /a\n- next\n\n[a]".to_string(),
         "> [a]: /a\n> [b]: /b\n\n[a] [b]".to_string(),
         "- text\n\n  [a]: /a\n\n  next [a]".to_string(),
@@ -63,13 +68,15 @@ fn compact_definitions_preserve_values_and_inline_fallback() {
             EventParser::new(&source, parse)
                 .unwrap()
                 .filter_map(|event| {
+                    let event = event.unwrap();
                     if let EventKind::Definition {
                         label,
                         destination,
                         title,
-                    } = event.unwrap().kind
+                    } = event.kind
                     {
                         Some((
+                            event.span,
                             label.resolve(&source).unwrap().to_string(),
                             destination.resolve(&source).unwrap().to_string(),
                             title.map(|value| value.resolve(&source).unwrap().to_string()),

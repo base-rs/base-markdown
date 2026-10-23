@@ -290,6 +290,8 @@ impl Builder<'_> {
             }
             return at + length;
         }
+        let definition_start =
+            start + line.bytes_scanned() - usize::from(line.remaining_space() > 0);
         let indent = line.scan_space_upto(4);
         let at = start + line.bytes_scanned();
         if indent == 4 {
@@ -324,7 +326,7 @@ impl Builder<'_> {
                     .title
                     .map(|range| decode_string(self.source, range)),
             );
-            self.append(at, next, Body::Definition(index));
+            self.append(definition_start, next, Body::Definition(index));
             return next;
         }
         // Raw HTML retains its grammar producer until its block metadata is recorded directly.
