@@ -299,6 +299,8 @@ pub struct Tokenizer<'a> {
     consumed: bool,
     /// Stack of how to handle attempts.
     attempts: Vec<Attempt>,
+    /// Rare fatal diagnostic, kept out of the copyable state returned for every parser step.
+    error: Option<Box<message::Message>>,
     /// Current byte.
     pub current: Option<u8>,
     /// Previous byte.
@@ -382,6 +384,7 @@ impl<'a> Tokenizer<'a> {
             line_start: point.clone(),
             consumed: true,
             attempts: vec![],
+            error: None,
             point,
             stack: vec![],
             events: vec![],
@@ -685,6 +688,12 @@ impl<'a> Tokenizer<'a> {
         self.events.push(event);
     }
 
+    /// Retain a fatal diagnostic while returning a small, copyable error state.
+    pub fn error(&mut self, message: message::Message) -> State {
+        self.error = Some(Box::new(message));
+        State::Error
+    }
+
     /// Capture the tokenizer progress.
     fn capture(&mut self) -> Progress {
         Progress {
@@ -771,7 +780,7 @@ impl<'a> Tokenizer<'a> {
         let to = (self.point.index, self.point.vs);
         let state = push_impl(self, to, to, state, true);
 
-        state.to_result()?;
+        state.to_result(self.error.take())?;
 
         let mut value = Subresult {
             done: false,
@@ -847,7 +856,7 @@ fn push_impl(
 
     loop {
         match state {
-            State::Error(_) => break,
+            State::Error => break,
             State::Ok | State::Nok => {
                 if let Some(attempt) = tokenizer.attempts.pop() {
                     if attempt.kind == AttemptKind::Check || matches!(state, State::Nok) {
@@ -955,7 +964,7 @@ fn push_impl(
     if flush {
         debug_assert!(
             match state {
-                State::Ok | State::Error(_) => true,
+                State::Ok | State::Error => true,
                 _ => unreachable!("flushing a tokenizer must produce a terminal state"),
             },
             "must be ok"
@@ -963,7 +972,7 @@ fn push_impl(
     } else {
         debug_assert!(
             match state {
-                State::Next(_) | State::Error(_) => true,
+                State::Next(_) | State::Error => true,
                 _ => unreachable!("continuing a tokenizer must produce a next state"),
             },
             "must have a next state"

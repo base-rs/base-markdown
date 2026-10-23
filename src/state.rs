@@ -11,12 +11,12 @@ use crate::tokenizer::Tokenizer;
 use alloc::boxed::Box;
 
 /// Result of a state.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum State {
     /// Syntax error.
     ///
-    /// Only used by MDX.
-    Error(Box<message::Message>),
+    /// Only used by MDX. The tokenizer retains the diagnostic so ordinary states remain small and copyable.
+    Error,
     /// Move to [`Name`][] next.
     Next(Name),
     /// Retry in [`Name`][].
@@ -28,24 +28,19 @@ pub enum State {
 }
 
 impl State {
-    /// Keep rare MDX diagnostics out of the state returned for every parser step.
-    pub fn error(message: message::Message) -> Self {
-        Self::Error(Box::new(message))
-    }
-
     /// Turn a final state into a result.
     ///
     /// This doesn’t work on future states ([`State::Next`], [`State::Retry`]),
     /// or on an attempt ([`State::Nok`]).
     ///
-    /// But it turns the final result into an error if crashed.
-    pub fn to_result(&self) -> Result<(), message::Message> {
+    /// Transfer the owning tokenizer's retained diagnostic when the final state is an error.
+    pub fn to_result(self, error: Option<Box<message::Message>>) -> Result<(), message::Message> {
         match self {
             State::Nok | State::Next(_) | State::Retry(_) => {
                 unreachable!("cannot turn intermediate state into result")
             }
             State::Ok => Ok(()),
-            State::Error(x) => Err((**x).clone()),
+            State::Error => Err(*error.expect("error states retain their tokenizer diagnostic")),
         }
     }
 }
@@ -1002,6 +997,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "cannot turn intermediate state into result")]
     fn intermediate_states_cannot_become_results() {
-        State::Next(Name::FlowStart).to_result().unwrap();
+        State::Next(Name::FlowStart).to_result(None).unwrap();
     }
 }
