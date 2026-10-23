@@ -502,7 +502,8 @@ fn reference_label(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Ran
     let begin = start + 1;
     let mut at = begin;
     let mut content = false;
-    while at < end && at - begin <= crate::util::constant::LINK_REFERENCE_SIZE_MAX {
+    let mut tab_expansion = 0;
+    while at < end && at - begin + tab_expansion <= crate::util::constant::LINK_REFERENCE_SIZE_MAX {
         match bytes[at] {
             b']' => return content.then_some((at + 1, begin..at)),
             b'[' | b'\r' | b'\n' => return None,
@@ -510,7 +511,11 @@ fn reference_label(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Ran
                 content = true;
                 at += 1;
             }
-            b' ' | b'\t' => {}
+            // The grammar counts virtual tab spaces toward its label limit. Use
+            // an upper bound so only potentially oversized labels need its exact
+            // column accounting, including stripped container prefixes.
+            b'\t' => tab_expansion += 3,
+            b' ' => {}
             _ => content = true,
         }
         at += 1;
