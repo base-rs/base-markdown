@@ -306,16 +306,19 @@ impl Builder<'_> {
             };
             // A following title or arbitrary content indentation can belong to this same grammar content block.
             let mut continuation = LineStart::new(&bytes[next..]);
-            if self.containers(&mut continuation) == self.open.len() {
-                let indentation = continuation.scan_space_upto(4);
-                let following = next + continuation.bytes_scanned();
-                if (indentation == 4 && scan_blank_line(&bytes[following..]).is_none())
-                    || metadata.title.is_none()
-                        && matches!(bytes.get(following), Some(b'"' | b'\'' | b'('))
-                {
-                    self.unsupported = true;
-                    return bytes.len();
-                }
+            let continued = self.containers(&mut continuation) == self.open.len();
+            let indentation = continuation.scan_space_upto(4);
+            let following = next + continuation.bytes_scanned();
+            let nonblank = scan_blank_line(&bytes[following..]).is_none();
+            if (indentation == 4 && nonblank)
+                || scan_setext_heading(&bytes[following..]).is_some()
+                || metadata.title.is_none()
+                    && matches!(bytes.get(following), Some(b'"' | b'\'' | b'('))
+                // Definition content can continue lazily inside a container even before its first paragraph. Setext underlines also retain that content-block context.
+                || !continued && nonblank && !self.interrupts(&bytes[following..], false)
+            {
+                self.unsupported = true;
+                return bytes.len();
             }
             self.finish_list(start);
             let index = self.definitions.push(
