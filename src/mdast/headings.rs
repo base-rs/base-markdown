@@ -128,13 +128,13 @@ impl<'a> IntoIterator for Headings<'a> {
 }
 
 #[derive(Default)]
-struct AnchorGenerator {
+pub(crate) struct AnchorGenerator {
     next_suffix: BTreeMap<String, usize>,
     used: BTreeSet<String>,
 }
 
 impl AnchorGenerator {
-    fn anchor_for(&mut self, text: &str) -> String {
+    pub(crate) fn anchor_for(&mut self, text: &str) -> String {
         let base = slug(text);
         let mut suffix = self.next_suffix.get(&base).copied().unwrap_or(2);
         let mut anchor = base.clone();

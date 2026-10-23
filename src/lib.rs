@@ -47,12 +47,16 @@
 extern crate alloc;
 mod configuration;
 mod construct;
+mod document;
 mod event;
+mod event_html_renderer;
+mod event_parser;
 pub mod markdown;
 mod parser;
 pub mod renderer;
 mod resolve;
 mod state;
+pub mod stream;
 mod subtokenize;
 mod to_html;
 mod to_mdast;
@@ -83,6 +87,11 @@ pub use util::mdx::{
 };
 
 pub use configuration::{CompileOptions, Constructs, Options, ParseOptions};
+pub use document::{
+    AstBuilder, BuildProgress, Document, DocumentEvents, Node as DocumentNode, NodeId,
+};
+pub use event_html_renderer::{render_events, EventHtmlRenderer};
+pub use event_parser::EventParser;
 pub use markdown::{to_markdown, to_markdown_with_options};
 pub use markdown::{IndentOptions, LineWrapping, Options as MarkdownOptions};
 pub use renderer::{HtmlRenderer, MarkdownRenderer, Renderer};

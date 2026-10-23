@@ -47,3 +47,9 @@ Validate parser → HTML and parser → AST → events → HTML against each oth
 Measure end-to-end rendering, event consumption, AST construction/traversal, allocation counts, and adversarial scaling separately. Use the pinned six-engine harness in `benches/comparison/`, report exact output agreement alongside timings, and retain raw samples and source revisions. Compare cold allocations and reused workspace/output separately. Do not claim the Inkmark target is met based on a subset fast path, different extension behavior, or a scanner-only microbenchmark.
 
 The algorithmic references are pulldown-cmark's [two-pass pull design](https://pulldown-cmark.github.io/pulldown-cmark/dev/index.html) and [candidate-byte SIMD scanning](https://pulldown-cmark.github.io/pulldown-cmark/dev/performance.html). Any copied source must retain its license and identify its exact upstream revision; using these techniques does not require selecting another Markdown backend.
+
+## Initial public API
+
+`EventParser::new(source, options)` prepares the compatibility producer. `render_events(source, events, compile_options, output)` pulls any producer through `EventHtmlRenderer`. `Document::parse(source_buffer, parse_options)` moves a caller-owned buffer into a source-backed AST, and `Document::events()` traverses it without allocating a traversal stack or cloning edited strings.
+
+For bounded construction, retain an `AstBuilder` and call `consume(&mut events, event_budget)` until it returns `BuildProgress::Complete`. `Pending` means the budget was exhausted without probing for another event. Drop the parser before calling `finish(source_buffer)` to move the original buffer into the resulting document. `text_mut(node_id)` materializes only the edited value; node metadata can also be assigned through `node_mut`. Publicly supplied event streams and source ranges are checked rather than trusted.
