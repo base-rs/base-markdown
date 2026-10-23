@@ -204,9 +204,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         text: String::new(),
                     });
                 } else {
-                    self.write("<h")?;
-                    self.write(["", "1", "2", "3", "4", "5", "6"][usize::from(*level)])?;
-                    self.write(">")?;
+                    self.write(
+                        ["<h1>", "<h2>", "<h3>", "<h4>", "<h5>", "<h6>"][usize::from(*level - 1)],
+                    )?;
                 }
             }
             Tag::BlockQuote => {
@@ -219,15 +219,15 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 frame.flag = start.is_some();
                 if tags {
                     self.terminate()?;
-                    self.write(if start.is_some() { "<ol" } else { "<ul" })?;
-                    if let Some(start) = start {
-                        if *start != 1 {
-                            self.write(" start=\"")?;
+                    match start {
+                        None => self.write("<ul>")?,
+                        Some(1) => self.write("<ol>")?,
+                        Some(start) => {
+                            self.write("<ol start=\"")?;
                             self.write(&start.to_string())?;
-                            self.write("\"")?;
+                            self.write("\">")?;
                         }
                     }
-                    self.write(">")?;
                 }
             }
             Tag::Item { block_end } => {
@@ -261,18 +261,16 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                             .expect("event values are source-valid"),
                         false,
                     )?;
-                    self.write("\"")?;
                     if let Some(title) = title {
-                        self.write(" title=\"")?;
+                        self.write("\" title=\"")?;
                         self.escaped(
                             title
                                 .resolve(self.source)
                                 .expect("event values are source-valid"),
                             true,
                         )?;
-                        self.write("\"")?;
                     }
-                    self.write(">")?;
+                    self.write("\">")?;
                 }
             }
             Tag::Image { destination, title } => {
@@ -320,14 +318,16 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             Tag::TableCell { alignment, header } => {
                 frame.flag = *header;
                 self.terminate()?;
-                self.write(if *header { "<th" } else { "<td" })?;
-                match alignment {
-                    crate::mdast::AlignKind::Left => self.write(" align=\"left\"")?,
-                    crate::mdast::AlignKind::Right => self.write(" align=\"right\"")?,
-                    crate::mdast::AlignKind::Center => self.write(" align=\"center\"")?,
-                    crate::mdast::AlignKind::None => {}
-                }
-                self.write(">")?;
+                self.write(match (header, alignment) {
+                    (true, crate::mdast::AlignKind::Left) => "<th align=\"left\">",
+                    (true, crate::mdast::AlignKind::Right) => "<th align=\"right\">",
+                    (true, crate::mdast::AlignKind::Center) => "<th align=\"center\">",
+                    (true, crate::mdast::AlignKind::None) => "<th>",
+                    (false, crate::mdast::AlignKind::Left) => "<td align=\"left\">",
+                    (false, crate::mdast::AlignKind::Right) => "<td align=\"right\">",
+                    (false, crate::mdast::AlignKind::Center) => "<td align=\"center\">",
+                    (false, crate::mdast::AlignKind::None) => "<td>",
+                })?;
             }
             Tag::FootnoteDefinition(label) => {
                 let key = label
@@ -357,14 +357,12 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         if kind == TagKind::Image {
             self.images -= 1;
             if frame.flag {
-                self.write("\"")?;
                 if frame.level != 0 {
                     let title = self.image_titles.pop().unwrap();
-                    self.write(" title=\"")?;
+                    self.write("\" title=\"")?;
                     self.write(&title)?;
-                    self.write("\"")?;
                 }
-                self.write(" />")?;
+                self.write("\" />")?;
             }
             return Ok(());
         }
@@ -390,16 +388,24 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         .or_else(|| heading.text.strip_suffix('\r'))
                         .unwrap_or(&heading.text);
                     let anchor = self.anchors.anchor_for(text);
-                    self.write("<h")?;
-                    self.write(["", "1", "2", "3", "4", "5", "6"][usize::from(frame.level)])?;
-                    self.write(" id=\"")?;
+                    self.write(
+                        [
+                            "<h1 id=\"",
+                            "<h2 id=\"",
+                            "<h3 id=\"",
+                            "<h4 id=\"",
+                            "<h5 id=\"",
+                            "<h6 id=\"",
+                        ][usize::from(frame.level - 1)],
+                    )?;
                     self.escaped(&anchor, true)?;
                     self.write("\">")?;
                     self.write(&heading.output)?;
                 }
-                self.write("</h")?;
-                self.write(["", "1", "2", "3", "4", "5", "6"][usize::from(frame.level)])?;
-                self.write(">")?;
+                self.write(
+                    ["</h1>", "</h2>", "</h3>", "</h4>", "</h5>", "</h6>"]
+                        [usize::from(frame.level - 1)],
+                )?;
             }
             TagKind::BlockQuote => {
                 self.terminate()?;
@@ -562,18 +568,18 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     }
                     EventKind::Code { value, language } => {
                         if self.images == 0 {
-                            self.write("<code")?;
                             if let Some(language) = language {
-                                self.write(" class=\"language-")?;
+                                self.write("<code class=\"language-")?;
                                 self.escaped(
                                     language
                                         .resolve(self.source)
                                         .expect("event values are source-valid"),
                                     true,
                                 )?;
-                                self.write("\"")?;
+                                self.write("\">")?;
+                            } else {
+                                self.write("<code>")?;
                             }
-                            self.write(">")?;
                         }
                         self.escaped(
                             value
@@ -617,20 +623,20 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                             );
                         }
                         self.terminate()?;
-                        self.write("<pre><code")?;
                         if *math {
-                            self.write(" class=\"language-math math-display\"")?;
+                            self.write("<pre><code class=\"language-math math-display\">")?;
                         } else if let Some(language) = language {
-                            self.write(" class=\"language-")?;
+                            self.write("<pre><code class=\"language-")?;
                             self.escaped(
                                 language
                                     .resolve(self.source)
                                     .expect("event values are source-valid"),
                                 true,
                             )?;
-                            self.write("\"")?;
+                            self.write("\">")?;
+                        } else {
+                            self.write("<pre><code>")?;
                         }
-                        self.write(">")?;
                         let value = value
                             .resolve(self.source)
                             .expect("event values are source-valid");
@@ -659,14 +665,16 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     }
                     EventKind::TaskMarker(checked) => {
                         if self.images == 0 {
-                            self.write("<input type=\"checkbox\" ")?;
-                            if !self.options.gfm_task_list_item_checkable {
-                                self.write("disabled=\"\" ")?;
-                            }
-                            if *checked {
-                                self.write("checked=\"\" ")?;
-                            }
-                            self.write("/>")?;
+                            self.write(
+                                match (self.options.gfm_task_list_item_checkable, checked) {
+                                    (false, false) => "<input type=\"checkbox\" disabled=\"\" />",
+                                    (false, true) => {
+                                        "<input type=\"checkbox\" disabled=\"\" checked=\"\" />"
+                                    }
+                                    (true, false) => "<input type=\"checkbox\" />",
+                                    (true, true) => "<input type=\"checkbox\" checked=\"\" />",
+                                },
+                            )?;
                         }
                         Ok(())
                     }

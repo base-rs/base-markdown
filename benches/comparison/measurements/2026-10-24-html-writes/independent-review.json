@@ -1,0 +1,41 @@
+{
+  "reviewed_commit": "01a1a079ad62c2ffa21891dbaf068275af1de5bf",
+  "production_source_commit": "aa2c98ca57b0aa5f79e3631e1b4695c54d3d2a9c",
+  "renderer_sha256": "fdcd4e3715c1125bef05ad605cbb6e897df34a2bda82a5f492ae5556576144a8",
+  "baseline_commit": "3750a5289e1998d1eeb4c762f137a376d5af7f28",
+  "status": "approved source and focused tests",
+  "scope": "Batch fixed HTML tag strings and attribute delimiters; no parser, validation, escaping, routing, or public event contract changes.",
+  "assessment": [
+    "All heading levels retain exact tag names; public validation rejects levels 0, 7, 255 before the level-1 array index.",
+    "Lists, link/image title quotes, table alignments, code/math classes, and four checkbox states preserve exact serialized bytes.",
+    "Writes continue through the same heading/footnote capture routing and propagate writer errors. Write-call grouping changes as intended; individual write chunk boundaries are not preserved."
+  ],
+  "differential_checks": {
+    "sources": 9523,
+    "combinations": 28569,
+    "input_sha256": "51a6a9c5b5b4d196e4b7748488e9aae0b043a761c11954376d0a203b1510b076",
+    "baseline_identical_driver_output": true,
+    "rendering_path_disagreements": 0,
+    "metadata_disagreements": 0,
+    "panics": 0
+  },
+  "differential_provenance": "Temporary public-API drivers at exact candidate and previous approved 8d38420; verified previous source/Cargo.toml equals merged 3750a52. Generated literal-link/table/container corpus across CommonMark and two GFM modes.",
+  "contract_tests": [
+    {
+      "suite": "event_contract",
+      "result": "test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+    },
+    {
+      "suite": "event_stream",
+      "result": "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    }
+  ],
+  "synthetic_checks": {
+    "synthetic_cases": 50,
+    "injected_write_failures": 188
+  },
+  "synthetic_scope": "44 exact-output cases covering headings 1\u20136 with/without IDs, every table alignment/header combination, all checkbox states, ordered/unordered starts, optional/empty/escaped titles and code languages, and math flags; 6 invalid heading cases; 188 write-call failure injections.",
+  "test_followup": "01a1a07 expands all-position write failure coverage to ordinary ordered lists and both checkability modes, and asserts exact checkbox bytes across direct/checked/arena paths.",
+  "unresolved_findings": [],
+  "followup": "Final documentation/evidence commit still requires focused confirmation before PR."
+}

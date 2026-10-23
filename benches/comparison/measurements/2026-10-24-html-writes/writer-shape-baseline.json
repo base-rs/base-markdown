@@ -1,0 +1,19 @@
+{
+  "source_matches_merged_main": "3750a5289e1998d1eeb4c762f137a376d5af7f28",
+  "measured_source_commit": "65f2ec3b9de65ad6b013d91653cf59f90920cbd1",
+  "measurement": {
+    "source_bytes": 1000020,
+    "event_bytes": 96,
+    "events": 169424,
+    "text_events": 61608,
+    "text_events_at_most_16_bytes": 48773,
+    "text_bytes": 635506,
+    "code_blocks": 2567,
+    "writer_calls": 243865,
+    "empty_writer_calls": 5134,
+    "nonempty_writer_calls_at_most_16_bytes": 218195,
+    "html_bytes": 1472348,
+    "document": "mixed-1m"
+  },
+  "note": "Logical fmt::Write calls in the checked public renderer. Not OS writes or a count of actual calls remaining after String specialization."
+}

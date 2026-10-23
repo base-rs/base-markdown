@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Batch fixed HTML tags and attribute delimiters in the shared event renderer, reducing writer calls without changing output bytes or adding temporary allocations.
+
 - Shrink reusable inline records by storing literal-link prefixes as small tags, and reduce block event span lookup overhead. Reserve up to 4 KiB for convenience HTML output to reduce early growth while bounding spare capacity for documents with little rendered output.
 
 - Prepare common raw HTML blocks and ordinary GFM blocks/tables in compact source storage. Reuse inline candidates for ordinary GFM syntax, tasks, strikethrough, and simple literal links, avoiding document-wide grammar fallback and per-region token allocations. Preserve complex constructs through conservative fallback. GFM now shares existing compact CommonMark corrections for list tightness, literal code endings, emphasis boundaries, and incomplete fences in lazy paragraphs.

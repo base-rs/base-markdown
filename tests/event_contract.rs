@@ -230,14 +230,16 @@ fn writer_failures_propagate_from_every_output_position() {
         "[a](x%20y/?a=b&c=d \"t&\\\"\") ![a *b*](x \"t&\")\n\n- [x] a\n- [ ] b\n\nline  \nbreak\\\nend",
         "ruby:`<&>` $x&y$\n\n```rust\n<&>\n```\n\n$$\nx&y\n$$\n\n<script>x\0</script>",
         "Note[^x], again[^x], code[^y].\n\n[^x]: a &amp; b\n\n[^y]:\n    ```\n    a\n    ```",
+        "1. ordinary\n\n9. numbered",
         "a [x](xé \"&\")\n\n```\nraw",
     ];
-    for heading_ids in [false, true] {
+    for (heading_ids, checkable) in [(false, false), (false, true), (true, false), (true, true)] {
         let mut options = Options::gfm();
         options.parse.inline_code_info = true;
         options.parse.constructs.math_text = true;
         options.parse.constructs.math_flow = true;
         options.compile.heading_ids = heading_ids;
+        options.compile.gfm_task_list_item_checkable = checkable;
         options.compile.allow_dangerous_html = true;
         for source in cases {
             let render = |writer: &mut Writer| {

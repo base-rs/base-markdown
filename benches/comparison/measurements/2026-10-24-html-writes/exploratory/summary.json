@@ -1,0 +1,362 @@
+{
+  "batched": {
+    "core-markdown/references": {
+      "baseline": [
+        0.6397851645569621,
+        0.645971195652174
+      ],
+      "candidate": [
+        0.6205699746835442,
+        0.6063458835341364
+      ],
+      "candidate_change_percent": -4.576333729501014
+    },
+    "core-events/mixed-1m": {
+      "baseline": [
+        3.4847829302325577,
+        3.5432755681818184
+      ],
+      "candidate": [
+        3.4892529069767435,
+        3.5006850697674423
+      ],
+      "candidate_change_percent": -0.542404729254764
+    },
+    "core-markdown/gfm-100k": {
+      "candidate": [
+        0.6354732297872341,
+        0.6418096538461537
+      ],
+      "baseline": [
+        0.6303289748953976,
+        0.640532764957265
+      ],
+      "candidate_change_percent": 0.5052590363975762
+    },
+    "core-markdown/long-lines-1m": {
+      "candidate": [
+        0.12235416666666667,
+        0.12173513843648208
+      ],
+      "baseline": [
+        0.12092427682227683,
+        0.11765367084639497
+      ],
+      "candidate_change_percent": 2.310086698428182
+    },
+    "core-markdown/code-1m": {
+      "candidate": [
+        0.07223981497584542,
+        0.07304616734279919
+      ],
+      "baseline": [
+        0.07295902237354085,
+        0.07238839751552795
+      ],
+      "candidate_change_percent": -0.042269460628263644
+    },
+    "core-markdown/readme": {
+      "candidate": [
+        0.014398378655971827,
+        0.014425555310621242
+      ],
+      "baseline": [
+        0.014319192044482463,
+        0.014805542807871781
+      ],
+      "candidate_change_percent": -1.0328021432162826
+    },
+    "core-markdown/mixed-100k": {
+      "candidate": [
+        0.4276993380681819,
+        0.43426982336182335
+      ],
+      "baseline": [
+        0.430160902017291,
+        0.4397721522988506
+      ],
+      "candidate_change_percent": -0.9154604307335834
+    },
+    "core-markdown/mixed-1m": {
+      "candidate": [
+        4.303651171428571,
+        4.379345588235293
+      ],
+      "baseline": [
+        4.297733314285715,
+        4.380441657142857
+      ],
+      "candidate_change_percent": 0.05556223804161764
+    }
+  },
+  "trusted": {
+    "core-markdown/references": {
+      "candidate": [
+        0.6212680336134454,
+        0.6301065230125523
+      ],
+      "baseline": [
+        0.601847164,
+        0.6155418353909464
+      ],
+      "candidate_change_percent": 2.791676058519821
+    },
+    "core-markdown/long-lines-1m": {
+      "baseline": [
+        0.1217974995977474,
+        0.11970747339158061
+      ],
+      "candidate": [
+        0.12104892313982013,
+        0.1226283158326497
+      ],
+      "candidate_change_percent": 0.8994704979585766
+    },
+    "core-markdown/code-1m": {
+      "baseline": [
+        0.07305105882352941,
+        0.07192784309021114
+      ],
+      "candidate": [
+        0.07260305113362277,
+        0.07284848300970873
+      ],
+      "candidate_change_percent": 0.32600069620625227
+    },
+    "core-events/mixed-1m": {
+      "baseline": [
+        3.5477906976744187,
+        3.4835678372093026
+      ],
+      "candidate": [
+        3.480431209302326,
+        3.5445106511627906
+      ],
+      "candidate_change_percent": -0.09125796084455962
+    },
+    "core-markdown/readme": {
+      "baseline": [
+        0.014520233448787728,
+        0.014789019940384418
+      ],
+      "candidate": [
+        0.014547402057736488,
+        0.014514901611619578
+      ],
+      "candidate_change_percent": -0.8425657130771924
+    },
+    "core-markdown/mixed-100k": {
+      "baseline": [
+        0.4303716940509915,
+        0.4374705668604651
+      ],
+      "candidate": [
+        0.44499840412979347,
+        0.43718816231884056
+      ],
+      "candidate_change_percent": 1.6528701335784435
+    },
+    "core-markdown/mixed-1m": {
+      "baseline": [
+        4.352842857142857,
+        4.493816176470588
+      ],
+      "candidate": [
+        4.470801470588236,
+        4.437411764705883
+      ],
+      "candidate_change_percent": 0.6957903706562352
+    },
+    "core-markdown/gfm-100k": {
+      "baseline": [
+        0.6372405598290599,
+        0.6475836909871244
+      ],
+      "candidate": [
+        0.6353043648068669,
+        0.6455087639484978
+      ],
+      "candidate_change_percent": -0.3121922751902706
+    }
+  },
+  "empty-runs": {
+    "core-markdown/readme": {
+      "candidate": [
+        0.01539168063432052,
+        0.014610565600323953
+      ],
+      "baseline": [
+        0.014447798222038455,
+        0.014703830914891426
+      ],
+      "candidate_change_percent": 2.917905869751247
+    },
+    "core-markdown/mixed-100k": {
+      "candidate": [
+        0.4609824159021407,
+        0.43923900293255136
+      ],
+      "baseline": [
+        0.43001282768361576,
+        0.43623335860058304
+      ],
+      "candidate_change_percent": 3.922122035103137
+    },
+    "core-markdown/mixed-1m": {
+      "candidate": [
+        4.63452903030303,
+        4.389516657142857
+      ],
+      "baseline": [
+        4.3325738000000005,
+        4.435740205882353
+      ],
+      "candidate_change_percent": 2.916543378715386
+    },
+    "core-markdown/gfm-100k": {
+      "candidate": [
+        0.6545989130434782,
+        0.6829861111111112
+      ],
+      "baseline": [
+        0.664982142857143,
+        0.652288043478261
+      ],
+      "candidate_change_percent": 1.5421921812183825
+    },
+    "core-events/mixed-1m": {
+      "baseline": [
+        3.7288638048780487,
+        3.568081357142857
+      ],
+      "candidate": [
+        3.556047465116279,
+        3.549794558139535
+      ],
+      "candidate_change_percent": -2.6189471692859123
+    },
+    "core-markdown/long-lines-1m": {
+      "candidate": [
+        0.12142111650485438,
+        0.12381710299003322
+      ],
+      "baseline": [
+        0.12699557072771872,
+        0.12272769325657895
+      ],
+      "candidate_change_percent": -1.7960058738027973
+    },
+    "core-markdown/code-1m": {
+      "candidate": [
+        0.07324501562499999,
+        0.0729730343980344
+      ],
+      "baseline": [
+        0.07555111183550652,
+        0.07344456824925816
+      ],
+      "candidate_change_percent": -1.8642352987348731
+    },
+    "core-markdown/references": {
+      "candidate": [
+        0.633045358649789,
+        0.6337911189427313
+      ],
+      "baseline": [
+        0.6330712974137931,
+        0.6211351991701245
+      ],
+      "candidate_change_percent": 1.0070096944166052
+    }
+  },
+  "routed": {
+    "core-markdown/references": {
+      "candidate": [
+        0.6220925925925926,
+        0.6243641924686193
+      ],
+      "baseline": [
+        0.6259039372384938,
+        0.6111476204081633
+      ],
+      "candidate_change_percent": 0.7602938904541112
+    },
+    "core-markdown/gfm-100k": {
+      "baseline": [
+        0.6487507106382979,
+        0.6575966157205241
+      ],
+      "candidate": [
+        0.6356718333333333,
+        0.6471098995633188
+      ],
+      "candidate_change_percent": -1.8039301636459837
+    },
+    "core-markdown/long-lines-1m": {
+      "baseline": [
+        0.12077817288961039,
+        0.12440550991735537
+      ],
+      "candidate": [
+        0.12165332821341956,
+        0.12145071152296535
+      ],
+      "candidate_change_percent": -0.8481979904911285
+    },
+    "core-markdown/code-1m": {
+      "baseline": [
+        0.0720864995159729,
+        0.0735852244696596
+      ],
+      "candidate": [
+        0.07318065026790063,
+        0.07327982227602904
+      ],
+      "candidate_change_percent": 0.5414561843003929
+    },
+    "core-events/mixed-1m": {
+      "baseline": [
+        3.5395552325581394,
+        3.5246104651162793
+      ],
+      "candidate": [
+        3.5181124186046513,
+        3.543455357142857
+      ],
+      "candidate_change_percent": -0.036776061577459274
+    },
+    "core-markdown/readme": {
+      "candidate": [
+        0.014690546001018849,
+        0.014492980790505884
+      ],
+      "baseline": [
+        0.01455177958236659,
+        0.014688794102745971
+      ],
+      "candidate_change_percent": -0.19509498754080035
+    },
+    "core-markdown/mixed-100k": {
+      "candidate": [
+        0.435841976945245,
+        0.43495869142857146
+      ],
+      "baseline": [
+        0.4334882643678161,
+        0.4379560518731988
+      ],
+      "candidate_change_percent": -0.07385989617497701
+    },
+    "core-markdown/mixed-1m": {
+      "candidate": [
+        4.468401171428572,
+        4.419861914285714
+      ],
+      "baseline": [
+        4.404875,
+        4.404105411764706
+      ],
+      "candidate_change_percent": 0.9000210040618795
+    }
+  }
+}

@@ -47,6 +47,20 @@ The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,
 
 **GFM is not an equal-output throughput comparison:** Inkmark leaves `www.example.com` unlinked in this workload even with autolinking enabled. Its table alignment attributes and empty table bodies also differ. Comrak and Commonmarker do not expose the same independent GFM tag filter as the other adapters. Read GFM timings alongside the output agreement results.
 
+## Fixed HTML write follow-up
+
+The shared renderer now batches fixed tags and attribute delimiters. On the mixed 1 MB fixture, this reduces logical writer calls by 10.5%, with unchanged output and allocation counts. Three alternating runs on Apple M4 Pro compare merged main `3750a52` with production `aa2c98c` and focused tests `01a1a07`:
+
+| Workload | Merged main (ms) | Candidate (ms) | Inkmark 0.2.1 (ms) |
+| --- | ---: | ---: | ---: |
+| README 9 KB | 0.0150 | 0.0149 | 0.0184 |
+| Mixed 100 KB | 0.4402 | 0.4313 | 0.3987 |
+| Mixed 1 MB | 4.4696 | 4.4054 | 4.2833 |
+| GFM 100 KB | 0.6444 | 0.6420 | 0.6954 |
+| References | 0.6478 | 0.6143 | 0.8418 |
+
+Mixed rendering takes 2.0% and 1.4% less time, and references 5.2% less. The mixed workloads remain 8.2% and 2.9% slower than Inkmark. Small differences remain sensitive to compiler/process layout; exploratory mixed results were closer to neutral. Long prose and fenced code stay close to baseline. GFM retains the output differences described above. [Full measurements and evidence](measurements/2026-10-24-html-writes/readme.md) include every sample, allocation counts, output checks, review, and rejected validation/escaping experiments.
+
 ## Event delivery and buffer follow-up
 
 This follow-up compares merged main `dc4f5ee` with production source `8d38420`. Literal-link prefix tags reduce private inline records from 56 to 48 bytes on this compiler. Closing spans are computed once with inlined lookup, and direct HTML starts with a reservation capped at 4 KiB. The public event contract is unchanged.

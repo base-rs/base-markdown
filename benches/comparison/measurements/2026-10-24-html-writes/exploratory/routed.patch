@@ -1,0 +1,93 @@
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index 6e70529..278c767 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -92,32 +92,13 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+     }
+ 
+     fn escaped(&mut self, value: &str, encode: bool) -> Result<(), StreamError> {
+-        static ESCAPES: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0&\"<>");
+-        let mut start = 0;
+-        while start < value.len() {
+-            let remaining = &value.as_bytes()[start..];
+-            let offset = if encode {
+-                ESCAPES.find(remaining)
+-            } else {
+-                memchr::memchr(0, remaining).unwrap_or(remaining.len())
+-            };
+-            let index = start + offset;
+-            if index == value.len() {
+-                break;
+-            }
+-            let replacement = match value.as_bytes()[index] {
+-                0 => "�",
+-                b'&' => "&amp;",
+-                b'"' => "&quot;",
+-                b'<' => "&lt;",
+-                b'>' => "&gt;",
+-                _ => unreachable!("the candidate scanner returns only HTML escapes"),
+-            };
+-            self.write(&value[start..index])?;
+-            self.write(replacement)?;
+-            start = index + 1;
++        if let Some(heading) = self.heading.as_mut() {
++            write_escaped(&mut heading.output, &mut self.last, value, encode)
++        } else if let Some(capture) = self.captures.last_mut() {
++            write_escaped(&mut capture.output, &mut self.last, value, encode)
++        } else {
++            write_escaped(self.output, &mut self.last, value, encode)
+         }
+-        self.write(&value[start..])
+     }
+ 
+     fn newline(&mut self) -> Result<(), StreamError> {
+@@ -848,3 +829,49 @@ pub fn render_events<'a>(
+ ) -> Result<(), StreamError> {
+     EventHtmlRenderer::new(source, options, output).render(events)
+ }
++
++fn write_escaped<W: Write>(
++    output: &mut W,
++    last: &mut Option<u8>,
++    value: &str,
++    encode: bool,
++) -> Result<(), StreamError> {
++    static ESCAPES: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0&\"<>");
++    let mut start = 0;
++    while start < value.len() {
++        let remaining = &value.as_bytes()[start..];
++        let offset = if encode {
++            ESCAPES.find(remaining)
++        } else {
++            memchr::memchr(0, remaining).unwrap_or(remaining.len())
++        };
++        let index = start + offset;
++        if index == value.len() {
++            break;
++        }
++        let replacement = match value.as_bytes()[index] {
++            0 => "�",
++            b'&' => "&amp;",
++            b'"' => "&quot;",
++            b'<' => "&lt;",
++            b'>' => "&gt;",
++            _ => unreachable!("the candidate scanner returns only HTML escapes"),
++        };
++        write_fragment(output, last, &value[start..index])?;
++        write_fragment(output, last, replacement)?;
++        start = index + 1;
++    }
++    write_fragment(output, last, &value[start..])
++}
++
++fn write_fragment<W: Write>(
++    output: &mut W,
++    last: &mut Option<u8>,
++    value: &str,
++) -> Result<(), StreamError> {
++    output.write_str(value)?;
++    if let Some(&byte) = value.as_bytes().last() {
++        *last = Some(byte);
++    }
++    Ok(())
++}
