@@ -580,3 +580,25 @@ fn reference_labels_keep_significant_collapsed_spaces() {
     render_events(source, ast.events(), &options.compile, &mut output).unwrap();
     assert_eq!(output, expected);
 }
+
+#[test]
+fn individual_event_delivery_matches_whole_stream_rendering() {
+    use core_markdown::{EventHtmlRenderer, EventParser};
+    let source = "# Incremental *events*\n\nA [link](url).";
+    let options = Options::default();
+    let mut output = String::new();
+    let mut renderer = EventHtmlRenderer::new(source, &options.compile, &mut output);
+    for event in EventParser::new(source, &options.parse).unwrap() {
+        renderer.event(event.unwrap()).unwrap();
+    }
+    assert_eq!(output, core_markdown::to_html(source));
+    let mut output = String::new();
+    let mut renderer = EventHtmlRenderer::new(source, &options.compile, &mut output);
+    assert!(renderer
+        .event(Event {
+            kind: EventKind::Start(Tag::Document(None)),
+            span: 0..source.len() + 1,
+        })
+        .is_err());
+    assert!(output.is_empty());
+}

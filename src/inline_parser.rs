@@ -8,6 +8,8 @@ use crate::util::char::{classify_opt, Kind as CharacterKind};
 use alloc::vec::Vec;
 use core::{convert::TryFrom, ops::Range};
 
+static MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!");
+
 #[derive(Clone, Copy)]
 enum Kind {
     Text,
@@ -314,8 +316,14 @@ impl InlineParser {
                                 && (marker != b'_' || !left || after == CharacterKind::Punctuation),
                         });
                     }
-                    b'[' | b'!' if bytes[at] == b'[' || bytes.get(at + 1) == Some(&b'[') => {
+                    b'[' | b'!' => {
                         let image = bytes[at] == b'!';
+                        if image && bytes.get(at + 1) != Some(&b'[') {
+                            at += 1;
+                            at += MARKERS.find(&bytes[at..range.end]);
+                            self.append(start, at, Kind::Text);
+                            continue;
+                        }
                         at += 1 + usize::from(image);
                         let node = self.append(start, at, Kind::Text);
                         self.brackets.push(Bracket {
@@ -357,8 +365,6 @@ impl InlineParser {
                         self.append(start, at, Kind::Text);
                     }
                     _ => {
-                        static MARKERS: crate::byte_scan::AsciiSet =
-                            crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!");
                         at += 1;
                         at += MARKERS.find(&bytes[at..range.end]);
                         self.append(start, at, Kind::Text);

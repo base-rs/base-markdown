@@ -13,6 +13,7 @@ fn block_boundaries_preserve_source_whitespace() {
         ("- a`x\n b`", "<ul>\n<li>a<code>x  b</code></li>\n</ul>"),
         ("- - # a\n  b", "<ul>\n<li>\n<ul>\n<li>\n<h1>a</h1>\n</li>\n</ul>\nb</li>\n</ul>"),
         ("a\n ", "<p>a</p>\n"),
+        ("> - a\n>\n> -\n>\nb", "<blockquote>\n<ul>\n<li>\n<p>a</p>\n</li>\n<li></li>\n</ul>\n</blockquote>\n<p>b</p>"),
         ("- a\n\n- \n\n> b", "<ul>\n<li>\n<p>a</p>\n</li>\n<li></li>\n</ul>\n<blockquote>\n<p>b</p>\n</blockquote>"),
         ("x\n\n> - a\r\n> 1. b", "<p>x</p>\n<blockquote>\n<ul>\n<li>a</li>\n</ul>\r\n<ol>\n<li>b</li>\n</ol>\n</blockquote>"),
         ("a\n1.     b", "<p>a</p>\n<ol>\n<li>\n<pre><code>b\n</code></pre>\n</li>\n</ol>"),
@@ -75,6 +76,7 @@ fn compact_resources_and_fallback_regions_agree_with_legacy_rendering() {
         "a***b**c*",
         "a **b*c** d*",
         "    a\n\n\n    b",
+        "    a\n  \n    b",
         "#a",
         "####### a",
         "#\t",
@@ -207,7 +209,13 @@ fn compact_inlines_share_compatibility_document_structure() {
 #[test]
 fn legacy_ast_preserves_empty_container_structure() {
     use core_markdown::{mdast::Node, to_mdast, ParseOptions};
-    for source in ["* >\n\n* a", "* > \n\n* a", "*  \n\n* a"] {
+    for source in [
+        "* >\n\n* a",
+        "* > \n\n* a",
+        "*  \n\n* a",
+        "* >\n* a",
+        "* > \n* a",
+    ] {
         let root = to_mdast(source, &ParseOptions::default()).unwrap();
         let Node::List(list) = &root.children().unwrap()[0] else {
             panic!("the document starts with a list");
