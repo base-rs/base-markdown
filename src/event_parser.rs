@@ -609,7 +609,6 @@ impl<'a> EventParser<'a> {
             Name::GfmTableCell => TagKind::TableCell,
             Name::GfmFootnoteDefinition => {
                 self.tight.pop();
-                self.slurp = true;
                 TagKind::FootnoteDefinition
             }
             _ => return None,

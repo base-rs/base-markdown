@@ -364,3 +364,18 @@ fn virtual_container_spaces_and_autolink_nulls_keep_authored_values() {
         assert_eq!(output, expected);
     }
 }
+
+#[test]
+fn unclosed_footnote_fence_does_not_consume_following_soft_break() {
+    let options = Options::gfm();
+    let source = "[^a]:~~~\n1. a\nb";
+    let expected = "<ol>\n<li>a\nb</li>\n</ol>";
+    assert_eq!(
+        core_markdown::to_html_with_options(source, &options).unwrap(),
+        expected
+    );
+    let document = Document::parse(source, &options.parse).unwrap();
+    let mut output = String::new();
+    render_events(source, document.events(), &options.compile, &mut output).unwrap();
+    assert_eq!(output, expected);
+}
