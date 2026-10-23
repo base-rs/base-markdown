@@ -89,21 +89,30 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     }
 
     fn escaped(&mut self, value: &str, encode: bool) -> Result<(), StreamError> {
+        static ESCAPES: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0&\"<>");
         let mut start = 0;
-        for (index, byte) in value.bytes().enumerate() {
-            let replacement = match byte {
-                0 => Some("�"),
-                b'&' if encode => Some("&amp;"),
-                b'"' if encode => Some("&quot;"),
-                b'<' if encode => Some("&lt;"),
-                b'>' if encode => Some("&gt;"),
-                _ => None,
+        while start < value.len() {
+            let remaining = &value.as_bytes()[start..];
+            let offset = if encode {
+                ESCAPES.find(remaining)
+            } else {
+                memchr::memchr(0, remaining).unwrap_or(remaining.len())
             };
-            if let Some(replacement) = replacement {
-                self.write(&value[start..index])?;
-                self.write(replacement)?;
-                start = index + 1;
+            let index = start + offset;
+            if index == value.len() {
+                break;
             }
+            let replacement = match value.as_bytes()[index] {
+                0 => "�",
+                b'&' => "&amp;",
+                b'"' => "&quot;",
+                b'<' => "&lt;",
+                b'>' => "&gt;",
+                _ => unreachable!("the candidate scanner returns only HTML escapes"),
+            };
+            self.write(&value[start..index])?;
+            self.write(replacement)?;
+            start = index + 1;
         }
         self.write(&value[start..])
     }

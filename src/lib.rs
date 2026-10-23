@@ -46,6 +46,7 @@
 
 extern crate alloc;
 mod block_parser;
+mod byte_scan;
 mod configuration;
 mod construct;
 mod document;

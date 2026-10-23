@@ -358,25 +358,10 @@ impl InlineParser {
                         self.append(start, at, Kind::Text);
                     }
                     _ => {
+                        static MARKERS: crate::byte_scan::AsciiSet =
+                            crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!");
                         at += 1;
-                        while at < range.end
-                            && !matches!(
-                                bytes[at],
-                                0 | b'<'
-                                    | b'\\'
-                                    | b'\r'
-                                    | b'\n'
-                                    | b'&'
-                                    | b'`'
-                                    | b'*'
-                                    | b'_'
-                                    | b'['
-                                    | b']'
-                                    | b'!'
-                            )
-                        {
-                            at += 1;
-                        }
+                        at += MARKERS.find(&bytes[at..range.end]);
                         self.append(start, at, Kind::Text);
                     }
                 }
