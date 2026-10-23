@@ -292,8 +292,7 @@ impl CompactParser<'_> {
                     }
                 }
                 let gfm = self.options.constructs != crate::Constructs::default();
-                self.direct_inline = !task
-                    && !self.options.inline_code_info
+                self.direct_inline = !self.options.inline_code_info
                     && if gfm {
                         if self.inline.definitions().is_empty() {
                             self.compact_inline.prepare::<false, true>(
@@ -301,6 +300,7 @@ impl CompactParser<'_> {
                                 fragments(),
                                 self.inline.definitions(),
                                 self.options,
+                                task,
                             )
                         } else {
                             self.compact_inline.prepare::<true, true>(
@@ -308,6 +308,7 @@ impl CompactParser<'_> {
                                 fragments(),
                                 self.inline.definitions(),
                                 self.options,
+                                task,
                             )
                         }
                     } else if self.inline.definitions().is_empty() {
@@ -316,6 +317,7 @@ impl CompactParser<'_> {
                             fragments(),
                             self.inline.definitions(),
                             self.options,
+                            task,
                         )
                     } else {
                         self.compact_inline.prepare::<true, false>(
@@ -323,6 +325,7 @@ impl CompactParser<'_> {
                             fragments(),
                             self.inline.definitions(),
                             self.options,
+                            task,
                         )
                     };
                 if !self.direct_inline {

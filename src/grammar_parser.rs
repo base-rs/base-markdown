@@ -255,8 +255,7 @@ impl<'a> GrammarParser<'a> {
                     && tokens[i + 1].point.vs == 0
                     && !(self.containers.last() == Some(&TagKind::TableCell)
                         && self.source.as_bytes()[range(i)].contains(&b'\\'))
-            }) && !(task
-                && self.source[range(index)].trim_start().starts_with('['));
+            });
             if supported
                 && if self.options.constructs == crate::Constructs::default() {
                     self.compact_inline.prepare::<true, false>(
@@ -264,6 +263,7 @@ impl<'a> GrammarParser<'a> {
                         indices().map(range),
                         &self.definitions,
                         self.options,
+                        task,
                     )
                 } else {
                     self.compact_inline.prepare::<true, true>(
@@ -271,6 +271,7 @@ impl<'a> GrammarParser<'a> {
                         indices().map(range),
                         &self.definitions,
                         self.options,
+                        task,
                     )
                 }
             {
