@@ -1,0 +1,28 @@
+{
+  "production_source": "5a096de7da9ace6da062a391c225e1653f485c87",
+  "coverage": {
+    "host": "aarch64-apple-darwin",
+    "package": "core-markdown",
+    "all_features": true,
+    "all_targets": true,
+    "covered_measured_regions": 26897,
+    "total_measured_regions": 26897,
+    "excluded_invariant_unreachable_regions": 68
+  },
+  "clippy": {
+    "workspace": true,
+    "all_features": true,
+    "all_targets": true,
+    "warnings": "deny",
+    "passed": true
+  },
+  "portable_compile": {
+    "target": "x86_64-unknown-linux-gnu",
+    "default_features": false,
+    "passed": true
+  },
+  "saved_output_preservation": "preservation.json",
+  "six_engine_consistency": "consistency.json",
+  "independent_review": "independent-review.json",
+  "workspace_tests_passed": true
+}

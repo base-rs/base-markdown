@@ -1,0 +1,18 @@
+{
+  "note": "Single-process diagnostic observations made during implementation; final claims use paired final runs. Controls alter the workload and are diagnostic only. All diagnostic timing and allocation JSONL files are retained. Source map applies by filename prefix.",
+  "sources": {
+    "gfm-": "164155b",
+    "readme-": "164155b",
+    "readme-without-comments-": "164155b with HTML comments removed from input",
+    "html-stage-": "c1fa8c2",
+    "table-stage-": "18ff8bc",
+    "gfm-controls-": "18ff8bc with altered diagnostic inputs",
+    "task-strike-": "e686402",
+    "autolink-": "4a9f832"
+  },
+  "controls": {
+    "no-task-markers": "Remove [x] and [ ] task markers.",
+    "no-strikethrough": "Replace ~~old~~ with old.",
+    "explicit-autolinks": "Replace benchmark bare links with explicit Markdown links; labels still trigger conservative fallback."
+  }
+}

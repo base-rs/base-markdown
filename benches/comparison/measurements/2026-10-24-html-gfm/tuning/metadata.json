@@ -1,0 +1,15 @@
+{
+  "note": "Sequential alternating same-launch-path diagnostic comparisons. Timing variation was visible; individual pairs are retained. No benchmarks overlapped builds/tests/review. Normal system background tasks were not isolated.",
+  "sources": {
+    "main": "164155b",
+    "before": "bec60e0",
+    "cache": "fb72305",
+    "bounds": "5a096de"
+  },
+  "binary_sha256": {
+    "main": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698",
+    "before": "1da4d3c9919582533260151a694921c079b9e8d29284ffe94bd9f667dc29f577",
+    "cache": "626d0ab31ed8da639be5fd5e8554973e762bfb51acebcc1279f782a3a04d21f7",
+    "bounds": "e8f2383c43fcc3e19aa522e3f71ce4a4c8bedbc323ed9c9d897d8e6c96e5213a"
+  }
+}
