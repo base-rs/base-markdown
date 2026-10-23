@@ -320,3 +320,37 @@ fn heading_setext() -> Result<(), message::Message> {
 
     Ok(())
 }
+
+#[test]
+fn literal_underlines_join_the_following_setext_heading() {
+    use core_markdown::{render_events, Document, HtmlRenderer};
+    for (source, expected) in [
+        ("a\n=\n=\na\n=", "<h1>a</h1>\n<h1>=\na</h1>"),
+        ("a\n=\n=\nb\n\nc\n=", "<h1>a</h1>\n<p>=\nb</p>\n<h1>c</h1>"),
+        (
+            "a\n=\n=\na\n=\n=\nb\n=",
+            "<h1>a</h1>\n<h1>=\na</h1>\n<h1>=\nb</h1>",
+        ),
+    ] {
+        for options in [Options::default(), Options::gfm()] {
+            // A definition forces the CommonMark compatibility block producer too.
+            for (input, suffix) in [
+                (source.to_string(), ""),
+                (format!("{source}\n\n[id]: /url"), "\n"),
+            ] {
+                let expected = format!("{expected}{suffix}");
+                assert_eq!(to_html_with_options(&input, &options).unwrap(), expected);
+                let document = Document::parse(input.as_str(), &options.parse).unwrap();
+                let mut output = String::new();
+                render_events(&input, document.events(), &options.compile, &mut output).unwrap();
+                assert_eq!(output, expected);
+                let ast = to_mdast(&input, &options.parse).unwrap();
+                assert_eq!(
+                    ast.render_with(&mut HtmlRenderer::with_options(options.compile.clone()))
+                        .trim_end(),
+                    expected.trim_end()
+                );
+            }
+        }
+    }
+}
