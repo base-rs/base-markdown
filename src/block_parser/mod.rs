@@ -61,6 +61,7 @@ pub(super) struct Node {
 }
 
 impl Node {
+    #[inline]
     pub fn span_end(&self, source: &str) -> usize {
         if matches!(
             self.body,
