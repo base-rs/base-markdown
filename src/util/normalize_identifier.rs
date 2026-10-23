@@ -62,7 +62,7 @@ pub fn normalize_identifier(value: &str) -> String {
         }
         // First non-whitespace we see after whitespace.
         else if in_whitespace {
-            if start != 0 {
+            if !result.is_empty() {
                 result.push(' ');
             }
 
@@ -78,4 +78,19 @@ pub fn normalize_identifier(value: &str) -> String {
     }
 
     result.to_lowercase().to_uppercase()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn labels_preserve_collapsed_spaces_and_unicode_folding() {
+        assert_eq!(super::normalize_identifier(" a\tb\r\nc "), "A B C");
+        assert_eq!(super::normalize_identifier(""), "");
+        assert_eq!(super::normalize_identifier("a  b"), "A B");
+        assert_ne!(
+            super::normalize_identifier("a b"),
+            super::normalize_identifier("ab")
+        );
+        assert_eq!(super::normalize_identifier("ẞ ϴ"), "SS Θ");
+    }
 }

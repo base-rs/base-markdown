@@ -565,3 +565,15 @@ fn source_detachment_checks_buffers_with_interior_mutability() {
     changed.set(true);
     assert!(matches!(ast.text_mut(text), Err(StreamError::InvalidRange)));
 }
+
+#[test]
+fn reference_labels_keep_significant_collapsed_spaces() {
+    let options = Options::default();
+    let source = "[a b] [ab]\n\n[a b]: /spaced\n[ab]: /compact";
+    let expected = "<p><a href=\"/spaced\">a b</a> <a href=\"/compact\">ab</a></p>\n";
+    assert_eq!(core_markdown::to_html(source), expected);
+    let ast = Document::parse(source, &options.parse).unwrap();
+    let mut output = String::new();
+    render_events(source, ast.events(), &options.compile, &mut output).unwrap();
+    assert_eq!(output, expected);
+}

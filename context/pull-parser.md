@@ -44,7 +44,7 @@ Scan ordinary byte runs before invoking syntax handlers. Use byte-class tables f
 
 The default HTML API and arena traversal share one semantic interpretation. Opt-in heading IDs are generated from normalized semantic text, so multiline code and math spans no longer contribute whitespace that has already been removed from their visible value. For example, `` `\nb `\n--- `` produces `id="b"`, where the previous mdast-based heading capture produced `id="-b-"`. The legacy mdast API remains available with its existing representation.
 
-Semantic end tags close their corresponding starts. Mixed ordered/unordered lists following unclosed fences can expose a pre-existing malformed grammar hierarchy; the shared writer balances its closing HTML tags rather than reproducing mismatched legacy closures. This does not repair every list-hierarchy issue in the underlying grammar. Failed frontmatter lookahead also restores correct line positions instead of producing orphan quote closures.
+Semantic end tags close their corresponding starts. Mixed ordered/unordered lists following unclosed fences can expose a pre-existing malformed grammar hierarchy; the shared writer balances its closing HTML tags rather than reproducing mismatched legacy closures. This does not repair every list-hierarchy issue in the underlying grammar. Failed frontmatter lookahead also restores correct line positions instead of producing orphan quote closures. Reference-label normalization now preserves a collapsed space after the first word; labels such as `a b` and `ab` no longer collide.
 
 ## Validation and performance acceptance
 
