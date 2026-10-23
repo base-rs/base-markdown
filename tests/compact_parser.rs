@@ -13,6 +13,7 @@ fn block_boundaries_preserve_source_whitespace() {
         ("- a`x\n b`", "<ul>\n<li>a<code>x  b</code></li>\n</ul>"),
         ("- - # a\n  b", "<ul>\n<li>\n<ul>\n<li>\n<h1>a</h1>\n</li>\n</ul>\nb</li>\n</ul>"),
         ("a\n ", "<p>a</p>\n"),
+        ("x\n\n> - a\r\n> 1. b", "<p>x</p>\n<blockquote>\n<ul>\n<li>a</li>\n</ul>\r\n<ol>\n<li>b</li>\n</ol>\n</blockquote>"),
         ("a\n1.     b", "<p>a</p>\n<ol>\n<li>\n<pre><code>b\n</code></pre>\n</li>\n</ol>"),
         ("a\r\n\n# b\n", "<p>a</p>\r\n<h1>b</h1>\n"),
         ("#\u{b}x", "<p>#\u{b}x</p>"),

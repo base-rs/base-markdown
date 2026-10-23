@@ -11,9 +11,9 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::{convert::TryFrom, ops::Range};
 use scanners::{
-    is_ascii_whitespace, scan_atx_heading, scan_blank_line,
-    scan_closing_code_fence, scan_code_fence, scan_eol, scan_hrule, scan_nextline,
-    scan_setext_heading, scan_whitespace_no_nl, LineStart,
+    is_ascii_whitespace, scan_atx_heading, scan_blank_line, scan_closing_code_fence,
+    scan_code_fence, scan_eol, scan_hrule, scan_nextline, scan_setext_heading,
+    scan_whitespace_no_nl, LineStart,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -201,7 +201,7 @@ impl Builder<'_> {
             self.blank = false;
         }
     }
-    fn list(&mut self, start: usize, marker: u8, number: u64) {
+    fn list(&mut self, start: usize, marker: u8, number: u64, line_start: usize) {
         self.finish_empty();
         let parent = *self.open.last().unwrap();
         if let Body::List {
@@ -218,7 +218,7 @@ impl Builder<'_> {
                 return;
             }
         }
-        self.finish_list(start);
+        self.finish_list(line_start);
         self.append(
             start,
             start,
@@ -253,7 +253,7 @@ impl Builder<'_> {
             let at = start + line.bytes_scanned();
             if let Some((marker, number, width)) = line.scan_list_marker_with_indent(indent) {
                 let content = start + line.bytes_scanned();
-                self.list(at - indent, marker, number);
+                self.list(at - indent, marker, number, start);
                 self.append(at - indent, content, Body::Item(width));
                 self.push();
                 if let Some(length) = scan_blank_line(&bytes[content..]) {
