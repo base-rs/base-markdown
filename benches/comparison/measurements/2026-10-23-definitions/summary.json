@@ -1,0 +1,451 @@
+{
+  "paired": {
+    "baseline": {
+      "readme": {
+        "median_ms": 0.0677406980083372,
+        "min_ms": 0.06720205516921651,
+        "max_ms": 0.0683646026951673,
+        "processes": 3
+      },
+      "mixed-100k": {
+        "median_ms": 0.4280507142857143,
+        "min_ms": 0.42474297752808987,
+        "max_ms": 0.42870436414565827,
+        "processes": 3
+      },
+      "mixed-1m": {
+        "median_ms": 4.290134514285714,
+        "min_ms": 4.289984944444445,
+        "max_ms": 4.329190972222222,
+        "processes": 3
+      },
+      "references": {
+        "median_ms": 1.0779063284671533,
+        "min_ms": 1.0758245797101451,
+        "max_ms": 1.0785359347826087,
+        "processes": 3
+      }
+    },
+    "candidate": {
+      "readme": {
+        "median_ms": 0.06773807584923221,
+        "min_ms": 0.06732022787712058,
+        "max_ms": 0.06808377598152425,
+        "processes": 3
+      },
+      "mixed-100k": {
+        "median_ms": 0.4342710144927536,
+        "min_ms": 0.4322044899135446,
+        "max_ms": 0.4347807464387464,
+        "processes": 3
+      },
+      "mixed-1m": {
+        "median_ms": 4.382935714285714,
+        "min_ms": 4.353935714285714,
+        "max_ms": 4.385985294117647,
+        "processes": 3
+      },
+      "references": {
+        "median_ms": 0.6315519008620689,
+        "min_ms": 0.6315144788135594,
+        "max_ms": 0.633473343220339,
+        "processes": 3
+      }
+    },
+    "inkmark": {
+      "readme": {
+        "median_ms": 0.01904940554968117,
+        "min_ms": 0.018775210085114857,
+        "max_ms": 0.019092519687069456,
+        "processes": 3
+      },
+      "mixed-100k": {
+        "median_ms": 0.4082231404908904,
+        "min_ms": 0.4063315068416246,
+        "max_ms": 0.40982172700892977,
+        "processes": 3
+      },
+      "mixed-1m": {
+        "median_ms": 4.399742857120665,
+        "min_ms": 4.377342857021307,
+        "max_ms": 4.485285713703238,
+        "processes": 3
+      },
+      "references": {
+        "median_ms": 0.8509824561684975,
+        "min_ms": 0.8496609195296106,
+        "max_ms": 0.851068181708053,
+        "processes": 3
+      }
+    }
+  },
+  "definitions": {
+    "baseline": {
+      "definitions-256": 0.4624714922600619,
+      "definitions-1024": 2.5008111166666667,
+      "definitions-4096": 19.851187499999998
+    },
+    "candidate": {
+      "definitions-256": 0.04089132060217452,
+      "definitions-1024": 0.16877422624434388,
+      "definitions-4096": 0.741236725490196
+    },
+    "inkmark": {
+      "definitions-256": 0.04281310324800103,
+      "definitions-1024": 0.1694709821354731,
+      "definitions-4096": 0.7079158878067039
+    }
+  },
+  "layout": {
+    "baseline": {
+      "median_ms": 4.310669042857143,
+      "min_ms": 4.2455595142857145,
+      "max_ms": 5.676040111111112,
+      "processes": 8
+    },
+    "candidate": {
+      "median_ms": 4.3805083605042014,
+      "min_ms": 4.347285714285715,
+      "max_ms": 4.441276970588236,
+      "processes": 8
+    }
+  },
+  "phases": {
+    "baseline": {
+      "core-events": 0.8224289388888889,
+      "core-prepare": 0.4470864447761194
+    },
+    "candidate": {
+      "core-events": 0.4531379730538922,
+      "core-prepare": 0.024161621977298896
+    }
+  },
+  "allocations": {
+    "baseline": {
+      "readme": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 386,
+        "html_total": {
+          "allocations": 246,
+          "reallocations": 91,
+          "requested_bytes": 719274
+        },
+        "prepare": {
+          "allocations": 236,
+          "reallocations": 72,
+          "requested_bytes": 673487
+        },
+        "pull_after_prepare": {
+          "allocations": 8,
+          "reallocations": 7,
+          "requested_bytes": 4675
+        }
+      },
+      "mixed-100k": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 17030,
+        "html_total": {
+          "allocations": 13,
+          "reallocations": 30,
+          "requested_bytes": 1191256
+        },
+        "prepare": {
+          "allocations": 3,
+          "reallocations": 11,
+          "requested_bytes": 663328
+        },
+        "pull_after_prepare": {
+          "allocations": 8,
+          "reallocations": 3,
+          "requested_bytes": 3456
+        }
+      },
+      "mixed-1m": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 169424,
+        "html_total": {
+          "allocations": 13,
+          "reallocations": 36,
+          "requested_bytes": 10716464
+        },
+        "prepare": {
+          "allocations": 3,
+          "reallocations": 14,
+          "requested_bytes": 6518520
+        },
+        "pull_after_prepare": {
+          "allocations": 8,
+          "reallocations": 3,
+          "requested_bytes": 3456
+        }
+      },
+      "definitions-256": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 332,
+        "html_total": {
+          "allocations": 3705,
+          "reallocations": 133,
+          "requested_bytes": 5753894
+        },
+        "prepare": {
+          "allocations": 3699,
+          "reallocations": 127,
+          "requested_bytes": 5752878
+        },
+        "pull_after_prepare": {
+          "allocations": 4,
+          "reallocations": 2,
+          "requested_bytes": 704
+        }
+      },
+      "definitions-1024": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 1292,
+        "html_total": {
+          "allocations": 14649,
+          "reallocations": 165,
+          "requested_bytes": 23003778
+        },
+        "prepare": {
+          "allocations": 14643,
+          "reallocations": 159,
+          "requested_bytes": 23002762
+        },
+        "pull_after_prepare": {
+          "allocations": 4,
+          "reallocations": 2,
+          "requested_bytes": 704
+        }
+      },
+      "definitions-4096": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 5132,
+        "html_total": {
+          "allocations": 58425,
+          "reallocations": 197,
+          "requested_bytes": 92019042
+        },
+        "prepare": {
+          "allocations": 58419,
+          "reallocations": 191,
+          "requested_bytes": 92018026
+        },
+        "pull_after_prepare": {
+          "allocations": 4,
+          "reallocations": 2,
+          "requested_bytes": 704
+        }
+      },
+      "references": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 26005,
+        "html_total": {
+          "allocations": 2068,
+          "reallocations": 148,
+          "requested_bytes": 9255470
+        },
+        "prepare": {
+          "allocations": 2062,
+          "reallocations": 119,
+          "requested_bytes": 5061190
+        },
+        "pull_after_prepare": {
+          "allocations": 4,
+          "reallocations": 13,
+          "requested_bytes": 3145648
+        }
+      }
+    },
+    "candidate": {
+      "readme": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 386,
+        "html_total": {
+          "allocations": 247,
+          "reallocations": 91,
+          "requested_bytes": 719426
+        },
+        "prepare": {
+          "allocations": 237,
+          "reallocations": 72,
+          "requested_bytes": 673639
+        },
+        "pull_after_prepare": {
+          "allocations": 8,
+          "reallocations": 7,
+          "requested_bytes": 4675
+        }
+      },
+      "mixed-100k": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 17030,
+        "html_total": {
+          "allocations": 13,
+          "reallocations": 30,
+          "requested_bytes": 1191256
+        },
+        "prepare": {
+          "allocations": 3,
+          "reallocations": 11,
+          "requested_bytes": 663328
+        },
+        "pull_after_prepare": {
+          "allocations": 8,
+          "reallocations": 3,
+          "requested_bytes": 3456
+        }
+      },
+      "mixed-1m": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 169424,
+        "html_total": {
+          "allocations": 13,
+          "reallocations": 36,
+          "requested_bytes": 10716464
+        },
+        "prepare": {
+          "allocations": 3,
+          "reallocations": 14,
+          "requested_bytes": 6518520
+        },
+        "pull_after_prepare": {
+          "allocations": 8,
+          "reallocations": 3,
+          "requested_bytes": 3456
+        }
+      },
+      "definitions-256": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 332,
+        "html_total": {
+          "allocations": 329,
+          "reallocations": 16,
+          "requested_bytes": 157974
+        },
+        "prepare": {
+          "allocations": 324,
+          "reallocations": 10,
+          "requested_bytes": 156966
+        },
+        "pull_after_prepare": {
+          "allocations": 3,
+          "reallocations": 2,
+          "requested_bytes": 696
+        }
+      },
+      "definitions-1024": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 1292,
+        "html_total": {
+          "allocations": 1289,
+          "reallocations": 18,
+          "requested_bytes": 637012
+        },
+        "prepare": {
+          "allocations": 1284,
+          "reallocations": 12,
+          "requested_bytes": 636004
+        },
+        "pull_after_prepare": {
+          "allocations": 3,
+          "reallocations": 2,
+          "requested_bytes": 696
+        }
+      },
+      "definitions-4096": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 5132,
+        "html_total": {
+          "allocations": 5129,
+          "reallocations": 20,
+          "requested_bytes": 2614900
+        },
+        "prepare": {
+          "allocations": 5124,
+          "reallocations": 14,
+          "requested_bytes": 2613892
+        },
+        "pull_after_prepare": {
+          "allocations": 3,
+          "reallocations": 2,
+          "requested_bytes": 696
+        }
+      },
+      "references": {
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "events": 26005,
+        "html_total": {
+          "allocations": 10,
+          "reallocations": 31,
+          "requested_bytes": 4404899
+        },
+        "prepare": {
+          "allocations": 5,
+          "reallocations": 2,
+          "requested_bytes": 210627
+        },
+        "pull_after_prepare": {
+          "allocations": 3,
+          "reallocations": 13,
+          "requested_bytes": 3145640
+        }
+      }
+    }
+  }
+}

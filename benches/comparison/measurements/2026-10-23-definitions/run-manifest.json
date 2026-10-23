@@ -1,0 +1,763 @@
+[
+  {
+    "file": "paired-1-baseline-references.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "paired-1-baseline-commonmark.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "bench-commonmark.json",
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "paired-1-candidate-references.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "paired-1-candidate-commonmark.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "bench-commonmark.json",
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "paired-1-inkmark-references.jsonl",
+    "source": "inkmark",
+    "mode": "inkmark",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-1-inkmark-commonmark.jsonl",
+    "source": "inkmark",
+    "mode": "inkmark",
+    "input": "bench-commonmark.json",
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "padding_length": null,
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-2-inkmark-references.jsonl",
+    "source": "inkmark",
+    "mode": "inkmark",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-2-inkmark-commonmark.jsonl",
+    "source": "inkmark",
+    "mode": "inkmark",
+    "input": "bench-commonmark.json",
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "padding_length": null,
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-2-candidate-references.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "paired-2-candidate-commonmark.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "bench-commonmark.json",
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "paired-2-baseline-references.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "paired-2-baseline-commonmark.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "bench-commonmark.json",
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "paired-3-baseline-references.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "paired-3-baseline-commonmark.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "bench-commonmark.json",
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "paired-3-candidate-references.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "paired-3-candidate-commonmark.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "bench-commonmark.json",
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "paired-3-inkmark-references.jsonl",
+    "source": "inkmark",
+    "mode": "inkmark",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-3-inkmark-commonmark.jsonl",
+    "source": "inkmark",
+    "mode": "inkmark",
+    "input": "bench-commonmark.json",
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "padding_length": null,
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": null
+  },
+  {
+    "file": "definitions-baseline.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "bench-definitions.json",
+    "input_sha256": "a810afe06b08e2c92674901b6bbfc126f9ee15652731ef5dc9780908dc537fde",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-definitions.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "definitions-candidate.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "bench-definitions.json",
+    "input_sha256": "a810afe06b08e2c92674901b6bbfc126f9ee15652731ef5dc9780908dc537fde",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-definitions.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "definitions-inkmark.jsonl",
+    "source": "inkmark",
+    "mode": "inkmark",
+    "input": "bench-definitions.json",
+    "input_sha256": "a810afe06b08e2c92674901b6bbfc126f9ee15652731ef5dc9780908dc537fde",
+    "padding_length": null,
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-definitions.json"
+    ],
+    "binary_sha256": null
+  },
+  {
+    "file": "layout-000-baseline.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 0,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "layout-000-candidate.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 0,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "layout-064-candidate.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 64,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "layout-064-baseline.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 64,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "layout-128-baseline.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 128,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "layout-128-candidate.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 128,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "layout-192-candidate.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 192,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "layout-192-baseline.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 192,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "layout-256-baseline.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 256,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "layout-256-candidate.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 256,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "layout-320-candidate.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 320,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "layout-320-baseline.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 320,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "layout-384-baseline.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 384,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "layout-384-candidate.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 384,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "layout-448-candidate.jsonl",
+    "source": "candidate",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 448,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "layout-448-baseline.jsonl",
+    "source": "baseline",
+    "mode": "core-markdown",
+    "input": "mixed-1m.json",
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "padding_length": 448,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/tmp/core-markdown-definition-measurements/mixed-1m.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "phase-baseline-core-prepare.jsonl",
+    "source": "baseline",
+    "mode": "core-prepare",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "phase-baseline-core-events.jsonl",
+    "source": "baseline",
+    "mode": "core-events",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-events",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  {
+    "file": "allocations-baseline-references.jsonl",
+    "source": "baseline",
+    "mode": "allocations",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": "df3ff7a66317aa39a8d1e7c789dc7adcd579abf252a6d70b0eeeb1c8c4ce8e56"
+  },
+  {
+    "file": "allocations-baseline-commonmark.jsonl",
+    "source": "baseline",
+    "mode": "allocations",
+    "input": "bench-commonmark.json",
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "df3ff7a66317aa39a8d1e7c789dc7adcd579abf252a6d70b0eeeb1c8c4ce8e56"
+  },
+  {
+    "file": "allocations-baseline-definitions.jsonl",
+    "source": "baseline",
+    "mode": "allocations",
+    "input": "bench-definitions.json",
+    "input_sha256": "a810afe06b08e2c92674901b6bbfc126f9ee15652731ef5dc9780908dc537fde",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-definitions.json"
+    ],
+    "binary_sha256": "df3ff7a66317aa39a8d1e7c789dc7adcd579abf252a6d70b0eeeb1c8c4ce8e56"
+  },
+  {
+    "file": "phase-candidate-core-prepare.jsonl",
+    "source": "candidate",
+    "mode": "core-prepare",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "phase-candidate-core-events.jsonl",
+    "source": "candidate",
+    "mode": "core-events",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "bench",
+      "core-events",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698"
+  },
+  {
+    "file": "allocations-candidate-references.jsonl",
+    "source": "candidate",
+    "mode": "allocations",
+    "input": "bench-references.json",
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "binary_sha256": "1bdeb038ed2d164577353c956e6883354db121f3c2cc6d547297c8a6899dedae"
+  },
+  {
+    "file": "allocations-candidate-commonmark.jsonl",
+    "source": "candidate",
+    "mode": "allocations",
+    "input": "bench-commonmark.json",
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "1bdeb038ed2d164577353c956e6883354db121f3c2cc6d547297c8a6899dedae"
+  },
+  {
+    "file": "allocations-candidate-definitions.jsonl",
+    "source": "candidate",
+    "mode": "allocations",
+    "input": "bench-definitions.json",
+    "input_sha256": "a810afe06b08e2c92674901b6bbfc126f9ee15652731ef5dc9780908dc537fde",
+    "padding_length": null,
+    "command": [
+      "/tmp/core-markdown-definition-measurements/run",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-definitions.json"
+    ],
+    "binary_sha256": "1bdeb038ed2d164577353c956e6883354db121f3c2cc6d547297c8a6899dedae"
+  }
+]

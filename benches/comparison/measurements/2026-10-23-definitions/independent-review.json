@@ -1,0 +1,26 @@
+{
+  "source": "a863c3a32c24e07fd11e0618f0cfc242f0635db6",
+  "baseline": "8463e25",
+  "cases": 36446,
+  "parity_failures": 0,
+  "definition_value_span_differences": 0,
+  "html_differences": 371,
+  "normalized_categories": {
+    "new-matches": 228,
+    "neither": 27,
+    "format-only": 116
+  },
+  "gfm": [
+    {
+      "profile": "gfm",
+      "cases": 36446,
+      "differences": 0
+    },
+    {
+      "profile": "gfm-footnotes",
+      "cases": 36446,
+      "differences": 0
+    }
+  ],
+  "case_sha256": "2d9329ff4468ed7a5ce8b3e17473f665da6a08e3cd7e82b7eeb198b2c54c27f7"
+}

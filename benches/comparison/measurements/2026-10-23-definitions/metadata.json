@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-23",
+  "baseline_commit": "8463e25128a5f1459793791bd0cd35cc3bb3068e",
+  "production_commit": "a863c3a32c24e07fd11e0618f0cfc242f0635db6",
+  "harness_commit": "363dc83e56fda10580166503a8adda5295c15399",
+  "cpu": "Apple M4 Pro",
+  "macos": "27.0.1",
+  "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)",
+  "ruby": "ruby 4.0.7 (2026-09-15 revision 229531a6cf) +PRISM [arm64-darwin25]",
+  "ruby_yjit": false,
+  "input_json_sha256": {
+    "bench-references.json": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "bench-commonmark.json": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "bench-definitions.json": "a810afe06b08e2c92674901b6bbfc126f9ee15652731ef5dc9780908dc537fde"
+  },
+  "binaries_sha256": {
+    "baseline": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720",
+    "candidate": "86eeee4c7b0bfddad27fe7d92e4f9ac809c82d1a900ce8076d3fd9926e2b7698",
+    "allocations": "1bdeb038ed2d164577353c956e6883354db121f3c2cc6d547297c8a6899dedae"
+  },
+  "coverage": {
+    "target": "aarch64-apple-darwin",
+    "all_features": true,
+    "measured_regions": 25925,
+    "covered_regions": 25925,
+    "excluded_invariant_unreachable_regions": 68
+  },
+  "method": "Seven calibrated batches after at least 200ms warmup per document. Three alternating baseline/candidate/Inkmark sequences. Rust sources copied to identical executable path and launched with identical arguments/environment. Additional mixed 1MB layout sweep varies CORE_MARKDOWN_BENCH_PADDING through eight lengths (0..448 by64), alternating source order. Builds, tests and independent review workloads finish before timing. No CPU affinity or machine-wide isolation.",
+  "run_groups": {
+    "initial-*": "Exploratory 91145bc measurements before span and continuation fixes; retained, excluded from final claims.",
+    "paired-*": "Final alternating baseline/candidate/Inkmark measurements for references and mixed fixtures.",
+    "definitions-*": "Final definition-heavy scaling measurements (one process per source/engine).",
+    "layout-*": "Final mixed1MB layout sweep.",
+    "phase-*": "Independent complete prepare/events operations, including disposal.",
+    "allocations-*": "Separate allocation-counting executable; allocations exclude input/options and count reallocations separately."
+  },
+  "notes": [
+    "Same-line definitions use compact blocks. Multiline, malformed, ambiguous continuation and continued-container tab cases retain grammar block preparation.",
+    "All benchmark core outputs preserve the baseline; reference and definition-heavy output agreement with Inkmark is recorded separately.",
+    "Reference performance does not establish an overall engine ranking: README HTML comments and GFM still select the compatibility producer.",
+    "Allocation requested bytes include growth requests, not peak or retained memory.",
+    "Final mixed 100KB and 1MB paired medians are 1.5% and 2.2% slower than baseline; the 1MB layout sweep median is 1.6% slower. No mixed-document speedup is claimed."
+  ],
+  "validation": {
+    "workspace_tests": "passed",
+    "workspace_all_targets_all_features_clippy": "passed",
+    "formatting": "passed",
+    "x86_64_unknown_linux_gnu_no_default_features": "cross-check passed",
+    "saved_output_preservation": "2117 cases across direct, checked events, and arena rendering",
+    "independent_review": "36446 cases; no panics, rendering-path mismatches, or definition value/span differences"
+  }
+}
