@@ -181,8 +181,8 @@ struct Progress {
     current: Option<u8>,
     /// Current place in the file.
     point: Point,
-    /// Start of the current line, restored after speculative multiline scans.
-    line_start: Point,
+    /// Physical start of the current line, needed when rewinding to just after EOL.
+    line_start_index: usize,
 }
 
 /// A lot of shared fields used to tokenize things.
@@ -691,7 +691,7 @@ impl<'a> Tokenizer<'a> {
             previous: self.previous,
             current: self.current,
             point: self.point.clone(),
-            line_start: self.line_start.clone(),
+            line_start_index: self.line_start.index,
             events_len: self.events.len(),
             stack_len: self.stack.len(),
         }
@@ -702,7 +702,16 @@ impl<'a> Tokenizer<'a> {
         self.previous = previous.previous;
         self.current = previous.current;
         self.point = previous.point;
-        self.line_start = previous.line_start;
+        // Only an exit immediately after EOL reads line_start. Other exits
+        // use point directly; the next EOL refreshes line_start before reuse.
+        if self.previous == Some(b'\n') {
+            self.line_start = Point {
+                line: self.point.line,
+                column: 1,
+                index: previous.line_start_index,
+                vs: 0,
+            };
+        }
         debug_assert!(
             self.events.len() >= previous.events_len,
             "expected to restore less events than before"
