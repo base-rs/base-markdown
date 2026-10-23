@@ -149,6 +149,20 @@ impl CompactParser<'_> {
                 last = self.blocks.nodes[last].next;
             }
             let last = self.blocks.nodes[last];
+            let mut leaf = last;
+            while matches!(leaf.body, Body::Quote | Body::List { .. } | Body::Item(_))
+                && leaf.child != 0
+            {
+                let mut child = leaf.child;
+                while self.blocks.nodes[child].next != 0 {
+                    child = self.blocks.nodes[child].next;
+                }
+                leaf = self.blocks.nodes[child];
+            }
+            let populated = matches!(
+                leaf.body,
+                Body::Paragraph(_) | Body::Heading(_) | Body::Rule | Body::Code(_)
+            );
             if !self.final_separator
                 && !self.suppress_final_separator
                 && self.blocks.nodes[0].child != 0
@@ -156,26 +170,24 @@ impl CompactParser<'_> {
                     || (matches!(
                         last.body,
                         Body::Paragraph(_) | Body::Heading(_) | Body::Rule
-                    ) || last.body == Body::Quote && last.child != 0)
-                        && self.source[..last.end]
+                    ) || last.body == Body::Quote && populated)
+                        && self.source[..leaf.end]
                             .trim_end_matches([' ', '\t'])
                             .ends_with(['\r', '\n']))
             {
                 self.final_separator = true;
-                // Container closures use the document's line ending; leaves retain the ending of their own semantic source line.
-                return Some(Ok(
-                    if matches!(last.body, Body::Quote | Body::List { .. }) {
-                        Event {
-                            kind: EventKind::Separator {
-                                value: Text::Literal(""),
-                                conditional: true,
-                            },
-                            span: last.end..last.end,
-                        }
-                    } else {
-                        self.separator(last.end)
-                    },
-                ));
+                // Populated containers retain their final semantic line ending. Empty containers have no content ending and use the document style.
+                return Some(Ok(if !populated {
+                    Event {
+                        kind: EventKind::Separator {
+                            value: Text::Literal(""),
+                            conditional: true,
+                        },
+                        span: last.end..last.end,
+                    }
+                } else {
+                    self.separator(leaf.end)
+                }));
             }
             self.ended = true;
             return Some(Ok(Event {
