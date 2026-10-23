@@ -626,9 +626,12 @@ impl Builder<'_> {
             let continued = self.containers(&mut line) == self.open.len();
             let content = next + line.bytes_scanned();
             let closed = kind.closed(&bytes[at..next]);
-            if !continued && next < bytes.len() && !closed && !kind.blank_terminated() {
-                // Unclosed HTML interrupted by another container can own its terminal
-                // line ending. The grammar distinguishes flow interruption from lazy text.
+            if !closed
+                && !kind.blank_terminated()
+                && ((!continued && next < bytes.len()) || (at == start && next == bytes.len()))
+            {
+                // Unclosed HTML has context-sensitive terminal line ownership when
+                // interrupted by containers, or when its opening line ends at EOF.
                 self.unsupported = true;
                 return bytes.len();
             }

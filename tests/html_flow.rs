@@ -1378,6 +1378,8 @@ fn compact_html_preserves_values_spans_and_rendering_paths() {
             for source in [
                 format!("{block}{ending}"),
                 format!("before\n{block}{ending}"),
+                format!("> before\n{block}{ending}"),
+                format!("- before\n{block}{ending}"),
                 format!("{block}\n\nafter{ending}"),
                 format!("> {}{ending}", block.replace('\n', "\n> ")),
                 format!("- {}{ending}", block.replace('\n', "\n  ")),
