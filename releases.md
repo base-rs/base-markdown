@@ -10,6 +10,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 - Prepare ordinary CommonMark blocks directly in a compact source-backed arena, deferring inline work until consumption. Correct sibling lists after unclosed fences, container indentation tabs, and empty unclosed code bodies on this path. Definitions, raw HTML blocks, and extension configurations still use the compatibility producer.
 
+- Resolve ordinary inline syntax in reusable compact storage with indexed code delimiters, bounded emphasis searches, and source-backed link metadata. Correct emphasis adjacent to escaped delimiter characters.
+
 - Improve Markdown parsing throughput and large-document scaling by indexing and batching event edits, scanning ordinary byte runs, compacting internal events and states, and reusing tokenizer buffers. Retain extension support and ordinary HTML output, with the corrections described above.
 
 ## v0.1.0

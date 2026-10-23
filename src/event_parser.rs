@@ -29,6 +29,9 @@ impl<'a> EventParser<'a> {
                 blocks,
                 source,
                 inline: GrammarParser::empty(source, options),
+                compact_inline: crate::inline_parser::InlineParser::default(),
+                direct_inline: false,
+                options,
                 cursor: 0,
                 closing: false,
                 inlines: false,
@@ -58,6 +61,9 @@ struct CompactParser<'a> {
     blocks: Blocks,
     source: &'a str,
     inline: GrammarParser<'a>,
+    compact_inline: crate::inline_parser::InlineParser,
+    direct_inline: bool,
+    options: &'a ParseOptions,
     cursor: usize,
     closing: bool,
     inlines: bool,
@@ -119,7 +125,11 @@ impl CompactParser<'_> {
             return Some(Ok(self.separator(end)));
         }
         if self.inlines {
-            if let Some(event) = self.inline.next() {
+            if let Some(event) = if self.direct_inline {
+                self.compact_inline.next(self.source).map(Ok)
+            } else {
+                self.inline.next()
+            } {
                 return Some(event);
             }
             self.inlines = false;
@@ -230,7 +240,11 @@ impl CompactParser<'_> {
                         }
                     })
                 };
-                self.inline.region(fragments());
+                self.direct_inline = !self.options.inline_code_info
+                    && self.compact_inline.prepare(self.source, fragments());
+                if !self.direct_inline {
+                    self.inline.region(fragments());
+                }
                 self.inlines = true;
                 match node.body {
                     Body::Heading(level) => EventKind::Start(Tag::Heading(level)),

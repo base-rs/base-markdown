@@ -32,6 +32,92 @@ fn block_boundaries_preserve_source_whitespace() {
 }
 
 #[test]
+fn compact_inline_resolution_keeps_escaped_markers_and_unmatched_code() {
+    for (source, expected) in [
+        ("\\**x**", "<p>*<em>x</em>*</p>"),
+        ("a &](b &amp;)", "<p>a &amp;](b &amp;)</p>"),
+        ("a `b``c```d``e`", "<p>a <code>b``c```d``e</code></p>"),
+        ("a `x\n y`", "<p>a <code>x  y</code></p>"),
+        ("a ``x`y", "<p>a ``x`y</p>"),
+    ] {
+        assert_eq!(to_html(source), expected, "{source:?}");
+    }
+}
+
+#[test]
+fn compact_resources_and_fallback_regions_agree_with_legacy_rendering() {
+    use core_markdown::{to_mdast, HtmlRenderer, ParseOptions};
+    for source in [
+        "a [x]( b)",
+        "a [x](<b>)",
+        "a [x](<b\\>c>)",
+        "a [x](<b\\ c>)",
+        "a [x](<b<c>)",
+        "a [x](<b",
+        "a [x](b\\(c)",
+        "a [x](b\\ c)",
+        "a [x](b(c))",
+        "a [x](b(c)",
+        "a [x](b\u{7f})",
+        "a [x](b\u{1})",
+        "a [x](b 'title')",
+        "a [x](b (title))",
+        "a [x](b (bad(title)))",
+        "a [x](b \"ti\\\"tle\")",
+        "a [x](b \"ti\\ tle\")",
+        "a [x](b \"title\"  )",
+        "a [x](b \"title\" x)",
+        "a [x](b \"title",
+        "a [x](b \"title\ntitle\")",
+        "a [x](<b\nc>)",
+        "a [x](b\n\"title\")",
+        "a [x](b ",
+        "a &copy; &invalid; &#9999999; &#X41; &#xZZ; &#; &;",
+        "a \\*b*",
+        "a `b``c",
+        "a **b _c_** d*",
+        "a [b [c](d)](e)",
+        "a [![b](c)](d)",
+        "a [x](b)",
+        "a\n    \nb",
+        "a\n\t\nb",
+        "-\n\n-",
+        "*\n\n a",
+        "a\n3",
+        "```&#x61;\nb\n```",
+        "```&#97;\nb\n```",
+        "```&bad;\nb\n```",
+        "```a\\-b\nb\n```",
+    ] {
+        let expected = to_mdast(source, &ParseOptions::default())
+            .unwrap()
+            .render_with(&mut HtmlRenderer::default());
+        assert_eq!(to_html(source), expected, "{source:?}");
+    }
+    let deep_destination = format!("a [x]({}x{})", "(".repeat(34), ")".repeat(34));
+    let expected = to_mdast(&deep_destination, &ParseOptions::default())
+        .unwrap()
+        .render_with(&mut HtmlRenderer::default());
+    assert_eq!(to_html(&deep_destination), expected);
+    let options = Options {
+        parse: ParseOptions {
+            inline_code_info: true,
+            ..ParseOptions::default()
+        },
+        ..Options::default()
+    };
+    for source in ["#", "\t<x>", "a\n\t<b>"] {
+        let expected = to_mdast(source, &options.parse)
+            .unwrap()
+            .render_with(&mut HtmlRenderer::default());
+        assert_eq!(
+            core_markdown::to_html_with_options(source, &options).unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
 fn semantic_endings_ignore_trailing_blanks_and_container_prefixes() {
     for (source, expected) in [
         ("a\r\r\n", "<p>a</p>\r"),

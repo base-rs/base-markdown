@@ -53,6 +53,7 @@ mod event;
 mod event_html_renderer;
 mod event_parser;
 mod grammar_parser;
+mod inline_parser;
 pub mod markdown;
 mod parser;
 pub mod renderer;
