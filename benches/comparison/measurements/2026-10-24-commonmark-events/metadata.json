@@ -1,0 +1,56 @@
+{
+  "timestamp_utc": "2026-10-23T12:38:03.813478+00:00",
+  "candidate_head": "8d384208abbdf77acba6f445496d16214169d04b",
+  "baseline_head": "dc4f5ee536ce4b718f87c862debca52daa3f44b3",
+  "binary_sha256": {
+    "baseline": "e8f2383c43fcc3e19aa522e3f71ce4a4c8bedbc323ed9c9d897d8e6c96e5213a",
+    "candidate": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  "machine": "Apple M4 Pro",
+  "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)",
+  "ruby": "ruby 4.0.7 (2026-09-15 revision 229531a6cf) +PRISM [arm64-darwin25]",
+  "inkmark": "0.2.1",
+  "inputs": {
+    "readme": {
+      "bytes": 9019,
+      "sha256": "e9fcb242b7ba8f45fd18b1a97b7e021755babea8825d6f3cb86bb6f89dcd2e14"
+    },
+    "mixed-100k": {
+      "bytes": 100252,
+      "sha256": "a9b31b8c20db1c4469a87e788ae77c98155cb4371738d291826abc94cfb12021"
+    },
+    "mixed-1m": {
+      "bytes": 1000020,
+      "sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356"
+    },
+    "gfm-100k": {
+      "bytes": 100130,
+      "sha256": "6c7091f969014c4396cbb98e6c3358d3d6d2c64e4dd6b7f35af273c15cb11c5d"
+    },
+    "references": {
+      "bytes": 80025,
+      "sha256": "f5d995fc94efcc42927c9274759866fc60699865dd9cd1504b3f0e9380edc4cf"
+    },
+    "definitions-256": {
+      "bytes": 8753,
+      "sha256": "5018cdfdf81690b0503e58ab5c2a47800c7d15d4e1f7b9f4887b14d0d5044ba9"
+    },
+    "definitions-1024": {
+      "bytes": 36096,
+      "sha256": "e0e0786ff62f122cf27bb30ea84f658c365c8c599f29b481827c874114c42ecf"
+    },
+    "definitions-4096": {
+      "bytes": 155136,
+      "sha256": "589b9c546dd20166efc74b1b199ad2866e619eb61e57b435302c4a3ddfea9a65"
+    },
+    "long-lines-1m": {
+      "bytes": 1026456,
+      "sha256": "4edbe39e17d6254bc1d33654c36e1e3c0473c10c08817cce6d1fd2f24f79b261"
+    },
+    "code-1m": {
+      "bytes": 1041008,
+      "sha256": "9614745b8b4188bcf96a751410cd0f9b3841f0adc3bdfde4f0685849e80d6e2e"
+    }
+  },
+  "method": "Three alternating baseline/candidate/Inkmark runs of original four workloads, references, and scanner regressions. Same launch path and environment for Rust revisions, seven calibrated samples per process, 200ms warmup. Definitions are single-process regression observations. Public phases also use three alternating pairs. Sequential with no concurrent project builds/tests/review workloads; no machine-wide isolation. GFM HTML differs between engines; see output agreement. Small mixed-workload differences remain process-layout sensitive."
+}

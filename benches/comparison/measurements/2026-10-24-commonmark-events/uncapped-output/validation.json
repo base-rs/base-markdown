@@ -1,0 +1,26 @@
+{
+  "source_commit": "257bf14d21e7738cea8463b1dc8576630da9ce14",
+  "format": "passed",
+  "clippy_workspace_all_targets_all_features": "passed",
+  "workspace_tests": "passed",
+  "coverage": {
+    "target": "aarch64-apple-darwin",
+    "features": "all",
+    "all_targets": true,
+    "covered_regions": 26908,
+    "measured_regions": 26908,
+    "excluded_invariant_unreachable_regions": 68
+  },
+  "portable_library_check": {
+    "target": "x86_64-unknown-linux-gnu",
+    "result": "passed with rustup stable; the system compiler lacks this target"
+  },
+  "saved_outputs": 2117,
+  "rendering_paths": [
+    "direct",
+    "checked events",
+    "arena"
+  ],
+  "independent_source_review": "approved; see independent-review.json",
+  "note": "No new architecture-specific implementation; CI checks the Linux target separately."
+}

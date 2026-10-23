@@ -1,0 +1,1 @@
+{"bytes":1000020,"document":"mixed-1m","iterations_per_sample":50,"median_seconds":0.0030914725,"mib_per_second":308.4916297630266,"parser":"core-events","profile":"commonmark","samples_seconds":[0.0030622575000000003,0.00307001166,0.00307633916,0.0030914725,0.0030931083399999997,0.0030941408199999998,0.0031003775]}
