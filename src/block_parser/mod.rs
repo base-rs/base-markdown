@@ -289,7 +289,7 @@ impl Builder<'_> {
             return self.indented(at, line.remaining_space());
         }
         // References and raw HTML retain their existing grammar until their metadata is recorded directly.
-        if matches!(bytes.get(at), Some(b'[' | b'<')) {
+        if bytes[at] == b'<' || bytes[at] == b'[' && possible_definition(&bytes[at..]) {
             self.unsupported = true;
             return bytes.len();
         }
@@ -496,4 +496,21 @@ impl Builder<'_> {
         self.pop(end);
         at
     }
+}
+
+/// Reject obvious inline brackets without scanning beyond the first physical line.
+/// Multiline labels conservatively use the grammar producer, which understands container prefixes and the label length limit.
+fn possible_definition(bytes: &[u8]) -> bool {
+    let mut at = 1;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'\\' if bytes.get(at + 1).is_some_and(u8::is_ascii_punctuation) => at += 1,
+            b'[' => return false,
+            b']' => return bytes.get(at + 1) == Some(&b':'),
+            b'\r' | b'\n' => return true,
+            _ => {}
+        }
+        at += 1;
+    }
+    false
 }

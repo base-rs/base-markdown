@@ -226,3 +226,31 @@ fn legacy_ast_preserves_empty_container_structure() {
     assert_eq!(children[0].text_content(), "");
     assert_eq!(children[1].text_content(), "a");
 }
+
+#[test]
+fn leading_brackets_distinguish_links_from_possible_definitions() {
+    use core_markdown::{to_mdast, HtmlRenderer, ParseOptions};
+    for source in [
+        "[text](url)",
+        "[**strong**](url)",
+        "[unclosed",
+        "[unfinished\\",
+        "[nested [label]](url)",
+        "[escaped\\]label]: /url\n\n[escaped\\]label]",
+        "[escaped\\[label]: /url\n\n[escaped\\[label]",
+        "[multi\nline]: /url\n\n[multi line]",
+        "> [multi\n> line]: /url\n>\n> [multi line]",
+        "[label] : /url",
+        "[label]: /url\n\n[label]",
+    ] {
+        let expected = to_mdast(source, &ParseOptions::default())
+            .unwrap()
+            .render_with(&mut HtmlRenderer::default());
+        assert_eq!(to_html(source), expected, "{source:?}");
+        let options = Options::default();
+        let document = Document::parse(source, &options.parse).unwrap();
+        let mut arena = String::new();
+        render_events(source, document.events(), &options.compile, &mut arena).unwrap();
+        assert_eq!(arena, expected, "arena: {source:?}");
+    }
+}
