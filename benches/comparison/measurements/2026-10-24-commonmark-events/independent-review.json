@@ -1,0 +1,119 @@
+{
+  "reviewed_commit": "8d384208abbdf77acba6f445496d16214169d04b",
+  "baseline_commit": "dc4f5ee536ce4b718f87c862debca52daa3f44b3",
+  "status": "approved production source",
+  "scope": [
+    "Replace fixed autolink-prefix string pointers with a private enum.",
+    "Inline block-node closing-span calculation and reuse its pure result.",
+    "Reserve min(input length, 4096 bytes) for the convenience HTML output String."
+  ],
+  "source_assessment": [
+    "Every accepted literal-autolink branch maps to the identical previous destination prefix; source-backed HTTP(S) destinations remain source-backed.",
+    "The span calculation reads immutable source and copied node data; computing it once preserves both bounds and position.",
+    "Capping the initial reservation changes allocation behavior without altering rendering or error types. The min operation cannot overflow; empty input reserves zero."
+  ],
+  "verification": {
+    "sources": 9523,
+    "combinations": 28569,
+    "input_sha256": "51a6a9c5b5b4d196e4b7748488e9aae0b043a761c11954376d0a203b1510b076",
+    "baseline_identical_driver_output": true,
+    "rendering_path_disagreements": 0,
+    "metadata_disagreements": 0,
+    "panics": 0
+  },
+  "verification_provenance": {
+    "candidate": "Freshly built comparison release rlib at exact reviewed source; temporary public-API review driver.",
+    "baseline": "Previously reviewed driver at 5a096de7da9ace6da062a391c225e1653f485c87; verified src and Cargo.toml are byte-identical to merged baseline dc4f5ee.",
+    "cases": "9,523 generated literal-link and table/container cases reused from prior adversarial corpus.",
+    "modes": [
+      "GFM single-tilde enabled",
+      "GFM single-tilde disabled",
+      "CommonMark"
+    ],
+    "checks": [
+      "Direct HTML versus checked event renderer and arena renderer.",
+      "Selected HTML/table/task/strike/link metadata and source spans versus forced grammar.",
+      "Complete driver output byte-identical to baseline across all cases/modes."
+    ]
+  },
+  "capacity_observations": [
+    {
+      "input": "empty",
+      "source_bytes": 0,
+      "output_bytes": 0,
+      "retained_capacity_bytes": 0
+    },
+    {
+      "input": "whitespace",
+      "source_bytes": 1048576,
+      "output_bytes": 0,
+      "retained_capacity_bytes": 4096
+    },
+    {
+      "input": "definitions",
+      "source_bytes": 131072,
+      "output_bytes": 0,
+      "retained_capacity_bytes": 4096
+    },
+    {
+      "input": "frontmatter",
+      "source_bytes": 1048585,
+      "output_bytes": 0,
+      "retained_capacity_bytes": 4096
+    },
+    {
+      "input": "prose",
+      "source_bytes": 1048576,
+      "output_bytes": 1048583,
+      "retained_capacity_bytes": 2097158
+    }
+  ],
+  "tradeoff": "Initial output reservation is bounded by 4096 bytes, including whitespace-only, definition-only, hidden frontmatter, and parse-error inputs. Small or empty returned outputs may retain that initial capacity; visible output can still grow beyond it. The cap bounds only initial reservation, not final String capacity.",
+  "unresolved_findings": [],
+  "followup": "Focused final documentation/evidence review remains required before opening the PR.",
+  "previous_revision_review": {
+    "reviewed_commit": "257bf14d21e7738cea8463b1dc8576630da9ce14",
+    "verification": {
+      "sources": 9523,
+      "combinations": 28569,
+      "input_sha256": "51a6a9c5b5b4d196e4b7748488e9aae0b043a761c11954376d0a203b1510b076",
+      "baseline_identical_driver_output": true,
+      "rendering_path_disagreements": 0,
+      "metadata_disagreements": 0,
+      "panics": 0
+    },
+    "capacity_observations": [
+      {
+        "input": "empty",
+        "source_bytes": 0,
+        "output_bytes": 0,
+        "retained_capacity_bytes": 0
+      },
+      {
+        "input": "whitespace",
+        "source_bytes": 1048576,
+        "output_bytes": 0,
+        "retained_capacity_bytes": 1048576
+      },
+      {
+        "input": "definitions",
+        "source_bytes": 131072,
+        "output_bytes": 0,
+        "retained_capacity_bytes": 131072
+      },
+      {
+        "input": "frontmatter",
+        "source_bytes": 1048585,
+        "output_bytes": 0,
+        "retained_capacity_bytes": 1048585
+      },
+      {
+        "input": "prose",
+        "source_bytes": 1048576,
+        "output_bytes": 1048583,
+        "retained_capacity_bytes": 2097152
+      }
+    ],
+    "status": "Superseded: full input reservation rejected after long-prose performance regression."
+  }
+}

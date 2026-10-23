@@ -1,0 +1,127 @@
+diff --git a/src/block_parser/mod.rs b/src/block_parser/mod.rs
+index 4bebb68..502e207 100644
+--- a/src/block_parser/mod.rs
++++ b/src/block_parser/mod.rs
+@@ -61,6 +61,7 @@ pub(super) struct Node {
+ }
+ 
+ impl Node {
++    #[inline]
+     pub fn span_end(&self, source: &str) -> usize {
+         if matches!(
+             self.body,
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index 029b2b6..5b664ea 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -257,9 +257,10 @@ impl CompactParser<'_> {
+                 self.separator = Some(node.end);
+             }
+             self.advance();
++            let end = node.span_end(self.source);
+             return Some(Ok(Event {
+                 kind: EventKind::End(tag),
+-                span: node.span_end(self.source)..node.span_end(self.source),
++                span: end..end,
+             }));
+         }
+         let kind = match node.body {
+diff --git a/src/inline_parser.rs b/src/inline_parser.rs
+index cd2d1da..50fd383 100644
+--- a/src/inline_parser.rs
++++ b/src/inline_parser.rs
+@@ -26,6 +26,23 @@ pub(crate) fn supported_options(options: &crate::ParseOptions) -> bool {
+     common == crate::Constructs::default()
+ }
+ 
++// Keep fixed prefixes compact: a fat string pointer would enlarge every inline record.
++#[derive(Clone, Copy)]
++enum AutolinkPrefix {
++    None,
++    Http,
++    Mailto,
++}
++impl AutolinkPrefix {
++    fn as_str(self) -> &'static str {
++        match self {
++            Self::None => "",
++            Self::Http => "http://",
++            Self::Mailto => "mailto:",
++        }
++    }
++}
++
+ #[derive(Clone, Copy)]
+ enum Kind {
+     Text,
+@@ -34,7 +51,7 @@ enum Kind {
+     SoftBreak,
+     HardBreak,
+     Task(bool),
+-    Autolink(&'static str),
++    Autolink(AutolinkPrefix),
+     Start(TagKind, usize),
+     Reference(TagKind, usize),
+     End(TagKind),
+@@ -550,14 +567,17 @@ impl InlineParser {
+                 Kind::SoftBreak => EventKind::SoftBreak(Text::Source(node.start..node.end)),
+                 Kind::HardBreak => EventKind::HardBreak,
+                 Kind::Task(checked) => EventKind::TaskMarker(checked),
+-                Kind::Autolink(prefix) => EventKind::Start(Tag::Link {
+-                    destination: if prefix.is_empty() {
+-                        Text::Source(node.start..node.end)
+-                    } else {
+-                        Text::from(alloc::format!("{prefix}{}", &source[node.start..node.end]))
+-                    },
+-                    title: None,
+-                }),
++                Kind::Autolink(prefix) => {
++                    let prefix = prefix.as_str();
++                    EventKind::Start(Tag::Link {
++                        destination: if prefix.is_empty() {
++                            Text::Source(node.start..node.end)
++                        } else {
++                            Text::from(alloc::format!("{prefix}{}", &source[node.start..node.end]))
++                        },
++                        title: None,
++                    })
++                }
+                 Kind::Code(count) => {
+                     let mut range = node.start + count..node.end - count;
+                     let value = &source[range.clone()];
+@@ -733,7 +753,7 @@ fn simple_autolink(
+     text_start: usize,
+     at: usize,
+     limit: usize,
+-) -> Option<(usize, usize, &'static str)> {
++) -> Option<(usize, usize, AutolinkPrefix)> {
+     let mut start = at;
+     while start > text_start && bytes[start - 1].is_ascii_alphanumeric() {
+         start -= 1;
+@@ -746,10 +766,10 @@ fn simple_autolink(
+             || bytes[start..at].eq_ignore_ascii_case(b"https"))
+             && bytes.get(at + 1..at + 3) == Some(b"//") =>
+         {
+-            (at + 3, "")
++            (at + 3, AutolinkPrefix::None)
+         }
+-        b'@' if start < at => (at + 1, "mailto:"),
+-        b'.' if bytes[start..at].eq_ignore_ascii_case(b"www") => (start, "http://"),
++        b'@' if start < at => (at + 1, AutolinkPrefix::Mailto),
++        b'.' if bytes[start..at].eq_ignore_ascii_case(b"www") => (start, AutolinkPrefix::Http),
+         _ => return None,
+     };
+     let mut end = domain;
+diff --git a/src/lib.rs b/src/lib.rs
+index 106197b..774ac6d 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -155,7 +155,7 @@ pub fn to_html(value: &str) -> String {
+ /// # }
+ /// ```
+ pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, message::Message> {
+-    let mut output = String::new();
++    let mut output = String::with_capacity(value.len());
+     let result = EventHtmlRenderer::new(value, &options.compile, &mut output)
+         .render_markdown(&options.parse);
+     match result {

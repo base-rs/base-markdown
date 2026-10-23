@@ -1,0 +1,18 @@
+{
+  "before": "dc4f5ee",
+  "after": "5d8b1cc",
+  "architecture": "aarch64-apple-darwin",
+  "command": "RUSTC_BOOTSTRAP=1 cargo rustc --lib --release -- -Zprint-type-sizes",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)",
+  "bytes": {
+    "before": {
+      "inline_parser::Kind": 24,
+      "inline_parser::Node": 56
+    },
+    "after": {
+      "inline_parser::Kind": 16,
+      "inline_parser::Node": 48
+    }
+  },
+  "note": "Compiler observations of private types, not a stable ABI guarantee. The complete parser and public event representation have other storage."
+}

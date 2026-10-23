@@ -47,6 +47,26 @@ The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,
 
 **GFM is not an equal-output throughput comparison:** Inkmark leaves `www.example.com` unlinked in this workload even with autolinking enabled. Its table alignment attributes and empty table bodies also differ. Comrak and Commonmarker do not expose the same independent GFM tag filter as the other adapters. Read GFM timings alongside the output agreement results.
 
+## Event delivery and buffer follow-up
+
+This follow-up compares merged main `dc4f5ee` with production source `8d38420`. Literal-link prefix tags reduce private inline records from 56 to 48 bytes on this compiler. Closing spans are computed once with inlined lookup, and direct HTML starts with a reservation capped at 4 KiB. The public event contract is unchanged.
+
+The values below are milliseconds, using three alternating main/candidate/Inkmark process runs on Apple M4 Pro. Both Rust revisions use the same launch path, arguments, and environment. Builds, tests, and independent review finished before timing. [All samples, hashes, allocations, output checks, rejected experiments, and review evidence](measurements/2026-10-24-commonmark-events/readme.md) are retained.
+
+| Workload | Merged main | Candidate | Inkmark 0.2.1 |
+| --- | ---: | ---: | ---: |
+| README 9 KB | 0.0155 | 0.0149 | 0.0186 |
+| Mixed 100 KB | 0.4401 | 0.4371 | 0.4048 |
+| Mixed 1 MB | 4.4920 | 4.4437 | 4.2797 |
+| GFM 100 KB | 0.6578 | 0.6512 | 0.6998 |
+| References | 0.6465 | 0.6488 | 0.8430 |
+
+HTML improvements are modest: README takes 4.0% less time, mixed 100 KB 0.7%, and mixed 1 MB 1.1%. References change by +0.4%, long prose by -0.5%, and code by +0.1%; these small changes are effectively neutral. Mixed 100 KB and 1 MB remain 8.0% and 3.8% slower than Inkmark. The overall-fastest target is not met.
+
+Preparing and draining the public event iterator falls from 3.785 to 3.528 ms on mixed 1 MB (6.8% less time), and from 0.559 to 0.511 ms on GFM (8.4% less time). These modes include preparation and event disposal but no rendering; they are separate compiled loops and must not be subtracted from HTML timings to infer renderer cost.
+
+A full-source output reservation regressed long prose by about 9% in repeated isolation checks and was replaced with the 4 KiB cap. The final three-round scanner comparison is effectively neutral. The cap limits initial speculative reservation, not final output capacity. Documents rendering to no HTML can still retain up to 4 KiB. All 2,117 saved outputs remain identical across direct, checked-event, and arena rendering. The existing GFM output differences from Inkmark remain; its timing lead is not an equal-output ranking.
+
 ## Compact HTML and GFM follow-up
 
 The biggest remaining costs were compatibility fallbacks. Two HTML comments forced the entire saved README onto grammar block preparation. GFM options forced both block preparation and ordinary inline regions through grammar tokens, even when the text itself used only CommonMark syntax. The initial GFM diagnostic spent 2.89 ms preparing blocks and made 28,525 allocation calls per HTML conversion. Removing the README comments as a diagnostic reduced conversion from 0.065 to 0.015 ms; the comment text itself was not the expensive part.
