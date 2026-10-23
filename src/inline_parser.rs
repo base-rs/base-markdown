@@ -26,6 +26,23 @@ pub(crate) fn supported_options(options: &crate::ParseOptions) -> bool {
     common == crate::Constructs::default()
 }
 
+// Keep fixed prefixes compact: a fat string pointer would enlarge every inline record.
+#[derive(Clone, Copy)]
+enum AutolinkPrefix {
+    None,
+    Http,
+    Mailto,
+}
+impl AutolinkPrefix {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "",
+            Self::Http => "http://",
+            Self::Mailto => "mailto:",
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Kind {
     Text,
@@ -34,7 +51,7 @@ enum Kind {
     SoftBreak,
     HardBreak,
     Task(bool),
-    Autolink(&'static str),
+    Autolink(AutolinkPrefix),
     Start(TagKind, usize),
     Reference(TagKind, usize),
     End(TagKind),
@@ -550,14 +567,17 @@ impl InlineParser {
                 Kind::SoftBreak => EventKind::SoftBreak(Text::Source(node.start..node.end)),
                 Kind::HardBreak => EventKind::HardBreak,
                 Kind::Task(checked) => EventKind::TaskMarker(checked),
-                Kind::Autolink(prefix) => EventKind::Start(Tag::Link {
-                    destination: if prefix.is_empty() {
-                        Text::Source(node.start..node.end)
-                    } else {
-                        Text::from(alloc::format!("{prefix}{}", &source[node.start..node.end]))
-                    },
-                    title: None,
-                }),
+                Kind::Autolink(prefix) => {
+                    let prefix = prefix.as_str();
+                    EventKind::Start(Tag::Link {
+                        destination: if prefix.is_empty() {
+                            Text::Source(node.start..node.end)
+                        } else {
+                            Text::from(alloc::format!("{prefix}{}", &source[node.start..node.end]))
+                        },
+                        title: None,
+                    })
+                }
                 Kind::Code(count) => {
                     let mut range = node.start + count..node.end - count;
                     let value = &source[range.clone()];
@@ -733,7 +753,7 @@ fn simple_autolink(
     text_start: usize,
     at: usize,
     limit: usize,
-) -> Option<(usize, usize, &'static str)> {
+) -> Option<(usize, usize, AutolinkPrefix)> {
     let mut start = at;
     while start > text_start && bytes[start - 1].is_ascii_alphanumeric() {
         start -= 1;
@@ -746,10 +766,10 @@ fn simple_autolink(
             || bytes[start..at].eq_ignore_ascii_case(b"https"))
             && bytes.get(at + 1..at + 3) == Some(b"//") =>
         {
-            (at + 3, "")
+            (at + 3, AutolinkPrefix::None)
         }
-        b'@' if start < at => (at + 1, "mailto:"),
-        b'.' if bytes[start..at].eq_ignore_ascii_case(b"www") => (start, "http://"),
+        b'@' if start < at => (at + 1, AutolinkPrefix::Mailto),
+        b'.' if bytes[start..at].eq_ignore_ascii_case(b"www") => (start, AutolinkPrefix::Http),
         _ => return None,
     };
     let mut end = domain;
