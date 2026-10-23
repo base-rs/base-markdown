@@ -58,6 +58,15 @@ save("bench-references", [{
     "name": "references",
     "markdown": "[Alpha][Key] and [Beta][Key] and [Key].\n" * 2000 + '\n[Key]: /example "title"\n',
 }])
+save("bench-definitions", [
+    {
+        "name": f"definitions-{count}",
+        "markdown": f"[label-0] [label-{count - 1}]\n\n"
+        + "".join(f'[label-{index}]: /{index} "title {index}"\n' for index in reversed(range(count)))
+        + "".join(f"[LABEL-{index}]: /ignored\n" for index in range(0, count, 4)),
+    }
+    for count in [256, 1024, 4096]
+])
 save("bench-linked-attention", [{
     "name": "linked-attention",
     "markdown": "[**strong** and *emphasis* and _other_](/link)\n\n" * 2000,
