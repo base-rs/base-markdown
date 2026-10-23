@@ -113,7 +113,9 @@ impl InlineParser {
     }
     fn attention<const GFM: bool>(&mut self, bottom: usize) {
         // A successful match truncates the active opener stack. Failed searches advance bounds for the marker and modulo-three class, following pulldown-cmark's InlineStack technique.
-        let mut lower = [[0; 6]; 3];
+        let mut bounds = [[0; 6]; 3];
+        // The CommonMark specialization never searches strikethrough openers.
+        let lower = &mut bounds[..if GFM { 3 } else { 2 }];
         self.attention_stack.clear();
         for close in bottom..self.delimiters.len() {
             let closer = self.delimiters[close].node;
