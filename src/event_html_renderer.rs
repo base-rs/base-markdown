@@ -193,7 +193,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     });
                 } else {
                     self.write("<h")?;
-                    self.write(&level.to_string())?;
+                    self.write(["", "1", "2", "3", "4", "5", "6"][usize::from(level)])?;
                     self.write(">")?;
                 }
             }
@@ -379,14 +379,14 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         .unwrap_or(&heading.text);
                     let anchor = self.anchors.anchor_for(text);
                     self.write("<h")?;
-                    self.write(&frame.level.to_string())?;
+                    self.write(["", "1", "2", "3", "4", "5", "6"][usize::from(frame.level)])?;
                     self.write(" id=\"")?;
                     self.escaped(&anchor, true)?;
                     self.write("\">")?;
                     self.write(&heading.output)?;
                 }
                 self.write("</h")?;
-                self.write(&frame.level.to_string())?;
+                self.write(["", "1", "2", "3", "4", "5", "6"][usize::from(frame.level)])?;
                 self.write(">")?;
             }
             TagKind::BlockQuote => {
