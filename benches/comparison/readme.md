@@ -44,20 +44,20 @@ Times are **milliseconds per conversion; lower is faster**.
 
 | Engine | README 9 KB | Mixed 100 KB | Mixed 1 MB | GFM 100 KB |
 | --- | ---: | ---: | ---: | ---: |
-| core-markdown (baseline) | 0.340 | 13.026 | 534.583 | 21.715 |
-| core-markdown (optimized, paired) | 0.143 | 4.064 | 47.982 | 6.774 |
-| core-markdown (optimized) | 0.145 | 4.194 | 45.730 | 6.402 |
-| markdown-rs 1.0.0 | 0.368 | 13.618 | 545.964 | 22.944 |
-| Comrak 0.57.0 | 0.030 | 0.899 | 8.908 | 1.331 |
-| Markly 0.19.0 | 0.042 | 1.077 | 11.712 | 1.571 |
-| Commonmarker 2.10.1 | 0.043 | 1.088 | 10.774 | 1.598 |
-| Inkmark 0.2.1 | 0.018 | 0.400 | 4.281 | 0.698 |
+| core-markdown (baseline) | 0.352 | 13.642 | 551.117 | 22.852 |
+| core-markdown (optimized, paired) | 0.132 | 3.801 | 41.874 | 5.951 |
+| core-markdown (optimized) | 0.129 | 3.750 | 41.689 | 5.903 |
+| markdown-rs 1.0.0 | 0.371 | 13.867 | 553.357 | 23.106 |
+| Comrak 0.57.0 | 0.030 | 0.911 | 9.118 | 1.342 |
+| Markly 0.19.0 | 0.041 | 1.086 | 12.066 | 1.579 |
+| Commonmarker 2.10.1 | 0.044 | 1.089 | 10.817 | 1.601 |
+| Inkmark 0.2.1 | 0.019 | 0.397 | 4.230 | 0.703 |
 
-The baseline is core-markdown at `e5effec59c852861b7b5e96eaf3eefe9e5a6e09b`. Its package version was changed only in a temporary diagnostic worktree to allow baseline and optimized packages in one executable; its implementation was unchanged. Paired results and the fresh six-engine run are preserved in [measurements/2026-10-23](measurements/2026-10-23/). To reproduce a baseline run without changing its package version, create a detached worktree at that commit, extract this PR's `benches/comparison/` directory into it, then run `python3 run.py core-markdown` there.
+The baseline is core-markdown at `e5effec59c852861b7b5e96eaf3eefe9e5a6e09b`. Its package version was changed only in a temporary diagnostic worktree to allow baseline and optimized packages in one executable; its implementation was unchanged. The optimized measurements use production source `4f614d0`. Paired results use separate release executables, run sequentially on the same host; the six-engine table is another sequential run. Raw samples and input hashes are preserved in [measurements/2026-10-23-followup](measurements/2026-10-23-followup/). The earlier eleven-optimization stage remains in [measurements/2026-10-23](measurements/2026-10-23/) without changing its samples or source attribution. To reproduce a baseline run without changing its package version, create a detached worktree at that commit, extract this PR's `benches/comparison/` directory into it, then run `python3 run.py core-markdown` there.
 
-The paired 1 MB run improves from 534.6 ms to 48.0 ms (**11.1× faster**). The README, mixed 100 KB, and GFM fixtures improve by 2.4×, 3.2×, and 3.2× respectively. Increasing the mixed input by approximately 10× increases optimized paired time by 11.8×, versus 41.0× before. This repairs the conspicuous scaling problem on this workload; it is not a worst-case complexity proof.
+The paired 1 MB run improves from 551.1 ms to 41.9 ms (**13.2× faster**). The README, mixed 100 KB, and GFM fixtures improve by 2.7×, 3.6×, and 3.8× respectively. Increasing the mixed input by approximately 10× increases optimized paired time by 11.0×, versus 40.4× before. This repairs the conspicuous scaling problem on this workload; it is not a worst-case complexity proof.
 
-**The Inkmark performance target remains unmet.** In the fresh six-engine run, optimized core-markdown takes 45.73 ms on the 1 MB fixture versus Inkmark’s 4.28 ms, a remaining 10.7× gap. The paired and standalone optimized results also illustrate normal inter-run variation. Further work needs to address the remaining event/tokenizer architecture rather than extrapolate another order of magnitude from these local improvements.
+**The Inkmark performance target remains unmet.** In the fresh six-engine run, optimized core-markdown takes 41.69 ms on the 1 MB fixture versus Inkmark’s 4.23 ms, a remaining 9.9× gap. The paired and standalone optimized results also illustrate normal inter-run variation. Further work needs to address the remaining event/tokenizer architecture rather than extrapolate another order of magnitude from these local improvements.
 
 ## Output consistency
 
@@ -74,7 +74,7 @@ These counts are fresh byte-for-byte comparisons of the direct HTML paths. GFM c
 
 Byte differences do not necessarily imply different HTML meaning. Inkmark's 22 CommonMark differences are formatting and equivalent quote escaping; the earlier comparison's CommonMark reference normalizer, extended to equate literal text quotes with `&quot;`, found agreement on all 652. Markly's differences include numeric entities, emphasis boundaries, and an email autolink. GFM differences additionally include tag filtering, table serialization, and unusual literal autolinks. Footnote IDs and markup vary across implementations and are outside the timed GFM profile. Defaults also differ substantially; in particular, Commonmarker's default syntax highlighting and presentation features are disabled here.
 
-All 2,117 saved core-markdown outputs from the original comparison remained byte-identical after the optimizations: 652 CommonMark examples, 677 published GFM examples, 672 examples from the separate cmark-gfm corpus, and 29 targeted inputs in four profiles. An independent review also compared 10,000 randomized Markdown inputs under three profiles and 4,096 construct configurations, including full mdast positions. These checks supplement the repository's regression suite and complete measured source-region coverage. The separate AST HTML renderer has pre-existing output differences and is not claimed to match the direct compiler.
+All 2,117 saved core-markdown outputs from the original comparison remained byte-identical after the optimizations: 652 CommonMark examples, 677 published GFM examples, 672 examples from the separate cmark-gfm corpus, and 29 targeted inputs in four profiles. An independent review of the first stage also compared 10,000 randomized Markdown inputs under three profiles and 4,096 construct configurations, including full mdast positions. Review of the final fast paths additionally compared 50,000 randomized inputs and 65,536 construct configurations against the original parser, including exact HTML and full AST positions. These checks supplement the repository's regression suite and complete measured source-region coverage. The separate AST HTML renderer has pre-existing output differences and is not claimed to match the direct compiler.
 
 ## Optimizations and remaining work
 
@@ -91,9 +91,13 @@ Each optimization has its own commit:
 9. Reuse tokenizer scratch buffers between subcontent chunks.
 10. Represent enabled inline delimiters with an ASCII bitset, avoiding disabled extension markers in ordinary prose.
 11. Drop six unused internal attention-wrapper events per resolved emphasis/strong/strikethrough match. This reduces intermediate event volume; isolated timing did not establish an additional throughput gain on the mixed fixture.
+12. Check tokenizer state variants directly instead of invoking derived structural equality.
+13. Reuse flow line chunks to form ordinary paragraphs when a definition cannot start, avoiding a redundant content-tokenizer pass. Inputs starting with a bracket or indentation retain definition parsing.
+14. Inspect CRLF event boundaries directly instead of repeating byte normalization and tab-expansion checks.
+15. Scan ordinary code and math byte runs without redispatching a tokenizer state for every byte; keep marker, tab, line-ending, and linked-chunk boundaries.
 
 The delimiter bitset and byte-run scanning follow the general approach used by [pulldown-cmark's scanners](https://github.com/pulldown-cmark/pulldown-cmark/blob/v0.13.4/pulldown-cmark/src/scanners.rs). No competitor source was copied. [Inkmark's native dependency manifest](https://github.com/yaroslav/inkmark/blob/v0.2.1/ext/inkmark/Cargo.toml) enables pulldown-cmark's HTML and SIMD features; its [release lockfile](https://github.com/yaroslav/inkmark/blob/v0.2.1/Cargo.lock) resolves pulldown-cmark 0.13.4.
 
-No public feature was removed. The low-value grammar wrapper events removed here were private and unused by either compiler. Dropping MDX or math support is not justified by these measurements: disabled markers now stay out of the CommonMark hot path, and rare diagnostics no longer inflate state storage. More substantial candidates are emitting fewer grammar events throughout the parser, borrowing source spans instead of materializing intermediates, and reducing whole-event-buffer rewrites. These are architectural proposals, not measured speedups. An alternate HTML backend would need explicit compatibility decisions for GFM, custom construct flags, callbacks, diagnostics, source positions, and `no_std` before it could replace the current path.
+No public feature was removed, and no runtime dependency was added. Accelerated line searching, alternate buffer ownership, and deletion-only compaction prototypes did not show worthwhile throughput gains on the mixed workload and were discarded. The low-value grammar wrapper events removed here were private and unused by either compiler. Dropping MDX or math support is not justified by these measurements: disabled markers now stay out of the CommonMark hot path, and rare diagnostics no longer inflate state storage. More substantial candidates are emitting fewer grammar events throughout the parser, borrowing source spans instead of materializing intermediates, and reducing whole-event-buffer rewrites. These are architectural proposals, not measured speedups. An alternate HTML backend would need explicit compatibility decisions for GFM, custom construct flags, callbacks, diagnostics, source positions, and `no_std` before it could replace the current path.
 
 Sources: [CommonMark 0.31.2 examples](https://spec.commonmark.org/0.31.2/spec.json), [published GFM specification](https://github.github.com/gfm/), [markdown-rs](https://github.com/wooorm/markdown-rs), [Comrak](https://github.com/kivikakk/comrak), [Markly](https://github.com/socketry/markly), [Commonmarker](https://github.com/gjtorikian/commonmarker), and [Inkmark](https://github.com/yaroslav/inkmark).
