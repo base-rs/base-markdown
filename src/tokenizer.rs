@@ -782,6 +782,8 @@ fn push_impl(
                         | StateName::ContentChunkInside
                         | StateName::DocumentFlowInside
                         | StateName::ParagraphInside
+                        | StateName::RawFlowContentChunk
+                        | StateName::RawTextData
                 ) {
                     let start = tokenizer.point.index;
                     let bytes = tokenizer.parse_state.bytes;
@@ -789,6 +791,8 @@ fn push_impl(
                     while end < to.0
                         && !matches!(bytes[end], b'\r' | b'\n' | b'\t')
                         && (name != StateName::DataInside || !tokenizer.is_data_marker(bytes[end]))
+                        && (name != StateName::RawTextData
+                            || bytes[end] != tokenizer.tokenize_state.marker)
                     {
                         end += 1;
                     }
