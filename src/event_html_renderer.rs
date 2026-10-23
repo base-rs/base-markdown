@@ -141,7 +141,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         write_sanitized(value, protocols, |value| self.write(value))
     }
 
-    fn start(&mut self, tag: Tag<'_>, end: usize) -> Result<(), StreamError> {
+    fn start(&mut self, tag: &Tag<'_>, end: usize) -> Result<(), StreamError> {
         let kind = tag.kind();
         if kind == TagKind::Document {
             if self.started || !self.stack.is_empty() {
@@ -183,18 +183,18 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         match tag {
             Tag::Document(line_ending) => {
                 if let Some(value) = line_ending {
-                    self.line_ending = value;
+                    self.line_ending = value.clone();
                 }
             }
             Tag::Paragraph { tight } => {
-                frame.flag = tight;
+                frame.flag = *tight;
                 if tags && !tight {
                     self.terminate()?;
                     self.write("<p>")?;
                 }
             }
             Tag::Heading(level) => {
-                frame.level = level;
+                frame.level = *level;
                 self.terminate()?;
                 if self.options.heading_ids {
                     self.heading = Some(HeadingCapture {
@@ -203,7 +203,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     });
                 } else {
                     self.write("<h")?;
-                    self.write(["", "1", "2", "3", "4", "5", "6"][usize::from(level)])?;
+                    self.write(["", "1", "2", "3", "4", "5", "6"][usize::from(*level)])?;
                     self.write(">")?;
                 }
             }
@@ -219,7 +219,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     self.terminate()?;
                     self.write(if start.is_some() { "<ol" } else { "<ul" })?;
                     if let Some(start) = start {
-                        if start != 1 {
+                        if *start != 1 {
                             self.write(" start=\"")?;
                             self.write(&start.to_string())?;
                             self.write("\"")?;
@@ -229,7 +229,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 }
             }
             Tag::Item { block_end } => {
-                frame.flag = block_end;
+                frame.flag = *block_end;
                 if tags {
                     self.terminate()?;
                     self.write("<li>")?;
@@ -316,9 +316,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 self.write("<tr>")?;
             }
             Tag::TableCell { alignment, header } => {
-                frame.flag = header;
+                frame.flag = *header;
                 self.terminate()?;
-                self.write(if header { "<th" } else { "<td" })?;
+                self.write(if *header { "<th" } else { "<td" })?;
                 match alignment {
                     crate::mdast::AlignKind::Left => self.write(" align=\"left\"")?,
                     crate::mdast::AlignKind::Right => self.write(" align=\"right\"")?,
@@ -455,7 +455,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         events: impl IntoIterator<Item = Result<Event<'e>, StreamError>>,
     ) -> Result<(), StreamError> {
         for event in events {
-            self.event(event?)?;
+            self.event_ref(&event?)?;
         }
         if !self.started || !self.ended || !self.stack.is_empty() {
             return Err(StreamError::Unbalanced);
@@ -468,6 +468,10 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     /// # Errors
     /// Propagates invalid source ranges, malformed streams, and writer errors.
     pub fn event(&mut self, event: Event<'_>) -> Result<(), StreamError> {
+        self.event_ref(&event)
+    }
+
+    fn event_ref(&mut self, event: &Event<'_>) -> Result<(), StreamError> {
         if self.ended {
             return Err(StreamError::Unbalanced);
         }
@@ -489,9 +493,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 _ => {}
             }
         }
-        match event.kind {
+        match &event.kind {
             EventKind::Start(tag) => self.start(tag, event.span.end),
-            EventKind::End(kind) => self.end(kind, event.span.end),
+            EventKind::End(kind) => self.end(*kind, event.span.end),
             kind => {
                 if self.stack.is_empty() {
                     return Err(StreamError::Unbalanced);
@@ -504,7 +508,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         true,
                     ),
                     EventKind::Separator { value, conditional } => {
-                        if conditional {
+                        if *conditional {
                             self.terminate()
                         } else {
                             self.escaped(
@@ -588,7 +592,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         }
                         self.terminate()?;
                         self.write("<pre><code")?;
-                        if math {
+                        if *math {
                             self.write(" class=\"language-math math-display\"")?;
                         } else if let Some(language) = language {
                             self.write(" class=\"language-")?;
@@ -609,13 +613,13 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                             self.terminate()?;
                         }
                         self.write("</code></pre>")?;
-                        if unclosed {
+                        if *unclosed {
                             self.terminate()?;
                         }
                         Ok(())
                     }
                     EventKind::Html { value, block } => {
-                        if block {
+                        if *block {
                             self.terminate()?;
                         }
                         let value = value
@@ -633,7 +637,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                             if !self.options.gfm_task_list_item_checkable {
                                 self.write("disabled=\"\" ")?;
                             }
-                            if checked {
+                            if *checked {
                                 self.write("checked=\"\" ")?;
                             }
                             self.write("/>")?;
