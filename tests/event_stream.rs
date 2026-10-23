@@ -379,3 +379,23 @@ fn unclosed_footnote_fence_does_not_consume_following_soft_break() {
     render_events(source, document.events(), &options.compile, &mut output).unwrap();
     assert_eq!(output, expected);
 }
+
+#[test]
+fn task_checkbox_attributes_preserve_checkability_and_state() {
+    let source = "- [ ] open\n- [x] done";
+    for (checkable, expected) in [
+        (false, "<ul>\n<li><input type=\"checkbox\" disabled=\"\" /> open</li>\n<li><input type=\"checkbox\" disabled=\"\" checked=\"\" /> done</li>\n</ul>"),
+        (true, "<ul>\n<li><input type=\"checkbox\" /> open</li>\n<li><input type=\"checkbox\" checked=\"\" /> done</li>\n</ul>"),
+    ] {
+        let mut options = Options::gfm();
+        options.compile.gfm_task_list_item_checkable = checkable;
+        assert_eq!(core_markdown::to_html_with_options(source, &options).unwrap(), expected);
+        let mut checked = String::new();
+        render_events(source, EventParser::new(source, &options.parse).unwrap(), &options.compile, &mut checked).unwrap();
+        assert_eq!(checked, expected);
+        let document = Document::parse(source, &options.parse).unwrap();
+        let mut traversed = String::new();
+        render_events(source, document.events(), &options.compile, &mut traversed).unwrap();
+        assert_eq!(traversed, expected);
+    }
+}
