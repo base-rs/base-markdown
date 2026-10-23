@@ -161,3 +161,22 @@ fn semantic_endings_ignore_trailing_blanks_and_container_prefixes() {
         assert_eq!(to_html(source), expected, "{source:?}");
     }
 }
+
+#[test]
+fn compact_inlines_share_compatibility_document_structure() {
+    for (source, expected) in [
+        ("plain *emphasis* and `code`\n\n[id]: /path\n", "<p>plain <em>emphasis</em> and <code>code</code></p>\n"),
+        ("plain *emphasis*\n\n[x][id]\n\n[id]: /path 'title'\n", "<p>plain <em>emphasis</em></p>\n<p><a href=\"/path\" title=\"title\">x</a></p>\n"),
+        ("plain &copy;\n\n<div>\nraw\n</div>\n", "<p>plain ©</p>\n&lt;div&gt;\nraw\n&lt;/div&gt;\n"),
+        ("[not a definition] *emphasis*\n\n-\t**bold**\n\n[id]: /path\n", "<p>[not a definition] <em>emphasis</em></p>\n<ul>\n<li><strong>bold</strong></li>\n</ul>"),
+        ("[x](url)\n\n## *heading*\n\n> **a**\n> b\n", "<p><a href=\"url\">x</a></p>\n<h2><em>heading</em></h2>\n<blockquote>\n<p><strong>a</strong>\nb</p>\n</blockquote>\n"),
+    ] {
+        let options = Options::default();
+        let output = to_html(source);
+        assert_eq!(output, expected, "{source:?}");
+        let document = Document::parse(source, &options.parse).unwrap();
+        let mut arena = String::new();
+        render_events(source, document.events(), &options.compile, &mut arena).unwrap();
+        assert_eq!(arena, output, "{source:?}");
+    }
+}

@@ -40,6 +40,8 @@ pub(crate) struct GrammarParser<'a> {
     block_tokens: Option<(Vec<Token>, Vec<usize>, usize)>,
     buffers: TokenizerBuffers,
     inline_matching: Vec<usize>,
+    compact_inline: crate::inline_parser::InlineParser,
+    direct_inline: bool,
     matching_stack: Vec<usize>,
     options: &'a ParseOptions,
     tokens: Vec<Token>,
@@ -97,6 +99,8 @@ impl<'a> GrammarParser<'a> {
             block_tokens: None,
             buffers: TokenizerBuffers::default(),
             inline_matching: Vec::new(),
+            compact_inline: crate::inline_parser::InlineParser::default(),
+            direct_inline: false,
             matching_stack: stack,
             options,
             tokens,
@@ -216,6 +220,33 @@ impl<'a> GrammarParser<'a> {
     }
 
     fn inline(&mut self, index: usize) -> Result<(), StreamError> {
+        if self.options.constructs == crate::Constructs::default() && !self.options.inline_code_info
+        {
+            let tokens = &self.tokens;
+            let indices = || {
+                let mut current = Some(index);
+                core::iter::from_fn(move || {
+                    let i = current?;
+                    current = tokens[i].link.as_ref().unwrap().next();
+                    Some(i)
+                })
+            };
+            let range = |i: usize| tokens[i].point.index..tokens[i + 1].point.index;
+            // References and partially consumed tabs still use the grammar resolver, but they do not force unrelated paragraphs through the tokenizer.
+            let supported = indices().all(|i| {
+                tokens[i].point.vs == 0
+                    && tokens[i + 1].point.vs == 0
+                    && (self.definitions.is_empty() || !self.source[range(i)].contains('['))
+            });
+            if supported
+                && self
+                    .compact_inline
+                    .prepare(self.source, indices().map(range))
+            {
+                self.direct_inline = true;
+                return Ok(());
+            }
+        }
         let mut task = false;
         if self.options.constructs.gfm_task_list_item
             && index > 2
@@ -934,6 +965,12 @@ impl Iterator for GrammarParser<'_> {
             }));
         }
         loop {
+            if self.direct_inline {
+                if let Some(event) = self.compact_inline.next(self.source) {
+                    return Some(Ok(event));
+                }
+                self.direct_inline = false;
+            }
             if self.index == self.tokens.len() {
                 if let Some((tokens, matching, index)) = self.block_tokens.take() {
                     self.buffers.events = core::mem::replace(&mut self.tokens, tokens);
