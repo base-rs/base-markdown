@@ -1,0 +1,67 @@
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index 6e70529..d5c2b9c 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -143,17 +143,19 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+         write_sanitized(value, protocols, |value| self.write(value))
+     }
+ 
+-    fn start(&mut self, tag: &Tag<'_>, end: usize) -> Result<(), StreamError> {
++    // Only the private EventParser rendering entry point may omit structural validation.
++    fn start<const CHECK: bool>(&mut self, tag: &Tag<'_>, end: usize) -> Result<(), StreamError> {
+         let kind = tag.kind();
+         if kind == TagKind::Document {
+-            if self.started || !self.stack.is_empty() {
++            if CHECK && (self.started || !self.stack.is_empty()) {
+                 return Err(StreamError::Unbalanced);
+             }
+             self.started = true;
+-        } else if self.stack.is_empty() {
++        } else if CHECK && self.stack.is_empty() {
+             return Err(StreamError::Unbalanced);
+         }
+-        if matches!(kind, TagKind::Heading | TagKind::FootnoteDefinition)
++        if CHECK
++            && matches!(kind, TagKind::Heading | TagKind::FootnoteDefinition)
+             && self
+                 .stack
+                 .iter()
+@@ -346,12 +348,12 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+         Ok(())
+     }
+ 
+-    fn end(&mut self, kind: TagKind, end: usize) -> Result<(), StreamError> {
++    fn end<const CHECK: bool>(&mut self, kind: TagKind, end: usize) -> Result<(), StreamError> {
+         let frame = self.stack.pop().ok_or(StreamError::Unbalanced)?;
+-        if frame.kind != kind {
++        if CHECK && frame.kind != kind {
+             return Err(StreamError::Unbalanced);
+         }
+-        if end < frame.end {
++        if CHECK && end < frame.end {
+             return Err(StreamError::InvalidRange);
+         }
+         if kind == TagKind::Image {
+@@ -502,7 +504,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+     #[allow(clippy::inline_always)]
+     #[inline(always)]
+     fn event_ref<const CHECK: bool>(&mut self, event: &Event<'_>) -> Result<(), StreamError> {
+-        if self.ended {
++        if CHECK && self.ended {
+             return Err(StreamError::Unbalanced);
+         }
+         if CHECK {
+@@ -526,10 +528,10 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+             }
+         }
+         match &event.kind {
+-            EventKind::Start(tag) => self.start(tag, event.span.end),
+-            EventKind::End(kind) => self.end(*kind, event.span.end),
++            EventKind::Start(tag) => self.start::<CHECK>(tag, event.span.end),
++            EventKind::End(kind) => self.end::<CHECK>(*kind, event.span.end),
+             kind => {
+-                if self.stack.is_empty() {
++                if CHECK && self.stack.is_empty() {
+                     return Err(StreamError::Unbalanced);
+                 }
+                 match kind {

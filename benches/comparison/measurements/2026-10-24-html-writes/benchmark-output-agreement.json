@@ -1,0 +1,102 @@
+[
+  {
+    "document": "readme",
+    "baseline_byte_identical": true,
+    "inkmark_byte_identical": false,
+    "inkmark_equal_html_tokens_after_entity_decoding": true,
+    "candidate_sha256": "e4a600f81e790248aa401d761383e577ae2b59fb23cb32ce7216c7d640076e25",
+    "inkmark_sha256": "aae38fe68f839a93e0e28405020ec831343dfb2603615dfde6faddd433003cdc",
+    "candidate_www_link": false,
+    "inkmark_www_link": false
+  },
+  {
+    "document": "mixed-100k",
+    "baseline_byte_identical": true,
+    "inkmark_byte_identical": false,
+    "inkmark_equal_html_tokens_after_entity_decoding": true,
+    "candidate_sha256": "2906a9c276936b616283e21049523f53da43d1aa82c22f6c442a34444dfa4c45",
+    "inkmark_sha256": "39f1cef1f002794304ea4af8d5cc70131c8d1f983452027c23a2a9d4b10f6222",
+    "candidate_www_link": false,
+    "inkmark_www_link": false
+  },
+  {
+    "document": "mixed-1m",
+    "baseline_byte_identical": true,
+    "inkmark_byte_identical": false,
+    "inkmark_equal_html_tokens_after_entity_decoding": true,
+    "candidate_sha256": "2fa9d192e5e9db657ed474b47927cc05579b0b3b871910bb1858a15c47cfa5bd",
+    "inkmark_sha256": "a02e3513d9f2b35a3c57dfa43145bc29813e455ba3be28cdad16a69a68b67d9c",
+    "candidate_www_link": false,
+    "inkmark_www_link": false
+  },
+  {
+    "document": "gfm-100k",
+    "baseline_byte_identical": true,
+    "inkmark_byte_identical": false,
+    "inkmark_equal_html_tokens_after_entity_decoding": false,
+    "candidate_sha256": "4926cff0b336eef7546732fe634f78b0d3484acb9a6fb5da09c2ecce52c12ba7",
+    "inkmark_sha256": "00052b8a000cc9a9b627863a427f93630a86331f72b81db2b5ff1d3795977897",
+    "candidate_www_link": true,
+    "inkmark_www_link": false
+  },
+  {
+    "document": "references",
+    "baseline_byte_identical": true,
+    "inkmark_byte_identical": true,
+    "inkmark_equal_html_tokens_after_entity_decoding": true,
+    "candidate_sha256": "3aaeee76d28590427d122cf7a392cb917e66b503e8bfeb5ca90731bfcaded9fc",
+    "inkmark_sha256": "3aaeee76d28590427d122cf7a392cb917e66b503e8bfeb5ca90731bfcaded9fc",
+    "candidate_www_link": false,
+    "inkmark_www_link": false
+  },
+  {
+    "document": "definitions-256",
+    "baseline_byte_identical": true,
+    "inkmark_byte_identical": true,
+    "inkmark_equal_html_tokens_after_entity_decoding": true,
+    "candidate_sha256": "6399f2acc88b8d9b9bd78ebcec30d5341c25b7d79a9d638f307138fe8b15135f",
+    "inkmark_sha256": "6399f2acc88b8d9b9bd78ebcec30d5341c25b7d79a9d638f307138fe8b15135f",
+    "candidate_www_link": false,
+    "inkmark_www_link": false
+  },
+  {
+    "document": "definitions-1024",
+    "baseline_byte_identical": true,
+    "inkmark_byte_identical": true,
+    "inkmark_equal_html_tokens_after_entity_decoding": true,
+    "candidate_sha256": "d9b586fe86b999ae14e0c7a514526a484e970dee525977faa761ec42b50c2810",
+    "inkmark_sha256": "d9b586fe86b999ae14e0c7a514526a484e970dee525977faa761ec42b50c2810",
+    "candidate_www_link": false,
+    "inkmark_www_link": false
+  },
+  {
+    "document": "definitions-4096",
+    "baseline_byte_identical": true,
+    "inkmark_byte_identical": true,
+    "inkmark_equal_html_tokens_after_entity_decoding": true,
+    "candidate_sha256": "5d322f4fe09051c29f5c8f70dd42dd826aec20e676e9c9b4ff588e456ab2f589",
+    "inkmark_sha256": "5d322f4fe09051c29f5c8f70dd42dd826aec20e676e9c9b4ff588e456ab2f589",
+    "candidate_www_link": false,
+    "inkmark_www_link": false
+  },
+  {
+    "document": "long-lines-1m",
+    "baseline_byte_identical": true,
+    "inkmark_byte_identical": true,
+    "inkmark_equal_html_tokens_after_entity_decoding": true,
+    "candidate_sha256": "1311a2c92057704d7eed452d1ff24954df7b8bf98ef8865b7b4bb09435ebddaa",
+    "inkmark_sha256": "1311a2c92057704d7eed452d1ff24954df7b8bf98ef8865b7b4bb09435ebddaa",
+    "candidate_www_link": false,
+    "inkmark_www_link": false
+  },
+  {
+    "document": "code-1m",
+    "baseline_byte_identical": true,
+    "inkmark_byte_identical": true,
+    "inkmark_equal_html_tokens_after_entity_decoding": true,
+    "candidate_sha256": "3ae1737728401d83dc0157c1c997916a83fd59ea0f0c8a6ba4ff3bcc89152833",
+    "inkmark_sha256": "3ae1737728401d83dc0157c1c997916a83fd59ea0f0c8a6ba4ff3bcc89152833",
+    "candidate_www_link": false,
+    "inkmark_www_link": false
+  }
+]

@@ -1,0 +1,995 @@
+[
+  {
+    "file": "paired-1-baseline-commonmark.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "paired-1-baseline-gfm.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "paired-1-baseline-references.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "paired-1-baseline-scanners.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "paired-1-candidate-commonmark.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "paired-1-candidate-gfm.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "paired-1-candidate-references.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "paired-1-candidate-scanners.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "paired-1-inkmark-commonmark.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-1-inkmark-gfm.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-1-inkmark-references.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-1-inkmark-scanners.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9",
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-2-inkmark-commonmark.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-2-inkmark-gfm.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-2-inkmark-references.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-2-inkmark-scanners.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9",
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-2-candidate-commonmark.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "paired-2-candidate-gfm.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "paired-2-candidate-references.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "paired-2-candidate-scanners.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "paired-2-baseline-commonmark.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "paired-2-baseline-gfm.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "paired-2-baseline-references.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "paired-2-baseline-scanners.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "paired-3-baseline-commonmark.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "paired-3-baseline-gfm.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "paired-3-baseline-references.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "paired-3-baseline-scanners.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "paired-3-candidate-commonmark.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "paired-3-candidate-gfm.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "paired-3-candidate-references.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "paired-3-candidate-scanners.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "paired-3-inkmark-commonmark.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-3-inkmark-gfm.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-3-inkmark-references.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "binary_sha256": null
+  },
+  {
+    "file": "paired-3-inkmark-scanners.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9",
+    "binary_sha256": null
+  },
+  {
+    "file": "definitions-baseline.jsonl",
+    "engine": "baseline",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-definitions.json"
+    ],
+    "input_sha256": "a810afe06b08e2c92674901b6bbfc126f9ee15652731ef5dc9780908dc537fde",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "definitions-candidate.jsonl",
+    "engine": "candidate",
+    "mode": "core-markdown",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-definitions.json"
+    ],
+    "input_sha256": "a810afe06b08e2c92674901b6bbfc126f9ee15652731ef5dc9780908dc537fde",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "definitions-inkmark.jsonl",
+    "engine": "inkmark",
+    "mode": "core-markdown",
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "adapter.rb",
+      "inkmark",
+      "bench",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-definitions.json"
+    ],
+    "input_sha256": "a810afe06b08e2c92674901b6bbfc126f9ee15652731ef5dc9780908dc537fde",
+    "binary_sha256": null
+  },
+  {
+    "file": "phase-1-baseline-commonmark-core-prepare.jsonl",
+    "engine": "baseline",
+    "mode": "core-prepare",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "phase-1-baseline-commonmark-core-events.jsonl",
+    "engine": "baseline",
+    "mode": "core-events",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-events",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "phase-1-baseline-gfm-core-prepare.jsonl",
+    "engine": "baseline",
+    "mode": "core-prepare",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-prepare",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "phase-1-baseline-gfm-core-events.jsonl",
+    "engine": "baseline",
+    "mode": "core-events",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-events",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "phase-1-candidate-commonmark-core-prepare.jsonl",
+    "engine": "candidate",
+    "mode": "core-prepare",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "phase-1-candidate-commonmark-core-events.jsonl",
+    "engine": "candidate",
+    "mode": "core-events",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-events",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "phase-1-candidate-gfm-core-prepare.jsonl",
+    "engine": "candidate",
+    "mode": "core-prepare",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-prepare",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "phase-1-candidate-gfm-core-events.jsonl",
+    "engine": "candidate",
+    "mode": "core-events",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-events",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "phase-2-candidate-commonmark-core-prepare.jsonl",
+    "engine": "candidate",
+    "mode": "core-prepare",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "phase-2-candidate-commonmark-core-events.jsonl",
+    "engine": "candidate",
+    "mode": "core-events",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-events",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "phase-2-candidate-gfm-core-prepare.jsonl",
+    "engine": "candidate",
+    "mode": "core-prepare",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-prepare",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "phase-2-candidate-gfm-core-events.jsonl",
+    "engine": "candidate",
+    "mode": "core-events",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-events",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "phase-2-baseline-commonmark-core-prepare.jsonl",
+    "engine": "baseline",
+    "mode": "core-prepare",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "phase-2-baseline-commonmark-core-events.jsonl",
+    "engine": "baseline",
+    "mode": "core-events",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-events",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "phase-2-baseline-gfm-core-prepare.jsonl",
+    "engine": "baseline",
+    "mode": "core-prepare",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-prepare",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "phase-2-baseline-gfm-core-events.jsonl",
+    "engine": "baseline",
+    "mode": "core-events",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-events",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "phase-3-baseline-commonmark-core-prepare.jsonl",
+    "engine": "baseline",
+    "mode": "core-prepare",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "phase-3-baseline-commonmark-core-events.jsonl",
+    "engine": "baseline",
+    "mode": "core-events",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-events",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "phase-3-baseline-gfm-core-prepare.jsonl",
+    "engine": "baseline",
+    "mode": "core-prepare",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-prepare",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "phase-3-baseline-gfm-core-events.jsonl",
+    "engine": "baseline",
+    "mode": "core-events",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-events",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "9246c5befb51c45d5e70f7eff9702edc0d1717f8982c5a45fa3b726de104c0dd"
+  },
+  {
+    "file": "phase-3-candidate-commonmark-core-prepare.jsonl",
+    "engine": "candidate",
+    "mode": "core-prepare",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "phase-3-candidate-commonmark-core-events.jsonl",
+    "engine": "candidate",
+    "mode": "core-events",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-events",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "phase-3-candidate-gfm-core-prepare.jsonl",
+    "engine": "candidate",
+    "mode": "core-prepare",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-prepare",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "phase-3-candidate-gfm-core-events.jsonl",
+    "engine": "candidate",
+    "mode": "core-events",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "bench",
+      "core-events",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "e89d77ecd2278a78357fc3df4a938da97525f69bf55efc312cace02a50c4bc09"
+  },
+  {
+    "file": "allocations-baseline-commonmark.jsonl",
+    "engine": "baseline",
+    "mode": "allocations",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "432cbd0696a31a2aee42ae24f1a45792772b307483cd828810b64148cc7c008d"
+  },
+  {
+    "file": "allocations-baseline-gfm.jsonl",
+    "engine": "baseline",
+    "mode": "allocations",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "432cbd0696a31a2aee42ae24f1a45792772b307483cd828810b64148cc7c008d"
+  },
+  {
+    "file": "allocations-baseline-references.jsonl",
+    "engine": "baseline",
+    "mode": "allocations",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "binary_sha256": "432cbd0696a31a2aee42ae24f1a45792772b307483cd828810b64148cc7c008d"
+  },
+  {
+    "file": "allocations-candidate-commonmark.jsonl",
+    "engine": "candidate",
+    "mode": "allocations",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "binary_sha256": "8d4d48ce4f97d335926525f4d166dcf692e1d58aaaa9a607c3b1e825a45a511a"
+  },
+  {
+    "file": "allocations-candidate-gfm.jsonl",
+    "engine": "candidate",
+    "mode": "allocations",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+    "binary_sha256": "8d4d48ce4f97d335926525f4d166dcf692e1d58aaaa9a607c3b1e825a45a511a"
+  },
+  {
+    "file": "allocations-candidate-references.jsonl",
+    "engine": "candidate",
+    "mode": "allocations",
+    "command": [
+      "/tmp/core-markdown-render-writes-final/run",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "binary_sha256": "8d4d48ce4f97d335926525f4d166dcf692e1d58aaaa9a607c3b1e825a45a511a"
+  }
+]

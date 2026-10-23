@@ -1,0 +1,29 @@
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index 6e70529..ad0e95d 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -103,7 +103,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+             };
+             let index = start + offset;
+             if index == value.len() {
+-                break;
++                return self.write(&value[start..]);
+             }
+             let replacement = match value.as_bytes()[index] {
+                 0 => "�",
+@@ -113,11 +113,13 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+                 b'>' => "&gt;",
+                 _ => unreachable!("the candidate scanner returns only HTML escapes"),
+             };
+-            self.write(&value[start..index])?;
++            if start < index {
++                self.write(&value[start..index])?;
++            }
+             self.write(replacement)?;
+             start = index + 1;
+         }
+-        self.write(&value[start..])
++        Ok(())
+     }
+ 
+     fn newline(&mut self) -> Result<(), StreamError> {

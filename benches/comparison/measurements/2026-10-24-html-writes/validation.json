@@ -1,0 +1,27 @@
+{
+  "reviewed_commit": "01a1a079ad62c2ffa21891dbaf068275af1de5bf",
+  "production_source_commit": "aa2c98ca57b0aa5f79e3631e1b4695c54d3d2a9c",
+  "format": "passed",
+  "clippy_workspace_all_targets_all_features": "passed",
+  "coverage": {
+    "target": "aarch64-apple-darwin",
+    "features": "all",
+    "all_targets": true,
+    "covered_regions": 26827,
+    "measured_regions": 26827,
+    "excluded_invariant_unreachable_regions": 68
+  },
+  "saved_outputs": 2117,
+  "rendering_paths": [
+    "direct",
+    "checked events",
+    "arena"
+  ],
+  "independent_source_review": "approved; see independent-review.json",
+  "note": "No new architecture-specific implementation; CI checks the Linux target separately. The initial coverage pass found two uncovered regions; focused ordered-list error and checkbox-state tests were added before the successful final pass.",
+  "workspace_tests": "passed",
+  "portable_library_check": {
+    "target": "x86_64-unknown-linux-gnu",
+    "result": "passed with rustup stable"
+  }
+}
