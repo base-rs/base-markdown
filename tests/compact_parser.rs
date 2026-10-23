@@ -35,6 +35,12 @@ fn block_boundaries_preserve_source_whitespace() {
 fn semantic_endings_ignore_trailing_blanks_and_container_prefixes() {
     for (source, expected) in [
         ("a\r\r\n", "<p>a</p>\r"),
+        ("# a\n    ", "<h1>a</h1>\n"),
+        ("---\n    ", "<hr />\n"),
+        ("- a\r\r\n", "<ul>\r<li>a</li>\r</ul>\r"),
+        ("---\n> \r", "<hr />\n<blockquote>\n</blockquote>\n"),
+        ("> a\n ", "<blockquote>\n<p>a</p>\n</blockquote>\n"),
+        (">\n ", "<blockquote>\n</blockquote>"),
         ("# a\n\r", "<h1>a</h1>\n"),
         ("+ \n  ", "<ul>\n<li></li>\n</ul>"),
         ("x\n\n> - - # a\r\n>   b", "<p>x</p>\n<blockquote>\n<ul>\n<li>\n<ul>\n<li>\n<h1>a</h1>\n</li>\n</ul>\r\nb</li>\n</ul>\n</blockquote>"),

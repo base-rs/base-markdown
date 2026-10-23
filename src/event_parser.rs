@@ -153,11 +153,29 @@ impl CompactParser<'_> {
                 && !self.suppress_final_separator
                 && self.blocks.nodes[0].child != 0
                 && (self.source.ends_with(['\r', '\n'])
-                    || matches!(last.body, Body::Paragraph(_))
-                        && self.source[..last.end].ends_with(['\r', '\n']))
+                    || (matches!(
+                        last.body,
+                        Body::Paragraph(_) | Body::Heading(_) | Body::Rule
+                    ) || last.body == Body::Quote && last.child != 0)
+                        && self.source[..last.end]
+                            .trim_end_matches([' ', '\t'])
+                            .ends_with(['\r', '\n']))
             {
                 self.final_separator = true;
-                return Some(Ok(self.separator(last.end)));
+                // Container closures use the document's line ending; leaves retain the ending of their own semantic source line.
+                return Some(Ok(
+                    if matches!(last.body, Body::Quote | Body::List { .. }) {
+                        Event {
+                            kind: EventKind::Separator {
+                                value: Text::Literal(""),
+                                conditional: true,
+                            },
+                            span: last.end..last.end,
+                        }
+                    } else {
+                        self.separator(last.end)
+                    },
+                ));
             }
             self.ended = true;
             return Some(Ok(Event {
