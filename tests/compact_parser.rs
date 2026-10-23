@@ -262,3 +262,60 @@ fn leading_brackets_distinguish_links_from_possible_definitions() {
         assert_eq!(arena, expected, "arena: {source:?}");
     }
 }
+
+#[test]
+fn ordinary_gfm_regions_preserve_extension_boundaries() {
+    use core_markdown::{render_events, Document, EventParser, Options};
+    let sources = [
+        "ordinary *emphasis*, **strong**, `code`, &amp; and \\*escaped*.",
+        "[explicit](https://example.com?q=x&n=2) and ![image](image.png)",
+        "`www.example.com user@example.com https://example.com ~~code~~`",
+        "www.example.com WWW.example.com (www.example.com)",
+        "https://example.com mailto:user@example.com xmpp:user@example.com",
+        "user@example.com and user\\@example.com and user&commat;example.com",
+        "www&#46;example.com and www\\.example.com and words. More words.",
+        "www.\nexample.com\nhttps:\n//example.com",
+        "![www.example.com](image) [www.example.com](link)",
+        "[^a] ![^a](b) ![^a] ![^a][b]\n\n[b]: /b",
+        "first[^a].\n\n[^a]: note",
+        "~~old~~ ~single~ **strong ~~old~~**",
+        "[a](path) *emphasis* [a]\n\n[a]: /a",
+        "- ordinary\n- [x] checked\n- [ ] unchecked\n\n  [x] second paragraph",
+        "- [a]: /a\n  [x] after definition\n\n[a]",
+        "- [\t] tabs\n- [\n] multiline\n- [x]\n  next",
+        "| a | b |\n| :- | -: |\n| [explicit](https://example.com) | ~~old~~ |",
+        "| a |\n| - |\n| `a\\|b` |\n| \\| |",
+    ];
+    for source in sources {
+        let options = Options::gfm();
+        let mut grammar = Options::gfm();
+        // These sources contain no math; this forces the independent grammar path.
+        grammar.parse.constructs.math_flow = true;
+        let direct = core_markdown::to_html_with_options(source, &options).unwrap();
+        let expected = core_markdown::to_html_with_options(source, &grammar).unwrap();
+        assert_eq!(direct, expected, "source: {source:?}");
+        let mut checked = String::new();
+        render_events(
+            source,
+            EventParser::new(source, &options.parse).unwrap(),
+            &options.compile,
+            &mut checked,
+        )
+        .unwrap();
+        assert_eq!(checked, direct, "checked: {source:?}");
+        let document = Document::parse(source, &options.parse).unwrap();
+        let mut arena = String::new();
+        render_events(source, document.events(), &options.compile, &mut arena).unwrap();
+        assert_eq!(arena, direct, "arena: {source:?}");
+    }
+}
+
+#[test]
+fn gfm_uses_commonmark_attention_boundaries_when_no_extension_is_present() {
+    for source in ["[a]*a**_\n\n[a]: /a", "[a](path) *a**_ [a]*a**_\n\n[a]: /a"] {
+        assert_eq!(
+            core_markdown::to_html_with_options(source, &core_markdown::Options::gfm()).unwrap(),
+            core_markdown::to_html(source)
+        );
+    }
+}

@@ -216,32 +216,6 @@ impl<'a> GrammarParser<'a> {
     }
 
     fn inline(&mut self, index: usize) -> Result<(), StreamError> {
-        if self.options.constructs == crate::Constructs::default() && !self.options.inline_code_info
-        {
-            let tokens = &self.tokens;
-            let indices = || {
-                let mut current = Some(index);
-                core::iter::from_fn(move || {
-                    let i = current?;
-                    current = tokens[i].link.as_ref().unwrap().next();
-                    Some(i)
-                })
-            };
-            let range = |i: usize| tokens[i].point.index..tokens[i + 1].point.index;
-            // Partially consumed tabs still need the grammar resolver's virtual-space positions.
-            let supported =
-                indices().all(|i| tokens[i].point.vs == 0 && tokens[i + 1].point.vs == 0);
-            if supported
-                && self.compact_inline.prepare::<true>(
-                    self.source,
-                    indices().map(range),
-                    &self.definitions,
-                )
-            {
-                self.direct_inline = true;
-                return Ok(());
-            }
-        }
         let mut task = false;
         if self.options.constructs.gfm_task_list_item
             && index > 2
@@ -260,6 +234,46 @@ impl<'a> GrammarParser<'a> {
             );
             task = self.tokens[before].kind == Kind::Exit
                 && self.tokens[before].name == Name::ListItemPrefix;
+        }
+        if crate::inline_parser::supported_options(self.options) && !self.options.inline_code_info {
+            let tokens = &self.tokens;
+            let indices = || {
+                let mut current = Some(index);
+                core::iter::from_fn(move || {
+                    let i = current?;
+                    current = tokens[i].link.as_ref().unwrap().next();
+                    Some(i)
+                })
+            };
+            let range = |i: usize| tokens[i].point.index..tokens[i + 1].point.index;
+            // Partially consumed tabs still need the grammar resolver's virtual-space positions.
+            let supported = indices().all(|i| {
+                tokens[i].point.vs == 0
+                    && tokens[i + 1].point.vs == 0
+                    && !(self.containers.last() == Some(&TagKind::TableCell)
+                        && self.source.as_bytes()[range(i)].contains(&b'\\'))
+            }) && !(task
+                && self.source[range(index)].trim_start().starts_with('['));
+            if supported
+                && if self.options.constructs == crate::Constructs::default() {
+                    self.compact_inline.prepare::<true, false>(
+                        self.source,
+                        indices().map(range),
+                        &self.definitions,
+                        self.options,
+                    )
+                } else {
+                    self.compact_inline.prepare::<true, true>(
+                        self.source,
+                        indices().map(range),
+                        &self.definitions,
+                        self.options,
+                    )
+                }
+            {
+                self.direct_inline = true;
+                return Ok(());
+            }
         }
         let mut tokenizer = Tokenizer::with_buffers(
             self.tokens[index].point.clone(),
