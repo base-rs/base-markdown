@@ -93,7 +93,7 @@ impl CompactParser<'_> {
         while child != 0 {
             let node = self.blocks.nodes[child];
             let Body::Fragment(spaces) = node.body else {
-                unreachable!("code block children are source fragments");
+                unreachable!("literal block children are source fragments");
             };
             if spaces > 0 {
                 value.append(Text::Literal(&"   "[..spaces]));
@@ -178,7 +178,7 @@ impl CompactParser<'_> {
             }
             let populated = matches!(
                 leaf.body,
-                Body::Paragraph(_) | Body::Heading(_) | Body::Rule | Body::Code(_)
+                Body::Paragraph(_) | Body::Heading(_) | Body::Rule | Body::Code(_) | Body::Html(_)
             );
             if !self.final_separator
                 && !self.suppress_final_separator
@@ -324,6 +324,23 @@ impl CompactParser<'_> {
                 if self.source.as_bytes().get(end - 1) == Some(&b'\r') {
                     end -= 1;
                 }
+                return Some(Ok(Event {
+                    kind,
+                    span: node.start..end,
+                }));
+            }
+            Body::Html(end) => {
+                if end == node.end && node.end == self.source.len() {
+                    self.suppress_final_separator = true;
+                }
+                let kind = EventKind::Html {
+                    value: self.value(index),
+                    block: true,
+                };
+                if node.next != 0 {
+                    self.separator = Some(node.end);
+                }
+                self.advance();
                 return Some(Ok(Event {
                     kind,
                     span: node.start..end,

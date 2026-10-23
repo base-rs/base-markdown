@@ -5,6 +5,7 @@
 
 //! Compact block preparation with source fragments and deferred inline scanning.
 mod definition;
+mod html;
 mod scanners;
 use crate::definitions::Definitions;
 use crate::grammar_parser::decode_string;
@@ -30,6 +31,7 @@ pub(super) enum Body {
     Item(usize),
     Code(usize),
     Definition(usize),
+    Html(usize),
     Rule,
     Fragment(usize),
 }
@@ -338,8 +340,14 @@ impl Builder<'_> {
             self.append(definition_start, next, Body::Definition(index));
             return next;
         }
-        // Raw HTML retains its grammar producer until its block metadata is recorded directly.
         if bytes[at] == b'<' {
+            if let Some(html) = html::Html::start(&bytes[at..]) {
+                // Shared container tabs need the grammar's virtual-space provenance.
+                if !bytes[start..at].contains(&b'\t') {
+                    self.finish_list(start);
+                    return self.html(definition_start, html);
+                }
+            }
             self.unsupported = true;
             return bytes.len();
         }
@@ -361,7 +369,7 @@ impl Builder<'_> {
     fn interrupts(&mut self, bytes: &[u8], current_container: bool) -> bool {
         // HTML can interrupt paragraphs even after lazy container continuations.
         if bytes.starts_with(b"<") {
-            self.unsupported = true;
+            self.unsupported = html::Html::start(bytes).is_none();
             return true;
         }
         scan_eol(bytes).is_some()
@@ -425,6 +433,49 @@ impl Builder<'_> {
             )
         {
             node.end -= 1;
+        }
+    }
+    fn html(&mut self, start: usize, kind: html::Html) -> usize {
+        self.append(start, start, Body::Html(start));
+        self.push();
+        let bytes = self.source.as_bytes();
+        let mut at = start;
+        loop {
+            let next = at + scan_nextline(&bytes[at..]);
+            if bytes[at..next].contains(&0) {
+                self.unsupported = true;
+                return bytes.len();
+            }
+            self.fragment(at, next, 0);
+            let mut line = LineStart::new(&bytes[next..]);
+            let continued = self.containers(&mut line) == self.open.len();
+            let content = next + line.bytes_scanned();
+            let closed = kind.closed(&bytes[at..next]);
+            if closed
+                || next == bytes.len()
+                || !continued
+                || kind.blank_terminated() && scan_blank_line(&bytes[content..]).is_some()
+            {
+                let last = &mut self.blocks.nodes[self.current];
+                let retain_ending = next == bytes.len() && !closed && !kind.blank_terminated();
+                if !retain_ending {
+                    if bytes.get(last.end - 1) == Some(&b'\n') {
+                        last.end -= 1;
+                    }
+                    if bytes.get(last.end - 1) == Some(&b'\r') {
+                        last.end -= 1;
+                    }
+                }
+                let end = last.end;
+                self.pop(next);
+                self.blocks.nodes[self.current].body = Body::Html(end);
+                return next;
+            }
+            if bytes[next..content].contains(&b'\t') {
+                self.unsupported = true;
+                return bytes.len();
+            }
+            at = content;
         }
     }
     fn heading(&mut self, start: usize, level: u8) -> usize {
