@@ -24,7 +24,7 @@ target/release/markdown-comparison profile core-markdown commonmark data/bench-c
 bundle exec ruby adapter.rb inkmark render commonmark data/commonmark.json
 ```
 
-The JSON input is an array of objects containing `markdown` and, for timings, `name`. `core-arena` measures parsing into the source-backed document and rendering its event traversal. `core-ast` measures the separate legacy mdast/HTML-renderer path. Neither is the direct-HTML path in the six-engine table. `prepare.py` also generates `bench-scanners.json` (long prose and fenced code) and `bench-references.json` for focused diagnostics.
+The JSON input is an array of objects containing `markdown` and, for timings, `name`. `core-arena` measures parsing into the source-backed document and rendering its event traversal. `core-ast` measures the separate legacy mdast/HTML-renderer path. Neither is the direct-HTML path in the six-engine table. `prepare.py` also generates `bench-scanners.json` (long prose and fenced code), `bench-references.json`, and `bench-linked-attention.json` for focused diagnostics.
 
 Allocation counting uses a separate executable so timing runs retain the system allocator:
 
@@ -66,7 +66,16 @@ The pull-stream measurement uses production source `7ed5e9d`. Raw samples, suppl
 
 The earlier paired comparison measured the original implementation at `e5effec59c852861b7b5e96eaf3eefe9e5a6e09b` against the optimized direct compiler at `4f614d0`: the 1 MB fixture improved from 551.1 ms to 41.9 ms (**13.2× faster**). Growing that input by approximately 10× increased optimized time by 11.0×, versus 40.4× before. This repaired the conspicuous scaling problem on this workload; it is not a worst-case complexity proof. The new pull architecture has comparable end-to-end mixed-document throughput to that optimized compiler; these separate runs do not establish a further throughput gain.
 
-**The Inkmark performance target remains unmet.** The current six-engine run measures 40.76 ms versus Inkmark’s 4.32 ms on the 1 MB fixture, a remaining **9.4× gap**. Block preparation still uses the existing grammar tokenizer and remains expensive. The shared event contract removes the need to collect the semantic stream or construct an AST for HTML, but is not yet a zero-allocation parser or a replacement for block token production.
+Three further optimizations move fatal diagnostics out of copyable tokenizer states, bypass impossible block recognizers on ordinary unindented lines, and identify emphasis contexts without cloning ancestor stacks. A fresh two-engine run at `6bc8f57` measures:
+
+| Engine | README 9 KB | Mixed 100 KB | Mixed 1 MB | GFM 100 KB |
+| --- | ---: | ---: | ---: | ---: |
+| core-markdown | 0.104 | 3.134 | 34.500 | 5.143 |
+| Inkmark 0.2.1 | 0.018 | 0.398 | 4.249 | 0.696 |
+
+The follow-up samples and paired studies are preserved separately in [measurements/2026-10-23-dispatch](measurements/2026-10-23-dispatch/). The six-engine table above retains its original source and samples; the two runs should not be combined into a new six-engine ranking.
+
+**The Inkmark performance target remains unmet.** The latest two-engine run has a remaining **8.1× gap** on the 1 MB fixture. Block preparation still uses the existing grammar tokenizer and remains expensive. The shared event contract removes the need to collect the semantic stream or construct an AST for HTML, but is not yet a zero-allocation parser or a replacement for block token production.
 
 ## Pull architecture and focused measurements
 
@@ -76,9 +85,17 @@ The default HTML API now consumes `EventParser` through `EventHtmlRenderer`. `Do
 
 Compacting tokenizer rollback checkpoints from a complete position to the necessary source index reduced the isolated mixed fixture from 40.3–40.5 ms to 39.3–39.4 ms. Folding ASCII reference labels in place removes two temporary string allocations per normalization: the reference-heavy fixture improved from 5.99–6.10 ms to 5.73–5.75 ms, approximately 5%; its mixed-document results were noisy. Two additional event-edit storage/reuse experiments were discarded after slowing mixed-document rendering by approximately 4–12%.
 
+Three alternating pairs for each follow-up optimization show:
+
+- Keeping diagnostics on the tokenizer, outside its returned state, reduces mixed 1 MB rendering from 39.57–39.83 ms to 37.22–37.45 ms, approximately 6%.
+- Sending ordinary unindented lines directly to table or paragraph recognition reduces mixed rendering from 37.71–39.76 ms to 36.21–36.30 ms. The first baseline run was slower; the later pairs show approximately 4% improvement. Whitespace and possible block markers retain ordered recognition, including enabled MDX.
+- Replacing each emphasis delimiter's cloned ancestor stack with its innermost opening-event index reduces mixed rendering from 35.82–35.99 ms to 34.73–35.04 ms. A separate 96 KB formatted-link fixture improves from 5.60–5.62 ms to 5.24–5.30 ms and removes 12,000 allocation calls from complete HTML conversion (82,041 → 70,041). A unique opening event identifies its complete ancestor chain, preserving delimiter boundaries between links and images.
+
+These are isolated studies on successive sources, not additive percentages. The mixed fixture's allocation-call count is unchanged by these three optimizations. A qualitative allocation trace still points primarily to per-line event splitting and small temporary event vectors for paragraph boundaries, document exits, and list wrappers.
+
 A separate diagnostic run of parser → arena → HTML took 0.128 ms for the README, 4.081 ms for mixed 100 KB, 45.146 ms for mixed 1 MB, and 6.497 ms for GFM 100 KB. These include arena construction and output generation; traversal alone is not being timed.
 
-On the mixed 1 MB fixture, the arena has 125,785 nodes at 128 bytes per node on arm64. Traversing it allocates nothing. The full parser still allocates heavily:
+On the mixed 1 MB fixture, the arena has 125,785 nodes at 128 bytes per node on arm64. Traversing it allocates nothing. At the pull measurement's `33f9c0f` allocation baseline, the full parser still allocates heavily:
 
 | Phase | Allocation calls | Reallocations | Cumulative requested MiB |
 | --- | ---: | ---: | ---: |
@@ -133,6 +150,8 @@ The delimiter bitset and byte-run scanning follow the general approach used by [
 
 Subsequent commits introduce the semantic event contract and arena, defer inline resolution and reuse its buffers, replace the default HTML compiler with the shared writer, escape URI runs directly into the writer, add SIMD-assisted scanning, compact arena links and tokenizer checkpoints, and fold ASCII labels in place. Correctness fixes and measurements have separate commits.
 
-No public feature was removed. The `memchr` runtime dependency has default features disabled. Several earlier line-searching and storage prototypes did not justify their cost on the mixed workload and were discarded. Removed grammar wrapper events were private and unused by either compiler. Dropping MDX or math is not justified by the measurements: disabled markers stay out of the CommonMark hot path, and rare diagnostics no longer inflate every state. The remaining substantial work is replacing expensive block grammar events with compact source-backed block records, reducing speculative tokenizer state and edit-buffer allocations, and avoiding normalization/destination clones during repeated link resolution. Those remain unimplemented optimization opportunities. The pull API accepts a complete UTF-8 source; it does not yet parse input chunks or incrementally reparse source edits.
+The follow-up commits keep fatal diagnostics outside copyable states, skip impossible block recognizers on ordinary lines, and track attention context identity without cloning ancestor stacks. Independent comparison covered 40,960 flow document/option combinations and 32,768 attention combinations, including exact HTML, diagnostics, and full mdast positions. The final source preserves the 2,117 saved outputs and arena/direct parity, with 23,019 of 23,019 measured regions covered.
+
+No public feature was removed. The `memchr` runtime dependency has default features disabled. Several earlier line-searching and storage prototypes did not justify their cost on the mixed workload and were discarded. Removed grammar wrapper events were private and unused by either compiler. MDX remains opt-in; ordinary-line dispatch now bypasses its unmatchable recognizers, and its fatal diagnostics no longer occupy every returned state. Feature separation or removal remains an option if a disabled cost cannot be isolated. The remaining substantial work is replacing expensive block grammar events with compact source-backed block records, reducing speculative tokenizer state and edit-buffer allocations, and avoiding normalization/destination clones during repeated link resolution. Those remain unimplemented optimization opportunities. The pull API accepts a complete UTF-8 source; it does not yet parse input chunks or incrementally reparse source edits.
 
 Sources: [CommonMark 0.31.2 examples](https://spec.commonmark.org/0.31.2/spec.json), [published GFM specification](https://github.github.com/gfm/), [markdown-rs](https://github.com/wooorm/markdown-rs), [Comrak](https://github.com/kivikakk/comrak), [Markly](https://github.com/socketry/markly), [Commonmarker](https://github.com/gjtorikian/commonmarker), and [Inkmark](https://github.com/yaroslav/inkmark).

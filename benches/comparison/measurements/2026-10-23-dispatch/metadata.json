@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-23",
+  "machine": "Apple M4 Pro",
+  "os": "macOS 27.0.1 arm64",
+  "rust": "1.99.1 (58cf8f9c3 2026-10-13)",
+  "ruby": "4.0.7 arm64-darwin25; YJIT disabled",
+  "inputs": {
+    "readme": {
+      "bytes": 9019,
+      "sha256": "e9fcb242b7ba8f45fd18b1a97b7e021755babea8825d6f3cb86bb6f89dcd2e14"
+    },
+    "mixed-100k": {
+      "bytes": 100252,
+      "sha256": "a9b31b8c20db1c4469a87e788ae77c98155cb4371738d291826abc94cfb12021"
+    },
+    "mixed-1m": {
+      "bytes": 1000020,
+      "sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356"
+    },
+    "gfm-100k": {
+      "bytes": 100130,
+      "sha256": "6c7091f969014c4396cbb98e6c3358d3d6d2c64e4dd6b7f35af273c15cb11c5d"
+    },
+    "long-lines-1m": {
+      "bytes": 1026456,
+      "sha256": "4edbe39e17d6254bc1d33654c36e1e3c0473c10c08817cce6d1fd2f24f79b261"
+    },
+    "code-1m": {
+      "bytes": 1041008,
+      "sha256": "9614745b8b4188bcf96a751410cd0f9b3841f0adc3bdfde4f0685849e80d6e2e"
+    },
+    "references": {
+      "bytes": 80025,
+      "sha256": "f5d995fc94efcc42927c9274759866fc60699865dd9cd1504b3f0e9380edc4cf"
+    },
+    "linked-attention": {
+      "bytes": 96000,
+      "sha256": "802c7ef3a1e41a55886e0a34df4ffa9ad10f2666aed593598a174734aa02ba3c"
+    }
+  },
+  "production_commit": "6bc8f577292a7baba01f1f23bdf9b2069bd79007",
+  "studies": {
+    "copy-state-ab.json": {
+      "before": "fe51ce71c6254f0de885fc7c96a562ab8c471a19",
+      "after": "0609a936d5851b8f9c92afc2d9f561863d8ee214"
+    },
+    "prose-dispatch-ab.json": {
+      "before": "0609a936d5851b8f9c92afc2d9f561863d8ee214",
+      "after": "0b0ff8badf6073764e7b2015d3d70725e0527d0a",
+      "notes": "Measured before the comment-only amendment of d8309cd. Production code is identical."
+    },
+    "attention-context-ab.json": {
+      "before": "0b0ff8badf6073764e7b2015d3d70725e0527d0a",
+      "after": "6bc8f577292a7baba01f1f23bdf9b2069bd79007",
+      "notes": "Compared release executables with identical production code; explanatory comments were consolidated after the first candidate build."
+    }
+  },
+  "notes": [
+    "Fresh two-engine sequential run, after the three isolated paired studies; all historical measurement directories are unchanged.",
+    "Each paired study alternates order across three pairs, using seven calibrated samples per document in each process.",
+    "Timing excludes startup and I/O and includes complete rendering and result disposal. Tests and compilation do not overlap timing.",
+    "GFM is not equal-output: Inkmark omits www.example.com autolinking and serializes tables differently.",
+    "Allocation calls and cumulative requested bytes are not peak or retained memory. Linked-attention before/after counts use the same counting source and profile options.",
+    "The temporary qualitative preparation-allocation tracer sampled every 251st allocation; it is not a timing or exact call-site count. Most sampled sites were divide_events, paragraph boundary additions, document exits, and list wrappers.",
+    "The benchmark harness is unchanged from 8e8296345c43f93a8a0460f4465d9ad044033a9a except prepare.py now also generates the supplemental linked-attention fixture."
+  ]
+}

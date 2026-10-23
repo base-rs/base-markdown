@@ -58,3 +58,7 @@ save("bench-references", [{
     "name": "references",
     "markdown": "[Alpha][Key] and [Beta][Key] and [Key].\n" * 2000 + '\n[Key]: /example "title"\n',
 }])
+save("bench-linked-attention", [{
+    "name": "linked-attention",
+    "markdown": "[**strong** and *emphasis* and _other_](/link)\n\n" * 2000,
+}])
