@@ -386,7 +386,19 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
 
         if event.name == Name::ListItem {
             if event.kind == Kind::Enter {
-                let end = skip::opt(&tokenizer.events, index, &[Name::ListItem]) - 1;
+                // HTML can retain the newline between adjacent items. Find
+                // exactly this item's end: `skip::opt` also skips siblings
+                // when no separate line-ending event lies between them.
+                let mut end = index;
+                let mut depth = 1;
+                while depth > 0 {
+                    end += 1;
+                    if tokenizer.events[end].kind == Kind::Enter {
+                        depth += 1;
+                    } else {
+                        depth -= 1;
+                    }
+                }
                 let marker = skip::to(&tokenizer.events, index, &[Name::ListItemMarker]);
                 // Guaranteed to be a valid ASCII byte.
                 let marker = tokenizer.parse_state.bytes[tokenizer.events[marker].point.index];

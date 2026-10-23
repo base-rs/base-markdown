@@ -1283,3 +1283,46 @@ fn retained_html_keeps_only_lines_inside_the_active_container() {
         assert_eq!(arena, output);
     }
 }
+
+#[test]
+fn retained_html_preserves_adjacent_sibling_list_items() {
+    use core_markdown::{render_events, Document, EventParser};
+    let options = Options {
+        parse: ParseOptions {
+            html_block_blank_lines: true,
+            ..ParseOptions::default()
+        },
+        ..Options::default()
+    };
+    for source in [
+        "- <v>\n\n-",
+        "- <v>\n\n\n-",
+        "- >\r\t<x>\n-",
+        "- >\r\t<x>\n\n-",
+        "- >\r\t<x>\n\n\n-",
+    ] {
+        let output = to_html_with_options(source, &options).unwrap();
+        assert_eq!(output.matches("<ul>").count(), 1, "{source:?}");
+        assert_eq!(output.matches("<li>").count(), 2, "{source:?}");
+        assert!(
+            output
+                .replace('\r', "\n")
+                .ends_with("</li>\n<li></li>\n</ul>"),
+            "{:?}",
+            output
+        );
+        let mut checked = String::new();
+        render_events(
+            source,
+            EventParser::new(source, &options.parse).unwrap(),
+            &options.compile,
+            &mut checked,
+        )
+        .unwrap();
+        assert_eq!(checked, output);
+        let document = Document::parse(source, &options.parse).unwrap();
+        let mut arena = String::new();
+        render_events(source, document.events(), &options.compile, &mut arena).unwrap();
+        assert_eq!(arena, output);
+    }
+}
