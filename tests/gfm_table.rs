@@ -1972,3 +1972,114 @@ normal escape: <a href="https://github.com/github/cmark-gfm/issues/277">https://
 
     Ok(())
 }
+
+#[test]
+fn compact_tables_preserve_cells_spans_and_rendering_paths() {
+    use core_markdown::{
+        render_events,
+        stream::{EventKind, TagKind},
+        Document, EventParser,
+    };
+    let cases = [
+        "| a | b |\n| :- | -: |\n| c | d |",
+        "a|b\n--|--",
+        "a|b\n--|--\nx\n|\nx|y|ignored",
+        "a|b\n--|--\n2. list",
+        "a|b\n--|--\n# heading",
+        "a|b\n--|--\n[x]: /x",
+        "intro\na|b\n--|--\nx",
+        "intro\nsingle\n:-\nbody",
+        "||\n|-|\n|",
+        "| |\n|-|\n|",
+        "|\n|-|\n|",
+        "  a | b\n  --- | ---\n  c",
+        "  a | b\n  - | -\n  c",
+        "a|b\n---\ntext",
+        "a|b\n-:|:-:\n~~old~~|[link](https://example.com)",
+        "a|b\n-|\ntext",
+        "a|b\n-|:x\ntext",
+        "a|b\n-|:|--\ntext",
+        "a\\|b|c\n---|---\nx|y",
+        "a|b\n--|--\n`a\\|b`|c",
+        "a|b\n--|--\n`a|b`|c",
+        "a|b\n--|--\n|one|\n\nparagraph",
+        "a\0b|c\n--|--\nx|y",
+        "a|b\n--|--\n<!-- html -->",
+        "a|b\n--|--\n[^note]: note",
+        "item|text\n--|--\na|b",
+        "a|b\n--|--\nitem|text",
+        "[a]: /a\n:-\nbody",
+    ];
+    let options = Options::gfm();
+    let mut grammar = Options::gfm();
+    grammar.parse.constructs.math_flow = true;
+    for case in cases {
+        for ending in ["", "\n", "\n\n", "\r\n"] {
+            let case = format!("{case}{ending}");
+            for source in [
+                case.clone(),
+                case.replace('\n', "\r\n"),
+                format!("> {}", case.replace('\n', "\n> ")),
+                format!("- {}", case.replace('\n', "\n  ")),
+                format!(">\t{}", case.replace('\n', "\n>\t")),
+            ] {
+                let direct = to_html_with_options(&source, &options).unwrap();
+                let expected = to_html_with_options(&source, &grammar).unwrap();
+                // Surrounding common blocks share the compact producer's existing
+                // list-tightness and literal-line-ending corrections. Compare table
+                // output independently, and check full rendering-path parity below.
+                let table_html = |html: &str| {
+                    html.split("<table>")
+                        .skip(1)
+                        .map(|tail| tail.split("</table>").next().unwrap().to_string())
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(
+                    table_html(&direct),
+                    table_html(&expected),
+                    "table output: {source:?}"
+                );
+                let tables = |parse: &ParseOptions| {
+                    EventParser::new(&source, parse)
+                        .unwrap()
+                        .filter_map(|event| {
+                            let event = event.unwrap();
+                            let kind = match &event.kind {
+                                EventKind::Start(tag) => tag.kind(),
+                                EventKind::End(kind) => *kind,
+                                _ => return None,
+                            };
+                            matches!(
+                                kind,
+                                TagKind::Table
+                                    | TagKind::TableHead
+                                    | TagKind::TableBody
+                                    | TagKind::TableRow
+                                    | TagKind::TableCell
+                            )
+                            .then_some(event)
+                        })
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(
+                    tables(&options.parse),
+                    tables(&grammar.parse),
+                    "table metadata: {source:?}"
+                );
+                let mut checked = String::new();
+                render_events(
+                    &source,
+                    EventParser::new(&source, &options.parse).unwrap(),
+                    &options.compile,
+                    &mut checked,
+                )
+                .unwrap();
+                assert_eq!(checked, direct, "checked: {source:?}");
+                let document = Document::parse(source.as_str(), &options.parse).unwrap();
+                let mut arena = String::new();
+                render_events(&source, document.events(), &options.compile, &mut arena).unwrap();
+                assert_eq!(arena, direct, "arena: {source:?}");
+            }
+        }
+    }
+}

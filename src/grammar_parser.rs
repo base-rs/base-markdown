@@ -151,7 +151,7 @@ impl<'a> GrammarParser<'a> {
         &self.definitions
     }
 
-    pub(crate) fn region(&mut self, fragments: impl Iterator<Item = Range<usize>>) {
+    pub(crate) fn region(&mut self, fragments: impl Iterator<Item = Range<usize>>, task: bool) {
         // Only compatibility inline tokenization needs an owning list of normalized keys. Ordinary compact events share the prepared definition table directly.
         if self.parse_state.definitions.is_empty() {
             self.parse_state
@@ -191,6 +191,9 @@ impl<'a> GrammarParser<'a> {
             &self.parse_state,
             core::mem::take(&mut self.buffers),
         );
+        tokenizer
+            .tokenize_state
+            .document_at_first_paragraph_of_list_item = task;
         let mut state = tokenizer.push(
             (first.start, 0),
             (first.end, 0),
