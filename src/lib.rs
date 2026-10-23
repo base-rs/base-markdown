@@ -155,7 +155,8 @@ pub fn to_html(value: &str) -> String {
 /// # }
 /// ```
 pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, message::Message> {
-    let mut output = String::new();
+    // Skip early growth steps while bounding spare capacity for mostly invisible input.
+    let mut output = String::with_capacity(value.len().min(4096));
     let result = EventHtmlRenderer::new(value, &options.compile, &mut output)
         .render_markdown(&options.parse);
     match result {
