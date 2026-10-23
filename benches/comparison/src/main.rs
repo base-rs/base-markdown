@@ -8,18 +8,6 @@ use std::{
 fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
     match parser {
         "core-stream" => {
-            let mut options = if profile.starts_with("gfm") { core_markdown::Options::gfm() } else { core_markdown::Options::default() };
-            if profile != "default" { options.compile.allow_dangerous_html = true; options.compile.allow_dangerous_protocol = true; }
-            if profile == "gfm" { options.parse.constructs.gfm_footnote_definition = false; options.parse.constructs.gfm_label_start_footnote = false; }
-            Box::new(move |s| {
-                let events = core_markdown::EventParser::new(s, &options.parse).unwrap();
-                let mut output = String::new();
-                core_markdown::render_events(s, events, &options.compile, &mut output).unwrap();
-                output
-            })
-        }
-        "core-markdown" | "core-ast" => {
-            let ast = parser == "core-ast";
             let mut options = if profile.starts_with("gfm") {
                 core_markdown::Options::gfm()
             } else {
@@ -34,7 +22,41 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                 options.parse.constructs.gfm_label_start_footnote = false;
             }
             Box::new(move |s| {
-                if ast {
+                let events = core_markdown::EventParser::new(s, &options.parse).unwrap();
+                let mut output = String::new();
+                core_markdown::render_events(s, events, &options.compile, &mut output).unwrap();
+                output
+            })
+        }
+        "core-markdown" | "core-ast" | "core-arena" => {
+            let ast = parser == "core-ast";
+            let arena = parser == "core-arena";
+            let mut options = if profile.starts_with("gfm") {
+                core_markdown::Options::gfm()
+            } else {
+                core_markdown::Options::default()
+            };
+            if profile != "default" {
+                options.compile.allow_dangerous_html = true;
+                options.compile.allow_dangerous_protocol = true;
+            }
+            if profile == "gfm" {
+                options.parse.constructs.gfm_footnote_definition = false;
+                options.parse.constructs.gfm_label_start_footnote = false;
+            }
+            Box::new(move |s| {
+                if arena {
+                    let document = core_markdown::Document::parse(s, &options.parse).unwrap();
+                    let mut output = String::new();
+                    core_markdown::render_events(
+                        s,
+                        document.events(),
+                        &options.compile,
+                        &mut output,
+                    )
+                    .unwrap();
+                    output
+                } else if ast {
                     core_markdown::to_mdast(s, &options.parse)
                         .unwrap()
                         .render_with(&mut core_markdown::HtmlRenderer::with_options(
