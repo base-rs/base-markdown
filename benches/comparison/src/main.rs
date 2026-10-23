@@ -28,7 +28,9 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                 output
             })
         }
-        "core-markdown" | "core-ast" | "core-arena" => {
+        "core-markdown" | "core-ast" | "core-arena" | "core-prepare" | "core-events" => {
+            let prepare = parser == "core-prepare";
+            let events = parser == "core-events";
             let ast = parser == "core-ast";
             let arena = parser == "core-arena";
             let mut options = if profile.starts_with("gfm") {
@@ -45,7 +47,17 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                 options.parse.constructs.gfm_label_start_footnote = false;
             }
             Box::new(move |s| {
-                if arena {
+                if prepare || events {
+                    let parser = core_markdown::EventParser::new(s, &options.parse).unwrap();
+                    if events {
+                        for event in parser {
+                            black_box(event.unwrap());
+                        }
+                    } else {
+                        black_box(parser);
+                    }
+                    String::new()
+                } else if arena {
                     let document = core_markdown::Document::parse(s, &options.parse).unwrap();
                     let mut output = String::new();
                     core_markdown::render_events(
