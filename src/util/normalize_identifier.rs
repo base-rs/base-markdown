@@ -77,7 +77,12 @@ pub fn normalize_identifier(value: &str) -> String {
         result.push_str(&value[start..]);
     }
 
-    result.to_lowercase().to_uppercase()
+    if result.is_ascii() {
+        result.make_ascii_uppercase();
+        result
+    } else {
+        result.to_lowercase().to_uppercase()
+    }
 }
 
 #[cfg(test)]
