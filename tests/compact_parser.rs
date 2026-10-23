@@ -333,3 +333,24 @@ fn gfm_preserves_the_same_literal_line_endings_as_commonmark() {
         );
     }
 }
+
+#[test]
+fn grammar_fallback_preserves_virtual_spaces_in_code() {
+    let mut options = Options::default();
+    options.parse.constructs.math_flow = true;
+    for source in [
+        "-\t\tcode",
+        "> \t\tcode",
+        "- a\n\n  \t\tcode",
+        "- ```\n\tcode\n  ```",
+    ] {
+        let direct = core_markdown::to_html_with_options(source, &options).unwrap();
+        // The compatibility producer retains its documented virtual-space interpretation;
+        // materializing the arena must preserve those constructed code values.
+        assert!(direct.contains("code"));
+        let document = Document::parse(source, &options.parse).unwrap();
+        let mut output = String::new();
+        render_events(source, document.events(), &options.compile, &mut output).unwrap();
+        assert_eq!(output, direct);
+    }
+}

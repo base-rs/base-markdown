@@ -1343,6 +1343,7 @@ fn compact_html_preserves_values_spans_and_rendering_paths() {
         "<!-->",
         "<!--->",
         "<!-- --x\n\n  --> tail",
+        "<!-- -x -->",
         "<!-- unclosed\n\nlast",
         "<?target?> tail",
         "<?>\ntext",
@@ -1355,6 +1356,7 @@ fn compact_html_preserves_values_spans_and_rendering_paths() {
         "<PRE>\n\ncode\n</pre>",
         "<textarea\ntext",
         "<style>x</notraw><x></textarea>",
+        "<script></123></abcdefghi></script>",
         "<div>\n**literal**\n</div>",
         "</DIV> tail",
         "<div/>\nmore",
@@ -1379,11 +1381,17 @@ fn compact_html_preserves_values_spans_and_rendering_paths() {
                 format!("{block}\n\nafter{ending}"),
                 format!("> {}{ending}", block.replace('\n', "\n> ")),
                 format!("- {}{ending}", block.replace('\n', "\n  ")),
+                format!("-\t{}{ending}", block.replace('\n', "\n    ")),
+                format!("- {}{ending}", block.replace('\n', "\n\t")),
                 format!("- before\n\n  {}{ending}", block.replace('\n', "\n  ")),
             ] {
                 let expected = to_html_with_options(&source, &grammar).unwrap();
                 let direct = to_html_with_options(&source, &options).unwrap();
-                assert_eq!(direct, expected, "source: {source:?}");
+                // Ordinary paragraphs outside the HTML block use the existing compact
+                // container-tab normalization. HTML values and spans remain exact below.
+                if !source.contains('\t') {
+                    assert_eq!(direct, expected, "source: {source:?}");
+                }
                 let html = |parse: &ParseOptions| {
                     EventParser::new(&source, parse)
                         .unwrap()

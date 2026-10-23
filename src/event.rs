@@ -3519,6 +3519,9 @@ mod tests {
         let shifted = point.shift_to(b"a\tb", 2);
         assert_eq!(shifted.index, 2);
         assert_eq!(shifted.column, 5);
+        let aligned = point.shift_to(b"abc\tx", 4);
+        assert_eq!(aligned.index, 4);
+        assert_eq!(aligned.column, 5);
     }
 
     #[test]

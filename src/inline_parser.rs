@@ -14,7 +14,7 @@ static MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\
 static GFM_MARKERS: crate::byte_scan::AsciiSet =
     crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!~@.:");
 
-/// CommonMark with independently enabled GFM constructs can share ordinary inline scanning.
+/// `CommonMark` with independently enabled GFM constructs can share ordinary inline scanning.
 pub(crate) fn supported_options(options: &crate::ParseOptions) -> bool {
     let mut common = options.constructs.clone();
     common.gfm_autolink_literal = false;
@@ -382,20 +382,21 @@ impl InlineParser {
                         let after_char = source[at..range.end].chars().next();
                         let before = classify_opt(before_char);
                         let after = classify_opt(after_char);
-                        let left = (GFM
+                        // Mixed adjacent emphasis/strike runs have grammar-specific partial-match rules.
+                        // Keep those regions together on the compatibility path.
+                        if GFM
                             && options.constructs.gfm_strikethrough
                             && marker != b'~'
-                            && after_char == Some('~'))
-                            || after != CharacterKind::Whitespace
-                                && (after != CharacterKind::Punctuation
-                                    || before != CharacterKind::Other);
-                        let right = (GFM
-                            && options.constructs.gfm_strikethrough
-                            && marker != b'~'
-                            && before_char == Some('~'))
-                            || before != CharacterKind::Whitespace
-                                && (before != CharacterKind::Punctuation
-                                    || after != CharacterKind::Other);
+                            && (before_char == Some('~') || after_char == Some('~'))
+                        {
+                            return false;
+                        }
+                        let left = after != CharacterKind::Whitespace
+                            && (after != CharacterKind::Punctuation
+                                || before != CharacterKind::Other);
+                        let right = before != CharacterKind::Whitespace
+                            && (before != CharacterKind::Punctuation
+                                || after != CharacterKind::Other);
                         let node = self.append(start, at, Kind::Text);
                         if GFM
                             && marker == b'~'
