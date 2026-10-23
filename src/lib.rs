@@ -49,6 +49,7 @@ mod block_parser;
 mod byte_scan;
 mod configuration;
 mod construct;
+mod definitions;
 mod document;
 mod event;
 mod event_html_renderer;

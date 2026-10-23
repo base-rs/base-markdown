@@ -24,11 +24,11 @@ impl<'a> EventParser<'a> {
     /// # Errors
     /// Returns syntax errors from enabled Markdown extensions.
     pub fn new(source: &'a str, options: &'a ParseOptions) -> Result<Self, StreamError> {
-        let producer = if let Some(blocks) = Blocks::parse(source, options) {
+        let producer = if let Some((blocks, definitions)) = Blocks::parse(source, options) {
             Producer::Compact(CompactParser {
                 blocks,
                 source,
-                inline: GrammarParser::empty(source, options),
+                inline: GrammarParser::empty(source, options, definitions),
                 compact_inline: crate::inline_parser::InlineParser::default(),
                 direct_inline: false,
                 options,
@@ -131,7 +131,9 @@ impl CompactParser<'_> {
         }
         if self.inlines {
             if let Some(event) = if self.direct_inline {
-                self.compact_inline.next(self.source, &[]).map(Ok)
+                self.compact_inline
+                    .next(self.source, self.inline.definitions())
+                    .map(Ok)
             } else {
                 self.inline.next()
             } {
@@ -250,9 +252,19 @@ impl CompactParser<'_> {
                     })
                 };
                 self.direct_inline = !self.options.inline_code_info
-                    && self
-                        .compact_inline
-                        .prepare::<false>(self.source, fragments(), &[]);
+                    && if self.inline.definitions().is_empty() {
+                        self.compact_inline.prepare::<false>(
+                            self.source,
+                            fragments(),
+                            self.inline.definitions(),
+                        )
+                    } else {
+                        self.compact_inline.prepare::<true>(
+                            self.source,
+                            fragments(),
+                            self.inline.definitions(),
+                        )
+                    };
                 if !self.direct_inline {
                     self.inline.region(fragments());
                 }
@@ -273,9 +285,13 @@ impl CompactParser<'_> {
                 start: matches!(marker, b'.' | b')').then_some(start),
             }),
             Body::Item(_) => {
-                let mut last = node.child;
-                while last != 0 && self.blocks.nodes[last].next != 0 {
-                    last = self.blocks.nodes[last].next;
+                let mut child = node.child;
+                let mut last = 0;
+                while child != 0 {
+                    if !matches!(self.blocks.nodes[child].body, Body::Definition(_)) {
+                        last = child;
+                    }
+                    child = self.blocks.nodes[child].next;
                 }
                 let block_end = last != 0 && self.blocks.nodes[last].body != Body::Paragraph(true);
                 EventKind::Start(Tag::Item { block_end })
@@ -286,6 +302,16 @@ impl CompactParser<'_> {
                 }
                 self.advance();
                 EventKind::Rule
+            }
+            Body::Definition(index) => {
+                let definition = &self.inline.definitions().entries[index];
+                let kind = EventKind::Definition {
+                    label: definition.label.clone(),
+                    destination: definition.destination.clone(),
+                    title: definition.title.clone(),
+                };
+                self.advance();
+                kind
             }
             Body::Code(metadata) => {
                 let code = &self.blocks.codes[metadata];

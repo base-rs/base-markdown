@@ -2,6 +2,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Compatibility producer: turn resolved grammar tokens into semantic events on demand.
+use crate::definitions::Definitions;
 use crate::event::{Content, Event as Token, Kind, Name};
 use crate::parser::ParseState;
 use crate::state::{Name as StateName, State};
@@ -23,13 +24,6 @@ use alloc::{
 };
 use core::{convert::TryFrom, ops::Range};
 
-#[derive(Debug)]
-pub(crate) struct Definition {
-    pub key: String,
-    pub destination: Text<'static>,
-    pub title: Option<Text<'static>>,
-}
-
 /// A pull producer of resolved semantic events.
 ///
 /// The constructor prepares block structure and definitions. Inline regions are resolved on demand as events are pulled, reusing scratch allocations without materializing document-wide inline tokens. Ordinary text stays source-backed. The semantic stream is never collected internally.
@@ -46,7 +40,7 @@ pub(crate) struct GrammarParser<'a> {
     options: &'a ParseOptions,
     tokens: Vec<Token>,
     matching: Vec<usize>,
-    definitions: Vec<Definition>,
+    definitions: Definitions,
     index: usize,
     started: bool,
     ended: bool,
@@ -105,7 +99,7 @@ impl<'a> GrammarParser<'a> {
             options,
             tokens,
             matching,
-            definitions: Vec::new(),
+            definitions: Definitions::default(),
             index: 0,
             started: false,
             ended: false,
@@ -125,33 +119,19 @@ impl<'a> GrammarParser<'a> {
                 && parser.tokens[index].name == Name::Definition
             {
                 let (label, destination, title) = parser.definition(index);
-                let key = normalize_identifier(
-                    label
-                        .resolve(source)
-                        .expect("grammar spans are source-valid"),
-                );
-                if !parser
-                    .definitions
-                    .iter()
-                    .any(|definition| definition.key == key)
-                {
-                    parser.definitions.push(Definition {
-                        key,
-                        destination,
-                        title,
-                    });
-                }
+                parser.definitions.push(source, label, destination, title);
             }
         }
-        // Keep the first authored definition; the collection above already discarded duplicate keys.
-        parser
-            .definitions
-            .sort_unstable_by(|a, b| a.key.cmp(&b.key));
+        parser.definitions.finish();
         parser
     }
 
-    pub(crate) fn empty(source: &'a str, options: &'a ParseOptions) -> Self {
-        Self::from_tokens(
+    pub(crate) fn empty(
+        source: &'a str,
+        options: &'a ParseOptions,
+        definitions: Definitions,
+    ) -> Self {
+        let mut parser = Self::from_tokens(
             source,
             options,
             Vec::new(),
@@ -162,10 +142,22 @@ impl<'a> GrammarParser<'a> {
                 definitions: Vec::new(),
                 gfm_footnote_definitions: Vec::new(),
             },
-        )
+        );
+        parser.definitions = definitions;
+        parser
+    }
+
+    pub(crate) fn definitions(&self) -> &Definitions {
+        &self.definitions
     }
 
     pub(crate) fn region(&mut self, fragments: impl Iterator<Item = Range<usize>>) {
+        // Only compatibility inline tokenization needs an owning list of normalized keys. Ordinary compact events share the prepared definition table directly.
+        if self.parse_state.definitions.is_empty() {
+            self.parse_state
+                .definitions
+                .extend(self.definitions.keys().cloned());
+        }
         self.buffers.events = core::mem::take(&mut self.tokens);
         self.index = 0;
         self.started = true;
@@ -428,8 +420,8 @@ impl<'a> GrammarParser<'a> {
             let key = normalize_identifier(&self.source[self.span(label)]);
             let definition = self
                 .definitions
-                .binary_search_by(|definition| definition.key.cmp(&key))
-                .map(|index| &self.definitions[index])
+                .find(&key)
+                .map(|index| &self.definitions.entries[index])
                 .expect("resolved link has a definition");
             (definition.destination.clone(), definition.title.clone())
         }

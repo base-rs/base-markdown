@@ -4,8 +4,12 @@
 // Block/container algorithms adapted from pulldown-cmark revision 38e4d08f14ec4bd9783270e9623db7681ebed968.
 
 //! Compact block preparation with source fragments and deferred inline scanning.
+mod definition;
 mod scanners;
+use crate::definitions::Definitions;
+use crate::grammar_parser::decode_string;
 use crate::mdast::CodeFence;
+use crate::stream::Text;
 use crate::ParseOptions;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -25,6 +29,7 @@ pub(super) enum Body {
     List { tight: bool, marker: u8, start: u32 },
     Item(usize),
     Code(usize),
+    Definition(usize),
     Rule,
     Fragment(usize),
 }
@@ -58,10 +63,11 @@ struct Builder<'a> {
     blank: bool,
     empty_item: Option<usize>,
     unsupported: bool,
+    definitions: Definitions,
 }
 
 impl Blocks {
-    pub fn parse(source: &str, options: &ParseOptions) -> Option<Self> {
+    pub fn parse(source: &str, options: &ParseOptions) -> Option<(Self, Definitions)> {
         // The compatibility producer handles extension grammars and individually disabled CommonMark constructs during migration.
         if options.constructs != crate::Constructs::default()
             || options.html_block_blank_lines
@@ -80,6 +86,7 @@ impl Blocks {
             blank: false,
             empty_item: None,
             unsupported: false,
+            definitions: Definitions::default(),
         };
         builder.blocks.nodes.push(Node {
             start: 0,
@@ -99,7 +106,8 @@ impl Blocks {
         while builder.open.len() > 1 {
             builder.pop(index);
         }
-        Some(builder.blocks)
+        builder.definitions.finish();
+        Some((builder.blocks, builder.definitions))
     }
 }
 
@@ -288,8 +296,39 @@ impl Builder<'_> {
             self.finish_list(start);
             return self.indented(at, line.remaining_space());
         }
-        // References and raw HTML retain their existing grammar until their metadata is recorded directly.
-        if bytes[at] == b'<' || bytes[at] == b'[' && possible_definition(&bytes[at..]) {
+        if bytes[at] == b'[' && possible_definition(&bytes[at..]) {
+            let next = at + scan_nextline(&bytes[at..]);
+            let Some(metadata) = definition::scan(bytes, at, next) else {
+                self.unsupported = true;
+                return bytes.len();
+            };
+            // A following title or arbitrary content indentation can belong to this same grammar content block.
+            let mut continuation = LineStart::new(&bytes[next..]);
+            if self.containers(&mut continuation) == self.open.len() {
+                let indentation = continuation.scan_space_upto(4);
+                let following = next + continuation.bytes_scanned();
+                if (indentation == 4 && scan_blank_line(&bytes[following..]).is_none())
+                    || metadata.title.is_none()
+                        && matches!(bytes.get(following), Some(b'"' | b'\'' | b'('))
+                {
+                    self.unsupported = true;
+                    return bytes.len();
+                }
+            }
+            self.finish_list(start);
+            let index = self.definitions.push(
+                self.source,
+                Text::Source(metadata.label),
+                decode_string(self.source, metadata.destination),
+                metadata
+                    .title
+                    .map(|range| decode_string(self.source, range)),
+            );
+            self.append(at, next, Body::Definition(index));
+            return next;
+        }
+        // Raw HTML retains its grammar producer until its block metadata is recorded directly.
+        if bytes[at] == b'<' {
             self.unsupported = true;
             return bytes.len();
         }

@@ -12,6 +12,96 @@ use core_markdown::{
 use pretty_assertions::assert_eq;
 
 #[test]
+fn compact_definitions_preserve_values_and_inline_fallback() {
+    use core_markdown::{render_events, stream::EventKind, Document, EventParser};
+
+    let options = Options::default();
+    let grammar = Options {
+        parse: ParseOptions {
+            // These inputs contain no retained HTML blocks. This forces independent grammar block preparation without changing their interpretation.
+            html_block_blank_lines: true,
+            ..ParseOptions::default()
+        },
+        ..Options::default()
+    };
+    let mut sources = vec![
+        "[b] [a]\n\n[b]: /first 'one'\n[B]: /second \"two\"\n[a]: <> ''".to_string(),
+        "[θ] [SS] [a b]\n\n[ϴ]: /theta\n[ẞ]: /ss\n[a\tb]: /space".to_string(),
+        "[a]: /a\n[b]: /b\n[a] [b]".to_string(),
+        "before\n\n[a]: /a\n\n".to_string(),
+        "[a]: /a\n".to_string(),
+        "- [a]: /a\n- next\n\n[a]".to_string(),
+        "> [a]: /a\n> [b]: /b\n\n[a] [b]".to_string(),
+        "- text\n\n  [a]: /a\n\n  next [a]".to_string(),
+        "[a]: /a\n    [b]: /b\n\n[b]".to_string(),
+        "[a]: /a\n\ttext [a]".to_string(),
+        "[a]: /a\n  'next-line title'\n[a]".to_string(),
+        "[a]: /a \"\"\n'ordinary paragraph' [a]".to_string(),
+        "[x\\]]: /escaped\\*path \"a &amp; b\"\n\n[x\\]]".to_string(),
+        "[a]: <a\\>b> (title \\) here)\n\n[a]".to_string(),
+        "[a]: a(b(c))\n\n[a]".to_string(),
+        "[a]: a\\(b\\)\n\n[a]".to_string(),
+        "[a]: <a\0b>\n\n[a]".to_string(),
+        "[a]: /a 'unterminated\n\n[a]".to_string(),
+        "[a]: /a 'title' suffix\n\n[a]".to_string(),
+        "[a]: /a)\n\n[a]".to_string(),
+        "text <i>inline HTML</i> [a]\n\n[a]: /a".to_string(),
+        "`a\nb` [a]\n\n[a]: /a".to_string(),
+        "> [a\n> b]\n\n[a b]: /ab".to_string(),
+        "[a]\0 [a]\n\n[a]: /a".to_string(),
+    ];
+    let mut many = "[ref0] [ref999]\n\n".to_string();
+    for index in (0..1000).rev() {
+        many.push_str(&format!("[ref{index}]: /{index}\n"));
+    }
+    many.push_str("[REF0]: /ignored\n");
+    sources.push(many);
+    for source in sources {
+        let expected = to_html_with_options(&source, &grammar).unwrap();
+        assert_eq!(to_html(&source), expected, "{source:?}");
+        let definitions = |parse: &ParseOptions| {
+            EventParser::new(&source, parse)
+                .unwrap()
+                .filter_map(|event| {
+                    if let EventKind::Definition {
+                        label,
+                        destination,
+                        title,
+                    } = event.unwrap().kind
+                    {
+                        Some((
+                            label.resolve(&source).unwrap().to_string(),
+                            destination.resolve(&source).unwrap().to_string(),
+                            title.map(|value| value.resolve(&source).unwrap().to_string()),
+                        ))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            definitions(&options.parse),
+            definitions(&grammar.parse),
+            "definitions: {source:?}"
+        );
+        let mut checked = String::new();
+        render_events(
+            &source,
+            EventParser::new(&source, &options.parse).unwrap(),
+            &options.compile,
+            &mut checked,
+        )
+        .unwrap();
+        assert_eq!(checked, expected, "checked: {source:?}");
+        let document = Document::parse(&source, &options.parse).unwrap();
+        let mut arena = String::new();
+        render_events(&source, document.events(), &options.compile, &mut arena).unwrap();
+        assert_eq!(arena, expected, "arena: {source:?}");
+    }
+}
+
+#[test]
 fn definition() -> Result<(), message::Message> {
     let danger = Options {
         compile: CompileOptions {
