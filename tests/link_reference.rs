@@ -12,6 +12,14 @@ use core_markdown::{
 use pretty_assertions::assert_eq;
 
 #[test]
+fn reference_paragraphs_resolve_emphasis_like_other_compact_inlines() {
+    for (label, html) in [("[a]", "<a href=\"/a\">a</a>"), ("[unknown]", "[unknown]")] {
+        let source = format!("{label}*a**_\n\n[a]: /a");
+        assert_eq!(to_html(&source), format!("<p>{html}<em>a</em>*_</p>\n"));
+    }
+}
+
+#[test]
 fn compact_references_preserve_resolution_and_event_roundtrips() {
     use core_markdown::{render_events, Document, EventParser};
     let options = Options::default();
@@ -42,10 +50,17 @@ fn compact_references_preserve_resolution_and_event_roundtrips() {
         "[a] [a] [b] [a]\n\n[b]: /b\n[a]: /first\n[A]: /second".to_string(),
         "[[a]] [outer [unknown]][]\n\n[a]: /a".to_string(),
         "[a][\tlabel\t]\n\n[label]: /label".to_string(),
+        "[a][unfinished\n\n[a]: /a".to_string(),
     ];
     for length in [998, 999, 1000] {
         let label = "x".repeat(length);
         sources.push(format!("[text][{label}]\n\n[{label}]: /length\n[a]: /a"));
+    }
+    for count in [248, 249, 250, 251] {
+        let tabs = "\t".repeat(count);
+        for prefix in ["", "!", "> ", "> !", "- ", "- !"] {
+            sources.push(format!("{prefix}[text][a{tabs}b]\n\n[a b]: /tabs"));
+        }
     }
     for source in sources {
         let expected = to_html_with_options(&source, &grammar).unwrap();
