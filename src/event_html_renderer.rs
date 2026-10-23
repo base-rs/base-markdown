@@ -471,6 +471,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         self.event_ref(&event)
     }
 
+    #[inline(always)]
     fn event_ref(&mut self, event: &Event<'_>) -> Result<(), StreamError> {
         if self.ended {
             return Err(StreamError::Unbalanced);
