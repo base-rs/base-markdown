@@ -1,0 +1,252 @@
+{
+  "readme": {
+    "baseline": {
+      "median_ms": 0.06492794386125057,
+      "process_medians_ms": [
+        0.06477980683836589,
+        0.06510981575373471,
+        0.06492794386125057
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.015368696247193416,
+      "process_medians_ms": [
+        0.015243992191678253,
+        0.015456923544084157,
+        0.015368696247193416
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.018207065628398692,
+      "process_medians_ms": [
+        0.01802739207069132,
+        0.018207065628398692,
+        0.018234335839862753
+      ]
+    },
+    "baseline_over_candidate": 4.2246878210705425,
+    "inkmark_over_candidate": 1.184685111576957
+  },
+  "mixed-100k": {
+    "baseline": {
+      "median_ms": 0.4144952817679558,
+      "process_medians_ms": [
+        0.4115895497237569,
+        0.4200461432506887,
+        0.4144952817679558
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.4380621988472622,
+      "process_medians_ms": [
+        0.4347999271137026,
+        0.4380621988472622,
+        0.44265714540059353
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.39263129975728256,
+      "process_medians_ms": [
+        0.3940911528038925,
+        0.39238888889221013,
+        0.39263129975728256
+      ]
+    },
+    "baseline_over_candidate": 0.9462018929245173,
+    "inkmark_over_candidate": 0.8962912134178007
+  },
+  "mixed-1m": {
+    "baseline": {
+      "median_ms": 4.180980305555556,
+      "process_medians_ms": [
+        4.178065972222223,
+        4.241427083333333,
+        4.180980305555556
+      ]
+    },
+    "candidate": {
+      "median_ms": 4.404270181818181,
+      "process_medians_ms": [
+        4.404270181818181,
+        4.397352941176471,
+        4.4528051470588235
+      ]
+    },
+    "inkmark": {
+      "median_ms": 4.184486486829465,
+      "process_medians_ms": [
+        4.173405405536697,
+        4.225888888565048,
+        4.184486486829465
+      ]
+    },
+    "baseline_over_candidate": 0.9493015035307288,
+    "inkmark_over_candidate": 0.950097590312231
+  },
+  "gfm-100k": {
+    "baseline": {
+      "median_ms": 4.979019466666666,
+      "process_medians_ms": [
+        4.935813206896552,
+        5.030398,
+        4.979019466666666
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.6444061135371179,
+      "process_medians_ms": [
+        0.6466694598214285,
+        0.6444061135371179,
+        0.639513462882096
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.6827850466774706,
+      "process_medians_ms": [
+        0.6798981482495071,
+        0.6832289718914012,
+        0.6827850466774706
+      ]
+    },
+    "baseline_over_candidate": 7.726524255545993,
+    "inkmark_over_candidate": 1.0595570593359092
+  },
+  "references": {
+    "baseline": {
+      "median_ms": 0.6199648109243697,
+      "process_medians_ms": [
+        0.6262468672566371,
+        0.6199648109243697,
+        0.610611406779661
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.6480967232142858,
+      "process_medians_ms": [
+        0.6500724557522124,
+        0.6430038546255507,
+        0.6480967232142858
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.8366460674193824,
+      "process_medians_ms": [
+        0.8366460674193824,
+        0.8449661017640225,
+        0.8347921349432612
+      ]
+    },
+    "baseline_over_candidate": 0.9565930342150263,
+    "inkmark_over_candidate": 1.2909277850842564
+  },
+  "definitions-256": {
+    "baseline": {
+      "median_ms": 0.03954768413868413,
+      "process_medians_ms": [
+        0.03954768413868413
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.041209869142857146,
+      "process_medians_ms": [
+        0.041209869142857146
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.04193619489509087,
+      "process_medians_ms": [
+        0.04193619489509087
+      ]
+    },
+    "baseline_over_candidate": 0.9596653656333893,
+    "inkmark_over_candidate": 1.0176250438873238
+  },
+  "definitions-1024": {
+    "baseline": {
+      "median_ms": 0.1629910121681416,
+      "process_medians_ms": [
+        0.1629910121681416
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.1648852918032787,
+      "process_medians_ms": [
+        0.1648852918032787
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.16318954250162512,
+      "process_medians_ms": [
+        0.16318954250162512
+      ]
+    },
+    "baseline_over_candidate": 0.9885115305651572,
+    "inkmark_over_candidate": 0.9897155817653114
+  },
+  "definitions-4096": {
+    "baseline": {
+      "median_ms": 0.7028735893719806,
+      "process_medians_ms": [
+        0.7028735893719806
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.7307162585365853,
+      "process_medians_ms": [
+        0.7307162585365853
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.6705746606436908,
+      "process_medians_ms": [
+        0.6705746606436908
+      ]
+    },
+    "baseline_over_candidate": 0.9618967433126977,
+    "inkmark_over_candidate": 0.9176950051537913
+  },
+  "long-lines-1m": {
+    "baseline": {
+      "median_ms": 0.11773734939759035,
+      "process_medians_ms": [
+        0.11773734939759035
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.11961700819672132,
+      "process_medians_ms": [
+        0.11961700819672132
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.555844961254056,
+      "process_medians_ms": [
+        0.555844961254056
+      ]
+    },
+    "baseline_over_candidate": 0.984286023973784,
+    "inkmark_over_candidate": 4.646872293778801
+  },
+  "code-1m": {
+    "baseline": {
+      "median_ms": 0.07236745327552987,
+      "process_medians_ms": [
+        0.07236745327552987
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.07246317860647694,
+      "process_medians_ms": [
+        0.07246317860647694
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.3058068410112097,
+      "process_medians_ms": [
+        0.3058068410112097
+      ]
+    },
+    "baseline_over_candidate": 0.9986789796861256,
+    "inkmark_over_candidate": 4.220168738000625
+  }
+}

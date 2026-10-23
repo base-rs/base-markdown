@@ -1,0 +1,127 @@
+{
+  "reviewed_commit": "5a096de7da9ace6da062a391c225e1653f485c87",
+  "baseline_commit": "164155bc2e24b9d2ad5ec1f219e989a6e4df49d6",
+  "modes": [
+    "GFM with single-tilde strikethrough",
+    "GFM without single-tilde strikethrough",
+    "CommonMark"
+  ],
+  "compile_options": {
+    "allow_dangerous_html": true,
+    "allow_dangerous_protocol": true
+  },
+  "forced_grammar": "Enable math_flow on math-free source; all other options unchanged.",
+  "checks": [
+    "Direct HTML equals checked event HTML and arena event HTML",
+    "No panics in direct, checked, arena, or forced-grammar paths",
+    "Raw HTML values/spans, table tags/alignment/header flags/spans, task markers/spans, strikethrough spans, and resolved link metadata/spans equal forced grammar"
+  ],
+  "corpora": [
+    {
+      "name": "html_table_tasks_links_attention",
+      "input_sha256": "10f71fb12f5c36028fb79cbea1c9cc9bc7289dfd66da08ad74441ec9ccd66e35",
+      "sources": 44764,
+      "source_option_combinations": 134292,
+      "panics": 0,
+      "rendering_path_disagreements": 0,
+      "metadata_disagreements": 0,
+      "html_differences_from_forced_grammar_by_mode": {
+        "0": 1711,
+        "1": 1718,
+        "2": 3285
+      }
+    },
+    {
+      "name": "pure_strike_mixed_container_boundaries",
+      "input_sha256": "7f75ac9c3fc61a2ded234f9982cd412280f1b5be093110b38e38b3aaeef07db1",
+      "sources": 36654,
+      "source_option_combinations": 109962,
+      "panics": 0,
+      "rendering_path_disagreements": 0,
+      "metadata_disagreements": 0,
+      "html_differences_from_forced_grammar_by_mode": {
+        "0": 133,
+        "1": 133,
+        "2": 165
+      }
+    }
+  ],
+  "findings_resolved": [
+    {
+      "finding": "Tilde-adjacent partially consumed emphasis runs changed GFM precedence.",
+      "example": "*b***~*",
+      "fix_commit": "b87fef5",
+      "resolution": "Conservative inline grammar fallback for adjacent emphasis/strikethrough runs."
+    },
+    {
+      "finding": "Unclosed raw HTML lost terminal source line endings when a new container interrupted it.",
+      "example": "- <script>\n  \n- x",
+      "fix_commit": "39cb8c2",
+      "resolution": "Conservative block grammar fallback for unclosed HTML on container loss."
+    },
+    {
+      "finding": "Lazy table headers were missed when delimiter lines resumed an explicit container prefix.",
+      "example": "> --|--\n--|--\n> --|--",
+      "fix_commit": "39cb8c2",
+      "resolution": "Probe table lookahead before the continued-container check and fall back for lazy headers."
+    },
+    {
+      "finding": "Single-line unclosed HTML at EOF changed event source spans after preceding containers.",
+      "example": "> x\n<!--\n",
+      "fix_commit": "bec60e0",
+      "resolution": "Conservative fallback preserves context-sensitive grammar EOF ownership."
+    }
+  ],
+  "intentional_differences": [
+    "GFM inherits existing compact CommonMark corrections for list tightness, container-tab stripping, emphasis boundaries, and incomplete fences in lazy paragraphs.",
+    "Existing literal/separator line-ending formatting differences persist.",
+    "Existing GFM tag filtering and unusual table flow-dispatch behavior remain preserved.",
+    "No unresolved correctness or compatibility finding remains after classifying generated output differences."
+  ],
+  "status": "approved production source",
+  "comrak_classification": {
+    "scope": "GFM sources whose candidate HTML differs from forced grammar; compare baseline and final candidate using the comparison harness.",
+    "normalization": "CRLF/CR to LF; trailing output LF; equivalent quote entities; checkbox attribute order. Significant text whitespace is retained.",
+    "results": [
+      {
+        "corpus": "html_table_tasks_links_attention",
+        "sources_with_gfm_html_differences": 1711,
+        "counts": {
+          "format_only": 1016,
+          "candidate_matches_comrak": 689,
+          "baseline_matches_comrak": 4,
+          "neither_matches_comrak": 2
+        }
+      },
+      {
+        "corpus": "pure_strike_mixed_container_boundaries",
+        "sources_with_gfm_html_differences": 133,
+        "counts": {
+          "format_only": 33,
+          "candidate_matches_comrak": 82,
+          "neither_matches_comrak": 18
+        }
+      }
+    ],
+    "assessment": "Four baseline/Comrak agreements concern table-containing lists with trailing blanks; candidate consistently applies the documented compact list-tightness behavior (baseline without trailing blanks already agrees with candidate). Other residual mismatches retain existing tag filtering, unusual table flow dispatch, or code-final-newline formatting while correcting independent container/inline behavior."
+  },
+  "independent_option_matrix": {
+    "sources": 216,
+    "modes": 128,
+    "source_option_combinations": 27648,
+    "input_sha256": "4bc76ca6c4fcba0bc01f1c6bda435e563f69dc5d709e8bca87698cce1a24f2d0",
+    "scope": "All combinations of the six independently enabled GFM constructs, with single-tilde strikethrough both enabled and disabled.",
+    "rendering_path_disagreements": 0,
+    "metadata_disagreements": 0,
+    "panics": 0
+  },
+  "followup_source_review": {
+    "previously_approved_commit": "bec60e0a5dac3ac025c40fbcd7c84e17156c03f7",
+    "commits": [
+      "fb72305",
+      "5a096de"
+    ],
+    "assessment": "The cached GFM dispatch flag uses the same comparison against immutable ParseOptions. CommonMark delimiter matching can only index buckets 0 or 1, so narrowing lower-bound maintenance to two buckets removes unused work without changing matching. GFM still uses all three buckets. Both full corpora and all 128 GFM option combinations passed relevant parity and metadata checks.",
+    "source_option_combinations": 271902
+  }
+}

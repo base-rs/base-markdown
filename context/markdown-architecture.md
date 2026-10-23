@@ -1,6 +1,6 @@
 # Markdown Parser Architecture
 
-This crate exposes a pull-based semantic event contract shared by direct HTML rendering and a source-backed arena AST. Ordinary CommonMark uses compact block records and reusable inline candidates. A grammar state machine supplies the compatibility path for extensions and unsupported compact constructs, and the separate legacy mdast API.
+This crate exposes a pull-based semantic event contract shared by direct HTML rendering and a source-backed arena AST. Ordinary CommonMark and GFM use compact block records and reusable inline candidates, including common raw HTML blocks, tables, tasks, strikethrough, and simple literal links. A grammar state machine supplies the compatibility path for extensions and unsupported compact constructs, and the separate legacy mdast API.
 
 The [Pull Parser Architecture](pull-parser.md) specifies the source-backed semantic event contract and implementation of lazy inline parsing, shared HTML rendering, and incremental arena AST construction.
 

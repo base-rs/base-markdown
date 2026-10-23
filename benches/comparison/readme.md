@@ -47,7 +47,51 @@ The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,
 
 **GFM is not an equal-output throughput comparison:** Inkmark leaves `www.example.com` unlinked in this workload even with autolinking enabled. Its table alignment attributes and empty table bodies also differ. Comrak and Commonmarker do not expose the same independent GFM tag filter as the other adapters. Read GFM timings alongside the output agreement results.
 
-## Compact definition-preparation follow-up
+## Compact HTML and GFM follow-up
+
+The biggest remaining costs were compatibility fallbacks. Two HTML comments forced the entire saved README onto grammar block preparation. GFM options forced both block preparation and ordinary inline regions through grammar tokens, even when the text itself used only CommonMark syntax. The initial GFM diagnostic spent 2.89 ms preparing blocks and made 28,525 allocation calls per HTML conversion. Removing the README comments as a diagnostic reduced conversion from 0.065 to 0.015 ms; the comment text itself was not the expensive part.
+
+Common HTML blocks now use compact source fragments. Ordinary GFM blocks and tables use compact records, and ordinary inlines, tasks, strikethrough, and simple literal links share reusable inline candidates. Complex boundary cases retain grammar fallback. Compact extension dispatch is cached once, and CommonMark delimiter searches exclude the strikethrough bucket. No public feature was removed and no runtime dependency was added.
+
+The final comparison uses merged main `164155bc2e24b9d2ad5ec1f219e989a6e4df49d6` and production source `5a096de7da9ace6da062a391c225e1653f485c87`. The original four inputs are unchanged, verified by their saved hashes. [Raw samples, revisions, allocation counts, output checks, and review evidence](measurements/2026-10-24-html-gfm/) are retained, including exploratory results, the earlier complete snapshot, and dispatch-tuning comparisons. Final timings are medians of three process medians from alternating main/candidate/Inkmark runs on Apple M4 Pro, with the same launch path, arguments, and environment for both Rust revisions. Project builds, tests, and review workloads finished before timing; normal machine background activity was not isolated. All times below are milliseconds.
+
+| Workload | Merged main | This change | Inkmark 0.2.1 |
+| --- | ---: | ---: | ---: |
+| README 9 KB | 0.0648 | 0.0151 | 0.0181 |
+| Mixed 100 KB | 0.4129 | 0.4310 | 0.3927 |
+| Mixed 1 MB | 4.1682 | 4.3493 | 4.1533 |
+| GFM 100 KB | 4.9825 | 0.6415 | 0.6857 |
+
+README is **4.28× faster than main** and takes **16.2% less time than Inkmark**. GFM is **7.77× faster than main** and takes **6.5% less time than Inkmark**. Candidate GFM process medians span 0.639–0.642 ms, versus Inkmark's 0.683–0.688 ms.
+
+**The overall fastest-parser target remains unmet.** Mixed 100 KB and 1 MB rendering take 4.4% and 4.3% more time than main, and remain slower than Inkmark. Reference rendering is 0.635 ms versus main's 0.625 ms and Inkmark's 0.838 ms. No ordinary CommonMark speedup is claimed. The remaining work includes compact dispatch and event delivery; the process-layout sensitivity demonstrated in earlier studies also limits conclusions from small differences.
+
+All benchmark outputs are byte-identical to main. The three original CommonMark workloads agree with Inkmark after entity decoding, but are not byte-identical. **GFM still produces different output:** core-markdown links `www.example.com`, while Inkmark leaves it literal, and table serialization differs. The timing lead therefore does not establish an equal-output GFM ranking. [Output agreement](measurements/2026-10-24-html-gfm/benchmark-output-agreement.json) records the comparisons and hashes.
+
+Allocation calls / reallocations for complete HTML conversion are:
+
+| Workload | Merged main | This change |
+| --- | ---: | ---: |
+| README | 247 / 91 | 17 / 22 |
+| GFM 100 KB | 28,525 / 3,401 | 372 / 388 |
+
+GFM block preparation falls from 13,833 allocation calls and 874 reallocations to **4 and 11**. Pulling after preparation falls from 14,690 calls and 2,511 reallocations to **366 and 361**. Constructed `http://` and `mailto:` destinations still allocate. Arena traversal remains allocation-free. Ordinary mixed-document allocation counts are unchanged. GFM emits 24,525 events versus 23,810 previously because compact text fragments have different segmentation; rendering remains identical.
+
+Single-process phase diagnostics include construction, draining where applicable, and disposal; these are complete operations, not additive phases:
+
+| Workload | Main preparation | Candidate preparation | Main preparation + events | Candidate preparation + events |
+| --- | ---: | ---: | ---: | ---: |
+| README | 0.0503 | 0.0037 | 0.0595 | 0.0111 |
+| GFM 100 KB | 2.9122 | 0.1548 | 4.7745 | 0.5560 |
+| Mixed 1 MB | 0.8971 | 0.9424 | 3.1161 | 3.7697 |
+
+The ordinary mixed event-draining diagnostic also regresses and needs separate optimization. Definition and long-prose/code regression observations are saved in `summary.json`; they are single-process medians and are not new cross-engine ranking claims.
+
+The final source preserves **all 2,117 saved outputs** across direct HTML, checked events, and arena rendering. Fresh six-engine consistency counts are unchanged. Independent adversarial review covered **271,902 source/option combinations**, with zero panics, rendering-path disagreements, or checked metadata/span differences from forced grammar. Review found and fixed mixed delimiter precedence, unclosed HTML line ownership, lazy table headers, and EOF HTML provenance. Outside the saved corpus, GFM inherits the documented compact CommonMark corrections for list tightness, container tabs, code endings, emphasis, and incomplete fences in lazy paragraphs. Unusual legacy table dispatch remains preserved. See the [architecture](../../context/pull-parser.md) and [review evidence](measurements/2026-10-24-html-gfm/independent-review.json) for exact boundaries and remaining reference-engine differences.
+
+Final local arm64 all-feature coverage passes **26,897/26,897 measured regions**, excluding 68 invariant-only unreachable regions. The portable x86_64 path cross-compiles without default features. These checks establish measured coverage and observed compatibility, not proof over every input.
+
+## Compact definition-preparation follow-up (previous study)
 
 Ordinary same-line reference definitions now stay in compact block storage. The parser keeps source-backed labels, destinations, and titles in authored order, normalizes each label once, and sorts a separate index for first-definition-wins lookup. Duplicate definition events remain available to AST consumers. Both inline producers share the table; grammar inline fallback materializes normalized keys only when it is actually needed. Forward references still resolve before event delivery. Multiline definitions, ambiguous continuations, and container-tab provenance that needs the grammar retain compatibility preparation.
 
