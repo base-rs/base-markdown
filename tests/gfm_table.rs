@@ -2015,6 +2015,8 @@ fn compact_tables_preserve_cells_spans_and_rendering_paths() {
         "> a|b\n> -|-\nx|y",
         "intro\n    a|b\n    -|-",
         "a|b\n-x|-",
+        "> --|--\n--|--\n> --|--",
+        "- x\na|b\n  --|--",
     ];
     let options = Options::gfm();
     let mut grammar = Options::gfm();
