@@ -228,7 +228,12 @@ impl CompactParser<'_> {
                 Body::Item(_) => TagKind::Item,
                 _ => unreachable!("only block containers yield closing events"),
             };
-            if !matches!(node.body, Body::Paragraph(true) | Body::Item(_)) && node.next != 0 {
+            // Definitions are invisible. The grammar omits a list's boundary newline before them; a following visible block terminates the output itself.
+            if !matches!(node.body, Body::Paragraph(true) | Body::Item(_))
+                && node.next != 0
+                && !(matches!(node.body, Body::List { .. })
+                    && matches!(self.blocks.nodes[node.next].body, Body::Definition(_)))
+            {
                 self.separator = Some(node.end);
             }
             self.advance();

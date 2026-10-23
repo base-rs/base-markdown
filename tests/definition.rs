@@ -12,6 +12,18 @@ use core_markdown::{
 use pretty_assertions::assert_eq;
 
 #[test]
+fn definitions_use_the_same_compact_container_rules_as_other_blocks() {
+    assert_eq!(
+        to_html("[a]: /a\n- item\n\n\n[a]"),
+        "<ul>\n<li>item</li>\n</ul>\n<p><a href=\"/a\">a</a></p>"
+    );
+    assert_eq!(
+        to_html(">\t \t[a]: /a\n> [a]: /two"),
+        "<blockquote>\n<pre><code>  [a]: /a\n</code></pre>\n</blockquote>"
+    );
+}
+
+#[test]
 fn compact_definitions_preserve_values_and_inline_fallback() {
     use core_markdown::{render_events, stream::EventKind, Document, EventParser};
 
@@ -40,6 +52,12 @@ fn compact_definitions_preserve_values_and_inline_fallback() {
         "> [a]: /a\nlazy [a]".to_string(),
         "> [a]: /a\n\"lazy title\"\n\n[a]".to_string(),
         "-\t[a]: /a\n\n[a]".to_string(),
+        "-\t[a]: /a\n\t[b]: /b".to_string(),
+        "-\ttext\n\n\t[a]: /a".to_string(),
+        "-\t# heading\n\t[a]: /a".to_string(),
+        "- a\n\n[a]: /a\n".to_string(),
+        "- a\n\n[a]: /a\n\n".to_string(),
+        "- a\n\n[a]: /a\nnext".to_string(),
         "- [a]: /a\n- next\n\n[a]".to_string(),
         "> [a]: /a\n> [b]: /b\n\n[a] [b]".to_string(),
         "- text\n\n  [a]: /a\n\n  next [a]".to_string(),

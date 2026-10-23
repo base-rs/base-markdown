@@ -70,7 +70,7 @@ pub(super) fn scan(bytes: &[u8], start: usize, end: usize) -> Option<Metadata> {
             match bytes[at] {
                 0 | b'\r' | b'\n' => return None,
                 b'\\' if at + 1 < end && matches!(bytes[at + 1], b'"' | b'\'' | b')' | b'\\') => {
-                    at += 1
+                    at += 1;
                 }
                 _ => {}
             }
