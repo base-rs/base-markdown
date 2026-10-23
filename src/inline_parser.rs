@@ -33,6 +33,7 @@ enum Kind {
     Code(usize),
     SoftBreak,
     HardBreak,
+    Task(bool),
     Start(TagKind, usize),
     Reference(TagKind, usize),
     End(TagKind),
@@ -213,6 +214,7 @@ impl InlineParser {
         fragments: impl Iterator<Item = Range<usize>>,
         definitions: &Definitions,
         options: &crate::ParseOptions,
+        task: bool,
     ) -> bool {
         self.nodes.clear();
         self.delimiters.clear();
@@ -245,6 +247,21 @@ impl InlineParser {
                 }
             }
             let inline_start = at;
+            if GFM && task && self.nodes.len() == 1 && bytes.get(at) == Some(&b'[') {
+                // Keep multiline markers and tab-expanded whitespace on the grammar path.
+                if matches!(bytes.get(at + 1), Some(b' ' | b'x' | b'X'))
+                    && bytes.get(at + 2) == Some(&b']')
+                    && bytes.get(at + 3) == Some(&b' ')
+                    && bytes[at + 3..range.end]
+                        .iter()
+                        .any(|byte| !matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
+                {
+                    self.append(at, at + 3, Kind::Task(bytes[at + 1] != b' '));
+                    at += 3;
+                } else {
+                    return false;
+                }
+            }
             while at < range.end {
                 let start = at;
                 match bytes[at] {
@@ -476,6 +493,7 @@ impl InlineParser {
                 )),
                 Kind::SoftBreak => EventKind::SoftBreak(Text::Source(node.start..node.end)),
                 Kind::HardBreak => EventKind::HardBreak,
+                Kind::Task(checked) => EventKind::TaskMarker(checked),
                 Kind::Code(count) => {
                     let mut range = node.start + count..node.end - count;
                     let value = &source[range.clone()];

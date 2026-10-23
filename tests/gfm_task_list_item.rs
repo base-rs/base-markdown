@@ -372,3 +372,42 @@ Text.</li>
 
     Ok(())
 }
+
+#[test]
+fn compact_tasks_preserve_markers_whitespace_and_fallback() {
+    use core_markdown::{stream::EventKind, EventParser};
+    let options = Options::gfm();
+    let mut grammar = Options::gfm();
+    grammar.parse.constructs.math_flow = true;
+    for source in [
+        "- [x] checked\n- [X] upper\n- [ ] unchecked",
+        "- [x]   three spaces\n- [x] \t mixed spaces",
+        "- [x] **bold** and [link](https://example.com)",
+        "- [x] ~~old~~ www.example.com",
+        "- [x]\n  next line\n- [\t] tab\n- [\n] multiline",
+        "- [x]\n- [x]   \n- [y] literal\n- [x]no space",
+        "- [x] first\n\n  [x] second paragraph",
+        "- [a]: /a\n  [x] after definition",
+        "- - [x] nested\n\n> - [ ] quote",
+    ] {
+        assert_eq!(
+            to_html_with_options(source, &options).unwrap(),
+            to_html_with_options(source, &grammar).unwrap(),
+            "{source:?}"
+        );
+        let markers = |parse: &ParseOptions| {
+            EventParser::new(source, parse)
+                .unwrap()
+                .filter_map(|event| {
+                    let event = event.unwrap();
+                    matches!(event.kind, EventKind::TaskMarker(_)).then_some(event)
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            markers(&options.parse),
+            markers(&grammar.parse),
+            "{source:?}"
+        );
+    }
+}
