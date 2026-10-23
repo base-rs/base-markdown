@@ -122,6 +122,10 @@ impl AstBuilder {
 
     fn append(&mut self, event: Event<'_>) -> Result<(), StreamError> {
         event.validate(None)?;
+        let event = Event {
+            kind: event.kind.map_text(Text::owned),
+            span: event.span,
+        };
         if let EventKind::End(kind) = event.kind {
             let id = self.open.pop().ok_or(StreamError::Unbalanced)?;
             let node = &mut self.nodes[id.index()];
@@ -155,7 +159,7 @@ impl AstBuilder {
         let parent = self.open.last().copied();
         let start = matches!(event.kind, EventKind::Start(_));
         self.nodes.push(Node {
-            kind: event.kind.map_text(Text::owned),
+            kind: event.kind,
             span: event.span,
             parent,
             first_child: None,

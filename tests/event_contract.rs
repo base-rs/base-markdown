@@ -419,6 +419,9 @@ fn extension_errors_and_unclosed_container_fences_keep_their_boundaries() {
         "> ```\r\n> a",
         "\\ruby:`x`",
         "a\\-ruby:`x`",
+        // A valid raw prefix can cross emphasis; its start is outside the final Data token.
+        // Preserve the formatted text rather than creating a backwards source range.
+        "a-_b_:`x`",
         "---\nx\n---\n\n>",
         "+++\nx\n+++\n\n>",
     ] {

@@ -303,9 +303,7 @@ impl<'s> EventKind<'s> {
     pub(crate) fn map_text<'a>(self, mut map: impl FnMut(Text<'s>) -> Text<'a>) -> EventKind<'a> {
         match self {
             Self::Start(tag) => EventKind::Start(tag.map_text(map)),
-            Self::End(_) => unreachable!(
-                "end events close existing arena nodes before text ownership conversion"
-            ),
+            Self::End(kind) => EventKind::End(kind),
             Self::Text(text) => EventKind::Text(map(text)),
             Self::SoftBreak(text) => EventKind::SoftBreak(map(text)),
             Self::Separator { value, conditional } => EventKind::Separator {
