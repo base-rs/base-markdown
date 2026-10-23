@@ -89,10 +89,8 @@ use alloc::{vec, vec::Vec};
 struct Sequence {
     /// Marker as a byte (`u8`) used in this sequence.
     marker: u8,
-    /// We track whether sequences are in balanced events, and where those
-    /// events start, so that one attention doesn’t start in say, one link, and
-    /// end in another.
-    stack: Vec<usize>,
+    /// Innermost enclosing event, so attention cannot cross link boundaries. Each opening event has a unique index and is pushed only once. Equal innermost indices therefore imply equal complete ancestor stacks.
+    context: Option<usize>,
     /// The index into events where this sequence’s `Enter` currently resides.
     index: usize,
     /// The (shifted) point where this sequence starts.
@@ -171,7 +169,7 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
                 // An opener matching our closer:
                 if sequence_open.open
                     && sequence_close.marker == sequence_open.marker
-                    && sequence_close.stack == sequence_open.stack
+                    && sequence_close.context == sequence_open.context
                 {
                     // If the opening can close or the closing can open,
                     // and the close size *is not* a multiple of three,
@@ -255,7 +253,7 @@ fn get_sequences(tokenizer: &mut Tokenizer) -> Vec<Sequence> {
 
                 sequences.push(Sequence {
                     index,
-                    stack: stack.clone(),
+                    context: stack.last().copied(),
                     start_point: enter.point.clone(),
                     end_point: exit.point.clone(),
                     size: exit.point.index - enter.point.index,
