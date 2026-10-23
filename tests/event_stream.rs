@@ -76,7 +76,7 @@ fn construction_pulls_only_its_budget_and_detaches_edits() {
     }
     let mut document = builder.finish(source).unwrap();
     let paragraph = document
-        .node(document.root().unwrap())
+        .node(document.root())
         .unwrap()
         .first_child()
         .unwrap();
@@ -236,7 +236,7 @@ fn edits_and_consumers_validate_the_same_contract() {
     use core_markdown::stream::{Event, EventKind, Tag, TagKind, Text};
     let options = Options::default();
     let mut document = Document::parse("abc", &options.parse).unwrap();
-    let root = document.root().unwrap();
+    let root = document.root();
     let paragraph = document.node(root).unwrap().first_child().unwrap();
     let text = document.node(paragraph).unwrap().first_child().unwrap();
     for (id, kind) in [

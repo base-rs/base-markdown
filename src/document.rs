@@ -4,11 +4,20 @@
 //! A source-backed arena document and its incremental pull consumer.
 use crate::stream::{Event, EventKind, StreamError, Text};
 use alloc::{borrow::Cow, string::String, vec::Vec};
-use core::ops::Range;
+use core::{num::NonZeroUsize, ops::Range};
 
 /// A stable index into a document's contiguous node arena.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct NodeId(usize);
+pub struct NodeId(NonZeroUsize);
+
+impl NodeId {
+    fn new(index: usize) -> Self {
+        Self(NonZeroUsize::new(index + 1).expect("an arena index cannot reach usize::MAX"))
+    }
+    fn index(self) -> usize {
+        self.0.get() - 1
+    }
+}
 
 /// A semantic AST node. Child and sibling lists use arena indices, not heap objects.
 #[derive(Debug)]
@@ -115,7 +124,7 @@ impl AstBuilder {
         event.validate(None)?;
         if let EventKind::End(kind) = event.kind {
             let id = self.open.pop().ok_or(StreamError::Unbalanced)?;
-            let node = &mut self.nodes[id.0];
+            let node = &mut self.nodes[id.index()];
             if !matches!(&node.kind, EventKind::Start(tag) if tag.kind() == kind) {
                 return Err(StreamError::Unbalanced);
             }
@@ -135,7 +144,7 @@ impl AstBuilder {
         {
             return Err(StreamError::Unbalanced);
         }
-        let id = NodeId(self.nodes.len());
+        let id = NodeId::new(self.nodes.len());
         let parent = self.open.last().copied();
         let start = matches!(event.kind, EventKind::Start(_));
         self.nodes.push(Node {
@@ -147,12 +156,12 @@ impl AstBuilder {
             next_sibling: None,
         });
         if let Some(parent) = parent {
-            if let Some(previous) = self.nodes[parent.0].last_child {
-                self.nodes[previous.0].next_sibling = Some(id);
+            if let Some(previous) = self.nodes[parent.index()].last_child {
+                self.nodes[previous.index()].next_sibling = Some(id);
             } else {
-                self.nodes[parent.0].first_child = Some(id);
+                self.nodes[parent.index()].first_child = Some(id);
             }
-            self.nodes[parent.0].last_child = Some(id);
+            self.nodes[parent.index()].last_child = Some(id);
         }
         if start {
             self.open.push(id);
@@ -218,17 +227,13 @@ impl<S: AsRef<str>> Document<S> {
     pub fn nodes(&self) -> &[Node] {
         &self.nodes
     }
-    /// Root node, if the producer emitted one.
-    pub fn root(&self) -> Option<NodeId> {
-        if self.nodes.is_empty() {
-            None
-        } else {
-            Some(NodeId(0))
-        }
+    /// The document root. A finished document always has exactly one root.
+    pub fn root(&self) -> NodeId {
+        NodeId::new(0)
     }
     /// Access a node by stable index.
     pub fn node(&self, id: NodeId) -> Option<&Node> {
-        self.nodes.get(id.0)
+        self.nodes.get(id.index())
     }
 
     /// Replace a node's semantic value while preserving the arena's structure and provenance.
@@ -238,7 +243,10 @@ impl<S: AsRef<str>> Document<S> {
     /// and replacing a container with children by a leaf.
     pub fn set_kind(&mut self, id: NodeId, kind: EventKind<'static>) -> Result<(), StreamError> {
         kind.validate(Some(self.source()))?;
-        let node = self.nodes.get_mut(id.0).ok_or(StreamError::InvalidRange)?;
+        let node = self
+            .nodes
+            .get_mut(id.index())
+            .ok_or(StreamError::InvalidRange)?;
         let document = matches!(&kind, EventKind::Start(crate::stream::Tag::Document(_)));
         if matches!(&kind, EventKind::End(_))
             || document != node.parent.is_none()
@@ -255,7 +263,10 @@ impl<S: AsRef<str>> Document<S> {
     /// # Errors
     /// Returns [`StreamError::InvalidRange`] for an invalid node ID or a non-text node.
     pub fn text_mut(&mut self, id: NodeId) -> Result<&mut String, StreamError> {
-        let node = self.nodes.get_mut(id.0).ok_or(StreamError::InvalidRange)?;
+        let node = self
+            .nodes
+            .get_mut(id.index())
+            .ok_or(StreamError::InvalidRange)?;
         let (EventKind::Text(text)
         | EventKind::SoftBreak(text)
         | EventKind::Math(text)
@@ -292,7 +303,7 @@ impl<S: AsRef<str>> Document<S> {
     pub fn events(&self) -> DocumentEvents<'_, S> {
         DocumentEvents {
             document: self,
-            current: self.root(),
+            current: Some(self.root()),
             closing: false,
         }
     }
@@ -375,7 +386,7 @@ impl<'a, S: AsRef<str>> Iterator for DocumentEvents<'a, S> {
     type Item = Result<Event<'a>, StreamError>;
     fn next(&mut self) -> Option<Self::Item> {
         let id = self.current?;
-        let node = &self.document.nodes[id.0];
+        let node = &self.document.nodes[id.index()];
         let event = if self.closing {
             match &node.kind {
                 EventKind::Start(tag) => Event {
