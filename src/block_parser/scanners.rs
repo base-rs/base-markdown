@@ -192,10 +192,6 @@ pub(crate) fn is_ascii_whitespace_no_nl(c: u8) -> bool {
     matches!(c, b' ' | b'\t')
 }
 
-fn is_digit(c: u8) -> bool {
-    c.is_ascii_digit()
-}
-
 pub(crate) fn scan_while<F>(data: &[u8], mut f: F) -> usize
 where
     F: FnMut(u8) -> bool,
@@ -308,7 +304,7 @@ pub(crate) fn scan_setext_heading(data: &[u8]) -> Option<(usize, u8)> {
 }
 
 pub(crate) fn scan_code_fence(data: &[u8]) -> Option<(usize, u8)> {
-    let c = *data.first()?;
+    let c = data[0];
     if !(c == b'`' || c == b'~') {
         return None;
     }
@@ -317,7 +313,6 @@ pub(crate) fn scan_code_fence(data: &[u8]) -> Option<(usize, u8)> {
         if c == b'`' {
             let suffix = &data[i..];
             let next_line = i + scan_nextline(suffix);
-            // FIXME: make sure this is correct
             if suffix[..(next_line - i)].contains(&b'`') {
                 return None;
             }
@@ -326,92 +321,4 @@ pub(crate) fn scan_code_fence(data: &[u8]) -> Option<(usize, u8)> {
     } else {
         None
     }
-}
-
-pub(crate) fn scan_blockquote_start(data: &[u8]) -> Option<usize> {
-    if data.first().copied() == Some(b'>') {
-        let space = usize::from(data.get(1).copied() == Some(b' '));
-        Some(1 + space)
-    } else {
-        None
-    }
-}
-
-pub(crate) fn scan_listitem(bytes: &[u8]) -> Option<(usize, u8, usize, usize)> {
-    let mut c = *bytes.first()?;
-    let (w, start) = match c {
-        b'-' | b'+' | b'*' => (1, 0),
-        b'0'..=b'9' => {
-            let (length, start) = parse_decimal(bytes, 9);
-            c = *bytes.get(length)?;
-            if !(c == b'.' || c == b')') {
-                return None;
-            }
-            (length + 1, start)
-        }
-        _ => {
-            return None;
-        }
-    };
-    // TODO: replace calc_indent with scan_leading_whitespace, for tab correctness
-    let (mut postn, mut postindent) = calc_indent(&bytes[w..], 5);
-    if postindent == 0 {
-        scan_eol(&bytes[w..])?;
-        postindent += 1;
-    } else if postindent > 4 {
-        postn = 1;
-        postindent = 1;
-    }
-    if scan_blank_line(&bytes[w..]).is_some() {
-        postn = 0;
-        postindent = 1;
-    }
-    Some((w + postn, c, start, w + postindent))
-}
-
-fn parse_decimal(bytes: &[u8], limit: usize) -> (usize, usize) {
-    match bytes
-        .iter()
-        .take(limit)
-        .take_while(|&&b| is_digit(b))
-        .try_fold((0, 0usize), |(count, acc), c| {
-            let digit = usize::from(c - b'0');
-            match acc
-                .checked_mul(10)
-                .and_then(|ten_acc| ten_acc.checked_add(digit))
-            {
-                Some(number) => Ok((count + 1, number)),
-                // stop early on overflow
-                None => Err((count, acc)),
-            }
-        }) {
-        Ok(p) | Err(p) => p,
-    }
-}
-
-pub(crate) fn calc_indent(text: &[u8], max: usize) -> (usize, usize) {
-    let mut spaces = 0;
-    let mut offset = 0;
-
-    for (i, &b) in text.iter().enumerate() {
-        offset = i;
-        match b {
-            b' ' => {
-                spaces += 1;
-                if spaces == max {
-                    break;
-                }
-            }
-            b'\t' => {
-                let new_spaces = spaces + 4 - (spaces & 3);
-                if new_spaces > max {
-                    break;
-                }
-                spaces = new_spaces;
-            }
-            _ => break,
-        }
-    }
-
-    (offset, spaces)
 }

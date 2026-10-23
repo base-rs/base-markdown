@@ -144,16 +144,20 @@ impl CompactParser<'_> {
             }));
         }
         if self.cursor == 0 {
+            let mut last = self.blocks.nodes[0].child;
+            while self.blocks.nodes[last].next != 0 {
+                last = self.blocks.nodes[last].next;
+            }
+            let last = self.blocks.nodes[last];
             if !self.final_separator
                 && !self.suppress_final_separator
                 && self.blocks.nodes[0].child != 0
-                && self
-                    .source
-                    .trim_end_matches([' ', '\t'])
-                    .ends_with(['\r', '\n'])
+                && (self.source.ends_with(['\r', '\n'])
+                    || matches!(last.body, Body::Paragraph(_))
+                        && self.source[..last.end].ends_with(['\r', '\n']))
             {
                 self.final_separator = true;
-                return Some(Ok(self.separator(self.source.len())));
+                return Some(Ok(self.separator(last.end)));
             }
             self.ended = true;
             return Some(Ok(Event {
@@ -196,10 +200,7 @@ impl CompactParser<'_> {
                         }
                     })
                 };
-                if let Err(error) = self.inline.region(fragments()) {
-                    self.ended = true;
-                    return Some(Err(error));
-                }
+                self.inline.region(fragments());
                 self.inlines = true;
                 match node.body {
                     Body::Heading(level) => EventKind::Start(Tag::Heading(level)),

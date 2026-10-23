@@ -157,17 +157,14 @@ impl<'a> GrammarParser<'a> {
         )
     }
 
-    pub(crate) fn region(
-        &mut self,
-        fragments: impl Iterator<Item = Range<usize>>,
-    ) -> Result<(), StreamError> {
+    pub(crate) fn region(&mut self, fragments: impl Iterator<Item = Range<usize>>) {
         self.buffers.events = core::mem::take(&mut self.tokens);
         self.index = 0;
         self.started = true;
         self.ended = true;
         let mut fragments = fragments.enumerate();
         let Some((_, first)) = fragments.next() else {
-            return Ok(());
+            return;
         };
         let source = self.source;
         let point = |index, line| {
@@ -203,7 +200,9 @@ impl<'a> GrammarParser<'a> {
             tokenizer.define_skip(point(fragment.start, line + 1));
             state = tokenizer.push((fragment.start, 0), (fragment.end, 0), state);
         }
-        tokenizer.flush(state, true)?;
+        tokenizer
+            .flush(state, true)
+            .expect("compact blocks enable only infallible inline constructs");
         crate::subtokenize::subtokenize(&mut tokenizer.events, &self.parse_state, None)
             .expect("resolved inline tokens contain only infallible string links");
         self.buffers = tokenizer.into_buffers();
@@ -214,7 +213,6 @@ impl<'a> GrammarParser<'a> {
         self.ended = true;
         self.containers.clear();
         self.containers.push(TagKind::Paragraph);
-        Ok(())
     }
 
     fn inline(&mut self, index: usize) -> Result<(), StreamError> {

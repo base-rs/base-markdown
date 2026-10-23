@@ -13,6 +13,7 @@ fn block_boundaries_preserve_source_whitespace() {
         ("- a`x\n b`", "<ul>\n<li>a<code>x  b</code></li>\n</ul>"),
         ("- - # a\n  b", "<ul>\n<li>\n<ul>\n<li>\n<h1>a</h1>\n</li>\n</ul>\nb</li>\n</ul>"),
         ("a\n ", "<p>a</p>\n"),
+        ("a\n1.     b", "<p>a</p>\n<ol>\n<li>\n<pre><code>b\n</code></pre>\n</li>\n</ol>"),
         ("a\r\n\n# b\n", "<p>a</p>\r\n<h1>b</h1>\n"),
         ("#\u{b}x", "<p>#\u{b}x</p>"),
         ("#\u{c}x", "<p>#\u{c}x</p>"),
@@ -26,5 +27,17 @@ fn block_boundaries_preserve_source_whitespace() {
         let mut output = String::new();
         render_events(source, document.events(), &options.compile, &mut output).unwrap();
         assert_eq!(output, expected, "arena: {source:?}");
+    }
+}
+
+#[test]
+fn semantic_endings_ignore_trailing_blanks_and_container_prefixes() {
+    for (source, expected) in [
+        ("a\r\r\n", "<p>a</p>\r"),
+        ("# a\n\r", "<h1>a</h1>\n"),
+        ("+ \n  ", "<ul>\n<li></li>\n</ul>"),
+        ("x\n\n> - - # a\r\n>   b", "<p>x</p>\n<blockquote>\n<ul>\n<li>\n<ul>\n<li>\n<h1>a</h1>\n</li>\n</ul>\r\nb</li>\n</ul>\n</blockquote>"),
+    ] {
+        assert_eq!(to_html(source), expected, "{source:?}");
     }
 }

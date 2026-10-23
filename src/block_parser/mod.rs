@@ -11,8 +11,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::{convert::TryFrom, ops::Range};
 use scanners::{
-    is_ascii_whitespace, scan_atx_heading, scan_blank_line, scan_blockquote_start,
-    scan_closing_code_fence, scan_code_fence, scan_eol, scan_hrule, scan_listitem, scan_nextline,
+    is_ascii_whitespace, scan_atx_heading, scan_blank_line,
+    scan_closing_code_fence, scan_code_fence, scan_eol, scan_hrule, scan_nextline,
     scan_setext_heading, scan_whitespace_no_nl, LineStart,
 };
 
@@ -306,7 +306,7 @@ impl Builder<'_> {
             self.finish_list(start);
             return self.fenced(at, indent, marker, length);
         }
-        self.paragraph(at)
+        self.paragraph(at, start)
     }
     fn interrupts(&mut self, bytes: &[u8], current_container: bool) -> bool {
         // HTML can interrupt paragraphs even after lazy container continuations.
@@ -318,15 +318,19 @@ impl Builder<'_> {
             || scan_hrule(bytes).is_ok()
             || scan_atx_heading(bytes).is_some()
             || scan_code_fence(bytes).is_some()
-            || scan_blockquote_start(bytes).is_some()
-            || scan_listitem(bytes).is_some_and(|(index, marker, number, _)| {
-                !current_container
-                    || ((matches!(marker, b'*' | b'-' | b'+') || number == 1)
-                        && scan_blank_line(&bytes[index..]).is_none())
-            })
+            || bytes.starts_with(b">")
+            || {
+                let mut line = LineStart::new(bytes);
+                line.scan_list_marker_with_indent(0)
+                    .is_some_and(|(marker, number, _)| {
+                        !current_container
+                            || ((matches!(marker, b'*' | b'-' | b'+') || number == 1)
+                                && scan_blank_line(&bytes[line.bytes_scanned()..]).is_none())
+                    })
+            }
     }
-    fn paragraph(&mut self, start: usize) -> usize {
-        self.finish_list(start);
+    fn paragraph(&mut self, start: usize, line_start: usize) -> usize {
+        self.finish_list(line_start);
         let paragraph = self.append(start, start, Body::Paragraph(false));
         self.push();
         let bytes = self.source.as_bytes();
@@ -487,9 +491,8 @@ impl Builder<'_> {
             spaces = line.remaining_space();
             self.blank = scan_blank_line(&bytes[at..]).is_some();
         }
-        if last_content != 0 {
-            self.blocks.nodes[last_content].next = 0;
-        }
+        // The first line is nonblank, so every indented block has a content fragment.
+        self.blocks.nodes[last_content].next = 0;
         self.pop(end);
         at
     }
