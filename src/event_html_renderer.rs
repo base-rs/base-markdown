@@ -74,6 +74,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         }
     }
 
+    #[inline(always)]
     fn write(&mut self, value: &str) -> Result<(), StreamError> {
         if let Some(heading) = self.heading.as_mut() {
             heading.output.push_str(value);
