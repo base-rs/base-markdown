@@ -110,26 +110,35 @@ impl InlineParser {
         self.nodes[previous].next = index;
         self.nodes[next].previous = index;
     }
-    fn attention(&mut self, bottom: usize) {
+    fn attention<const GFM: bool>(&mut self, bottom: usize) {
         // A successful match truncates the active opener stack. Failed searches advance bounds for the marker and modulo-three class, following pulldown-cmark's InlineStack technique.
-        let mut lower = [[0; 6]; 2];
+        let mut lower = [[0; 6]; 3];
         self.attention_stack.clear();
         for close in bottom..self.delimiters.len() {
             let closer = self.delimiters[close].node;
             let marker = self.delimiters[close].marker;
+            let marker_index = if GFM && marker == b'~' {
+                2
+            } else {
+                usize::from(marker == b'_')
+            };
             if self.delimiters[close].close {
                 while self.nodes[closer].start < self.nodes[closer].end {
                     let size = self.nodes[closer].end - self.nodes[closer].start;
                     let closer_modulo = self.delimiters[close].run_modulo;
                     let bucket =
                         usize::from(closer_modulo) + usize::from(self.delimiters[close].open) * 3;
-                    let bound =
-                        lower[usize::from(marker == b'_')][bucket].min(self.attention_stack.len());
+                    let bound = lower[marker_index][bucket].min(self.attention_stack.len());
                     let mut found = None;
                     for slot in (bound..self.attention_stack.len()).rev() {
                         let open = self.attention_stack[slot];
                         let candidate = &self.delimiters[open];
                         if candidate.marker == marker
+                            && (!GFM
+                                || marker != b'~'
+                                || self.nodes[candidate.node].end
+                                    - self.nodes[candidate.node].start
+                                    == size)
                             && !((candidate.close || self.delimiters[close].open)
                                 && (candidate.run_modulo + closer_modulo) % 3 == 0
                                 && (candidate.run_modulo != 0 || closer_modulo != 0))
@@ -139,14 +148,16 @@ impl InlineParser {
                         }
                     }
                     let Some((slot, open)) = found else {
-                        lower[usize::from(marker == b'_')][bucket] = self.attention_stack.len();
+                        lower[marker_index][bucket] = self.attention_stack.len();
                         break;
                     };
                     let opener = self.delimiters[open].node;
                     let take = (self.nodes[opener].end - self.nodes[opener].start)
                         .min(size)
                         .min(2);
-                    let tag = if take == 2 {
+                    let tag = if GFM && marker == b'~' {
+                        TagKind::Delete
+                    } else if take == 2 {
                         TagKind::Strong
                     } else {
                         TagKind::Emphasis
@@ -266,7 +277,6 @@ impl InlineParser {
                 let start = at;
                 match bytes[at] {
                     b'<' | 0 => return false,
-                    b'~' if GFM && options.constructs.gfm_strikethrough => return false,
                     b'@' | b':' if GFM && options.constructs.gfm_autolink_literal => return false,
                     b'.' if GFM
                         && options.constructs.gfm_autolink_literal
@@ -337,20 +347,40 @@ impl InlineParser {
                             self.append(start, at, Kind::Text);
                         }
                     }
-                    b'*' | b'_' => {
+                    marker
+                        if matches!(marker, b'*' | b'_')
+                            || (GFM && marker == b'~' && options.constructs.gfm_strikethrough) =>
+                    {
                         let marker = bytes[at];
                         while at < range.end && bytes[at] == marker {
                             at += 1;
                         }
-                        let before = classify_opt(source[inline_start..start].chars().next_back());
-                        let after = classify_opt(source[at..range.end].chars().next());
-                        let left = after != CharacterKind::Whitespace
-                            && (after != CharacterKind::Punctuation
-                                || before != CharacterKind::Other);
-                        let right = before != CharacterKind::Whitespace
-                            && (before != CharacterKind::Punctuation
-                                || after != CharacterKind::Other);
+                        let before_char = source[inline_start..start].chars().next_back();
+                        let after_char = source[at..range.end].chars().next();
+                        let before = classify_opt(before_char);
+                        let after = classify_opt(after_char);
+                        let left = (GFM
+                            && options.constructs.gfm_strikethrough
+                            && marker != b'~'
+                            && after_char == Some('~'))
+                            || after != CharacterKind::Whitespace
+                                && (after != CharacterKind::Punctuation
+                                    || before != CharacterKind::Other);
+                        let right = (GFM
+                            && options.constructs.gfm_strikethrough
+                            && marker != b'~'
+                            && before_char == Some('~'))
+                            || before != CharacterKind::Whitespace
+                                && (before != CharacterKind::Punctuation
+                                    || after != CharacterKind::Other);
                         let node = self.append(start, at, Kind::Text);
+                        if GFM
+                            && marker == b'~'
+                            && (at - start > 2
+                                || (at - start == 1 && !options.gfm_strikethrough_single_tilde))
+                        {
+                            continue;
+                        }
                         self.delimiters.push(Delimiter {
                             node,
                             marker,
@@ -448,7 +478,7 @@ impl InlineParser {
                             }
                         };
                         if let Some((end, kind)) = resolved {
-                            self.attention(bracket.delimiters);
+                            self.attention::<GFM>(bracket.delimiters);
                             self.nodes[bracket.node].kind = kind;
                             self.nodes[bracket.node].end = end;
                             self.append(end, end, Kind::End(tag));
@@ -469,7 +499,7 @@ impl InlineParser {
                 }
             }
         }
-        self.attention(0);
+        self.attention::<GFM>(0);
         self.cursor = self.nodes[0].next;
         true
     }
@@ -512,6 +542,7 @@ impl InlineParser {
                 Kind::Start(tag, index) => EventKind::Start(match tag {
                     TagKind::Emphasis => Tag::Emphasis,
                     TagKind::Strong => Tag::Strong,
+                    TagKind::Delete => Tag::Delete,
                     TagKind::Link | TagKind::Image => {
                         let link = &self.links[index];
                         let destination = decode_string(source, link.destination.clone());

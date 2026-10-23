@@ -439,3 +439,58 @@ u ~**xxx**~ zzz
 
     Ok(())
 }
+
+#[test]
+fn compact_strikethrough_matches_grammar_across_delimiter_boundaries() {
+    use core_markdown::{render_events, Document, EventParser};
+    for single in [false, true] {
+        let mut options = Options::gfm();
+        options.parse.gfm_strikethrough_single_tilde = single;
+        let mut grammar = Options::gfm();
+        grammar.parse.gfm_strikethrough_single_tilde = single;
+        grammar.parse.constructs.math_flow = true;
+        for open in ["~", "~~", "~~~", "~~~~"] {
+            for close in ["~", "~~", "~~~", "~~~~"] {
+                for content in [
+                    "word",
+                    "*word*",
+                    "**word**",
+                    "_word_",
+                    "[word](path)",
+                    "word\nnext",
+                    "a ~b~ c",
+                    "a ~~b~~ c",
+                    "word!",
+                    "!word",
+                    " word ",
+                ] {
+                    for (before, after) in
+                        [("", ""), ("a", "b"), ("a ", " b"), ("(", ")"), ("中", "文")]
+                    {
+                        let source = format!("prefix {before}{open}{content}{close}{after}");
+                        let direct = to_html_with_options(&source, &options).unwrap();
+                        assert_eq!(
+                            direct,
+                            to_html_with_options(&source, &grammar).unwrap(),
+                            "{source:?}, single={single}"
+                        );
+                        let mut checked = String::new();
+                        render_events(
+                            &source,
+                            EventParser::new(&source, &options.parse).unwrap(),
+                            &options.compile,
+                            &mut checked,
+                        )
+                        .unwrap();
+                        assert_eq!(checked, direct);
+                        let document = Document::parse(source.as_str(), &options.parse).unwrap();
+                        let mut arena = String::new();
+                        render_events(&source, document.events(), &options.compile, &mut arena)
+                            .unwrap();
+                        assert_eq!(arena, direct);
+                    }
+                }
+            }
+        }
+    }
+}
