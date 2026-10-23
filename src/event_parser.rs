@@ -181,7 +181,7 @@ impl CompactParser<'_> {
                         last.body,
                         Body::Paragraph(_) | Body::Heading(_) | Body::Rule
                     ) || last.body == Body::Quote && populated)
-                        && self.source[..leaf.end]
+                        && self.source[..last.end]
                             .trim_end_matches([' ', '\t'])
                             .ends_with(['\r', '\n']))
             {
@@ -285,6 +285,7 @@ impl CompactParser<'_> {
                 let value = self.value(index);
                 if code.unclosed && node.parent == 0 && node.end == self.source.len()
                     || code.fence.is_none()
+                        && node.parent == 0
                         && self.source[node.end..].trim().is_empty()
                         && !self.source.ends_with(['\r', '\n'])
                 {
