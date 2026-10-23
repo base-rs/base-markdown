@@ -5,7 +5,7 @@
 use crate::stream::{Event, EventKind, StreamError, Tag, TagKind};
 use crate::util::{
     constant::{SAFE_PROTOCOL_HREF, SAFE_PROTOCOL_SRC},
-    sanitize_uri::{sanitize, sanitize_with_protocols},
+    sanitize_uri::{sanitize, write_sanitized},
 };
 use crate::{CompileOptions, LineEnding};
 use alloc::{
@@ -119,26 +119,15 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     }
 
     fn destination(&mut self, value: &str, image: bool) -> Result<(), StreamError> {
-        let value = if value.contains('\0') {
-            alloc::borrow::Cow::Owned(value.replace('\0', "�"))
-        } else {
-            alloc::borrow::Cow::Borrowed(value)
-        };
-        let value = value.as_ref();
-        let safe =
+        let protocols =
             if self.options.allow_dangerous_protocol || (image && self.options.allow_any_img_src) {
-                sanitize(value)
+                None
+            } else if image {
+                Some(SAFE_PROTOCOL_SRC.as_slice())
             } else {
-                sanitize_with_protocols(
-                    value,
-                    if image {
-                        &SAFE_PROTOCOL_SRC
-                    } else {
-                        &SAFE_PROTOCOL_HREF
-                    },
-                )
+                Some(SAFE_PROTOCOL_HREF.as_slice())
             };
-        self.write(&safe)
+        write_sanitized(value, protocols, true, |value| self.write(value))
     }
 
     fn start(&mut self, tag: Tag<'_>) -> Result<(), StreamError> {

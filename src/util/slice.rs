@@ -41,8 +41,6 @@ impl<'a> Position<'a> {
 
         Position { start, end }
     }
-
-
 }
 
 /// Bytes belonging to a range.
