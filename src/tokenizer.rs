@@ -703,13 +703,14 @@ impl<'a> Tokenizer<'a> {
 
 /// Move back past ignored bytes.
 fn move_point_back(tokenizer: &mut Tokenizer, point: &mut Point) {
-    while point.index > 0 {
+    // Only the CR of a CRLF pair is ignored. Inspect it directly instead of running tab expansion and byte normalization at every event boundary.
+    let bytes = tokenizer.parse_state.bytes;
+    if point.index > 0
+        && point.index < bytes.len()
+        && bytes[point.index - 1] == b'\r'
+        && bytes[point.index] == b'\n'
+    {
         point.index -= 1;
-        let action = byte_action(tokenizer.parse_state.bytes, point);
-        if !matches!(action, ByteAction::Ignore) {
-            point.index += 1;
-            break;
-        }
     }
 }
 
