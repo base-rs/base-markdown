@@ -1203,3 +1203,42 @@ fn html_flow_7_complete() -> Result<(), message::Message> {
 
     Ok(())
 }
+
+#[test]
+fn retained_blank_lines_end_at_the_enclosing_container_boundary() {
+    use core_markdown::{render_events, Document, EventParser};
+    let options = Options {
+        parse: ParseOptions {
+            html_block_blank_lines: true,
+            ..ParseOptions::default()
+        },
+        ..Options::default()
+    };
+    for (source, expected) in [
+        ("><v>\n\n", "<blockquote>\n&lt;v&gt;\n</blockquote>\n"),
+        (
+            "> <v>\n>\n\na",
+            "<blockquote>\n&lt;v&gt;\n\n</blockquote>\n<p>a</p>",
+        ),
+        (
+            "- <v>\n\na",
+            "<ul>\n<li>\n&lt;v&gt;\n\n</li>\n</ul>\n<p>a</p>",
+        ),
+    ] {
+        let output = to_html_with_options(source, &options).unwrap();
+        assert_eq!(output, expected, "{source:?}");
+        let mut checked = String::new();
+        render_events(
+            source,
+            EventParser::new(source, &options.parse).unwrap(),
+            &options.compile,
+            &mut checked,
+        )
+        .unwrap();
+        assert_eq!(checked, expected);
+        let document = Document::parse(source, &options.parse).unwrap();
+        let mut arena = String::new();
+        render_events(source, document.events(), &options.compile, &mut arena).unwrap();
+        assert_eq!(arena, expected);
+    }
+}

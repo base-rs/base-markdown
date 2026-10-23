@@ -900,6 +900,11 @@ pub fn blank_line_before(tokenizer: &mut Tokenizer) -> State {
 
 /// Inspect blank lines and the indentation of the next content line.
 pub fn blank_lines_check(tokenizer: &mut Tokenizer) -> State {
+    // Lookahead must not retain lines outside the enclosing Markdown container.
+    // Consume only the valid blank lines counted before this boundary, then close.
+    if tokenizer.lazy {
+        return State::Ok;
+    }
     match tokenizer.current {
         Some(b'\t' | b' ') => {
             tokenizer.consume();
