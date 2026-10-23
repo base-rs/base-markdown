@@ -257,9 +257,10 @@ impl CompactParser<'_> {
                 self.separator = Some(node.end);
             }
             self.advance();
+            let end = node.span_end(self.source);
             return Some(Ok(Event {
                 kind: EventKind::End(tag),
-                span: node.span_end(self.source)..node.span_end(self.source),
+                span: end..end,
             }));
         }
         let kind = match node.body {
