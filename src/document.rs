@@ -144,6 +144,13 @@ impl AstBuilder {
         {
             return Err(StreamError::Unbalanced);
         }
+        if let EventKind::Start(tag) = &event.kind {
+            if matches!(tag.kind(), crate::stream::TagKind::Heading | crate::stream::TagKind::FootnoteDefinition) && self.open.iter().any(|id| {
+                matches!(&self.nodes[id.index()].kind, EventKind::Start(parent) if !parent.kind().allows_descendant(tag.kind()))
+            }) {
+                return Err(StreamError::Unbalanced);
+            }
+        }
         let id = NodeId::new(self.nodes.len());
         let parent = self.open.last().copied();
         let start = matches!(event.kind, EventKind::Start(_));
@@ -245,7 +252,7 @@ impl<S: AsRef<str>> Document<S> {
         kind.validate(Some(self.source()))?;
         let node = self
             .nodes
-            .get_mut(id.index())
+            .get(id.index())
             .ok_or(StreamError::InvalidRange)?;
         let document = matches!(&kind, EventKind::Start(crate::stream::Tag::Document(_)));
         if matches!(&kind, EventKind::End(_))
@@ -254,7 +261,35 @@ impl<S: AsRef<str>> Document<S> {
         {
             return Err(StreamError::Unbalanced);
         }
-        node.kind = kind;
+        if let EventKind::Start(tag) = &kind {
+            let mut ancestor = node.parent;
+            while let Some(parent_id) = ancestor {
+                let parent = &self.nodes[parent_id.index()];
+                if matches!(&parent.kind, EventKind::Start(parent_tag) if !parent_tag.kind().allows_descendant(tag.kind()))
+                {
+                    return Err(StreamError::Unbalanced);
+                }
+                ancestor = parent.parent;
+            }
+            // Arena nodes are preorder-contiguous. Find the next node outside this subtree.
+            let mut after = Some(id);
+            let mut end = self.nodes.len();
+            while let Some(current) = after {
+                let current = &self.nodes[current.index()];
+                if let Some(sibling) = current.next_sibling {
+                    end = sibling.index();
+                    break;
+                }
+                after = current.parent;
+            }
+            for child in &self.nodes[id.index() + 1..end] {
+                if matches!(&child.kind, EventKind::Start(child_tag) if !tag.kind().allows_descendant(child_tag.kind()))
+                {
+                    return Err(StreamError::Unbalanced);
+                }
+            }
+        }
+        self.nodes[id.index()].kind = kind;
         Ok(())
     }
 

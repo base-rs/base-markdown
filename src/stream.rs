@@ -92,6 +92,15 @@ pub enum TagKind {
     FootnoteDefinition,
 }
 
+impl TagKind {
+    // Capture containers cannot occur inside heading capture or image alt text.
+    // Ordinary inline nesting remains unrestricted by the rendering contract.
+    pub(crate) fn allows_descendant(self, child: Self) -> bool {
+        !matches!(self, Self::Heading | Self::Image)
+            || !matches!(child, Self::Heading | Self::FootnoteDefinition)
+    }
+}
+
 /// A container whose metadata is resolved before its start is yielded.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Tag<'a> {

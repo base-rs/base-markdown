@@ -19,6 +19,7 @@ struct Frame {
     kind: TagKind,
     flag: bool,
     level: u8,
+    end: usize,
 }
 struct HeadingCapture {
     output: String,
@@ -130,7 +131,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         write_sanitized(value, protocols, |value| self.write(value))
     }
 
-    fn start(&mut self, tag: Tag<'_>) -> Result<(), StreamError> {
+    fn start(&mut self, tag: Tag<'_>, end: usize) -> Result<(), StreamError> {
         let kind = tag.kind();
         if kind == TagKind::Document {
             if self.started || !self.stack.is_empty() {
@@ -140,13 +141,35 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         } else if self.stack.is_empty() {
             return Err(StreamError::Unbalanced);
         }
+        if matches!(kind, TagKind::Heading | TagKind::FootnoteDefinition)
+            && self
+                .stack
+                .iter()
+                .any(|frame| !frame.kind.allows_descendant(kind))
+        {
+            return Err(StreamError::Unbalanced);
+        }
         let mut frame = Frame {
             kind,
             flag: false,
             level: 0,
+            end,
         };
         // Tags inside image alternative text contribute only their text content.
         let tags = self.images == 0;
+        if !tags
+            && matches!(
+                kind,
+                TagKind::Table
+                    | TagKind::TableHead
+                    | TagKind::TableBody
+                    | TagKind::TableRow
+                    | TagKind::TableCell
+            )
+        {
+            self.stack.push(frame);
+            return Ok(());
+        }
         match tag {
             Tag::Document(line_ending) => {
                 if let Some(value) = line_ending {
@@ -161,9 +184,6 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 }
             }
             Tag::Heading(level) => {
-                if !(1..=6).contains(&level) {
-                    return Err(StreamError::Unbalanced);
-                }
                 frame.level = level;
                 if tags {
                     self.terminate()?;
@@ -225,11 +245,21 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             Tag::Link { destination, title } => {
                 if tags {
                     self.write("<a href=\"")?;
-                    self.destination(destination.resolve(self.source)?, false)?;
+                    self.destination(
+                        destination
+                            .resolve(self.source)
+                            .expect("event values were validated above"),
+                        false,
+                    )?;
                     self.write("\"")?;
                     if let Some(title) = title {
                         self.write(" title=\"")?;
-                        self.escaped(title.resolve(self.source)?, true)?;
+                        self.escaped(
+                            title
+                                .resolve(self.source)
+                                .expect("event values were validated above"),
+                            true,
+                        )?;
                         self.write("\"")?;
                     }
                     self.write(">")?;
@@ -239,7 +269,12 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 frame.flag = tags;
                 if tags {
                     self.write("<img src=\"")?;
-                    self.destination(destination.resolve(self.source)?, true)?;
+                    self.destination(
+                        destination
+                            .resolve(self.source)
+                            .expect("event values were validated above"),
+                        true,
+                    )?;
                     self.write("\" alt=\"")?;
                 }
                 // The title belongs after alt. Keep it in the frame's separate capture only when present.
@@ -248,7 +283,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         frame.level = 1;
                         let mut output = String::new();
                         crate::util::encode::encode_into(
-                            title.resolve(self.source)?,
+                            title
+                                .resolve(self.source)
+                                .expect("event values were validated above"),
                             true,
                             &mut output,
                         );
@@ -283,7 +320,10 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 self.write(">")?;
             }
             Tag::FootnoteDefinition(label) => {
-                let key = label.resolve(self.source)?.to_string();
+                let key = label
+                    .resolve(self.source)
+                    .expect("event values were validated above")
+                    .to_string();
                 self.captures.push(Capture {
                     key,
                     output: String::new(),
@@ -296,10 +336,13 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         Ok(())
     }
 
-    fn end(&mut self, kind: TagKind) -> Result<(), StreamError> {
+    fn end(&mut self, kind: TagKind, end: usize) -> Result<(), StreamError> {
         let frame = self.stack.pop().ok_or(StreamError::Unbalanced)?;
         if frame.kind != kind {
             return Err(StreamError::Unbalanced);
+        }
+        if end < frame.end {
+            return Err(StreamError::InvalidRange);
         }
         if kind == TagKind::Image {
             self.images -= 1;
@@ -428,28 +471,40 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 | EventKind::Math(value)
                 | EventKind::Code { value, .. }
                 | EventKind::Html { value, .. } => {
-                    heading.text.push_str(value.resolve(self.source)?);
+                    heading.text.push_str(
+                        value
+                            .resolve(self.source)
+                            .expect("event values were validated above"),
+                    );
                 }
                 EventKind::HardBreak => heading.text.push('\n'),
                 _ => {}
             }
         }
         match event.kind {
-            EventKind::Start(tag) => self.start(tag),
-            EventKind::End(kind) => self.end(kind),
+            EventKind::Start(tag) => self.start(tag, event.span.end),
+            EventKind::End(kind) => self.end(kind, event.span.end),
             kind => {
                 if self.stack.is_empty() {
                     return Err(StreamError::Unbalanced);
                 }
                 match kind {
-                    EventKind::Text(value) | EventKind::SoftBreak(value) => {
-                        self.escaped(value.resolve(self.source)?, true)
-                    }
+                    EventKind::Text(value) | EventKind::SoftBreak(value) => self.escaped(
+                        value
+                            .resolve(self.source)
+                            .expect("event values were validated above"),
+                        true,
+                    ),
                     EventKind::Separator { value, conditional } => {
                         if conditional {
                             self.terminate()
                         } else {
-                            self.escaped(value.resolve(self.source)?, true)
+                            self.escaped(
+                                value
+                                    .resolve(self.source)
+                                    .expect("event values were validated above"),
+                                true,
+                            )
                         }
                     }
                     EventKind::HardBreak => {
@@ -460,20 +515,34 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         }
                     }
                     EventKind::Rule => {
-                        self.terminate()?;
-                        self.write("<hr />")
+                        if self.images == 0 {
+                            self.terminate()?;
+                            self.write("<hr />")
+                        } else {
+                            Ok(())
+                        }
                     }
                     EventKind::Code { value, language } => {
                         if self.images == 0 {
                             self.write("<code")?;
                             if let Some(language) = language {
                                 self.write(" class=\"language-")?;
-                                self.escaped(language.resolve(self.source)?, true)?;
+                                self.escaped(
+                                    language
+                                        .resolve(self.source)
+                                        .expect("event values were validated above"),
+                                    true,
+                                )?;
                                 self.write("\"")?;
                             }
                             self.write(">")?;
                         }
-                        self.escaped(value.resolve(self.source)?, true)?;
+                        self.escaped(
+                            value
+                                .resolve(self.source)
+                                .expect("event values were validated above"),
+                            true,
+                        )?;
                         if self.images == 0 {
                             self.write("</code>")?;
                         }
@@ -483,7 +552,12 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         if self.images == 0 {
                             self.write("<code class=\"language-math math-inline\">")?;
                         }
-                        self.escaped(value.resolve(self.source)?, true)?;
+                        self.escaped(
+                            value
+                                .resolve(self.source)
+                                .expect("event values were validated above"),
+                            true,
+                        )?;
                         if self.images == 0 {
                             self.write("</code>")?;
                         }
@@ -496,17 +570,32 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         unclosed,
                         ..
                     } => {
+                        if self.images != 0 {
+                            return self.escaped(
+                                value
+                                    .resolve(self.source)
+                                    .expect("event values were validated above"),
+                                true,
+                            );
+                        }
                         self.terminate()?;
                         self.write("<pre><code")?;
                         if math {
                             self.write(" class=\"language-math math-display\"")?;
                         } else if let Some(language) = language {
                             self.write(" class=\"language-")?;
-                            self.escaped(language.resolve(self.source)?, true)?;
+                            self.escaped(
+                                language
+                                    .resolve(self.source)
+                                    .expect("event values were validated above"),
+                                true,
+                            )?;
                             self.write("\"")?;
                         }
                         self.write(">")?;
-                        let value = value.resolve(self.source)?;
+                        let value = value
+                            .resolve(self.source)
+                            .expect("event values were validated above");
                         self.escaped(value, true)?;
                         if !value.is_empty() {
                             self.terminate()?;
@@ -521,7 +610,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         if block {
                             self.terminate()?;
                         }
-                        let value = value.resolve(self.source)?;
+                        let value = value
+                            .resolve(self.source)
+                            .expect("event values were validated above");
                         if self.options.allow_dangerous_html && self.options.gfm_tagfilter {
                             self.escaped(&crate::util::gfm_tagfilter::gfm_tagfilter(value), false)
                         } else {
@@ -542,9 +633,11 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         Ok(())
                     }
                     EventKind::Definition { .. } | EventKind::Opaque { .. } => Ok(()),
-                    EventKind::FootnoteReference(value) => {
-                        self.footnote_call(value.resolve(self.source)?)
-                    }
+                    EventKind::FootnoteReference(value) => self.footnote_call(
+                        value
+                            .resolve(self.source)
+                            .expect("event values were validated above"),
+                    ),
                     EventKind::Start(_) | EventKind::End(_) => {
                         unreachable!("containers were handled above")
                     }
