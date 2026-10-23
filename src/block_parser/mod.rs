@@ -291,7 +291,7 @@ impl Builder<'_> {
             }
             return at + length;
         }
-        let mut definition_start =
+        let definition_start =
             start + line.bytes_scanned() - usize::from(line.remaining_space() > 0);
         let indent = line.scan_space_upto(4);
         let at = start + line.bytes_scanned();
@@ -300,16 +300,10 @@ impl Builder<'_> {
             return self.indented(at, line.remaining_space());
         }
         if bytes[at] == b'[' && possible_definition(&bytes[at..]) {
-            // Grammar spans retain the last tab byte of existing list-item indentation, even when its virtual spaces were fully consumed. New marker padding and quote-only prefixes do not have that provenance rule.
-            if definition_start == continuation_end
-                && definition_start > start
-                && bytes[definition_start - 1] == b'\t'
-                && matches!(
-                    self.blocks.nodes[*self.open.last().unwrap()].body,
-                    Body::Item(_) | Body::List { .. }
-                )
-            {
-                definition_start -= 1;
+            // A continuation tab can be shared by several containers. Retain the grammar's virtual-space provenance instead of inferring it from the remaining indentation alone.
+            if bytes[start..continuation_end].contains(&b'\t') {
+                self.unsupported = true;
+                return bytes.len();
             }
             let next = at + scan_nextline(&bytes[at..]);
             let Some(metadata) = definition::scan(bytes, at, next) else {
