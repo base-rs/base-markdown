@@ -2,7 +2,8 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Compact inline candidates, resolved in reusable storage for the active block.
-use crate::grammar_parser::{decode_string, Definition};
+use crate::definitions::{scan_label, Definitions};
+use crate::grammar_parser::decode_string;
 use crate::stream::{Event, EventKind, Tag, TagKind, Text};
 use crate::util::char::{classify_opt, Kind as CharacterKind};
 use crate::util::normalize_identifier::normalize_identifier_into;
@@ -196,7 +197,7 @@ impl InlineParser {
         &mut self,
         source: &str,
         fragments: impl Iterator<Item = Range<usize>>,
-        definitions: &[Definition],
+        definitions: &Definitions,
     ) -> bool {
         self.nodes.clear();
         self.delimiters.clear();
@@ -376,7 +377,7 @@ impl InlineParser {
                                 if bytes.get(at + 1) == Some(&b']') {
                                     (at + 2, bracket.label.then_some(label_start..start))
                                 } else {
-                                    let Some((end, label)) = reference_label(bytes, at, range.end)
+                                    let Some((end, label)) = scan_label(bytes, at, range.end)
                                     else {
                                         // Multiline labels and malformed full references retain the grammar's fallback rules.
                                         return false;
@@ -393,10 +394,7 @@ impl InlineParser {
                                 }
                                 normalize_identifier_into(&source[label], &mut self.reference_key);
                                 definitions
-                                    .binary_search_by(|definition| {
-                                        definition.key.cmp(&self.reference_key)
-                                    })
-                                    .ok()
+                                    .find(&self.reference_key)
                                     .map(|index| (end, Kind::Reference(tag, index)))
                             } else {
                                 None
@@ -434,7 +432,7 @@ impl InlineParser {
     pub(crate) fn next(
         &mut self,
         source: &str,
-        definitions: &[Definition],
+        definitions: &Definitions,
     ) -> Option<Event<'static>> {
         while self.cursor != 0 {
             let node = self.nodes[self.cursor];
@@ -480,7 +478,7 @@ impl InlineParser {
                 }),
                 Kind::End(tag) => EventKind::End(tag),
                 Kind::Reference(tag, index) => {
-                    let definition = &definitions[index];
+                    let definition = &definitions.entries[index];
                     let destination = definition.destination.clone();
                     let title = definition.title.clone();
                     EventKind::Start(if tag == TagKind::Link {
@@ -499,29 +497,6 @@ impl InlineParser {
     }
 }
 
-/// Scan a single-line full-reference label. The grammar producer handles multiline labels.
-fn reference_label(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Range<usize>)> {
-    let begin = start + 1;
-    let mut at = begin;
-    let mut content = false;
-    let mut tab_expansion = 0;
-    while at < end && at - begin + tab_expansion <= crate::util::constant::LINK_REFERENCE_SIZE_MAX {
-        match bytes[at] {
-            b']' => return content.then_some((at + 1, begin..at)),
-            b'[' | b'\r' | b'\n' => return None,
-            b'\\' if at + 1 < end && matches!(bytes[at + 1], b'[' | b'\\' | b']') => {
-                content = true;
-                at += 1;
-            }
-            // The grammar counts virtual tab spaces toward its label limit. Use an upper bound so only potentially oversized labels need its exact column accounting, including stripped container prefixes.
-            b'\t' => tab_expansion += 3,
-            b' ' => {}
-            _ => content = true,
-        }
-        at += 1;
-    }
-    None
-}
 fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
     let mut at = start + 1;
     while at < end && matches!(bytes[at], b' ' | b'\t') {
