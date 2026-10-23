@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Resolve same-line reference links and images in reusable compact inline storage. Reuse ASCII label normalization, binary-search definitions, and retain source-backed destinations and titles. Compile out reference handling for the compact block producer's empty definition table. Preserve duplicate-definition precedence and expanded-tab label limits. Apply compact emphasis resolution to reference-bearing paragraphs, correcting cases such as `[a]*a**_` after a defined reference.
+
 - Add a shared pull-based semantic event contract, direct HTML writer, source-backed arena document, and incremental AST builder. Use the same event writer for the default HTML API and document traversal. Ordinary source values retain byte ranges; editing a value detaches it into owned storage.
 
 - Use normalized semantic text when generating opt-in heading IDs, including multiline code and math spans. Balance mixed-list closing tags against their semantic openings, correcting previously mismatched closures after unclosed fences. Restore line positions after failed multiline frontmatter attempts, and keep adjacent setext headings balanced when earlier underline text joins a paragraph. Stop retained HTML blank lines at their enclosing container boundary, and preserve sibling list items when HTML consumes the separating newline. Keep collapsed spaces significant in reference labels, so `[a b]` and `[ab]` resolve independently.

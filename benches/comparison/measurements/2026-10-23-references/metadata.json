@@ -1,0 +1,73 @@
+{
+  "baseline_revision": "6b64e9baaec8e6e5c4a64eef92b76f42a84f801c",
+  "candidate_revision": "b67d71727d2aabd8e73a6b55f96930e603948a75",
+  "harness_revision": "6b64e9baaec8e6e5c4a64eef92b76f42a84f801c",
+  "input_sha256": {
+    "bench-commonmark.json": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+    "bench-references.json": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+    "bench-gfm.json": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7"
+  },
+  "machine": "Apple M4 Pro, macOS 27.0.1 arm64",
+  "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)",
+  "ruby": "ruby 4.0.7 (2026-09-15 revision 229531a6cf) +PRISM [arm64-darwin25]",
+  "ruby_yjit": false,
+  "method": "Each process uses seven calibrated batches after 200ms warmup. Final reviewed-* files use three alternating baseline/candidate/Inkmark sequences; baseline and candidate are copied to an identical executable path and use identical arguments and inherited environment. reviewed-layout-* additionally compares mixed 1 MB at eight padding lengths (0..448, stride64) under CORE_MARKDOWN_BENCH_PADDING, alternating source order. Builds, tests and review workloads do not overlap timing. No CPU affinity or machine-wide isolation.",
+  "binaries": {
+    "baseline": "faef7a73cd4f573d758c9a2b65818acd0ed2722c64b961adb78679efd7b1550f",
+    "allocations": "df3ff7a66317aa39a8d1e7c789dc7adcd579abf252a6d70b0eeeb1c8c4ce8e56",
+    "pre_specialization_candidate": "56c084df5412b63225a2b5898cea607b669ffc84a2290a5b6e2db3bf708ccbd6",
+    "candidate": "e706bc1d6d8dc619b0f5999d9aa23ea8e4465c566de68bbd9d39e00c33a21720"
+  },
+  "exploratory_runs": {
+    "source": "f579db0",
+    "baseline": "6b64e9b",
+    "files": "exploratory-*.jsonl",
+    "note": "Earlier directional measurements before expanded-tab fallback and emphasis regression tests; retained for transparency, excluded from final paired summaries."
+  },
+  "coverage": {
+    "target": "aarch64-apple-darwin",
+    "all_features": true,
+    "measured_regions": 25621,
+    "covered_regions": 25621,
+    "excluded_invariant_unreachable_regions": 68
+  },
+  "independent_review": {
+    "source": "277d011c22bdd05904c35165c1c17b255267e4b8",
+    "default_cases": 135144,
+    "boundary_cases": 1296,
+    "additional_option_runs": 86002,
+    "panics": 0,
+    "direct_checked_arena_differences": 0,
+    "boundary_baseline_differences": 0,
+    "intentional_emphasis_corrections": 52,
+    "corrections_match_comrak": true
+  },
+  "notes": [
+    "Allocation calls exclude reallocations, input loading, and options construction. Requested bytes include growth and are not peak or retained memory.",
+    "Reference benchmark output is byte-identical to Inkmark. README and mixed CommonMark benchmark differences are equivalent text quote escaping. GFM differs structurally and is not an equal-output speed comparison.",
+    "No runtime dependency or public feature changes. MDX recognizers remain bypassed when disabled; this study measures reference lookup and inline storage, not MDX removal.",
+    "Baseline and candidate use identical benchmark adapters. Production source stayed unchanged during final validation and timings.",
+    "Do not interpret individual layout-sensitive process timings as a universal source ranking. All initial, repeated, diagnostic and final measurements are retained."
+  ],
+  "reference_resolution_revision": "277d011c22bdd05904c35165c1c17b255267e4b8",
+  "specialization_review": {
+    "source": "b67d71727d2aabd8e73a6b55f96930e603948a75",
+    "sources": 5000,
+    "profiles": 2,
+    "render_paths": 3,
+    "comparisons": 30000,
+    "differences": 0,
+    "panics": 0
+  },
+  "run_groups": {
+    "exploratory-*": "f579db0 directional measurements before tab fix; baseline6b64e9b.",
+    "paired-* and engine-*": "277d011 initial final comparison; mixed timings appeared to regress.",
+    "repeated-*": "277d011 repeat, grouping all mixed runs before reference runs.",
+    "tab-diagnostic-*": "f579db0 versus277d011; both measured faster than initial final comparison under inherited environment.",
+    "environment-*": "277d011 versus6b64e9b, toggling only inherited/GEM environment and working directory; environment changed timings and reversed source ranking.",
+    "layout-*": "277d011 versus6b64e9b with identical executable path/arguments, eight environment padding lengths.",
+    "specialize-*": "277d011 versusb67d717 production-equivalent specialization (before comment-only edits), identical executable path and eight padding lengths.",
+    "phase-*, allocations-*, final-*-gfm": "277d011 diagnostic phases, allocation counts and GFM snapshot.",
+    "reviewed-*": "Final b67d717 compared with6b64e9b and fresh Inkmark; reviewed-layout-* records layout sweep; reviewed-phase-* and reviewed-allocations-* use final source."
+  }
+}

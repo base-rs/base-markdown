@@ -47,7 +47,36 @@ The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,
 
 **GFM is not an equal-output throughput comparison:** Inkmark leaves `www.example.com` unlinked in this workload even with autolinking enabled. Its table alignment attributes and empty table bodies also differ. Comrak and Commonmarker do not expose the same independent GFM tag filter as the other adapters. Read GFM timings alongside the output agreement results.
 
-## Measurements
+## Reference-resolution follow-up
+
+The next optimization keeps same-line full, collapsed, and shortcut references in reusable compact inline storage. It reuses ASCII label normalization, binary-searches a sorted definition table, and stores definition indices instead of per-reference metadata. The first authored definition still wins. Ordinary destinations and titles remain source ranges; Unicode normalization and constructed values still allocate. Definition-free compact blocks specialize preparation so reference lookup and label bookkeeping compile out.
+
+This study compares merged baseline `6b64e9baaec8e6e5c4a64eef92b76f42a84f801c` with production source `b67d71727d2aabd8e73a6b55f96930e603948a75`, using the unchanged harness on the machine described below. [All samples, revisions, input hashes, output agreement, and validation records](measurements/2026-10-23-references/) are retained. Values below are medians of three process medians from alternating baseline/candidate/Inkmark sequences, in milliseconds:
+
+| Engine / source | References 80 KB | README 9 KB | Mixed 100 KB | Mixed 1 MB |
+| --- | ---: | ---: | ---: | ---: |
+| core-markdown, merged baseline | 5.058 | 0.088 | 0.415 | 4.174 |
+| core-markdown, compact references | 1.056 | 0.066 | 0.419 | 4.193 |
+| Inkmark 0.2.1 | 0.843 | 0.018 | 0.405 | 4.275 |
+
+References improve **4.8×** and README latency falls **25%**. Mixed-document differences between core sources are within 1% in this final comparison; no mixed-document speedup is claimed. References produce byte-identical HTML across core-markdown and Inkmark. README and mixed outputs differ only in equivalent text-quote escaping. **The overall Inkmark target remains unmet:** the remaining reference, README, and GFM gaps are substantial; the small mixed-workload difference is not a reliable engine ranking.
+
+The timing investigation exposed process-layout sensitivity. Initial paired runs suggested a 10% mixed-document regression, but changing only environment variables moved unchanged binaries by 10–20% and could reverse their ranking. Final Rust comparisons use an identical executable path, arguments, and environment. An additional alternating sweep varies one environment-padding value over eight lengths: mixed 1 MB spans 4.182–5.377 ms for the baseline and 4.234–5.380 ms for the candidate, with medians of 4.295 and 4.275 ms respectively. This does not establish the hardware mechanism, but prevents attributing those shifts solely to parser changes. Initial runs and every diagnostic are retained alongside the final results; builds, tests, and independent review workloads do not overlap timings.
+
+Reference-fixture allocations show the more stable improvement:
+
+| Phase | Baseline allocation calls / reallocations | Candidate allocation calls / reallocations |
+| --- | ---: | ---: |
+| Block preparation | 2,062 / 119 | 2,062 / 119 |
+| Pulling after preparation | 58,023 / 2,086 | 4 / 13 |
+| Complete HTML conversion | 60,087 / 2,221 | 2,068 / 148 |
+| Arena traversal | 0 / 0 | 0 / 0 |
+
+Preparation still uses grammar blocks and accounts for most remaining allocation calls. Candidate preparation takes 0.436 ms; preparation plus event draining takes 0.820 ms. These are separate complete operations including disposal, not additive phase timings. Growing buffers remain necessary; this is not a strictly allocation-free parser.
+
+The final source preserves all 2,117 saved outputs across direct HTML, checked events, and arena rendering. Fresh six-engine consistency counts are unchanged from the table below. Expanded-tab label limits, malformed suffix precedence, duplicate definitions, Unicode, and nested links/images have regression coverage. Outside the saved corpus, 52 reviewed emphasis corrections agree with Comrak; for example, `[a]*a**_` with `[a]: /a` now emphasizes `a` after the link. Local arm64 coverage passes **25,621/25,621 measured regions**, excluding 68 invariant-only unreachable regions; the portable x86_64 path cross-compiles without default features. No public feature or runtime dependency changes in this follow-up.
+
+## Compact-parser measurements (merged baseline)
 
 Measured on 2026-10-23 using an Apple M4 Pro, macOS 27.0.1 arm64, Rust 1.99.1, and Ruby 4.0.7 with YJIT disabled. The Rust engines use release builds without syntax highlighting; Commonmarker and Inkmark use published arm64-darwin binaries, and Markly is built locally. Commonmarker embeds the Comrak 0.56 series, while the standalone adapter uses Comrak 0.57.0.
 
@@ -159,7 +188,7 @@ Independent review exercised randomized and structured inputs, construct configu
 
 ## Remaining work
 
-The next performance work is extending compact block preparation to reference definitions and raw HTML, resolving reference links without repeated normalization/destination copies, and supporting GFM directly in the compact representation. These paths account for the clearest remaining gaps against Inkmark. Platform-specific SIMD beyond AArch64 also remains a possible measured optimization.
+The next performance work is extending compact block preparation to reference definitions and raw HTML, avoiding copies of constructed reference values and Unicode normalization intermediates, and supporting GFM directly in the compact representation. Same-line reference resolution now uses compact storage, as described in the follow-up measurements above. These remaining paths account for the clearest gaps against Inkmark. Platform-specific SIMD beyond AArch64 also remains a possible measured optimization.
 
 No public feature was removed. The old direct HTML token compiler and unused internal attention wrappers were removed; MDX remains opt-in, with disabled recognizers bypassed and diagnostics moved out of hot parser states. The pull API accepts a complete UTF-8 buffer. It does not stream input chunks or incrementally reparse edited source.
 

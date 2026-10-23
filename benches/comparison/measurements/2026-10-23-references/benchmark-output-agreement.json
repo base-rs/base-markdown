@@ -1,0 +1,40 @@
+[
+  {
+    "document": "references",
+    "profile": "commonmark",
+    "core_inkmark_byte_identical": true,
+    "core_output_sha256": "3aaeee76d28590427d122cf7a392cb917e66b503e8bfeb5ca90731bfcaded9fc",
+    "inkmark_output_sha256": "3aaeee76d28590427d122cf7a392cb917e66b503e8bfeb5ca90731bfcaded9fc"
+  },
+  {
+    "document": "readme",
+    "profile": "commonmark",
+    "core_inkmark_byte_identical": false,
+    "core_output_sha256": "e4a600f81e790248aa401d761383e577ae2b59fb23cb32ce7216c7d640076e25",
+    "inkmark_output_sha256": "aae38fe68f839a93e0e28405020ec831343dfb2603615dfde6faddd433003cdc",
+    "equal_after_literal_text_quote_normalization": true
+  },
+  {
+    "document": "mixed-100k",
+    "profile": "commonmark",
+    "core_inkmark_byte_identical": false,
+    "core_output_sha256": "2906a9c276936b616283e21049523f53da43d1aa82c22f6c442a34444dfa4c45",
+    "inkmark_output_sha256": "39f1cef1f002794304ea4af8d5cc70131c8d1f983452027c23a2a9d4b10f6222",
+    "equal_after_literal_text_quote_normalization": true
+  },
+  {
+    "document": "mixed-1m",
+    "profile": "commonmark",
+    "core_inkmark_byte_identical": false,
+    "core_output_sha256": "2fa9d192e5e9db657ed474b47927cc05579b0b3b871910bb1858a15c47cfa5bd",
+    "inkmark_output_sha256": "a02e3513d9f2b35a3c57dfa43145bc29813e455ba3be28cdad16a69a68b67d9c",
+    "equal_after_literal_text_quote_normalization": true
+  },
+  {
+    "document": "gfm-100k",
+    "profile": "gfm",
+    "core_inkmark_byte_identical": false,
+    "core_output_sha256": "4926cff0b336eef7546732fe634f78b0d3484acb9a6fb5da09c2ecce52c12ba7",
+    "inkmark_output_sha256": "00052b8a000cc9a9b627863a427f93630a86331f72b81db2b5ff1d3795977897"
+  }
+]

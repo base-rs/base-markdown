@@ -1,0 +1,68 @@
+{
+  "baseline": {
+    "readme": {
+      "median_seconds": 8.785347368421052e-05,
+      "min_process_median_seconds": 8.735041243654822e-05,
+      "max_process_median_seconds": 8.879853217077571e-05
+    },
+    "mixed-100k": {
+      "median_seconds": 0.00041453916393442627,
+      "min_process_median_seconds": 0.0004085062794520548,
+      "max_process_median_seconds": 0.00041738739669421493
+    },
+    "mixed-1m": {
+      "median_seconds": 0.0041740641891891885,
+      "min_process_median_seconds": 0.004162997756756756,
+      "max_process_median_seconds": 0.004182570945945946
+    },
+    "references": {
+      "median_seconds": 0.005057654548387097,
+      "min_process_median_seconds": 0.005057494466666667,
+      "max_process_median_seconds": 0.005091584677419355
+    }
+  },
+  "candidate": {
+    "references": {
+      "median_seconds": 0.0010557392237762239,
+      "min_process_median_seconds": 0.0010556965915492957,
+      "max_process_median_seconds": 0.0010617174964539008
+    },
+    "readme": {
+      "median_seconds": 6.585933820921986e-05,
+      "min_process_median_seconds": 6.565059964253799e-05,
+      "max_process_median_seconds": 6.594257369614513e-05
+    },
+    "mixed-100k": {
+      "median_seconds": 0.00041853884180790966,
+      "min_process_median_seconds": 0.0004128191038251366,
+      "max_process_median_seconds": 0.0004218476454293629
+    },
+    "mixed-1m": {
+      "median_seconds": 0.004192662027777777,
+      "min_process_median_seconds": 0.004152831081081081,
+      "max_process_median_seconds": 0.0042823888888888885
+    }
+  },
+  "inkmark": {
+    "readme": {
+      "median_seconds": 1.842705704358062e-05,
+      "min_process_median_seconds": 1.8267358033965546e-05,
+      "max_process_median_seconds": 1.8539426523903114e-05
+    },
+    "mixed-100k": {
+      "median_seconds": 0.0004045338753066947,
+      "min_process_median_seconds": 0.00040397289976336283,
+      "max_process_median_seconds": 0.0004054447513804334
+    },
+    "mixed-1m": {
+      "median_seconds": 0.004275250000419974,
+      "min_process_median_seconds": 0.004247888888736877,
+      "max_process_median_seconds": 0.004295944444796381
+    },
+    "references": {
+      "median_seconds": 0.0008433465908720708,
+      "min_process_median_seconds": 0.0008391477273438464,
+      "max_process_median_seconds": 0.0008587942856164383
+    }
+  }
+}
