@@ -240,9 +240,11 @@ impl<'a> GrammarParser<'a> {
             let supported =
                 indices().all(|i| tokens[i].point.vs == 0 && tokens[i + 1].point.vs == 0);
             if supported
-                && self
-                    .compact_inline
-                    .prepare(self.source, indices().map(range), &self.definitions)
+                && self.compact_inline.prepare::<true>(
+                    self.source,
+                    indices().map(range),
+                    &self.definitions,
+                )
             {
                 self.direct_inline = true;
                 return Ok(());

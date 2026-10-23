@@ -191,7 +191,8 @@ impl InlineParser {
         None
     }
     /// Each fragment contains one physical source line. Returns false when a region needs a compatibility construct; no events have escaped yet.
-    pub(crate) fn prepare(
+    // Compact blocks have no definitions yet. Specialize that producer so its hot loop does not carry reference lookup or label bookkeeping.
+    pub(crate) fn prepare<const REFERENCES: bool>(
         &mut self,
         source: &str,
         fragments: impl Iterator<Item = Range<usize>>,
@@ -331,10 +332,11 @@ impl InlineParser {
                         }
                         at += 1 + usize::from(image);
                         let node = self.append(start, at, Kind::Text);
-                        if let Some(parent) = self.brackets.last_mut() {
-                            // An unescaped nested bracket cannot occur in a definition label.
-                            // Mark its parent now instead of rescanning nested labels at every close.
-                            parent.label = false;
+                        if REFERENCES {
+                            if let Some(parent) = self.brackets.last_mut() {
+                                // An unescaped nested bracket cannot occur in a definition label. Mark its parent now instead of rescanning nested labels at every close.
+                                parent.label = false;
+                            }
                         }
                         self.brackets.push(Bracket {
                             node,
@@ -365,7 +367,7 @@ impl InlineParser {
                             let index = self.links.len();
                             self.links.push(link);
                             Some((end, Kind::Start(tag, index)))
-                        } else if definitions.is_empty() {
+                        } else if !REFERENCES || definitions.is_empty() {
                             None
                         } else {
                             let label_start =
@@ -511,9 +513,7 @@ fn reference_label(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Ran
                 content = true;
                 at += 1;
             }
-            // The grammar counts virtual tab spaces toward its label limit. Use
-            // an upper bound so only potentially oversized labels need its exact
-            // column accounting, including stripped container prefixes.
+            // The grammar counts virtual tab spaces toward its label limit. Use an upper bound so only potentially oversized labels need its exact column accounting, including stripped container prefixes.
             b'\t' => tab_expansion += 3,
             b' ' => {}
             _ => content = true,

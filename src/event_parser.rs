@@ -250,7 +250,9 @@ impl CompactParser<'_> {
                     })
                 };
                 self.direct_inline = !self.options.inline_code_info
-                    && self.compact_inline.prepare(self.source, fragments(), &[]);
+                    && self
+                        .compact_inline
+                        .prepare::<false>(self.source, fragments(), &[]);
                 if !self.direct_inline {
                     self.inline.region(fragments());
                 }
