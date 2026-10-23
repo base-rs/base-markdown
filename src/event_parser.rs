@@ -31,6 +31,7 @@ impl<'a> EventParser<'a> {
                 inline: GrammarParser::empty(source, options, definitions),
                 compact_inline: crate::inline_parser::InlineParser::default(),
                 direct_inline: false,
+                gfm: options.constructs != crate::Constructs::default(),
                 options,
                 cursor: 0,
                 closing: false,
@@ -66,6 +67,7 @@ struct CompactParser<'a> {
     inline: GrammarParser<'a>,
     compact_inline: crate::inline_parser::InlineParser,
     direct_inline: bool,
+    gfm: bool,
     options: &'a ParseOptions,
     cursor: usize,
     closing: bool,
@@ -289,9 +291,8 @@ impl CompactParser<'_> {
                         before = nodes[before].next;
                     }
                 }
-                let gfm = self.options.constructs != crate::Constructs::default();
                 self.direct_inline = !self.options.inline_code_info
-                    && if gfm {
+                    && if self.gfm {
                         if self.inline.definitions().is_empty() {
                             self.compact_inline.prepare::<false, true>(
                                 self.source,
