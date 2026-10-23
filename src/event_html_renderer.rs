@@ -74,6 +74,8 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         }
     }
 
+    // Paired mixed-document benchmarks justify inlining these small writes.
+    #[allow(clippy::inline_always)]
     #[inline(always)]
     fn write(&mut self, value: &str) -> Result<(), StreamError> {
         if let Some(heading) = self.heading.as_mut() {
@@ -484,10 +486,14 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     ///
     /// # Errors
     /// Propagates invalid source ranges, malformed streams, and writer errors.
+    // Consume the public event while borrowing it through internal helpers to avoid copies.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn event(&mut self, event: Event<'_>) -> Result<(), StreamError> {
         self.event_ref::<true>(&event)
     }
 
+    // Paired mixed-document benchmarks justify inlining this event boundary.
+    #[allow(clippy::inline_always)]
     #[inline(always)]
     fn event_ref<const CHECK: bool>(&mut self, event: &Event<'_>) -> Result<(), StreamError> {
         if self.ended {

@@ -376,6 +376,8 @@ impl InlineParser {
         self.cursor = self.nodes[0].next;
         true
     }
+    // Paired mixed-document benchmarks justify inlining this event boundary.
+    #[allow(clippy::inline_always)]
     #[inline(always)]
     pub(crate) fn next(&mut self, source: &str) -> Option<Event<'static>> {
         while self.cursor != 0 {

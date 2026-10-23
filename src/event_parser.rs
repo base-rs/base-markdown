@@ -49,6 +49,8 @@ impl<'a> EventParser<'a> {
 }
 impl Iterator for EventParser<'_> {
     type Item = Result<Event<'static>, StreamError>;
+    // Paired mixed-document benchmarks justify inlining this event boundary.
+    #[allow(clippy::inline_always)]
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.producer {
@@ -117,6 +119,8 @@ impl CompactParser<'_> {
             span: end..end,
         }
     }
+    // Paired mixed-document benchmarks justify inlining this event boundary.
+    #[allow(clippy::inline_always)]
     #[inline(always)]
     fn next(&mut self) -> Option<Result<Event<'static>, StreamError>> {
         if self.ended {
