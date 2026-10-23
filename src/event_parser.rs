@@ -49,6 +49,7 @@ impl<'a> EventParser<'a> {
 }
 impl Iterator for EventParser<'_> {
     type Item = Result<Event<'static>, StreamError>;
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.producer {
             Producer::Compact(parser) => parser.next(),
@@ -116,6 +117,7 @@ impl CompactParser<'_> {
             span: end..end,
         }
     }
+    #[inline(always)]
     fn next(&mut self) -> Option<Result<Event<'static>, StreamError>> {
         if self.ended {
             return None;
