@@ -80,7 +80,9 @@ for profile, cases, path in [
     ("gfm", gfm, gfm_path),
 ]:
     actual = render("core-markdown", profile, path)
+    arena = render("core-arena", profile, path)
     upstream = render("markdown-rs", profile, path)
+    assert arena == actual, f"{profile}: arena traversal differs from direct rendering"
     assert len(actual) == len(upstream) == len(cases)
     differences = [case["example"] for case, a, b in zip(cases, actual, upstream) if a != b]
     assert not differences, f"{profile}: upstream differences in examples {differences}"
@@ -113,7 +115,9 @@ custom_path = P / "fixtures/custom.json"
 custom = json.loads(custom_path.read_text(encoding="utf-8"))
 for profile in ["default", "commonmark", "gfm", "gfm-footnotes"]:
     actual = render("core-markdown", profile, custom_path)
+    arena = render("core-arena", profile, custom_path)
     upstream = render("markdown-rs", profile, custom_path)
+    assert arena == actual, f"{profile}: targeted arena traversal differs from direct rendering"
     assert len(actual) == len(upstream) == len(custom)
     differences = [case["name"] for case, a, b in zip(custom, actual, upstream) if a != b]
     assert not differences, f"{profile}: targeted upstream differences in {differences}"

@@ -58,11 +58,17 @@ fn main() {
         matches!(args[1].as_str(), "commonmark" | "gfm"),
         "unknown profile"
     );
-    let options = if args[1] == "gfm" {
+    let mut options = if args[1] == "gfm" {
         core_markdown::Options::gfm()
     } else {
         core_markdown::Options::default()
     };
+    options.compile.allow_dangerous_html = true;
+    options.compile.allow_dangerous_protocol = true;
+    if args[1] == "gfm" {
+        options.parse.constructs.gfm_footnote_definition = false;
+        options.parse.constructs.gfm_label_start_footnote = false;
+    }
     let cases: Vec<Value> = serde_json::from_str(&fs::read_to_string(&args[2]).unwrap()).unwrap();
     for case in cases {
         let source = case["markdown"].as_str().unwrap();

@@ -47,3 +47,14 @@ save("bench-commonmark", [
     {"name": "mixed-1m", "markdown": document(1_000_000)},
 ])
 save("bench-gfm", [{"name": "gfm-100k", "markdown": document(100_000, gfm)}])
+
+# Supplemental diagnostics isolate long scanner runs and repeated reference labels.
+# Keep these separate from the mixed-document ranking.
+save("bench-scanners", [
+    {"name": "long-lines-1m", "markdown": ("The quick brown fox jumps over the lazy dog. " * 100 + "\n\n") * 228},
+    {"name": "code-1m", "markdown": "```\n" + ("let value = example(123); " * 40 + "\n") * 1000 + "```\n"},
+])
+save("bench-references", [{
+    "name": "references",
+    "markdown": "[Alpha][Key] and [Beta][Key] and [Key].\n" * 2000 + '\n[Key]: /example "title"\n',
+}])
