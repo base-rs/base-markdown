@@ -1,0 +1,1 @@
+{"bytes":100130,"document":"gfm-100k","iterations_per_sample":25,"median_seconds":0.00587549832,"mib_per_second":16.252478360296394,"parser":"core-arena","profile":"gfm","samples_seconds":[0.0057924100000000004,0.00582596832,0.00584053,0.00587549832,0.00588909668,0.00591205668,0.005968243319999999]}
