@@ -181,6 +181,8 @@ struct Progress {
     current: Option<u8>,
     /// Current place in the file.
     point: Point,
+    /// Start of the current line, restored after speculative multiline scans.
+    line_start: Point,
 }
 
 /// A lot of shared fields used to tokenize things.
@@ -334,7 +336,7 @@ pub struct Tokenizer<'a> {
     pub lazy: bool,
 }
 
-/// Scratch allocations that can outlive a borrow of ParseState. No source or parser references escape here.
+/// Scratch allocations that can outlive a borrow of `ParseState`. No source or parser references escape here.
 #[derive(Debug)]
 pub(crate) struct TokenizerBuffers {
     pub events: Vec<Event>,
@@ -595,6 +597,13 @@ impl<'a> Tokenizer<'a> {
                 self.point.index += 1;
 
                 if byte == b'\n' {
+                    // Root tokenizers have no caller-defined first-line skip. Seed its
+                    // slot before caching the next line, so speculative lookahead can
+                    // rewind without treating line two as the start of line one.
+                    if self.column_start.is_empty() {
+                        self.column_start
+                            .push((self.line_start.index, self.line_start.vs));
+                    }
                     self.point.line += 1;
                     self.point.column = 1;
 
@@ -682,6 +691,7 @@ impl<'a> Tokenizer<'a> {
             previous: self.previous,
             current: self.current,
             point: self.point.clone(),
+            line_start: self.line_start.clone(),
             events_len: self.events.len(),
             stack_len: self.stack.len(),
         }
@@ -692,6 +702,7 @@ impl<'a> Tokenizer<'a> {
         self.previous = previous.previous;
         self.current = previous.current;
         self.point = previous.point;
+        self.line_start = previous.line_start;
         debug_assert!(
             self.events.len() >= previous.events_len,
             "expected to restore less events than before"

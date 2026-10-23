@@ -525,3 +525,18 @@ fn frontmatter_does_not_require_the_code_fenced_construct() {
         Node::Frontmatter(_)
     ));
 }
+
+#[test]
+fn rejected_multiline_frontmatter_restores_line_positions() {
+    let mut options = Options::gfm();
+    options.parse.constructs.frontmatter = true;
+    for source in ["---\n\n>", "---\r\r>", "---x\n\n>x", "+++\n\n> x"] {
+        let expected = to_html_with_options(source, &Options::gfm()).unwrap();
+        assert_eq!(to_html_with_options(source, &options).unwrap(), expected);
+        let document = core_markdown::Document::parse(source, &options.parse).unwrap();
+        let mut output = String::new();
+        core_markdown::render_events(source, document.events(), &options.compile, &mut output)
+            .unwrap();
+        assert_eq!(output, expected);
+    }
+}
