@@ -29,6 +29,7 @@ struct Node {
 struct Delimiter {
     node: usize,
     marker: u8,
+    run_modulo: u8,
     open: bool,
     close: bool,
 }
@@ -97,19 +98,19 @@ impl InlineParser {
             if self.delimiters[close].close {
                 while self.nodes[closer].start < self.nodes[closer].end {
                     let size = self.nodes[closer].end - self.nodes[closer].start;
-                    let bucket = size % 3 + usize::from(self.delimiters[close].open) * 3;
+                    let closer_modulo = self.delimiters[close].run_modulo;
+                    let bucket =
+                        usize::from(closer_modulo) + usize::from(self.delimiters[close].open) * 3;
                     let bound =
                         lower[usize::from(marker == b'_')][bucket].min(self.attention_stack.len());
                     let mut found = None;
                     for slot in (bound..self.attention_stack.len()).rev() {
                         let open = self.attention_stack[slot];
                         let candidate = &self.delimiters[open];
-                        let opener = self.nodes[candidate.node];
-                        let count = opener.end - opener.start;
                         if candidate.marker == marker
                             && !((candidate.close || self.delimiters[close].open)
-                                && (count + size) % 3 == 0
-                                && (count % 3 != 0 || size % 3 != 0))
+                                && (candidate.run_modulo + closer_modulo) % 3 == 0
+                                && (candidate.run_modulo != 0 || closer_modulo != 0))
                         {
                             found = Some((slot, open));
                             break;
@@ -303,6 +304,8 @@ impl InlineParser {
                         self.delimiters.push(Delimiter {
                             node,
                             marker,
+                            // Rule three uses the original run length, even after a partial match consumes delimiters.
+                            run_modulo: ((at - start) % 3) as u8,
                             open: left
                                 && (marker != b'_'
                                     || !right

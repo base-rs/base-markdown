@@ -35,6 +35,7 @@ fn block_boundaries_preserve_source_whitespace() {
 fn compact_inline_resolution_keeps_escaped_markers_and_unmatched_code() {
     for (source, expected) in [
         ("\\**x**", "<p>*<em>x</em>*</p>"),
+        ("**a*_*_**", "<p><em><em>a</em><em>*</em></em>*</p>"),
         ("a &](b &amp;)", "<p>a &amp;](b &amp;)</p>"),
         ("a `b``c```d``e`", "<p>a <code>b``c```d``e</code></p>"),
         ("a `x\n y`", "<p>a <code>x  y</code></p>"),
