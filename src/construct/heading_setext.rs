@@ -188,6 +188,9 @@ pub fn after(tokenizer: &mut Tokenizer) -> State {
 /// Resolve heading (setext).
 pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
     let mut enter = skip::to(&tokenizer.events, 0, &[Name::HeadingSetextUnderline]);
+    // A literal underline can move the following paragraph's opening backward.
+    // Its old opening remains in the raw buffer until queued edits are applied.
+    let mut moved_paragraph = None;
 
     while enter < tokenizer.events.len() {
         let exit = skip::to(
@@ -210,6 +213,11 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
                 paragraph_exit_before - 1,
                 &[Name::Paragraph],
             );
+
+            let paragraph_enter = match moved_paragraph.take() {
+                Some((original, moved)) if original == paragraph_enter => moved,
+                _ => paragraph_enter,
+            };
 
             // Change types of Enter:Paragraph, Exit:Paragraph.
             tokenizer.events[paragraph_enter].name = Name::HeadingSetextText;
@@ -236,15 +244,17 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
                 // Move new data (was line ending) back to include whole line,
                 // and link data together.
                 tokenizer.events[exit + 1].point = tokenizer.events[enter].point.clone();
-                tokenizer.events[exit + 1].link = Some(Link {
-                    previous: None,
-                    next: Some(exit + 4),
-                    content: Content::Text,
-                });
-                tokenizer.events[exit + 4].link.as_mut().unwrap().previous = Some(exit + 1);
+                tokenizer.events[exit + 1].link =
+                    Some(Link::new(None, Some(exit + 4), Content::Text));
+                tokenizer.events[exit + 4]
+                    .link
+                    .as_mut()
+                    .unwrap()
+                    .set_previous(Some(exit + 1));
                 // Remove *including* HeadingSetextUnderline:Exit, until the line ending.
                 tokenizer.map.add(enter + 1, exit - enter, vec![]);
-                // Remove old Paragraph:Enter.
+                // Remove old Paragraph:Enter, remembering its replacement if a later underline promotes this paragraph to a heading.
+                moved_paragraph = Some((exit + 3, enter));
                 tokenizer.map.add(exit + 3, 1, vec![]);
             } else {
                 // Swap type.
@@ -259,11 +269,7 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
                             name: Name::Data,
                             kind: Kind::Enter,
                             point: tokenizer.events[enter].point.clone(),
-                            link: Some(Link {
-                                previous: None,
-                                next: None,
-                                content: Content::Text,
-                            }),
+                            link: Some(Link::new(None, None, Content::Text)),
                         },
                         Event {
                             name: Name::Data,

@@ -1,0 +1,6 @@
+/target/
+/data/
+/results/
+/vendor/
+/.bundle/
+!Gemfile.lock

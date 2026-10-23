@@ -4,8 +4,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Make urls safe.
-use crate::util::encode::encode;
-use alloc::{format, string::String, vec::Vec};
+use alloc::string::String;
 
 /// Make a value safe for injection as a URL.
 ///
@@ -28,7 +27,13 @@ use alloc::{format, string::String, vec::Vec};
 /// * [`micromark-util-sanitize-uri` in `micromark`](https://github.com/micromark/micromark/tree/main/packages/micromark-util-sanitize-uri)
 #[must_use]
 pub fn sanitize(value: &str) -> String {
-    encode(&normalize(value), true)
+    let mut output = String::with_capacity(value.len());
+    write_sanitized(value, None, |value| {
+        output.push_str(value);
+        Ok::<_, core::convert::Infallible>(())
+    })
+    .unwrap();
+    output
 }
 
 /// Make a value safe for injection as a URL, and check protocols.
@@ -56,97 +61,113 @@ pub fn sanitize(value: &str) -> String {
 ///
 /// * [`micromark-util-sanitize-uri` in `micromark`](https://github.com/micromark/micromark/tree/main/packages/micromark-util-sanitize-uri)
 pub fn sanitize_with_protocols(value: &str, protocols: &[&str]) -> String {
-    let value = sanitize(value);
+    let mut output = String::with_capacity(value.len());
+    write_sanitized(value, Some(protocols), |value| {
+        output.push_str(value);
+        Ok::<_, core::convert::Infallible>(())
+    })
+    .unwrap();
+    output
+}
 
-    let end = value.find(['?', '#', '/']);
-    let mut colon = value.find(':');
-
-    // If the first colon is after `?`, `#`, or `/`, it’s not a protocol.
-    if let Some(end) = end {
-        if let Some(index) = colon {
-            if index > end {
-                colon = None;
+/// Write normalized, HTML-safe URL byte runs without temporary strings.
+pub(crate) fn write_sanitized<E>(
+    value: &str,
+    protocols: Option<&[&str]>,
+    mut write: impl FnMut(&str) -> Result<(), E>,
+) -> Result<(), E> {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    if let Some(protocols) = protocols {
+        if let Some(end) = value.find([':', '?', '#', '/']) {
+            if value.as_bytes()[end] == b':'
+                && !protocols
+                    .iter()
+                    .any(|protocol| value[..end].eq_ignore_ascii_case(protocol))
+            {
+                return Ok(());
             }
         }
     }
-
-    // If there is no protocol, it’s relative, and fine.
-    if let Some(colon) = colon {
-        // If it is a protocol, it should be allowed.
-        let protocol = value[0..colon].to_lowercase();
-        if !protocols.contains(&protocol.as_str()) {
-            return String::new();
-        }
-    }
-
-    value
-}
-
-/// Normalize a URL (such as used in [definitions][definition],
-/// [references][label_end]).
-///
-/// It encodes unsafe characters with percent-encoding, skipping already encoded
-/// sequences.
-///
-/// ## Examples
-///
-/// ```rust ignore
-/// use core_markdown::util::sanitize_uri::normalize;
-///
-/// assert_eq!(sanitize_uri("https://example.com"), "https://example.com");
-/// assert_eq!(sanitize_uri("https://a👍b.c/%20/%"), "https://a%F0%9F%91%8Db.c/%20/%25");
-/// ```
-///
-/// ## References
-///
-/// * [`micromark-util-sanitize-uri` in `micromark`](https://github.com/micromark/micromark/tree/main/packages/micromark-util-sanitize-uri)
-///
-/// [definition]: crate::construct::definition
-/// [label_end]: crate::construct::label_end
-fn normalize(value: &str) -> String {
-    let chars = value.chars().collect::<Vec<_>>();
-    // Note: it’ll grow bigger for each non-ascii or non-safe character.
-    let mut result = String::with_capacity(value.len());
+    let bytes = value.as_bytes();
     let mut index = 0;
     let mut start = 0;
-    let mut buff = [0; 4];
-
-    while index < chars.len() {
-        let char = chars[index];
-
-        // A correct percent encoded value.
-        if char == '%'
-            && index + 2 < chars.len()
-            && chars[index + 1].is_ascii_alphanumeric()
-            && chars[index + 2].is_ascii_alphanumeric()
+    while index < bytes.len() {
+        let byte = bytes[index];
+        // Preserve the historical acceptance of two alphanumeric bytes, not just hex digits.
+        if byte == b'%'
+            && bytes.get(index + 1).is_some_and(u8::is_ascii_alphanumeric)
+            && bytes.get(index + 2).is_some_and(u8::is_ascii_alphanumeric)
         {
             index += 3;
             continue;
         }
-
-        // Note: Rust already takes care of lone surrogates.
-        // Non-ascii or not allowed ascii.
-        if char >= '\u{0080}'
-            || !matches!(char, '!' | '#' | '$' | '&'..=';' | '=' | '?'..='Z' | '_' | 'a'..='z' | '~')
-        {
-            result.push_str(&chars[start..index].iter().collect::<String>());
-            char.encode_utf8(&mut buff);
-
-            #[allow(clippy::format_collect)]
-            result.push_str(
-                &buff[0..char.len_utf8()]
-                    .iter()
-                    .map(|&byte| format!("%{byte:>02X}"))
-                    .collect::<String>(),
-            );
-
+        let replacement = match byte {
+            b'&' => Some("&amp;"),
+            b'!' | b'#' | b'$' | b'\''..=b';' | b'=' | b'?'..=b'Z' | b'_' | b'a'..=b'z' | b'~' => {
+                None
+            }
+            _ => {
+                if start < index {
+                    write(&value[start..index])?;
+                }
+                let encoded = [
+                    b'%',
+                    HEX[usize::from(byte >> 4)],
+                    HEX[usize::from(byte & 15)],
+                ];
+                // Every byte is an ASCII percent sign or hex digit.
+                write(core::str::from_utf8(&encoded).unwrap())?;
+                index += 1;
+                start = index;
+                continue;
+            }
+        };
+        if let Some(replacement) = replacement {
+            write(&value[start..index])?;
+            write(replacement)?;
             start = index + 1;
         }
-
         index += 1;
     }
+    write(&value[start..])
+}
 
-    result.push_str(&chars[start..].iter().collect::<String>());
+#[cfg(test)]
+mod tests {
+    use super::{sanitize, sanitize_with_protocols, write_sanitized};
+    use alloc::{string::String, vec::Vec};
 
-    result
+    #[test]
+    fn writes_utf8_percent_sequences_protocols_and_nulls_without_intermediates() {
+        assert_eq!(
+            sanitize("https://a👍b.c/%20/%GG/%/\0?x=é&y=\"<>"),
+            "https://a%F0%9F%91%8Db.c/%20/%GG/%25/%00?x=%C3%A9&amp;y=%22%3C%3E"
+        );
+        assert_eq!(
+            sanitize_with_protocols("HtTpS://example.com?q=x&y=z", &["https"]),
+            "HtTpS://example.com?q=x&amp;y=z"
+        );
+        assert_eq!(
+            sanitize_with_protocols("relative/path:ok", &[]),
+            "relative/path:ok"
+        );
+        assert_eq!(sanitize_with_protocols("javascript:x", &["https"]), "");
+        let mut output = String::new();
+        write_sanitized("é\0%é", None, |run| {
+            output.push_str(run);
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        assert_eq!(output, "%C3%A9%00%25%C3%A9");
+        for input in ["ordinary", "&", "é", "\0"] {
+            assert!(write_sanitized(input, None, |_| Err(())).is_err());
+        }
+        // Every ASCII byte and multibyte scalar can occur at a run boundary.
+        let bytes: Vec<_> = (0..128).collect();
+        let input = core::str::from_utf8(&bytes).unwrap();
+        let output = sanitize(input);
+        assert!(output.is_ascii());
+        assert!(output.contains("%00%01%02"));
+        assert!(output.contains("%7F"));
+    }
 }

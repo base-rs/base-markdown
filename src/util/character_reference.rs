@@ -40,12 +40,15 @@ use core::str;
 /// * [`wooorm/decode-named-character-reference`](https://github.com/wooorm/decode-named-character-reference)
 /// * [*§ 2.5 Entity and numeric character references* in `CommonMark`](https://spec.commonmark.org/0.31/#entity-and-numeric-character-references)
 pub fn decode_named(value: &str, html5: bool) -> Option<String> {
-    let mut iter = if html5 {
-        CHARACTER_REFERENCES.iter()
+    let references = if html5 {
+        CHARACTER_REFERENCES.as_slice()
     } else {
-        CHARACTER_REFERENCES_HTML_4.iter()
+        CHARACTER_REFERENCES_HTML_4.as_slice()
     };
-    iter.find(|d| d.0 == value).map(|d| d.1.into())
+    references
+        .binary_search_by_key(&value, |entry| entry.0)
+        .ok()
+        .map(|index| references[index].1.into())
 }
 
 /// Decode numeric character references.
@@ -221,6 +224,21 @@ pub fn parse(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::{decode_named, CHARACTER_REFERENCES, CHARACTER_REFERENCES_HTML_4};
+    #[test]
+    fn named_reference_tables_remain_sorted_and_complete() {
+        for (html5, references) in [
+            (true, CHARACTER_REFERENCES.as_slice()),
+            (false, CHARACTER_REFERENCES_HTML_4.as_slice()),
+        ] {
+            assert!(references.windows(2).all(|pair| pair[0].0 < pair[1].0));
+            for &(name, value) in references {
+                assert_eq!(decode_named(name, html5).as_deref(), Some(value));
+            }
+            assert_eq!(decode_named("notAnEntity", html5), None);
+        }
+    }
+
     use super::{decode, decode_numeric, value_max, value_test};
 
     #[test]

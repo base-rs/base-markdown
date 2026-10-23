@@ -289,9 +289,7 @@ fn tabs_virtual_spaces() {
 
     assert_eq!(
         to_html("-\ta\n\n\tb"),
-        "<ul>\n<li>\n<p>a</p>\n<p>\tb</p>\n</li>\n</ul>",
-        // To do: CM.js does not output the tab before `b`. See if that makes sense?
-        // "<ul>\n<li>\n<p>a</p>\n<p>b</p>\n</li>\n</ul>",
+        "<ul>\n<li>\n<p>a</p>\n<p>b</p>\n</li>\n</ul>",
         "should support a part of a tab as a container, and the rest of a tab as flow"
     );
 }

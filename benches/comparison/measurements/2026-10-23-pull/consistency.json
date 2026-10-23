@@ -1,0 +1,80 @@
+[
+  {
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "examples": 652,
+    "core_exact": 652,
+    "reference_exact": 652
+  },
+  {
+    "parser": "markdown-rs",
+    "profile": "commonmark",
+    "examples": 652,
+    "core_exact": 652,
+    "reference_exact": 652
+  },
+  {
+    "parser": "comrak",
+    "profile": "commonmark",
+    "examples": 652,
+    "core_exact": 652,
+    "reference_exact": 652
+  },
+  {
+    "parser": "markly",
+    "profile": "commonmark",
+    "examples": 652,
+    "core_exact": 640,
+    "reference_exact": 640
+  },
+  {
+    "parser": "commonmarker",
+    "profile": "commonmark",
+    "examples": 652,
+    "core_exact": 652,
+    "reference_exact": 652
+  },
+  {
+    "parser": "inkmark",
+    "profile": "commonmark",
+    "examples": 652,
+    "core_exact": 630,
+    "reference_exact": 630
+  },
+  {
+    "parser": "core-markdown",
+    "profile": "gfm",
+    "examples": 677,
+    "core_exact": 677
+  },
+  {
+    "parser": "markdown-rs",
+    "profile": "gfm",
+    "examples": 677,
+    "core_exact": 677
+  },
+  {
+    "parser": "comrak",
+    "profile": "gfm",
+    "examples": 677,
+    "core_exact": 667
+  },
+  {
+    "parser": "markly",
+    "profile": "gfm",
+    "examples": 677,
+    "core_exact": 661
+  },
+  {
+    "parser": "commonmarker",
+    "profile": "gfm",
+    "examples": 677,
+    "core_exact": 667
+  },
+  {
+    "parser": "inkmark",
+    "profile": "gfm",
+    "examples": 677,
+    "core_exact": 634
+  }
+]

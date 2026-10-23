@@ -122,29 +122,16 @@ use crate::util::{
 ///     ^
 /// ```
 pub fn start(tokenizer: &mut Tokenizer) -> State {
-    // Do not interrupt paragraphs (but do follow definitions).
-    if tokenizer.parse_state.options.constructs.definition
-        && (!tokenizer.interrupt
-            || (!tokenizer.events.is_empty()
-                && tokenizer.events[skip::opt_back(
-                    &tokenizer.events,
-                    tokenizer.events.len() - 1,
-                    &[Name::LineEnding, Name::SpaceOrTab],
-                )]
-                .name
-                    == Name::Definition))
-    {
-        tokenizer.enter(Name::Definition);
+    // Content dispatches here only with definitions enabled, before its paragraph starts. Later attempts can only follow another definition, so paragraph-interruption checks are unnecessary.
+    debug_assert!(tokenizer.parse_state.options.constructs.definition);
+    tokenizer.enter(Name::Definition);
 
-        if matches!(tokenizer.current, Some(b'\t' | b' ')) {
-            // Note: arbitrary whitespace allowed even if code (indented) is on.
-            tokenizer.attempt(State::Next(StateName::DefinitionBefore), State::Nok);
-            State::Retry(space_or_tab(tokenizer))
-        } else {
-            State::Retry(StateName::DefinitionBefore)
-        }
+    if matches!(tokenizer.current, Some(b'\t' | b' ')) {
+        // Note: arbitrary whitespace allowed even if code (indented) is on.
+        tokenizer.attempt(State::Next(StateName::DefinitionBefore), State::Nok);
+        State::Retry(space_or_tab(tokenizer))
     } else {
-        State::Nok
+        State::Retry(StateName::DefinitionBefore)
     }
 }
 

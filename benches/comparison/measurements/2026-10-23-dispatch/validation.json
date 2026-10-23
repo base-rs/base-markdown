@@ -1,0 +1,25 @@
+{
+  "production_commit": "6bc8f577292a7baba01f1f23bdf9b2069bd79007",
+  "coverage": {
+    "target": "aarch64-apple-darwin",
+    "all_features": true,
+    "all_targets": true,
+    "covered_regions": 23019,
+    "measured_regions": 23019,
+    "excluded_invariant_unreachable_regions": 61
+  },
+  "workspace_default_feature_tests": "passed",
+  "workspace_all_features_clippy": "passed",
+  "format": "passed",
+  "commonmark_exact_reference_matches": 652,
+  "published_gfm_exact_upstream_matches": 677,
+  "preserved_saved_outputs": 2117,
+  "arena_direct_equal_saved_outputs": 2117,
+  "independent_review": {
+    "confirmed_commit": "6bc8f577292a7baba01f1f23bdf9b2069bd79007",
+    "copy_state_focused_tests": 34,
+    "flow_option_and_document_comparisons": 40960,
+    "attention_option_and_document_comparisons": 32768,
+    "notes": "Flow and attention comparisons include HTML/results, diagnostics and complete mdast debug output with positions. Pre-existing mdast failures agree between snapshots."
+  }
+}

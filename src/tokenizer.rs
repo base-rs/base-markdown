@@ -17,7 +17,7 @@ use crate::event::{Content, Event, Kind, Link, Name, Point, VOID_EVENTS};
 use crate::message;
 use crate::parser::ParseState;
 use crate::resolve::{call as call_resolve, Name as ResolveName};
-use crate::state::{call, State};
+use crate::state::{call, Name as StateName, State};
 use crate::subtokenize::Subresult;
 
 #[cfg(feature = "log")]
@@ -181,6 +181,8 @@ struct Progress {
     current: Option<u8>,
     /// Current place in the file.
     point: Point,
+    /// Physical start of the current line, needed when rewinding to just after EOL.
+    line_start_index: usize,
 }
 
 /// A lot of shared fields used to tokenize things.
@@ -247,7 +249,7 @@ pub struct TokenizeState<'a> {
     /// Secondary marker.
     pub marker_b: u8,
     /// Several markers.
-    pub markers: &'static [u8],
+    pub markers: u128,
     /// Whether something was seen.
     pub seen: bool,
     /// Size.
@@ -297,6 +299,8 @@ pub struct Tokenizer<'a> {
     consumed: bool,
     /// Stack of how to handle attempts.
     attempts: Vec<Attempt>,
+    /// Rare fatal diagnostic, kept out of the copyable state returned for every parser step.
+    error: Option<Box<message::Message>>,
     /// Current byte.
     pub current: Option<u8>,
     /// Previous byte.
@@ -334,6 +338,40 @@ pub struct Tokenizer<'a> {
     pub lazy: bool,
 }
 
+/// Scratch allocations that can outlive a borrow of `ParseState`. No source or parser references escape here.
+#[derive(Debug)]
+pub(crate) struct TokenizerBuffers {
+    pub events: Vec<Event>,
+    stack: Vec<Name>,
+    attempts: Vec<Attempt>,
+    column_start: Vec<(usize, usize)>,
+    resolvers: Vec<ResolveName>,
+    label_starts: Vec<LabelStart>,
+    label_starts_loose: Vec<LabelStart>,
+    labels: Vec<Label>,
+    definitions: Vec<String>,
+    footnotes: Vec<String>,
+    map: EditMap,
+}
+
+impl Default for TokenizerBuffers {
+    fn default() -> Self {
+        Self {
+            events: Vec::new(),
+            stack: Vec::new(),
+            attempts: Vec::new(),
+            column_start: Vec::new(),
+            resolvers: Vec::new(),
+            label_starts: Vec::new(),
+            label_starts_loose: Vec::new(),
+            labels: Vec::new(),
+            definitions: Vec::new(),
+            footnotes: Vec::new(),
+            map: EditMap::new(),
+        }
+    }
+}
+
 impl<'a> Tokenizer<'a> {
     /// Create a new tokenizer.
     pub fn new(point: Point, parse_state: &'a ParseState) -> Tokenizer<'a> {
@@ -346,6 +384,7 @@ impl<'a> Tokenizer<'a> {
             line_start: point.clone(),
             consumed: true,
             attempts: vec![],
+            error: None,
             point,
             stack: vec![],
             events: vec![],
@@ -371,7 +410,7 @@ impl<'a> Tokenizer<'a> {
                 label_starts_loose: vec![],
                 marker: 0,
                 marker_b: 0,
-                markers: &[],
+                markers: 0,
                 labels: vec![],
                 seen: false,
                 size: 0,
@@ -401,6 +440,79 @@ impl<'a> Tokenizer<'a> {
             lazy: false,
             resolvers: vec![],
         }
+    }
+
+    /// Reborrow parse state while retaining the previous inline region's scratch allocations.
+    pub(crate) fn with_buffers(
+        point: Point,
+        parse_state: &'a ParseState,
+        mut buffers: TokenizerBuffers,
+    ) -> Self {
+        let mut tokenizer = Self::new(point, parse_state);
+        macro_rules! restore {
+            ($buffer:ident, $($field:ident).+) => {
+                buffers.$buffer.clear();
+                core::mem::swap(&mut tokenizer.$($field).+, &mut buffers.$buffer);
+            };
+        }
+        restore!(events, events);
+        restore!(stack, stack);
+        restore!(attempts, attempts);
+        restore!(column_start, column_start);
+        restore!(resolvers, resolvers);
+        restore!(label_starts, tokenize_state.label_starts);
+        restore!(label_starts_loose, tokenize_state.label_starts_loose);
+        restore!(labels, tokenize_state.labels);
+        restore!(definitions, tokenize_state.definitions);
+        restore!(footnotes, tokenize_state.gfm_footnote_definitions);
+        tokenizer.map = buffers.map;
+        tokenizer
+    }
+
+    /// Release source borrows while preserving reusable inline scratch storage.
+    pub(crate) fn into_buffers(self) -> TokenizerBuffers {
+        TokenizerBuffers {
+            events: self.events,
+            stack: self.stack,
+            attempts: self.attempts,
+            column_start: self.column_start,
+            resolvers: self.resolvers,
+            label_starts: self.tokenize_state.label_starts,
+            label_starts_loose: self.tokenize_state.label_starts_loose,
+            labels: self.tokenize_state.labels,
+            definitions: self.tokenize_state.definitions,
+            footnotes: self.tokenize_state.gfm_footnote_definitions,
+            map: self.map,
+        }
+    }
+
+    /// Start another subcontent chunk while retaining scratch allocations from the previous one.
+    pub fn reset(&mut self, point: Point) {
+        let mut next = Self::new(point, self.parse_state);
+        macro_rules! reuse {
+            ($($field:ident).+) => {
+                self.$($field).+.clear();
+                core::mem::swap(&mut self.$($field).+, &mut next.$($field).+);
+            };
+        }
+        reuse!(events);
+        reuse!(stack);
+        reuse!(attempts);
+        reuse!(column_start);
+        reuse!(resolvers);
+        reuse!(tokenize_state.label_starts);
+        reuse!(tokenize_state.label_starts_loose);
+        reuse!(tokenize_state.labels);
+        reuse!(tokenize_state.definitions);
+        reuse!(tokenize_state.gfm_footnote_definitions);
+        // A flushed tokenizer has consumed all pending edits.
+        core::mem::swap(&mut self.map, &mut next.map);
+        *self = next;
+    }
+
+    /// Test the ASCII delimiter bitset without searching a marker slice.
+    pub fn is_data_marker(&self, byte: u8) -> bool {
+        byte < 128 && self.tokenize_state.markers & (1 << byte) != 0
     }
 
     /// Register a resolver.
@@ -488,6 +600,13 @@ impl<'a> Tokenizer<'a> {
                 self.point.index += 1;
 
                 if byte == b'\n' {
+                    // Root tokenizers have no caller-defined first-line skip. Seed its
+                    // slot before caching the next line, so speculative lookahead can
+                    // rewind without treating line two as the start of line one.
+                    if self.column_start.is_empty() {
+                        self.column_start
+                            .push((self.line_start.index, self.line_start.vs));
+                    }
                     self.point.line += 1;
                     self.point.column = 1;
 
@@ -569,12 +688,19 @@ impl<'a> Tokenizer<'a> {
         self.events.push(event);
     }
 
+    /// Retain a fatal diagnostic while returning a small, copyable error state.
+    pub fn error(&mut self, message: message::Message) -> State {
+        self.error = Some(Box::new(message));
+        State::Error
+    }
+
     /// Capture the tokenizer progress.
     fn capture(&mut self) -> Progress {
         Progress {
             previous: self.previous,
             current: self.current,
             point: self.point.clone(),
+            line_start_index: self.line_start.index,
             events_len: self.events.len(),
             stack_len: self.stack.len(),
         }
@@ -585,6 +711,16 @@ impl<'a> Tokenizer<'a> {
         self.previous = previous.previous;
         self.current = previous.current;
         self.point = previous.point;
+        // Only an exit immediately after EOL reads line_start. Other exits
+        // use point directly; the next EOL refreshes line_start before reuse.
+        if self.previous == Some(b'\n') {
+            self.line_start = Point {
+                line: self.point.line,
+                column: 1,
+                index: previous.line_start_index,
+                vs: 0,
+            };
+        }
         debug_assert!(
             self.events.len() >= previous.events_len,
             "expected to restore less events than before"
@@ -619,7 +755,7 @@ impl<'a> Tokenizer<'a> {
         // Always capture (and restore) when checking.
         // No need to capture (and restore) when `nok` is `State::Nok`, because the
         // parent attempt will do it.
-        let progress = if nok == State::Nok {
+        let progress = if matches!(nok, State::Nok) {
             None
         } else {
             Some(self.capture())
@@ -644,7 +780,7 @@ impl<'a> Tokenizer<'a> {
         let to = (self.point.index, self.point.vs);
         let state = push_impl(self, to, to, state, true);
 
-        state.to_result()?;
+        state.to_result(self.error.take())?;
 
         let mut value = Subresult {
             done: false,
@@ -674,13 +810,14 @@ impl<'a> Tokenizer<'a> {
 
 /// Move back past ignored bytes.
 fn move_point_back(tokenizer: &mut Tokenizer, point: &mut Point) {
-    while point.index > 0 {
+    // Only the CR of a CRLF pair is ignored. Inspect it directly instead of running tab expansion and byte normalization at every event boundary.
+    let bytes = tokenizer.parse_state.bytes;
+    if point.index > 0
+        && point.index < bytes.len()
+        && bytes[point.index - 1] == b'\r'
+        && bytes[point.index] == b'\n'
+    {
         point.index -= 1;
-        let action = byte_action(tokenizer.parse_state.bytes, point);
-        if !matches!(action, ByteAction::Ignore) {
-            point.index += 1;
-            break;
-        }
     }
 }
 
@@ -719,10 +856,10 @@ fn push_impl(
 
     loop {
         match state {
-            State::Error(_) => break,
+            State::Error => break,
             State::Ok | State::Nok => {
                 if let Some(attempt) = tokenizer.attempts.pop() {
-                    if attempt.kind == AttemptKind::Check || state == State::Nok {
+                    if attempt.kind == AttemptKind::Check || matches!(state, State::Nok) {
                         if let Some(progress) = attempt.progress {
                             tokenizer.free(progress);
                         }
@@ -730,7 +867,7 @@ fn push_impl(
 
                     tokenizer.consumed = true;
 
-                    let next = if state == State::Ok {
+                    let next = if matches!(state, State::Ok) {
                         attempt.ok
                     } else {
                         attempt.nok
@@ -745,6 +882,47 @@ fn push_impl(
                 }
             }
             State::Next(name) => {
+                // These states only consume ordinary bytes until a delimiter. Scan the run without redispatching the state machine for every byte. Tabs and line endings still use the virtual-byte machinery below, and `to` remains a hard boundary between linked chunks.
+                if matches!(
+                    name,
+                    StateName::DataInside
+                        | StateName::ContentChunkInside
+                        | StateName::DocumentFlowInside
+                        | StateName::ParagraphInside
+                        | StateName::RawFlowContentChunk
+                        | StateName::RawTextData
+                ) {
+                    let start = tokenizer.point.index;
+                    let bytes = tokenizer.parse_state.bytes;
+                    let mut end = start;
+                    if name == StateName::DataInside {
+                        while end < to.0
+                            && !matches!(bytes[end], b'\r' | b'\n' | b'\t')
+                            && !tokenizer.is_data_marker(bytes[end])
+                        {
+                            end += 1;
+                        }
+                    } else {
+                        // memchr uses SIMD where available, with a no_std scalar fallback.
+                        let remaining = &bytes[start..to.0];
+                        end += memchr::memchr3(b'\r', b'\n', b'\t', remaining)
+                            .unwrap_or(remaining.len());
+                        if name == StateName::RawTextData {
+                            end =
+                                memchr::memchr(tokenizer.tokenize_state.marker, &bytes[start..end])
+                                    .map_or(end, |offset| start + offset);
+                        }
+                    }
+                    if end > start {
+                        tokenizer.point.index = end;
+                        tokenizer.point.column += end - start;
+                        tokenizer.point.vs = 0;
+                        tokenizer.previous = Some(bytes[end - 1]);
+                        tokenizer.current = None;
+                        tokenizer.consumed = true;
+                        continue;
+                    }
+                }
                 let action = if tokenizer.point.index < to.0
                     || (tokenizer.point.index == to.0 && tokenizer.point.vs < to.1)
                 {
@@ -786,7 +964,7 @@ fn push_impl(
     if flush {
         debug_assert!(
             match state {
-                State::Ok | State::Error(_) => true,
+                State::Ok | State::Error => true,
                 _ => unreachable!("flushing a tokenizer must produce a terminal state"),
             },
             "must be ok"
@@ -794,7 +972,7 @@ fn push_impl(
     } else {
         debug_assert!(
             match state {
-                State::Next(_) | State::Error(_) => true,
+                State::Next(_) | State::Error => true,
                 _ => unreachable!("continuing a tokenizer must produce a next state"),
             },
             "must have a next state"
@@ -867,6 +1045,28 @@ mod tests {
             },
             parse_state,
         )
+    }
+
+    #[test]
+    fn scans_data_runs_within_chunk_and_virtual_space_boundaries() {
+        let options = ParseOptions::default();
+        let (_events, parse_state) = parse("ab\tdef\r\nxyz", &options).unwrap();
+        let mut tokenizer = make_tokenizer(&parse_state);
+        tokenizer.tokenize_state.markers = 1 << b'*';
+        tokenizer.enter(Name::Data);
+        let state = tokenizer.push((0, 0), (1, 0), State::Next(StateName::DataInside));
+        assert_eq!(tokenizer.point.index, 1);
+        assert_eq!(tokenizer.point.column, 2);
+        assert_eq!(tokenizer.previous, Some(b'a'));
+        let state = tokenizer.push((1, 0), (2, 1), state);
+        assert_eq!(tokenizer.point.index, 2);
+        assert_eq!(tokenizer.point.vs, 1);
+        assert_eq!(tokenizer.point.column, 4);
+        let state = tokenizer.push((2, 1), (parse_state.bytes.len(), 0), state);
+        tokenizer.flush(state, true).unwrap();
+        assert_eq!(tokenizer.point.line, 2);
+        assert_eq!(tokenizer.point.column, 4);
+        assert_eq!(tokenizer.previous, Some(b'z'));
     }
 
     #[cfg(feature = "log")]

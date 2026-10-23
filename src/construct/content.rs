@@ -43,14 +43,7 @@ pub fn chunk_start(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         None | Some(b'\n') => unreachable!("unexpected eol/eof"),
         _ => {
-            tokenizer.enter_link(
-                Name::Content,
-                Link {
-                    previous: None,
-                    next: None,
-                    content: Content::Content,
-                },
-            );
+            tokenizer.enter_link(Name::Content, Link::new(None, None, Content::Content));
             State::Retry(StateName::ContentChunkInside)
         }
     }
@@ -161,12 +154,16 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Subresult {
                 tokenizer.map.add(exit_index + 1, 2, vec![]);
 
                 // Link Enter:Content to Enter:Content on this line and vice versa.
-                tokenizer.events[exit_index - 1].link.as_mut().unwrap().next = Some(enter_index);
+                tokenizer.events[exit_index - 1]
+                    .link
+                    .as_mut()
+                    .unwrap()
+                    .set_next(Some(enter_index));
                 tokenizer.events[enter_index]
                     .link
                     .as_mut()
                     .unwrap()
-                    .previous = Some(exit_index - 1);
+                    .set_previous(Some(exit_index - 1));
 
                 // Potential next start.
                 exit_index = enter_index + 1;

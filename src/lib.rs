@@ -45,16 +45,23 @@
 )]
 
 extern crate alloc;
+mod block_parser;
+mod byte_scan;
 mod configuration;
 mod construct;
+mod document;
 mod event;
+mod event_html_renderer;
+mod event_parser;
+mod grammar_parser;
+mod inline_parser;
 pub mod markdown;
 mod parser;
 pub mod renderer;
 mod resolve;
 mod state;
+pub mod stream;
 mod subtokenize;
-mod to_html;
 mod to_mdast;
 mod tokenizer;
 mod util;
@@ -83,6 +90,11 @@ pub use util::mdx::{
 };
 
 pub use configuration::{CompileOptions, Constructs, Options, ParseOptions};
+pub use document::{
+    AstBuilder, BuildProgress, Document, DocumentEvents, Node as DocumentNode, NodeId,
+};
+pub use event_html_renderer::{render_events, EventHtmlRenderer};
+pub use event_parser::EventParser;
 pub use markdown::{to_markdown, to_markdown_with_options};
 pub use markdown::{IndentOptions, LineWrapping, Options as MarkdownOptions};
 pub use renderer::{HtmlRenderer, MarkdownRenderer, Renderer};
@@ -142,13 +154,16 @@ pub fn to_html(value: &str) -> String {
 /// # }
 /// ```
 pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, message::Message> {
-    let (events, parse_state) = parser::parse(value, &options.parse)?;
-    to_html::compile(
-        &events,
-        parse_state.bytes,
-        &options.compile,
-        options.parse.inline_code_info,
-    )
+    let mut output = String::new();
+    let result = EventHtmlRenderer::new(value, &options.compile, &mut output)
+        .render_markdown(&options.parse);
+    match result {
+        Ok(()) => Ok(output),
+        Err(stream::StreamError::Parse(error)) => Err(error),
+        Err(_) => unreachable!(
+            "parser events are balanced and source-valid; writing to String cannot fail"
+        ),
+    }
 }
 
 /// Turn markdown into a syntax tree.

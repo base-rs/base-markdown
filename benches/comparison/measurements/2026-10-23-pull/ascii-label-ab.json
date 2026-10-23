@@ -1,0 +1,154 @@
+[
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.0410846875,
+    "mib_per_second": 23.21286707833857,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0402955,
+      0.040486177,
+      0.0408078645,
+      0.0410846875,
+      0.041264677,
+      0.041294927,
+      0.0413263855
+    ],
+    "candidate": "before"
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.0407705835,
+    "mib_per_second": 23.391703233596797,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.04034028125,
+      0.040520177,
+      0.04052951025,
+      0.0407705835,
+      0.04087928125,
+      0.04088745825,
+      0.0409223645
+    ],
+    "candidate": "ascii"
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.043267573,
+    "mib_per_second": 22.041758383179435,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0427076145,
+      0.04287872925,
+      0.04289440625,
+      0.043267573,
+      0.043359948,
+      0.0435597915,
+      0.044269125
+    ],
+    "candidate": "ascii"
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.04065384375,
+    "mib_per_second": 23.458873796959928,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.040320927,
+      0.0403944585,
+      0.040476,
+      0.04065384375,
+      0.0408167915,
+      0.041035677,
+      0.04126511475
+    ],
+    "candidate": "before"
+  },
+  {
+    "bytes": 80025,
+    "document": "references",
+    "iterations_per_sample": 26,
+    "median_seconds": 0.005993828538461538,
+    "mib_per_second": 12.732727785035868,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.005937621807692308,
+      0.005962185923076923,
+      0.005965993576923077,
+      0.005993828538461538,
+      0.006019182692307692,
+      0.006093177884615385,
+      0.006100032038461539
+    ],
+    "candidate": "before"
+  },
+  {
+    "bytes": 80025,
+    "document": "references",
+    "iterations_per_sample": 27,
+    "median_seconds": 0.005734296296296296,
+    "mib_per_second": 13.30900658546416,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.005630027777777778,
+      0.005661325592592592,
+      0.005687449074074074,
+      0.005734296296296296,
+      0.005752041666666667,
+      0.005753279333333333,
+      0.005828648148148148
+    ],
+    "candidate": "ascii"
+  },
+  {
+    "bytes": 80025,
+    "document": "references",
+    "iterations_per_sample": 27,
+    "median_seconds": 0.005754094148148148,
+    "mib_per_second": 13.263214887606882,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.005635151259259259,
+      0.005723577185185185,
+      0.005737567925925925,
+      0.005754094148148148,
+      0.005779560185185185,
+      0.005864117296296296,
+      0.005888966074074074
+    ],
+    "candidate": "ascii"
+  },
+  {
+    "bytes": 80025,
+    "document": "references",
+    "iterations_per_sample": 25,
+    "median_seconds": 0.00610327332,
+    "mib_per_second": 12.504402665422521,
+    "parser": "core-markdown",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.00597466664,
+      0.00600764,
+      0.00608498836,
+      0.00610327332,
+      0.00615429168,
+      0.006183546680000001,
+      0.00750827168
+    ],
+    "candidate": "before"
+  }
+]

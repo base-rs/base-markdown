@@ -22,7 +22,7 @@ use crate::subtokenize::Subresult;
 use crate::tokenizer::Tokenizer;
 
 /// Characters that can start something in string.
-const MARKERS: [u8; 2] = *b"&\\";
+const MARKERS: u128 = (1 << b'&') | (1 << b'\\');
 
 /// Start of string.
 ///
@@ -31,7 +31,7 @@ const MARKERS: [u8; 2] = *b"&\\";
 ///        ^
 /// ````
 pub fn start(tokenizer: &mut Tokenizer) -> State {
-    tokenizer.tokenize_state.markers = &MARKERS;
+    tokenizer.tokenize_state.markers = MARKERS;
     State::Retry(StateName::StringBefore)
 }
 

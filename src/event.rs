@@ -6,6 +6,7 @@
 //! Semantic labels of things happening.
 use crate::unist;
 use crate::util::constant::TAB_SIZE;
+use core::num::NonZeroUsize;
 
 /// Semantic label of a span.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -858,8 +859,7 @@ pub enum Name {
     /// * **Context**:
     ///   [text content][crate::construct::text]
     /// * **Content model**:
-    ///   [`EmphasisSequence`][Name::EmphasisSequence],
-    ///   [`EmphasisText`][Name::EmphasisText]
+    ///   [text content][crate::construct::text]
     /// * **Construct**:
     ///   [`attention`][crate::construct::attention]
     ///
@@ -870,42 +870,6 @@ pub enum Name {
     ///     ^^^
     /// ```
     Emphasis,
-    /// Emphasis sequence.
-    ///
-    /// ## Info
-    ///
-    /// * **Context**:
-    ///   [`Emphasis`][Name::Emphasis]
-    /// * **Content model**:
-    ///   void
-    /// * **Construct**:
-    ///   [`attention`][crate::construct::attention]
-    ///
-    /// ## Example
-    ///
-    /// ```markdown
-    /// > | *a*
-    ///     ^ ^
-    /// ```
-    EmphasisSequence,
-    /// Emphasis text.
-    ///
-    /// ## Info
-    ///
-    /// * **Context**:
-    ///   [`Emphasis`][Name::Emphasis]
-    /// * **Content model**:
-    ///   [text content][crate::construct::text]
-    /// * **Construct**:
-    ///   [`attention`][crate::construct::attention]
-    ///
-    /// ## Example
-    ///
-    /// ```markdown
-    /// > | *a*
-    ///      ^
-    /// ```
-    EmphasisText,
     /// Whole frontmatter.
     ///
     /// ## Info
@@ -1257,8 +1221,7 @@ pub enum Name {
     /// * **Context**:
     ///   [text content][crate::construct::text]
     /// * **Content model**:
-    ///   [`GfmStrikethroughSequence`][Name::GfmStrikethroughSequence],
-    ///   [`GfmStrikethroughText`][Name::GfmStrikethroughText]
+    ///   [text content][crate::construct::text]
     /// * **Construct**:
     ///   [`attention`][crate::construct::attention]
     ///
@@ -1269,42 +1232,6 @@ pub enum Name {
     ///     ^^^
     /// ```
     GfmStrikethrough,
-    /// GFM extension: Strikethrough sequence.
-    ///
-    /// ## Info
-    ///
-    /// * **Context**:
-    ///   [`GfmStrikethrough`][Name::GfmStrikethrough]
-    /// * **Content model**:
-    ///   void
-    /// * **Construct**:
-    ///   [`attention`][crate::construct::attention]
-    ///
-    /// ## Example
-    ///
-    /// ```markdown
-    /// > | ~a~
-    ///     ^ ^
-    /// ```
-    GfmStrikethroughSequence,
-    /// GFM extension: Strikethrough text.
-    ///
-    /// ## Info
-    ///
-    /// * **Context**:
-    ///   [`GfmStrikethrough`][Name::GfmStrikethrough]
-    /// * **Content model**:
-    ///   [text content][crate::construct::text]
-    /// * **Construct**:
-    ///   [`attention`][crate::construct::attention]
-    ///
-    /// ## Example
-    ///
-    /// ```markdown
-    /// > | ~a~
-    ///      ^
-    /// ```
-    GfmStrikethroughText,
     /// GFM extension: Table.
     ///
     /// ## Info
@@ -3297,8 +3224,7 @@ pub enum Name {
     /// * **Context**:
     ///   [text content][crate::construct::text]
     /// * **Content model**:
-    ///   [`StrongSequence`][Name::StrongSequence],
-    ///   [`StrongText`][Name::StrongText]
+    ///   [text content][crate::construct::text]
     /// * **Construct**:
     ///   [`attention`][crate::construct::attention]
     ///
@@ -3309,42 +3235,6 @@ pub enum Name {
     ///     ^^^^^
     /// ```
     Strong,
-    /// Strong sequence.
-    ///
-    /// ## Info
-    ///
-    /// * **Context**:
-    ///   [`Strong`][Name::Strong]
-    /// * **Content model**:
-    ///   void
-    /// * **Construct**:
-    ///   [`attention`][crate::construct::attention]
-    ///
-    /// ## Example
-    ///
-    /// ```markdown
-    /// > | **a**
-    ///     ^^ ^^
-    /// ```
-    StrongSequence,
-    /// Strong text.
-    ///
-    /// ## Info
-    ///
-    /// * **Context**:
-    ///   [`Strong`][Name::Strong]
-    /// * **Content model**:
-    ///   [text content][crate::construct::text]
-    /// * **Construct**:
-    ///   [`attention`][crate::construct::attention]
-    ///
-    /// ## Example
-    ///
-    /// ```markdown
-    /// > | **a**
-    ///       ^
-    /// ```
-    StrongText,
     /// Whole thematic break.
     ///
     /// ## Info
@@ -3387,7 +3277,7 @@ pub enum Name {
 }
 
 /// List of void events, used to make sure everything is working well.
-pub const VOID_EVENTS: [Name; 77] = [
+pub const VOID_EVENTS: [Name; 74] = [
     Name::AttentionSequence,
     Name::AutolinkEmail,
     Name::AutolinkMarker,
@@ -3411,7 +3301,6 @@ pub const VOID_EVENTS: [Name; 77] = [
     Name::DefinitionLabelMarker,
     Name::DefinitionMarker,
     Name::DefinitionTitleMarker,
-    Name::EmphasisSequence,
     Name::FrontmatterChunk,
     Name::FrontmatterFenceInfo,
     Name::GfmAutolinkLiteralEmail,
@@ -3420,7 +3309,6 @@ pub const VOID_EVENTS: [Name; 77] = [
     Name::GfmFootnoteCallMarker,
     Name::GfmFootnoteDefinitionLabelMarker,
     Name::GfmFootnoteDefinitionMarker,
-    Name::GfmStrikethroughSequence,
     Name::GfmTableCellDivider,
     Name::GfmTableDelimiterMarker,
     Name::GfmTableDelimiterFiller,
@@ -3463,7 +3351,6 @@ pub const VOID_EVENTS: [Name; 77] = [
     Name::ResourceMarker,
     Name::ResourceTitleMarker,
     Name::SpaceOrTab,
-    Name::StrongSequence,
     Name::ThematicBreakSequence,
 ];
 
@@ -3485,11 +3372,38 @@ pub enum Content {
 #[derive(Clone, Debug)]
 pub struct Link {
     /// Previous event.
-    pub previous: Option<usize>,
+    previous_index: Option<NonZeroUsize>,
     /// Next event.
-    pub next: Option<usize>,
+    next_index: Option<NonZeroUsize>,
     /// Content type.
     pub content: Content,
+}
+
+impl Link {
+    /// Store one-based event indices so absent links use the zero niche instead of a separate discriminant.
+    pub fn new(previous: Option<usize>, next: Option<usize>, content: Content) -> Self {
+        Self {
+            previous_index: previous.and_then(|index| NonZeroUsize::new(index + 1)),
+            next_index: next.and_then(|index| NonZeroUsize::new(index + 1)),
+            content,
+        }
+    }
+
+    pub fn previous(&self) -> Option<usize> {
+        self.previous_index.map(|index| index.get() - 1)
+    }
+
+    pub fn next(&self) -> Option<usize> {
+        self.next_index.map(|index| index.get() - 1)
+    }
+
+    pub fn set_previous(&mut self, previous: Option<usize>) {
+        self.previous_index = previous.and_then(|index| NonZeroUsize::new(index + 1));
+    }
+
+    pub fn set_next(&mut self, next: Option<usize>) {
+        self.next_index = next.and_then(|index| NonZeroUsize::new(index + 1));
+    }
 }
 
 /// Place in the document.
@@ -3578,7 +3492,20 @@ pub struct Event {
 
 #[cfg(test)]
 mod tests {
-    use super::Point;
+    use super::{Content, Link, Point};
+
+    #[test]
+    fn compact_links_preserve_zero_indices_and_absent_neighbors() {
+        let mut link = Link::new(Some(0), Some(7), Content::Text);
+        assert_eq!(link.previous(), Some(0));
+        assert_eq!(link.next(), Some(7));
+        link.set_previous(None);
+        link.set_next(Some(0));
+        assert_eq!(link.previous(), None);
+        assert_eq!(link.next(), Some(0));
+        link.set_next(None);
+        assert_eq!(link.next(), None);
+    }
 
     #[test]
     fn shifts_points_across_tabs() {

@@ -16,7 +16,7 @@
 use crate::event::{Content, Event, Kind, Link, Name};
 use crate::message;
 use crate::state::{Name as StateName, State};
-use crate::subtokenize::divide_events;
+use crate::subtokenize::merge_events;
 use crate::tokenizer::{Container, ContainerState, Tokenizer};
 use crate::util::skip;
 use alloc::{boxed::Box, vec::Vec};
@@ -272,7 +272,7 @@ pub fn container_new_after(tokenizer: &mut Tokenizer) -> State {
         != tokenizer.tokenize_state.document_container_stack.len()
     {
         if let Err(message) = exit_containers(tokenizer, &Phase::Prefix) {
-            return State::Error(message);
+            return tokenizer.error(message);
         }
     }
 
@@ -314,17 +314,14 @@ pub fn containers_after(tokenizer: &mut Tokenizer) -> State {
         let current = tokenizer.events.len();
         let previous = tokenizer.tokenize_state.document_data_index;
         if let Some(previous) = previous {
-            tokenizer.events[previous].link.as_mut().unwrap().next = Some(current);
+            tokenizer.events[previous]
+                .link
+                .as_mut()
+                .unwrap()
+                .set_next(Some(current));
         }
         tokenizer.tokenize_state.document_data_index = Some(current);
-        tokenizer.enter_link(
-            Name::Data,
-            Link {
-                previous,
-                next: None,
-                content: Content::Flow,
-            },
-        );
+        tokenizer.enter_link(Name::Data, Link::new(previous, None, Content::Flow));
         State::Retry(StateName::DocumentFlowInside)
     }
 }
@@ -455,7 +452,7 @@ pub fn flow_end(tokenizer: &mut Tokenizer) -> State {
     if tokenizer.current.is_none() {
         tokenizer.tokenize_state.document_continued = 0;
         if let Err(message) = exit_containers(tokenizer, &Phase::Eof) {
-            return State::Error(message);
+            return tokenizer.error(message);
         }
         resolve(tokenizer);
         State::Ok
@@ -564,16 +561,15 @@ fn resolve(tokenizer: &mut Tokenizer) {
                 inject_index = child_index + 1;
             }
 
-            if line < tokenizer.tokenize_state.document_exits.len() {
-                if let Some(mut exits) = tokenizer.tokenize_state.document_exits[line].take() {
-                    let mut exit_index = 0;
-                    while exit_index < exits.len() {
-                        exits[exit_index].point = point.clone();
-                        exit_index += 1;
-                    }
-
-                    child.map.add(inject_index, 0, exits);
+            // The document records one exit slot for every line fed to its child.
+            if let Some(mut exits) = tokenizer.tokenize_state.document_exits[line].take() {
+                let mut exit_index = 0;
+                while exit_index < exits.len() {
+                    exits[exit_index].point = point.clone();
+                    exit_index += 1;
                 }
+
+                child.map.add(inject_index, 0, exits);
             }
 
             line += 1;
@@ -594,16 +590,7 @@ fn resolve(tokenizer: &mut Tokenizer) {
     }
 
     // Now, add all child events into our parent document tokenizer.
-    divide_events(
-        &mut tokenizer.map,
-        &tokenizer.events,
-        flow_index,
-        &mut child.events,
-        (0, 0),
-    );
-
-    // Replace the flow data with actual events.
-    tokenizer.map.consume(&mut tokenizer.events);
+    merge_events(&mut tokenizer.events, flow_index, &mut child.events);
 
     // Now, add some final container exits due to the EOF.
     // We can’t inject them into the child earlier, as they are “outside” its

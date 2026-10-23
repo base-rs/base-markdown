@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-23",
+  "machine": "Apple M4 Pro",
+  "os": "macOS 27.0.1 arm64",
+  "rust": "1.99.1 (58cf8f9c3 2026-10-13)",
+  "ruby": "4.0.7 arm64-darwin25; YJIT disabled",
+  "inputs": {
+    "readme": {
+      "bytes": 9019,
+      "sha256": "e9fcb242b7ba8f45fd18b1a97b7e021755babea8825d6f3cb86bb6f89dcd2e14"
+    },
+    "mixed-100k": {
+      "bytes": 100252,
+      "sha256": "a9b31b8c20db1c4469a87e788ae77c98155cb4371738d291826abc94cfb12021"
+    },
+    "mixed-1m": {
+      "bytes": 1000020,
+      "sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356"
+    },
+    "gfm-100k": {
+      "bytes": 100130,
+      "sha256": "6c7091f969014c4396cbb98e6c3358d3d6d2c64e4dd6b7f35af273c15cb11c5d"
+    },
+    "long-lines-1m": {
+      "bytes": 1026456,
+      "sha256": "4edbe39e17d6254bc1d33654c36e1e3c0473c10c08817cce6d1fd2f24f79b261"
+    },
+    "code-1m": {
+      "bytes": 1041008,
+      "sha256": "9614745b8b4188bcf96a751410cd0f9b3841f0adc3bdfde4f0685849e80d6e2e"
+    },
+    "references": {
+      "bytes": 80025,
+      "sha256": "f5d995fc94efcc42927c9274759866fc60699865dd9cd1504b3f0e9380edc4cf"
+    },
+    "linked-attention": {
+      "bytes": 96000,
+      "sha256": "802c7ef3a1e41a55886e0a34df4ffa9ad10f2666aed593598a174734aa02ba3c"
+    }
+  },
+  "production_commit": "6162ee825db3435ab7ff2dc139a73faa63e4e8f7",
+  "studies": {
+    "inlining": {
+      "before": "222d5d0da618ff16be6b714a76a0ea668489b059",
+      "after": "970603c1e19cbca907136a7c5f6fab0a2d1f7ded"
+    },
+    "borrowed": {
+      "before": "970603c1e19cbca907136a7c5f6fab0a2d1f7ded",
+      "after": "78a4a4a066e4ebb8f5726ddcc88cf44caaef167f"
+    },
+    "parser-inlining": {
+      "before": "78a4a4a066e4ebb8f5726ddcc88cf44caaef167f",
+      "after": "6f3174a9cbc45db512b5ee360f68c404f189584c"
+    },
+    "render-dispatch": {
+      "before": "6f3174a9cbc45db512b5ee360f68c404f189584c",
+      "after": "bc152c563c276b18485af9866936f2f2399739aa"
+    },
+    "brackets": {
+      "before": "bc152c563c276b18485af9866936f2f2399739aa",
+      "after": "d361f6e23a65ddc5c9ffe507b155cea0778be791"
+    },
+    "validation": {
+      "before": "d361f6e23a65ddc5c9ffe507b155cea0778be791",
+      "after": "03ac94e5a8880c56a829793a5abf8797cc164539"
+    }
+  },
+  "notes": [
+    "Paired studies run baseline then candidate in each of three sequential pairs. Compilation, tests, and reviewer differential runs do not overlap timings.",
+    "Each process uses seven calibrated batches after warmup; baseline and candidate executables have identical benchmark adapters.",
+    "Source-only test commits between measured production revisions do not change the binaries. All results include output disposal.",
+    "GFM is not equal-output: Inkmark omits www.example.com autolinking and serializes tables differently.",
+    "Allocation calls exclude reallocations, input loading, and options construction. Requested bytes include growth and are not retained or peak memory.",
+    "The final same-source comparison was repeated once after an unchanged binary varied from roughly 5.1 to 4.2 ms on mixed 1 MB. Both complete runs and all six pairs are retained; background macOS media analysis and indexing were active during portions of the first run.",
+    "No project builds, tests, or reviewer differential runs overlap timings; ordinary unrelated machine processes are not controlled. Final engine pairs alternate order; earlier optimization studies run baseline then candidate.",
+    "Focused scanner fixtures time complete Markdown-to-HTML conversion, not just the byte scanner.",
+    "The final six-engine report is a snapshot; use the retained pairs and first run to assess variability."
+  ],
+  "harness_commit": "c62db79f7cd09c5b8b76bd3aca4664bfbc3956e2",
+  "documentation_commit": "844262755d63ade63f3d214e80b8b53d5bc5d29c",
+  "executable_sha256": "faef7a73cd4f573d758c9a2b65818acd0ed2722c64b961adb78679efd7b1550f",
+  "final_runs": {
+    "first-run-*.jsonl": "First sequential six-engine run; retained in full.",
+    "paired-first-*.jsonl": "Three pairs after first run, alternating core/Inkmark order.",
+    "*-commonmark.jsonl and *-gfm.jsonl": "Unprefixed six-engine files are the repeated sequential run. Diagnostic core-prepare, core-events, core-arena and allocations were measured after the first run.",
+    "paired-final-*.jsonl": "Three pairs after repeated run, alternating core/Inkmark order.",
+    "final-scanners-*.jsonl and final-references-*.jsonl and final-linked-attention-*.jsonl": "Complete HTML timings on supplemental fixtures after first run.",
+    "repeat-validation-*.jsonl": "Diagnostic repeat with saved d361f6e baseline binary and unchanged final binary; old baseline uses pre-c62db79 harness. This checks variation, not an isolated new source optimization."
+  }
+}

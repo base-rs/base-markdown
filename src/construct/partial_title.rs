@@ -112,14 +112,7 @@ pub fn at_break(tokenizer: &mut Tokenizer) -> State {
                 },
             ))
         } else {
-            tokenizer.enter_link(
-                Name::Data,
-                Link {
-                    previous: None,
-                    next: None,
-                    content: Content::String,
-                },
-            );
+            tokenizer.enter_link(Name::Data, Link::new(None, None, Content::String));
 
             if tokenizer.tokenize_state.connect {
                 let index = tokenizer.events.len() - 1;

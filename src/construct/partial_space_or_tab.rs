@@ -86,11 +86,7 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
         if let Some(ref content) = tokenizer.tokenize_state.space_or_tab_content {
             tokenizer.enter_link(
                 tokenizer.tokenize_state.space_or_tab_token.clone(),
-                Link {
-                    previous: None,
-                    next: None,
-                    content: content.clone(),
-                },
+                Link::new(None, None, content.clone()),
             );
         } else {
             tokenizer.enter(tokenizer.tokenize_state.space_or_tab_token.clone());

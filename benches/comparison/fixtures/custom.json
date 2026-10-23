@@ -1,0 +1,118 @@
+[
+  {
+    "name": "no_final_newline",
+    "markdown": "# Hello"
+  },
+  {
+    "name": "softbreak",
+    "markdown": "one\ntwo\n"
+  },
+  {
+    "name": "hardbreak",
+    "markdown": "one  \ntwo\n"
+  },
+  {
+    "name": "code_language",
+    "markdown": "```rust title=example\nlet x = 1;\n```\n"
+  },
+  {
+    "name": "escaped_punctuation",
+    "markdown": "\\*literal\\* and &amp; <https://example.com>\n"
+  },
+  {
+    "name": "raw_html",
+    "markdown": "<div>\n<b>Hi</b>\n</div>\n"
+  },
+  {
+    "name": "raw_inline",
+    "markdown": "Here <b>bold</b> and <script>alert(1)</script>.\n"
+  },
+  {
+    "name": "dangerous_links",
+    "markdown": "[click](javascript:alert%281%29) ![image](data:image/png;base64,abc)\n"
+  },
+  {
+    "name": "heading_anchor",
+    "markdown": "# Same\n\n# Same\n"
+  },
+  {
+    "name": "strikethrough",
+    "markdown": "~one~ ~~two~~ ~~~three~~~\n"
+  },
+  {
+    "name": "autolink",
+    "markdown": "www.example.com and https://example.com/test?q=x and user@example.com\n"
+  },
+  {
+    "name": "checkboxes",
+    "markdown": "- [x] done\n- [ ] todo\n"
+  },
+  {
+    "name": "align_table",
+    "markdown": "| Left | Right |\n| :--- | ---: |\n| **A** | B |\n"
+  },
+  {
+    "name": "footnotes",
+    "markdown": "A note[^x].\n\n[^x]: Footnote text.\n"
+  },
+  {
+    "name": "emoji_shortcode",
+    "markdown": ":smile: :heart: :unknown:\n"
+  },
+  {
+    "name": "yaml_frontmatter",
+    "markdown": "---\ntitle: Hello\n---\n\n# Title\n"
+  },
+  {
+    "name": "code_frontmatter",
+    "markdown": "```json\n{\"title\":\"Hello\"}\n```\n\n# Title\n"
+  },
+  {
+    "name": "inline_code_info",
+    "markdown": "Use ruby:`Object.new` here.\n"
+  },
+  {
+    "name": "html_blank_lines",
+    "markdown": "<div>\n  first\n\n  second\n</div>\n"
+  },
+  {
+    "name": "html_namespace",
+    "markdown": "<svg:circle />\n\nText <svg:circle />\n"
+  },
+  {
+    "name": "crlf",
+    "markdown": "# CRLF\r\n\r\n`a\r\nb`\r\n"
+  },
+  {
+    "name": "null",
+    "markdown": "before\u0000after\n"
+  },
+  {
+    "name": "unicode",
+    "markdown": "# Héllo 世界 👋\n\nUnicode **текст** and [λ](https://example.com/λ).\n"
+  },
+  {
+    "name": "loose_lists",
+    "markdown": "- a\n\n- b\n\n  more\n"
+  },
+  {
+    "name": "nested_lists",
+    "markdown": "1. first\n   - inner\n     > quote\n2. second\n"
+  },
+  {
+    "name": "link_reference",
+    "markdown": "[link][id]\n\n[id]: /path \"title\"\n"
+  },
+  {
+    "name": "image_alt",
+    "markdown": "![a *b* & c](image.png \"a title\")\n"
+  },
+  {
+    "name": "code_span_crlf",
+    "markdown": "`hello\r\nworld`\n"
+  },
+  {
+    "name": "gfm_tagfilter",
+    "markdown": "<script>\nalert(1)\n</script>\n\n<iframe src=\"/foo\"></iframe>\n"
+  }
+]

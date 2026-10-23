@@ -1203,3 +1203,126 @@ fn html_flow_7_complete() -> Result<(), message::Message> {
 
     Ok(())
 }
+
+#[test]
+fn retained_blank_lines_end_at_the_enclosing_container_boundary() {
+    use core_markdown::{render_events, Document, EventParser};
+    let options = Options {
+        parse: ParseOptions {
+            html_block_blank_lines: true,
+            ..ParseOptions::default()
+        },
+        ..Options::default()
+    };
+    for (source, expected) in [
+        ("><v>\n\n", "<blockquote>\n&lt;v&gt;\n</blockquote>\n"),
+        (
+            "> <v>\n>\n\na",
+            "<blockquote>\n&lt;v&gt;\n\n</blockquote>\n<p>a</p>",
+        ),
+        (
+            "- <v>\n\na",
+            "<ul>\n<li>\n&lt;v&gt;\n\n</li>\n</ul>\n<p>a</p>",
+        ),
+    ] {
+        let output = to_html_with_options(source, &options).unwrap();
+        assert_eq!(output, expected, "{source:?}");
+        let mut checked = String::new();
+        render_events(
+            source,
+            EventParser::new(source, &options.parse).unwrap(),
+            &options.compile,
+            &mut checked,
+        )
+        .unwrap();
+        assert_eq!(checked, expected);
+        let document = Document::parse(source, &options.parse).unwrap();
+        let mut arena = String::new();
+        render_events(source, document.events(), &options.compile, &mut arena).unwrap();
+        assert_eq!(arena, expected);
+    }
+}
+
+#[test]
+fn retained_html_keeps_only_lines_inside_the_active_container() {
+    use core_markdown::{render_events, stream::EventKind, Document, EventParser};
+    let options = Options {
+        parse: ParseOptions {
+            html_block_blank_lines: true,
+            ..ParseOptions::default()
+        },
+        ..Options::default()
+    };
+    for (source, raw, quotes) in [
+        ("> <v>\n>\n>\n\n", "<v>\n\n\n", 1),
+        ("><v>\n \t", "<v>\n", 1),
+        ("> > <v>\n> >\n>\n> outside", "<v>\n\n", 2),
+        ("> - <v>\n>\n> outside", "<v>\n\n", 1),
+    ] {
+        let events = EventParser::new(source, &options.parse).unwrap();
+        let mut bodies = Vec::new();
+        for event in events {
+            if let EventKind::Html { value, block: true } = event.unwrap().kind {
+                bodies.push(value.resolve(source).unwrap().to_string());
+            }
+        }
+        assert_eq!(bodies, [raw], "{source:?}");
+        let output = to_html_with_options(source, &options).unwrap();
+        assert_eq!(output.matches("<blockquote>").count(), quotes);
+        assert_eq!(output.matches("</blockquote>").count(), quotes);
+        if source.ends_with("outside") {
+            assert!(
+                output.ends_with("<p>outside</p>\n</blockquote>"),
+                "{:?}",
+                output
+            );
+        }
+        let document = Document::parse(source, &options.parse).unwrap();
+        let mut arena = String::new();
+        render_events(source, document.events(), &options.compile, &mut arena).unwrap();
+        assert_eq!(arena, output);
+    }
+}
+
+#[test]
+fn retained_html_preserves_adjacent_sibling_list_items() {
+    use core_markdown::{render_events, Document, EventParser};
+    let options = Options {
+        parse: ParseOptions {
+            html_block_blank_lines: true,
+            ..ParseOptions::default()
+        },
+        ..Options::default()
+    };
+    for source in [
+        "- <v>\n\n-",
+        "- <v>\n\n\n-",
+        "- >\r\t<x>\n-",
+        "- >\r\t<x>\n\n-",
+        "- >\r\t<x>\n\n\n-",
+    ] {
+        let output = to_html_with_options(source, &options).unwrap();
+        assert_eq!(output.matches("<ul>").count(), 1, "{source:?}");
+        assert_eq!(output.matches("<li>").count(), 2, "{source:?}");
+        assert!(
+            output
+                .replace('\r', "\n")
+                .ends_with("</li>\n<li></li>\n</ul>"),
+            "{:?}",
+            output
+        );
+        let mut checked = String::new();
+        render_events(
+            source,
+            EventParser::new(source, &options.parse).unwrap(),
+            &options.compile,
+            &mut checked,
+        )
+        .unwrap();
+        assert_eq!(checked, output);
+        let document = Document::parse(source, &options.parse).unwrap();
+        let mut arena = String::new();
+        render_events(source, document.events(), &options.compile, &mut arena).unwrap();
+        assert_eq!(arena, output);
+    }
+}

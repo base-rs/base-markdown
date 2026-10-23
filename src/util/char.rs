@@ -97,7 +97,9 @@ pub fn classify(char: char) -> Kind {
         Kind::Whitespace
     }
     // Unicode punctuation.
-    else if char.is_ascii_punctuation() || PUNCTUATION.contains(&char) {
+    else if char.is_ascii_punctuation()
+        || (!char.is_ascii() && PUNCTUATION.binary_search(&char).is_ok())
+    {
         Kind::Punctuation
     }
     // Everything else.
@@ -178,6 +180,17 @@ mod tests {
         );
 
         assert_eq!(classify('a'), Kind::Other, "should classify other");
+    }
+
+    #[test]
+    fn classifies_unicode_punctuation_with_sorted_table() {
+        assert!(PUNCTUATION.windows(2).all(|pair| pair[0] < pair[1]));
+        for &character in &PUNCTUATION {
+            assert_eq!(classify(character), Kind::Punctuation);
+        }
+        assert_eq!(classify('界'), Kind::Other);
+        assert_eq!(classify('\u{2003}'), Kind::Whitespace);
+        assert_eq!(classify('\0'), Kind::Other);
     }
 
     #[test]

@@ -18,6 +18,7 @@ use alloc::{
 };
 
 mod headings;
+pub(crate) use headings::AnchorGenerator;
 pub use headings::{HeadingEntry, HeadingOptions, Headings};
 mod code;
 pub use code::Code;

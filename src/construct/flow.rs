@@ -84,10 +84,16 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
             );
             State::Retry(StateName::MdxExpressionFlowStart)
         }
-        // Actual parsing: blank line? Indented code? Indented anything?
-        // Tables, setext heading underlines, definitions, and Contents are
-        // particularly weird.
-        _ => State::Retry(StateName::FlowBlankLineBefore),
+        // Whitespace can precede any construct; `-` and `=` can be setext underlines. Keep their ordered, speculative recognition below.
+        None | Some(b'\t' | b' ' | b'\n' | b'-' | b'=') => {
+            State::Retry(StateName::FlowBlankLineBefore)
+        }
+        // All other block markers were handled above. Ordinary unindented text cannot start those constructs, including MDX, so avoid their checkpoints. Tables still need a chance to consume a header row.
+        _ => State::Retry(if tokenizer.parse_state.options.constructs.gfm_table {
+            StateName::FlowBeforeGfmTable
+        } else {
+            StateName::FlowBeforeContent
+        }),
     }
 }
 

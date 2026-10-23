@@ -65,9 +65,9 @@ pub fn link_to(events: &mut [Event], previous: usize, next: usize) {
         .link
         .as_mut()
         .expect("expected `link` on previous");
-    link_previous.next = Some(next);
+    link_previous.set_next(Some(next));
     let link_next = events[next].link.as_mut().expect("expected `link` on next");
-    link_next.previous = Some(previous);
+    link_next.set_previous(Some(previous));
 
     debug_assert_eq!(
         events[previous].link.as_ref().unwrap().content,
@@ -92,6 +92,7 @@ pub fn subtokenize(
         definitions: vec![],
     };
     let mut acc = (0, 0);
+    let mut child: Option<Tokenizer> = None;
 
     while index < events.len() {
         let event = &events[index];
@@ -101,13 +102,62 @@ pub fn subtokenize(
             debug_assert_eq!(event.kind, Kind::Enter);
 
             // No need to enter linked events again.
-            if link.previous.is_none()
+            if link.previous().is_none()
                 && (filter.is_none() || &link.content == *filter.as_ref().unwrap())
             {
+                // Definitions start with `[` after optional indentation. Otherwise content is exactly one paragraph, whose line chunks already have the source boundaries needed for text tokenization.
+                if link.content == Content::Content
+                    && (!parse_state.options.constructs.definition
+                        || !matches!(parse_state.bytes[event.point.index], b'[' | b' ' | b'\t'))
+                {
+                    let start = event.point.clone();
+                    let mut current = index;
+                    let end = loop {
+                        events[current].name = Name::Data;
+                        events[current + 1].name = Name::Data;
+                        let link = events[current].link.as_mut().unwrap();
+                        link.content = Content::Text;
+                        if let Some(next) = link.next() {
+                            current = next;
+                        } else {
+                            break events[current + 1].point.clone();
+                        }
+                    };
+                    map.add(
+                        index,
+                        0,
+                        vec![Event {
+                            kind: Kind::Enter,
+                            name: Name::Paragraph,
+                            point: start,
+                            link: None,
+                        }],
+                    );
+                    map.add(
+                        current + 2,
+                        0,
+                        vec![Event {
+                            kind: Kind::Exit,
+                            name: Name::Paragraph,
+                            point: end,
+                            link: None,
+                        }],
+                    );
+                    // Later subevents are shifted by the two new paragraph boundaries.
+                    acc.1 += 2;
+                    value.done = false;
+                    index += 1;
+                    continue;
+                }
                 // Index into `events` pointing to a chunk.
                 let mut link_index = Some(index);
                 // Subtokenizer.
-                let mut tokenizer = Tokenizer::new(event.point.clone(), parse_state);
+                if let Some(tokenizer) = child.as_mut() {
+                    tokenizer.reset(event.point.clone());
+                } else {
+                    child = Some(Tokenizer::new(event.point.clone(), parse_state));
+                }
+                let tokenizer = child.as_mut().unwrap();
                 debug_assert!(
                     !matches!(link.content, Content::Flow),
                     "cannot use flow as subcontent yet"
@@ -153,7 +203,7 @@ pub fn subtokenize(
                     let link_curr = enter.link.as_ref().expect("expected link");
                     debug_assert_eq!(enter.kind, Kind::Enter);
 
-                    if link_curr.previous.is_some() {
+                    if link_curr.previous().is_some() {
                         tokenizer.define_skip(enter.point.clone());
                     }
 
@@ -165,7 +215,7 @@ pub fn subtokenize(
                         state,
                     );
 
-                    link_index = link_curr.next;
+                    link_index = link_curr.next();
                 }
 
                 let mut result = tokenizer.flush(state, true)?;
@@ -192,10 +242,53 @@ pub fn subtokenize(
 pub fn divide_events(
     map: &mut EditMap,
     events: &[Event],
-    mut link_index: usize,
+    link_index: usize,
     child_events: &mut Vec<Event>,
     acc_before: (usize, usize),
 ) -> (usize, usize) {
+    let len = child_events.len();
+    let slices = linked_slices(events, link_index, child_events, acc_before);
+
+    // Finally, inject the subevents.
+    let mut index = slices.len();
+    while index > 0 {
+        index -= 1;
+        map.add(slices[index].0, 2, child_events.split_off(slices[index].1));
+    }
+
+    (acc_before.0 + (slices.len() * 2), acc_before.1 + len)
+}
+
+/// Assemble a document directly from its container prefixes and flow records. Each buffer is consumed once; line chunks never become separately allocated edit vectors.
+pub fn merge_events(events: &mut Vec<Event>, link_index: usize, child_events: &mut Vec<Event>) {
+    let slices = linked_slices(events, link_index, child_events, (0, 0));
+    let mut result = Vec::with_capacity(events.len() + child_events.len() - slices.len() * 2);
+    let mut parent = core::mem::take(events).into_iter();
+    let mut child = child_events.drain(..);
+    let mut parent_index = 0;
+    let mut child_index = 0;
+    for (index, &(at, _)) in slices.iter().enumerate() {
+        result.extend(parent.by_ref().take(at - parent_index));
+        parent.next();
+        parent.next();
+        parent_index = at + 2;
+        let end = slices
+            .get(index + 1)
+            .map_or(child.len() + child_index, |slice| slice.1);
+        result.extend(child.by_ref().take(end - child_index));
+        child_index = end;
+    }
+    result.extend(parent);
+    *events = result;
+}
+
+/// Locate source-line boundaries and translate inline-chunk links into their final document indices.
+fn linked_slices(
+    events: &[Event],
+    mut link_index: usize,
+    child_events: &mut [Event],
+    acc_before: (usize, usize),
+) -> Vec<(usize, usize)> {
     // Loop through `child_events` to figure out which parts belong where and
     // fix deep links.
     let mut child_index = 0;
@@ -213,12 +306,12 @@ pub fn divide_events(
         if current.index > end.index || (current.index == end.index && current.vs > end.vs) {
             slices.push((link_index, slice_start));
             slice_start = child_index;
-            link_index = events[link_index].link.as_ref().unwrap().next.unwrap();
+            link_index = events[link_index].link.as_ref().unwrap().next().unwrap();
         }
 
         // Fix sublinks.
         if let Some(sublink_curr) = &child_events[child_index].link {
-            if sublink_curr.previous.is_some() {
+            if sublink_curr.previous().is_some() {
                 let old_prev = old_prev.unwrap();
                 let prev_event = &mut child_events[old_prev];
                 // The `index` in `events` where the current link is,
@@ -230,8 +323,11 @@ pub fn divide_events(
                 } else {
                     old_prev + link_index - (slices.len() - 1) * 2
                 };
-                prev_event.link.as_mut().unwrap().next =
-                    Some(new_link + acc_before.1 - acc_before.0);
+                prev_event
+                    .link
+                    .as_mut()
+                    .unwrap()
+                    .set_next(Some(new_link + acc_before.1 - acc_before.0));
             }
         }
 
@@ -240,19 +336,21 @@ pub fn divide_events(
         // If it points to a next event, we also change the next event’s
         // reference back to *this* event.
         if let Some(sublink_curr) = &child_events[child_index].link {
-            if let Some(next) = sublink_curr.next {
+            if let Some(next) = sublink_curr.next() {
                 let sublink_next = child_events[next].link.as_mut().unwrap();
 
-                old_prev = sublink_next.previous;
+                old_prev = sublink_next.previous();
 
-                sublink_next.previous = sublink_next
-                    .previous
-                    // The `index` in `events` where the current link is,
-                    // minus 2 events (the enter and exit) for each removed
-                    // link.
-                    .map(|previous| {
-                        previous + link_index - (slices.len() * 2) + acc_before.1 - acc_before.0
-                    });
+                sublink_next.set_previous(
+                    sublink_next
+                        .previous()
+                        // The `index` in `events` where the current link is,
+                        // minus 2 events (the enter and exit) for each removed
+                        // link.
+                        .map(|previous| {
+                            previous + link_index - (slices.len() * 2) + acc_before.1 - acc_before.0
+                        }),
+                );
             }
         }
 
@@ -263,17 +361,32 @@ pub fn divide_events(
         slices.push((link_index, slice_start));
     }
 
-    // Finally, inject the subevents.
-    let mut index = slices.len();
+    slices
+}
 
-    while index > 0 {
-        index -= 1;
-        debug_assert!(
-            slices[index].0 < events.len(),
-            "expected slice start in bounds"
-        );
-        map.add(slices[index].0, 2, child_events.split_off(slices[index].1));
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn reused_tokenizers_do_not_leak_construct_state() {
+        let paragraphs = [
+            "Unclosed [bracket\n",
+            "Unclosed *attention\n",
+            "Unclosed `code\n",
+            "**Strong** and [link](/path \"title\")\n",
+            "![image](/image.png) and ~~deleted~~\n",
+            "Text with a hard break  \nnext line\n",
+            "Text with a tab\tand 世界\n",
+        ];
+        for options in [crate::Options::default(), crate::Options::gfm()] {
+            let expected = paragraphs
+                .iter()
+                .map(|paragraph| crate::to_html_with_options(paragraph, &options).unwrap())
+                .collect::<alloc::string::String>();
+            let document = paragraphs.join("\n");
+            assert_eq!(
+                crate::to_html_with_options(&document, &options).unwrap(),
+                expected
+            );
+        }
     }
-
-    (acc_before.0 + (slices.len() * 2), acc_before.1 + len)
 }

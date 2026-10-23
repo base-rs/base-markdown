@@ -1,0 +1,22 @@
+{
+  "production_commit": "33f9c0fe01d082b08721e971515972faa56afc55",
+  "coverage": {
+    "target": "aarch64-apple-darwin",
+    "all_features": true,
+    "all_targets": true,
+    "covered_regions": 23011,
+    "measured_regions": 23011,
+    "excluded_invariant_unreachable_regions": 61
+  },
+  "workspace_default_feature_tests": "passed",
+  "workspace_all_features_clippy": "passed",
+  "format": "passed",
+  "commonmark_exact_reference_matches": 652,
+  "published_gfm_exact_upstream_matches": 677,
+  "preserved_saved_outputs": 2117,
+  "arena_direct_equal_saved_outputs": 2117,
+  "notes": [
+    "Independent adversarial source review confirmed 7ed5e9d; final arena conversion and measurement/doc changes requested for final exact-head review.",
+    "Saved original corpus preservation is a separate check including the earlier cmark-gfm corpus; check.py runs CommonMark, published GFM, and targeted profiles."
+  ]
+}

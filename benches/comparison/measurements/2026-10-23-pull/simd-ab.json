@@ -1,0 +1,362 @@
+[
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.03858978125,
+    "mib_per_second": 24.713625187822956,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.03846689575,
+      0.0384672085,
+      0.03849095825,
+      0.03858978125,
+      0.0386265625,
+      0.039003875,
+      0.03938313525
+    ],
+    "candidate": "scalar",
+    "run": 0
+  },
+  {
+    "bytes": 1026456,
+    "document": "long-lines-1m",
+    "iterations_per_sample": 84,
+    "median_seconds": 0.0017183640952380952,
+    "mib_per_second": 569.6724732749129,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0017018963333333332,
+      0.0017075897857142858,
+      0.0017099583333333333,
+      0.0017183640952380952,
+      0.0017328824404761903,
+      0.0017585580357142856,
+      0.0018347232142857143
+    ],
+    "candidate": "scalar",
+    "run": 0
+  },
+  {
+    "bytes": 1041008,
+    "document": "code-1m",
+    "iterations_per_sample": 128,
+    "median_seconds": 0.00116120475,
+    "mib_per_second": 854.9591213551595,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0011565263671875,
+      0.00115869596875,
+      0.001159532875,
+      0.00116120475,
+      0.0011657578125,
+      0.0011669192734375,
+      0.0012076412734375
+    ],
+    "candidate": "scalar",
+    "run": 0
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.03844816675,
+    "mib_per_second": 24.804651834084602,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0381679165,
+      0.0383353645,
+      0.03833641675,
+      0.03844816675,
+      0.038465,
+      0.03880585425,
+      0.0392326875
+    ],
+    "candidate": "simd",
+    "run": 0
+  },
+  {
+    "bytes": 1026456,
+    "document": "long-lines-1m",
+    "iterations_per_sample": 115,
+    "median_seconds": 0.0012429869565217392,
+    "mib_per_second": 787.5422336372467,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0012292920347826085,
+      0.0012372119565217392,
+      0.0012406271739130435,
+      0.0012429869565217392,
+      0.0012618916695652173,
+      0.001275402904347826,
+      0.0013016688347826087
+    ],
+    "candidate": "simd",
+    "run": 0
+  },
+  {
+    "bytes": 1041008,
+    "document": "code-1m",
+    "iterations_per_sample": 241,
+    "median_seconds": 0.0006232512116182572,
+    "mib_per_second": 1592.909206218309,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0006184128630705393,
+      0.0006201905269709544,
+      0.0006214306721991702,
+      0.0006232512116182572,
+      0.0006251161825726141,
+      0.0006640918049792532,
+      0.0007269208174273859
+    ],
+    "candidate": "simd",
+    "run": 0
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.038660375,
+    "mib_per_second": 24.668498168798884,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0382192085,
+      0.0384916665,
+      0.03854584375,
+      0.038660375,
+      0.038670448,
+      0.0392225,
+      0.03981479175
+    ],
+    "candidate": "simd",
+    "run": 1
+  },
+  {
+    "bytes": 1026456,
+    "document": "long-lines-1m",
+    "iterations_per_sample": 121,
+    "median_seconds": 0.0012366900826446283,
+    "mib_per_second": 791.552174517105,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0012263801652892562,
+      0.0012303464214876033,
+      0.0012354449008264462,
+      0.0012366900826446283,
+      0.0012382496611570246,
+      0.0012443174876033058,
+      0.0012590678347107439
+    ],
+    "candidate": "simd",
+    "run": 1
+  },
+  {
+    "bytes": 1041008,
+    "document": "code-1m",
+    "iterations_per_sample": 235,
+    "median_seconds": 0.000628888829787234,
+    "mib_per_second": 1578.6297128370306,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0006225652510638297,
+      0.0006235984042553192,
+      0.0006259265957446809,
+      0.000628888829787234,
+      0.000639522340425532,
+      0.0006528053191489361,
+      0.0006786485829787234
+    ],
+    "candidate": "simd",
+    "run": 1
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.0391291145,
+    "mib_per_second": 24.372986766479936,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.03877985425,
+      0.03898528125,
+      0.039094052,
+      0.0391291145,
+      0.03914125,
+      0.03931322925,
+      0.039700802
+    ],
+    "candidate": "scalar",
+    "run": 1
+  },
+  {
+    "bytes": 1026456,
+    "document": "long-lines-1m",
+    "iterations_per_sample": 79,
+    "median_seconds": 0.0018785474683544303,
+    "mib_per_second": 521.0966135333246,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0016784082278481012,
+      0.0017188296455696204,
+      0.0017286893417721519,
+      0.0018785474683544303,
+      0.0018793644556962025,
+      0.0018819493670886075,
+      0.001932855493670886
+    ],
+    "candidate": "scalar",
+    "run": 1
+  },
+  {
+    "bytes": 1041008,
+    "document": "code-1m",
+    "iterations_per_sample": 117,
+    "median_seconds": 0.0012856360341880343,
+    "mib_per_second": 772.2112373743838,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.001200642094017094,
+      0.0012504408803418804,
+      0.0012674191623931624,
+      0.0012856360341880343,
+      0.0012909932393162392,
+      0.001295573358974359,
+      0.0013123564786324787
+    ],
+    "candidate": "scalar",
+    "run": 1
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.0387869895,
+    "mib_per_second": 24.587971435436568,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.03850554175,
+      0.03866952075,
+      0.0387484375,
+      0.0387869895,
+      0.03879175,
+      0.0392604585,
+      0.04028521875
+    ],
+    "candidate": "scalar",
+    "run": 2
+  },
+  {
+    "bytes": 1026456,
+    "document": "long-lines-1m",
+    "iterations_per_sample": 86,
+    "median_seconds": 0.0018873527209302325,
+    "mib_per_second": 518.6654901679503,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0016792248023255814,
+      0.001807872569767442,
+      0.0018112524186046511,
+      0.0018873527209302325,
+      0.0019107655,
+      0.001961249034883721,
+      0.001963798441860465
+    ],
+    "candidate": "scalar",
+    "run": 2
+  },
+  {
+    "bytes": 1041008,
+    "document": "code-1m",
+    "iterations_per_sample": 116,
+    "median_seconds": 0.001379951870689655,
+    "mib_per_second": 719.4327670843165,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.001305730603448276,
+      0.0013166975517241379,
+      0.0013510093362068965,
+      0.001379951870689655,
+      0.0013801382844827585,
+      0.0013829967672413792,
+      0.0013870402327586207
+    ],
+    "candidate": "scalar",
+    "run": 2
+  },
+  {
+    "bytes": 1000020,
+    "document": "mixed-1m",
+    "iterations_per_sample": 4,
+    "median_seconds": 0.03877158325,
+    "mib_per_second": 24.59774169507453,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.03823513525,
+      0.0385884165,
+      0.03875764575,
+      0.03877158325,
+      0.03886429175,
+      0.03894088525,
+      0.03909827075
+    ],
+    "candidate": "simd",
+    "run": 2
+  },
+  {
+    "bytes": 1026456,
+    "document": "long-lines-1m",
+    "iterations_per_sample": 115,
+    "median_seconds": 0.0012982688347826087,
+    "mib_per_second": 754.0077200459091,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0012342989130434783,
+      0.0012594221043478262,
+      0.0012713652173913044,
+      0.0012982688347826087,
+      0.0012986655826086957,
+      0.001301667391304348,
+      0.0013222659391304349
+    ],
+    "candidate": "simd",
+    "run": 2
+  },
+  {
+    "bytes": 1041008,
+    "document": "code-1m",
+    "iterations_per_sample": 236,
+    "median_seconds": 0.0007356034618644068,
+    "mib_per_second": 1349.6165315171347,
+    "parser": "core-stream",
+    "profile": "commonmark",
+    "samples_seconds": [
+      0.0006296966779661017,
+      0.0006726935042372881,
+      0.0006765404322033898,
+      0.0007356034618644068,
+      0.0007539495042372881,
+      0.0007651717838983051,
+      0.000776726343220339
+    ],
+    "candidate": "simd",
+    "run": 2
+  }
+]

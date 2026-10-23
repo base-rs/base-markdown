@@ -314,14 +314,7 @@ pub fn info_before(tokenizer: &mut Tokenizer) -> State {
         }
         _ => {
             tokenizer.enter(tokenizer.tokenize_state.token_4.clone());
-            tokenizer.enter_link(
-                Name::Data,
-                Link {
-                    previous: None,
-                    next: None,
-                    content: Content::String,
-                },
-            );
+            tokenizer.enter_link(Name::Data, Link::new(None, None, Content::String));
             State::Retry(StateName::RawFlowInfo)
         }
     }
@@ -385,14 +378,7 @@ pub fn meta_before(tokenizer: &mut Tokenizer) -> State {
         None | Some(b'\n') => State::Retry(StateName::RawFlowInfoBefore),
         _ => {
             tokenizer.enter(tokenizer.tokenize_state.token_5.clone());
-            tokenizer.enter_link(
-                Name::Data,
-                Link {
-                    previous: None,
-                    next: None,
-                    content: Content::String,
-                },
-            );
+            tokenizer.enter_link(Name::Data, Link::new(None, None, Content::String));
             State::Retry(StateName::RawFlowMeta)
         }
     }

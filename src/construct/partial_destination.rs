@@ -112,14 +112,7 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
             tokenizer.enter(tokenizer.tokenize_state.token_1.clone());
             tokenizer.enter(tokenizer.tokenize_state.token_4.clone());
             tokenizer.enter(tokenizer.tokenize_state.token_5.clone());
-            tokenizer.enter_link(
-                Name::Data,
-                Link {
-                    previous: None,
-                    next: None,
-                    content: Content::String,
-                },
-            );
+            tokenizer.enter_link(Name::Data, Link::new(None, None, Content::String));
             State::Retry(StateName::DestinationRaw)
         }
     }
@@ -141,14 +134,7 @@ pub fn enclosed_before(tokenizer: &mut Tokenizer) -> State {
         State::Ok
     } else {
         tokenizer.enter(tokenizer.tokenize_state.token_5.clone());
-        tokenizer.enter_link(
-            Name::Data,
-            Link {
-                previous: None,
-                next: None,
-                content: Content::String,
-            },
-        );
+        tokenizer.enter_link(Name::Data, Link::new(None, None, Content::String));
         State::Retry(StateName::DestinationEnclosed)
     }
 }
