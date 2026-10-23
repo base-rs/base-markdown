@@ -230,7 +230,7 @@ fn writer_failures_propagate_from_every_output_position() {
         "[a](x%20y/?a=b&c=d \"t&\\\"\") ![a *b*](x \"t&\")\n\n- [x] a\n- [ ] b\n\nline  \nbreak\\\nend",
         "ruby:`<&>` $x&y$\n\n```rust\n<&>\n```\n\n$$\nx&y\n$$\n\n<script>x\0</script>",
         "Note[^x], again[^x], code[^y].\n\n[^x]: a &amp; b\n\n[^y]:\n    ```\n    a\n    ```",
-        "a [x](é \"&\")\n\n```\nraw",
+        "a [x](xé \"&\")\n\n```\nraw",
     ];
     for heading_ids in [false, true] {
         let mut options = Options::gfm();
@@ -418,6 +418,7 @@ fn extension_errors_and_unclosed_container_fences_keep_their_boundaries() {
         "> ```\r> a",
         "> ```\r\n> a",
         "\\ruby:`x`",
+        "a\\-ruby:`x`",
         "---\nx\n---\n\n>",
         "+++\nx\n+++\n\n>",
     ] {
@@ -427,4 +428,140 @@ fn extension_errors_and_unclosed_container_fences_keep_their_boundaries() {
         render_events(source, ast.events(), &options.compile, &mut actual).unwrap();
         assert_eq!(actual, output, "{source:?}");
     }
+}
+
+#[test]
+fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
+    use std::fmt;
+    struct Writer(usize);
+    impl fmt::Write for Writer {
+        fn write_str(&mut self, _: &str) -> fmt::Result {
+            if self.0 == 0 {
+                return Err(fmt::Error);
+            }
+            self.0 -= 1;
+            Ok(())
+        }
+    }
+    let text = || EventKind::Text(Text::Literal("x"));
+    let mut body = vec![text()];
+    for tag in [
+        Tag::Heading(2),
+        Tag::BlockQuote,
+        Tag::List {
+            start: None,
+            tight: false,
+        },
+        Tag::Item { block_end: true },
+        Tag::Table,
+        Tag::TableHead,
+    ] {
+        let kind = tag.kind();
+        body.push(EventKind::Start(tag));
+        body.push(text());
+        body.push(EventKind::End(kind));
+        body.push(text());
+    }
+    body.extend([
+        EventKind::CodeBlock {
+            value: Text::Literal("x"),
+            language: None,
+            fence: None,
+            math: false,
+            unclosed: false,
+        },
+        text(),
+        EventKind::Math(Text::Literal("x")),
+        text(),
+        EventKind::Html {
+            value: Text::Literal("<&>"),
+            block: true,
+        },
+        EventKind::Start(Tag::Heading(1)),
+        EventKind::SoftBreak(Text::Literal("\n")),
+        EventKind::Math(Text::Literal("x")),
+        EventKind::HardBreak,
+        EventKind::End(TagKind::Heading),
+        EventKind::Start(Tag::FootnoteDefinition(Text::Literal("X"))),
+        text(),
+        EventKind::End(TagKind::FootnoteDefinition),
+        EventKind::FootnoteReference(Text::Literal("X")),
+    ]);
+    let mut options = Options::default();
+    options.compile.heading_ids = true;
+    let input = document(body);
+    let mut writer = Writer(usize::MAX);
+    render_events(
+        "",
+        input.iter().map(|e| Ok(e.as_ref().unwrap().clone())),
+        &options.compile,
+        &mut writer,
+    )
+    .unwrap();
+    let writes = usize::MAX - writer.0;
+    for remaining in 0..writes {
+        assert!(matches!(
+            render_events(
+                "",
+                input.iter().map(|e| Ok(e.as_ref().unwrap().clone())),
+                &options.compile,
+                &mut Writer(remaining)
+            ),
+            Err(StreamError::Write(_))
+        ));
+    }
+    // Every ordinary container in an image contributes only its textual children.
+    let mut body = vec![EventKind::Start(Tag::Image {
+        destination: Text::Literal("x"),
+        title: None,
+    })];
+    for tag in [
+        Tag::BlockQuote,
+        Tag::List {
+            start: None,
+            tight: true,
+        },
+        Tag::Item { block_end: false },
+        Tag::Emphasis,
+        Tag::Strong,
+        Tag::Delete,
+    ] {
+        let kind = tag.kind();
+        body.extend([EventKind::Start(tag), text(), EventKind::End(kind)]);
+    }
+    body.extend([
+        EventKind::Math(Text::Literal("m")),
+        EventKind::End(TagKind::Image),
+    ]);
+    let mut output = String::new();
+    render_events("", document(body), &options.compile, &mut output).unwrap();
+    assert_eq!(output, "<img src=\"x\" alt=\"xxxxxxm\" />");
+    assert!(render_events(
+        "",
+        vec![event(EventKind::Start(Tag::Paragraph { tight: false }))],
+        &options.compile,
+        &mut String::new()
+    )
+    .is_err());
+}
+
+#[test]
+fn source_detachment_checks_buffers_with_interior_mutability() {
+    use std::{cell::Cell, rc::Rc};
+    struct Source(Rc<Cell<bool>>);
+    impl AsRef<str> for Source {
+        fn as_ref(&self) -> &str {
+            if self.0.get() {
+                ""
+            } else {
+                "abc"
+            }
+        }
+    }
+    let changed = Rc::new(Cell::new(false));
+    let mut ast = Document::parse(Source(changed.clone()), &Options::default().parse).unwrap();
+    let paragraph = ast.node(ast.root()).unwrap().first_child().unwrap();
+    let text = ast.node(paragraph).unwrap().first_child().unwrap();
+    changed.set(true);
+    assert!(matches!(ast.text_mut(text), Err(StreamError::InvalidRange)));
 }

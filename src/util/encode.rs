@@ -60,3 +60,12 @@ pub fn encode_into(value: &str, encode_html: bool, result: &mut String) {
 
     result.push_str(&value[start..]);
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn raw_html_still_replaces_null_bytes() {
+        assert_eq!(super::encode("<&>\"\0", false), "<&>\"�");
+        assert_eq!(super::encode("<&>\"\0", true), "&lt;&amp;&gt;&quot;�");
+    }
+}

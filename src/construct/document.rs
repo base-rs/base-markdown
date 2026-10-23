@@ -561,16 +561,15 @@ fn resolve(tokenizer: &mut Tokenizer) {
                 inject_index = child_index + 1;
             }
 
-            if line < tokenizer.tokenize_state.document_exits.len() {
-                if let Some(mut exits) = tokenizer.tokenize_state.document_exits[line].take() {
-                    let mut exit_index = 0;
-                    while exit_index < exits.len() {
-                        exits[exit_index].point = point.clone();
-                        exit_index += 1;
-                    }
-
-                    child.map.add(inject_index, 0, exits);
+            // The document records one exit slot for every line fed to its child.
+            if let Some(mut exits) = tokenizer.tokenize_state.document_exits[line].take() {
+                let mut exit_index = 0;
+                while exit_index < exits.len() {
+                    exits[exit_index].point = point.clone();
+                    exit_index += 1;
                 }
+
+                child.map.add(inject_index, 0, exits);
             }
 
             line += 1;

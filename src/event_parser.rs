@@ -521,11 +521,12 @@ impl<'a> EventParser<'a> {
                             | Name::GfmFootnoteDefinition
                     )
                 {
-                    before = if self.tokens[before].kind == Kind::Exit {
-                        self.matching[before].saturating_sub(1)
-                    } else {
-                        before - 1
-                    };
+                    debug_assert_eq!(
+                        self.tokens[before].kind,
+                        Kind::Exit,
+                        "trailing token pairs end before the item exit"
+                    );
+                    before = self.matching[before].saturating_sub(1);
                 }
                 let tight_paragraph =
                     self.tight.last() == Some(&true) && self.tokens[before].name == Name::Paragraph;
@@ -880,7 +881,12 @@ impl Iterator for EventParser<'_> {
             self.index += 1;
             if self.tokens[index].kind == Kind::Enter {
                 if let Some(link) = &self.tokens[index].link {
-                    if link.content == Content::Text {
+                    debug_assert_eq!(
+                        link.content,
+                        Content::Text,
+                        "block preparation resolved all non-text links"
+                    );
+                    {
                         let first = link.previous().is_none();
                         self.index = self.matching[index] + 1;
                         if first {

@@ -185,18 +185,16 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             }
             Tag::Heading(level) => {
                 frame.level = level;
-                if tags {
-                    self.terminate()?;
-                    if self.options.heading_ids {
-                        self.heading = Some(HeadingCapture {
-                            output: String::new(),
-                            text: String::new(),
-                        });
-                    } else {
-                        self.write("<h")?;
-                        self.write(&level.to_string())?;
-                        self.write(">")?;
-                    }
+                self.terminate()?;
+                if self.options.heading_ids {
+                    self.heading = Some(HeadingCapture {
+                        output: String::new(),
+                        text: String::new(),
+                    });
+                } else {
+                    self.write("<h")?;
+                    self.write(&level.to_string())?;
+                    self.write(">")?;
                 }
             }
             Tag::BlockQuote => {

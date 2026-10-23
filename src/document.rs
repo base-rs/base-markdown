@@ -190,7 +190,9 @@ impl AstBuilder {
         };
         // Public producers can supply arbitrary offsets. Validate their contract once before exposing the document.
         for event in document.events() {
-            event?.validate(Some(document.source()))?;
+            event
+                .expect("arena traversal cannot fail")
+                .validate(Some(document.source()))?;
         }
         Ok(document)
     }
