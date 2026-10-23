@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-23",
+  "machine": "Apple M4 Pro",
+  "os": "macOS 27.0.1 arm64",
+  "rust": "1.99.1 (58cf8f9c3 2026-10-13)",
+  "ruby": "4.0.7 arm64-darwin25; YJIT disabled",
+  "baseline_commit": "e5effec59c852861b7b5e96eaf3eefe9e5a6e09b",
+  "optimized_production_commit": "74606e0",
+  "notes": [
+    "Paired baseline/current adapters were linked into one release executable. The baseline package version was changed to 0.1.0-baseline only to disambiguate Cargo package identities.",
+    "Six-engine measurements are a subsequent sequential run using the repository-owned harness.",
+    "Times exclude startup and I/O and include complete rendering and result disposal. No output cache.",
+    "GFM output differs: Inkmark omits www.example.com autolinking in the timed fixture."
+  ],
+  "inputs": {
+    "readme": {
+      "bytes": 9019,
+      "sha256": "e9fcb242b7ba8f45fd18b1a97b7e021755babea8825d6f3cb86bb6f89dcd2e14"
+    },
+    "mixed-100k": {
+      "bytes": 100252,
+      "sha256": "a9b31b8c20db1c4469a87e788ae77c98155cb4371738d291826abc94cfb12021"
+    },
+    "mixed-1m": {
+      "bytes": 1000020,
+      "sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356"
+    },
+    "gfm-100k": {
+      "bytes": 100130,
+      "sha256": "6c7091f969014c4396cbb98e6c3358d3d6d2c64e4dd6b7f35af273c15cb11c5d"
+    }
+  }
+}

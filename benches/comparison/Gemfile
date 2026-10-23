@@ -1,0 +1,4 @@
+source "https://rubygems.org"
+gem "markly", "0.19.0"
+gem "commonmarker", "2.10.1"
+gem "inkmark", "0.2.1"
