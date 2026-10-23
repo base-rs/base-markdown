@@ -433,6 +433,7 @@ dependencies = [
  "criterion",
  "env_logger",
  "log",
+ "memchr",
  "pretty_assertions",
  "regex",
  "serde",

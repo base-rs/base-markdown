@@ -866,13 +866,23 @@ fn push_impl(
                     let start = tokenizer.point.index;
                     let bytes = tokenizer.parse_state.bytes;
                     let mut end = start;
-                    while end < to.0
-                        && !matches!(bytes[end], b'\r' | b'\n' | b'\t')
-                        && (name != StateName::DataInside || !tokenizer.is_data_marker(bytes[end]))
-                        && (name != StateName::RawTextData
-                            || bytes[end] != tokenizer.tokenize_state.marker)
-                    {
-                        end += 1;
+                    if name == StateName::DataInside {
+                        while end < to.0
+                            && !matches!(bytes[end], b'\r' | b'\n' | b'\t')
+                            && !tokenizer.is_data_marker(bytes[end])
+                        {
+                            end += 1;
+                        }
+                    } else {
+                        // memchr uses SIMD where available, with a no_std scalar fallback.
+                        let remaining = &bytes[start..to.0];
+                        end += memchr::memchr3(b'\r', b'\n', b'\t', remaining)
+                            .unwrap_or(remaining.len());
+                        if name == StateName::RawTextData {
+                            end =
+                                memchr::memchr(tokenizer.tokenize_state.marker, &bytes[start..end])
+                                    .map_or(end, |offset| start + offset);
+                        }
                     }
                     if end > start {
                         tokenizer.point.index = end;
