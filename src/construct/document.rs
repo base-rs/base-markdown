@@ -16,7 +16,7 @@
 use crate::event::{Content, Event, Kind, Link, Name};
 use crate::message;
 use crate::state::{Name as StateName, State};
-use crate::subtokenize::divide_events;
+use crate::subtokenize::merge_events;
 use crate::tokenizer::{Container, ContainerState, Tokenizer};
 use crate::util::skip;
 use alloc::{boxed::Box, vec::Vec};
@@ -590,16 +590,7 @@ fn resolve(tokenizer: &mut Tokenizer) {
     }
 
     // Now, add all child events into our parent document tokenizer.
-    divide_events(
-        &mut tokenizer.map,
-        &tokenizer.events,
-        flow_index,
-        &mut child.events,
-        (0, 0),
-    );
-
-    // Replace the flow data with actual events.
-    tokenizer.map.consume(&mut tokenizer.events);
+    merge_events(&mut tokenizer.events, flow_index, &mut child.events);
 
     // Now, add some final container exits due to the EOF.
     // We can’t inject them into the child earlier, as they are “outside” its

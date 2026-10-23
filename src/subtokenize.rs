@@ -242,10 +242,53 @@ pub fn subtokenize(
 pub fn divide_events(
     map: &mut EditMap,
     events: &[Event],
-    mut link_index: usize,
+    link_index: usize,
     child_events: &mut Vec<Event>,
     acc_before: (usize, usize),
 ) -> (usize, usize) {
+    let len = child_events.len();
+    let slices = linked_slices(events, link_index, child_events, acc_before);
+
+    // Finally, inject the subevents.
+    let mut index = slices.len();
+    while index > 0 {
+        index -= 1;
+        map.add(slices[index].0, 2, child_events.split_off(slices[index].1));
+    }
+
+    (acc_before.0 + (slices.len() * 2), acc_before.1 + len)
+}
+
+/// Assemble a document directly from its container prefixes and flow records. Each buffer is consumed once; line chunks never become separately allocated edit vectors.
+pub fn merge_events(events: &mut Vec<Event>, link_index: usize, child_events: &mut Vec<Event>) {
+    let slices = linked_slices(events, link_index, child_events, (0, 0));
+    let mut result = Vec::with_capacity(events.len() + child_events.len() - slices.len() * 2);
+    let mut parent = core::mem::take(events).into_iter();
+    let mut child = child_events.drain(..);
+    let mut parent_index = 0;
+    let mut child_index = 0;
+    for (index, &(at, _)) in slices.iter().enumerate() {
+        result.extend(parent.by_ref().take(at - parent_index));
+        parent.next();
+        parent.next();
+        parent_index = at + 2;
+        let end = slices
+            .get(index + 1)
+            .map_or(child.len() + child_index, |slice| slice.1);
+        result.extend(child.by_ref().take(end - child_index));
+        child_index = end;
+    }
+    result.extend(parent);
+    *events = result;
+}
+
+/// Locate source-line boundaries and translate inline-chunk links into their final document indices.
+fn linked_slices(
+    events: &[Event],
+    mut link_index: usize,
+    child_events: &mut [Event],
+    acc_before: (usize, usize),
+) -> Vec<(usize, usize)> {
     // Loop through `child_events` to figure out which parts belong where and
     // fix deep links.
     let mut child_index = 0;
@@ -318,19 +361,7 @@ pub fn divide_events(
         slices.push((link_index, slice_start));
     }
 
-    // Finally, inject the subevents.
-    let mut index = slices.len();
-
-    while index > 0 {
-        index -= 1;
-        debug_assert!(
-            slices[index].0 < events.len(),
-            "expected slice start in bounds"
-        );
-        map.add(slices[index].0, 2, child_events.split_off(slices[index].1));
-    }
-
-    (acc_before.0 + (slices.len() * 2), acc_before.1 + len)
+    slices
 }
 
 #[cfg(test)]
