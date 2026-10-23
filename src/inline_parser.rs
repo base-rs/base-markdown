@@ -34,6 +34,7 @@ enum Kind {
     SoftBreak,
     HardBreak,
     Task(bool),
+    Autolink(&'static str),
     Start(TagKind, usize),
     Reference(TagKind, usize),
     End(TagKind),
@@ -277,12 +278,34 @@ impl InlineParser {
                 let start = at;
                 match bytes[at] {
                     b'<' | 0 => return false,
-                    b'@' | b':' if GFM && options.constructs.gfm_autolink_literal => return false,
-                    b'.' if GFM
-                        && options.constructs.gfm_autolink_literal
-                        && bytes[at.saturating_sub(3)..at].eq_ignore_ascii_case(b"www") =>
+                    marker
+                        if GFM
+                            && options.constructs.gfm_autolink_literal
+                            && (matches!(marker, b'@' | b':')
+                                || (marker == b'.'
+                                    && bytes[at.saturating_sub(3)..at]
+                                        .eq_ignore_ascii_case(b"www"))) =>
                     {
-                        return false
+                        // A pending label can change link precedence. Complex addresses retain the grammar's complete GFM rules.
+                        if !self.brackets.is_empty()
+                            || !matches!(self.nodes[self.last].kind, Kind::Text)
+                        {
+                            return false;
+                        }
+                        let Some((start, end, prefix)) = simple_autolink(
+                            bytes,
+                            inline_start,
+                            self.nodes[self.last].start,
+                            at,
+                            range.end,
+                        ) else {
+                            return false;
+                        };
+                        self.nodes[self.last].end = start;
+                        self.append(start, end, Kind::Autolink(prefix));
+                        self.append(start, end, Kind::Text);
+                        self.append(end, end, Kind::End(TagKind::Link));
+                        at = end;
                     }
                     b'\\' if at + 1 < range.end && bytes[at + 1].is_ascii_punctuation() => {
                         self.append(at + 1, at + 2, Kind::Text);
@@ -524,6 +547,14 @@ impl InlineParser {
                 Kind::SoftBreak => EventKind::SoftBreak(Text::Source(node.start..node.end)),
                 Kind::HardBreak => EventKind::HardBreak,
                 Kind::Task(checked) => EventKind::TaskMarker(checked),
+                Kind::Autolink(prefix) => EventKind::Start(Tag::Link {
+                    destination: if prefix.is_empty() {
+                        Text::Source(node.start..node.end)
+                    } else {
+                        Text::from(alloc::format!("{prefix}{}", &source[node.start..node.end]))
+                    },
+                    title: None,
+                }),
                 Kind::Code(count) => {
                     let mut range = node.start + count..node.end - count;
                     let value = &source[range.clone()];
@@ -689,4 +720,59 @@ fn entity(source: &str, start: usize, end: usize) -> Option<(usize, Text<'static
         ))
     };
     Some((at + 1, value))
+}
+
+/// Recognize whitespace-delimited ASCII addresses without path or delimiter ambiguity.
+/// More general GFM links (Unicode, balanced paths, escaped punctuation, and label nesting) use the grammar parser.
+fn simple_autolink(
+    bytes: &[u8],
+    inline_start: usize,
+    text_start: usize,
+    at: usize,
+    limit: usize,
+) -> Option<(usize, usize, &'static str)> {
+    let mut start = at;
+    while start > text_start && bytes[start - 1].is_ascii_alphanumeric() {
+        start -= 1;
+    }
+    if start != inline_start && !matches!(bytes.get(start.wrapping_sub(1)), Some(b' ' | b'\t')) {
+        return None;
+    }
+    let (domain, prefix) = match bytes[at] {
+        b':' if (bytes[start..at].eq_ignore_ascii_case(b"http")
+            || bytes[start..at].eq_ignore_ascii_case(b"https"))
+            && bytes.get(at + 1..at + 3) == Some(b"//") =>
+        {
+            (at + 3, "")
+        }
+        b'@' if start < at => (at + 1, "mailto:"),
+        b'.' if bytes[start..at].eq_ignore_ascii_case(b"www") => (start, "http://"),
+        _ => return None,
+    };
+    let mut end = domain;
+    while end < limit && (bytes[end].is_ascii_alphanumeric() || matches!(bytes[end], b'-' | b'.')) {
+        end += 1;
+    }
+    if end < limit && !matches!(bytes[end], b' ' | b'\t' | b'\r' | b'\n') {
+        return None;
+    }
+    while end > domain && bytes[end - 1] == b'.' {
+        end -= 1;
+    }
+    // Requiring nonempty alphanumeric labels deliberately leaves unusual but valid GFM domains to the grammar.
+    if end == domain
+        || bytes[domain..end].split(|byte| *byte == b'.').any(|label| {
+            label.is_empty()
+                || !label[0].is_ascii_alphanumeric()
+                || !label[label.len() - 1].is_ascii_alphanumeric()
+        })
+    {
+        return None;
+    }
+    if bytes[at] == b'@'
+        && (!bytes[domain..end].contains(&b'.') || !bytes[end - 1].is_ascii_alphabetic())
+    {
+        return None;
+    }
+    Some((start, end, prefix))
 }
