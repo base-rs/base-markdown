@@ -259,16 +259,18 @@ impl CompactParser<'_> {
                 };
                 self.direct_inline = !self.options.inline_code_info
                     && if self.inline.definitions().is_empty() {
-                        self.compact_inline.prepare::<false>(
+                        self.compact_inline.prepare::<false, false>(
                             self.source,
                             fragments(),
                             self.inline.definitions(),
+                            self.options,
                         )
                     } else {
-                        self.compact_inline.prepare::<true>(
+                        self.compact_inline.prepare::<true, false>(
                             self.source,
                             fragments(),
                             self.inline.definitions(),
+                            self.options,
                         )
                     };
                 if !self.direct_inline {

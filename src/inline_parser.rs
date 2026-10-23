@@ -11,6 +11,20 @@ use alloc::{string::String, vec::Vec};
 use core::{convert::TryFrom, ops::Range};
 
 static MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!");
+static GFM_MARKERS: crate::byte_scan::AsciiSet =
+    crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!~@.:");
+
+/// CommonMark with independently enabled GFM constructs can share ordinary inline scanning.
+pub(crate) fn supported_options(options: &crate::ParseOptions) -> bool {
+    let mut common = options.constructs.clone();
+    common.gfm_autolink_literal = false;
+    common.gfm_strikethrough = false;
+    common.gfm_table = false;
+    common.gfm_task_list_item = false;
+    common.gfm_footnote_definition = false;
+    common.gfm_label_start_footnote = false;
+    common == crate::Constructs::default()
+}
 
 #[derive(Clone, Copy)]
 enum Kind {
@@ -192,12 +206,13 @@ impl InlineParser {
         None
     }
     /// Each fragment contains one physical source line. Returns false when a region needs a compatibility construct; no events have escaped yet.
-    // Compact blocks have no definitions yet. Specialize that producer so its hot loop does not carry reference lookup or label bookkeeping.
-    pub(crate) fn prepare<const REFERENCES: bool>(
+    // Specialize reference-free and CommonMark regions so unused extension checks compile out.
+    pub(crate) fn prepare<const REFERENCES: bool, const GFM: bool>(
         &mut self,
         source: &str,
         fragments: impl Iterator<Item = Range<usize>>,
         definitions: &Definitions,
+        options: &crate::ParseOptions,
     ) -> bool {
         self.nodes.clear();
         self.delimiters.clear();
@@ -215,6 +230,7 @@ impl InlineParser {
             kind: Kind::Text,
         });
         let bytes = source.as_bytes();
+        let markers = if GFM { &GFM_MARKERS } else { &MARKERS };
         let mut fragments = fragments.peekable();
         while let Some(mut range) = fragments.next() {
             let mut indexed_ticks = false;
@@ -233,6 +249,14 @@ impl InlineParser {
                 let start = at;
                 match bytes[at] {
                     b'<' | 0 => return false,
+                    b'~' if GFM && options.constructs.gfm_strikethrough => return false,
+                    b'@' | b':' if GFM && options.constructs.gfm_autolink_literal => return false,
+                    b'.' if GFM
+                        && options.constructs.gfm_autolink_literal
+                        && bytes[at.saturating_sub(3)..at].eq_ignore_ascii_case(b"www") =>
+                    {
+                        return false
+                    }
                     b'\\' if at + 1 < range.end && bytes[at + 1].is_ascii_punctuation() => {
                         self.append(at + 1, at + 2, Kind::Text);
                         at += 2;
@@ -324,10 +348,16 @@ impl InlineParser {
                         });
                     }
                     b'[' | b'!' => {
+                        if GFM
+                            && options.constructs.gfm_label_start_footnote
+                            && (bytes[at..].starts_with(b"[^") || bytes[at..].starts_with(b"![^"))
+                        {
+                            return false;
+                        }
                         let image = bytes[at] == b'!';
                         if image && bytes.get(at + 1) != Some(&b'[') {
                             at += 1;
-                            at += MARKERS.find(&bytes[at..range.end]);
+                            at += markers.find(&bytes[at..range.end]);
                             self.append(start, at, Kind::Text);
                             continue;
                         }
@@ -416,7 +446,7 @@ impl InlineParser {
                     }
                     _ => {
                         at += 1;
-                        at += MARKERS.find(&bytes[at..range.end]);
+                        at += markers.find(&bytes[at..range.end]);
                         self.append(start, at, Kind::Text);
                     }
                 }
