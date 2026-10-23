@@ -214,6 +214,7 @@ impl InlineParser {
                     at += 1;
                 }
             }
+            let inline_start = at;
             while at < range.end {
                 let start = at;
                 match bytes[at] {
@@ -292,8 +293,8 @@ impl InlineParser {
                         while at < range.end && bytes[at] == marker {
                             at += 1;
                         }
-                        let before = classify_opt(source[..start].chars().next_back());
-                        let after = classify_opt(source[at..].chars().next());
+                        let before = classify_opt(source[inline_start..start].chars().next_back());
+                        let after = classify_opt(source[at..range.end].chars().next());
                         let left = after != CharacterKind::Whitespace
                             && (after != CharacterKind::Punctuation
                                 || before != CharacterKind::Other);

@@ -46,6 +46,14 @@ fn compact_inline_resolution_keeps_escaped_markers_and_unmatched_code() {
             "![x](b \"\0\")",
             "<p><img src=\"b\" alt=\"x\" title=\"�\" /></p>",
         ),
+        (
+            ">_) _\"__",
+            "<blockquote>\n<p><em>) <em>&quot;</em></em></p>\n</blockquote>",
+        ),
+        (
+            ">a\n>_) _\"__",
+            "<blockquote>\n<p>a\n<em>) <em>&quot;</em></em></p>\n</blockquote>",
+        ),
         ("a &](b &amp;)", "<p>a &amp;](b &amp;)</p>"),
         ("a `b``c```d``e`", "<p>a <code>b``c```d``e</code></p>"),
         ("a `x\n y`", "<p>a <code>x  y</code></p>"),
@@ -87,6 +95,7 @@ fn compact_resources_and_fallback_regions_agree_with_legacy_rendering() {
         "a \\*b*",
         "a `b``c",
         "a **b _c_** d*",
+        ">_](x)\t\u{c}_\\*\"__\u{c}('",
         "a [b [c](d)](e)",
         "a [![b](c)](d)",
         "a [x](b)",
