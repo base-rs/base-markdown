@@ -13,6 +13,7 @@ fn block_boundaries_preserve_source_whitespace() {
         ("- a`x\n b`", "<ul>\n<li>a<code>x  b</code></li>\n</ul>"),
         ("- - # a\n  b", "<ul>\n<li>\n<ul>\n<li>\n<h1>a</h1>\n</li>\n</ul>\nb</li>\n</ul>"),
         ("a\n ", "<p>a</p>\n"),
+        ("- a\n\n- \n\n> b", "<ul>\n<li>\n<p>a</p>\n</li>\n<li></li>\n</ul>\n<blockquote>\n<p>b</p>\n</blockquote>"),
         ("x\n\n> - a\r\n> 1. b", "<p>x</p>\n<blockquote>\n<ul>\n<li>a</li>\n</ul>\r\n<ol>\n<li>b</li>\n</ol>\n</blockquote>"),
         ("a\n1.     b", "<p>a</p>\n<ol>\n<li>\n<pre><code>b\n</code></pre>\n</li>\n</ol>"),
         ("a\r\n\n# b\n", "<p>a</p>\r\n<h1>b</h1>\n"),
@@ -68,6 +69,20 @@ fn compact_resources_and_fallback_regions_agree_with_legacy_rendering() {
     use core_markdown::{to_mdast, HtmlRenderer, ParseOptions};
     for source in [
         "a [x]( b)",
+        "Literal ! and !x.",
+        "-\tfoo <x>",
+        "***a** b*",
+        "a***b**c*",
+        "a **b*c** d*",
+        "    a\n\n\n    b",
+        "#a",
+        "####### a",
+        "#\t",
+        "a\n10. b",
+        "{a}",
+        "a {b}",
+        "~~~a~\nb\n~~~",
+        "~~~a b~\nc\n~~~",
         "a [x](<b>)",
         "a [x](<b\\>c>)",
         "a [x](<b\\ c>)",
@@ -187,4 +202,27 @@ fn compact_inlines_share_compatibility_document_structure() {
         render_events(source, document.events(), &options.compile, &mut arena).unwrap();
         assert_eq!(arena, output, "{source:?}");
     }
+}
+
+#[test]
+fn legacy_ast_preserves_empty_container_structure() {
+    use core_markdown::{mdast::Node, to_mdast, ParseOptions};
+    for source in ["* >\n\n* a", "* > \n\n* a", "*  \n\n* a"] {
+        let root = to_mdast(source, &ParseOptions::default()).unwrap();
+        let Node::List(list) = &root.children().unwrap()[0] else {
+            panic!("the document starts with a list");
+        };
+        assert_eq!(list.children.len(), 2, "{source:?}");
+        assert_eq!(list.children[0].text_content(), "", "{source:?}");
+        assert_eq!(list.children[1].text_content(), "a", "{source:?}");
+    }
+    let root = to_mdast("- a\n \n  b", &ParseOptions::default()).unwrap();
+    let item = &root.children().unwrap()[0].children().unwrap()[0];
+    assert_eq!(item.children().unwrap().len(), 2);
+    assert_eq!(item.text_content(), "ab");
+    let root = to_mdast("- \n  \n  a", &ParseOptions::default()).unwrap();
+    let children = root.children().unwrap();
+    assert!(matches!(&children[0], Node::List(list) if list.children.len() == 1));
+    assert_eq!(children[0].text_content(), "");
+    assert_eq!(children[1].text_content(), "a");
 }
