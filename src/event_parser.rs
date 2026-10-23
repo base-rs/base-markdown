@@ -186,18 +186,22 @@ impl CompactParser<'_> {
                             .ends_with(['\r', '\n']))
             {
                 self.final_separator = true;
-                // Populated containers retain their final semantic line ending. Empty containers have no content ending and use the document style.
-                return Some(Ok(if !populated {
-                    Event {
-                        kind: EventKind::Separator {
-                            value: Text::Literal(""),
-                            conditional: true,
-                        },
-                        span: last.end..last.end,
-                    }
-                } else {
-                    self.separator(leaf.end)
-                }));
+                // Populated containers retain their final semantic line ending. Empty containers and lists followed by blank lines use the document style.
+                return Some(Ok(
+                    if !populated
+                        || matches!(last.body, Body::List { .. }) && leaf.end != self.source.len()
+                    {
+                        Event {
+                            kind: EventKind::Separator {
+                                value: Text::Literal(""),
+                                conditional: true,
+                            },
+                            span: last.end..last.end,
+                        }
+                    } else {
+                        self.separator(leaf.end)
+                    },
+                ));
             }
             self.ended = true;
             return Some(Ok(Event {

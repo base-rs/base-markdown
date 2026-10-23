@@ -124,6 +124,8 @@ fn semantic_endings_ignore_trailing_blanks_and_container_prefixes() {
         ("x\n\n- a\r\n", "<p>x</p>\n<ul>\n<li>a</li>\n</ul>\r\n"),
         ("x\n\n> a\r\n", "<p>x</p>\n<blockquote>\n<p>a</p>\n</blockquote>\r\n"),
         ("> -\n ", "<blockquote>\n<ul>\n<li></li>\n</ul>\n</blockquote>"),
+        ("x\n\n- a\r\r\n", "<p>x</p>\n<ul>\n<li>a</li>\n</ul>\n"),
+        ("x\n\n> a\r\r\n", "<p>x</p>\n<blockquote>\n<p>a</p>\n</blockquote>\r"),
         ("# a\n    ", "<h1>a</h1>\n"),
         ("---\n    ", "<hr />\n"),
         ("- a\r\r\n", "<ul>\r<li>a</li>\r</ul>\r"),
