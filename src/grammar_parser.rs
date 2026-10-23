@@ -24,10 +24,10 @@ use alloc::{
 use core::{convert::TryFrom, ops::Range};
 
 #[derive(Debug)]
-struct Definition {
-    key: String,
-    destination: Text<'static>,
-    title: Option<Text<'static>>,
+pub(crate) struct Definition {
+    pub key: String,
+    pub destination: Text<'static>,
+    pub title: Option<Text<'static>>,
 }
 
 /// A pull producer of resolved semantic events.
@@ -143,6 +143,10 @@ impl<'a> GrammarParser<'a> {
                 }
             }
         }
+        // Keep the first authored definition; the collection above already discarded duplicate keys.
+        parser
+            .definitions
+            .sort_unstable_by(|a, b| a.key.cmp(&b.key));
         parser
     }
 
@@ -232,16 +236,13 @@ impl<'a> GrammarParser<'a> {
                 })
             };
             let range = |i: usize| tokens[i].point.index..tokens[i + 1].point.index;
-            // References and partially consumed tabs still use the grammar resolver, but they do not force unrelated paragraphs through the tokenizer.
-            let supported = indices().all(|i| {
-                tokens[i].point.vs == 0
-                    && tokens[i + 1].point.vs == 0
-                    && (self.definitions.is_empty() || !self.source[range(i)].contains('['))
-            });
+            // Partially consumed tabs still need the grammar resolver's virtual-space positions.
+            let supported =
+                indices().all(|i| tokens[i].point.vs == 0 && tokens[i + 1].point.vs == 0);
             if supported
                 && self
                     .compact_inline
-                    .prepare(self.source, indices().map(range))
+                    .prepare(self.source, indices().map(range), &self.definitions)
             {
                 self.direct_inline = true;
                 return Ok(());
@@ -425,8 +426,8 @@ impl<'a> GrammarParser<'a> {
             let key = normalize_identifier(&self.source[self.span(label)]);
             let definition = self
                 .definitions
-                .iter()
-                .find(|definition| definition.key == key)
+                .binary_search_by(|definition| definition.key.cmp(&key))
+                .map(|index| &self.definitions[index])
                 .expect("resolved link has a definition");
             (definition.destination.clone(), definition.title.clone())
         }
@@ -966,7 +967,7 @@ impl Iterator for GrammarParser<'_> {
         }
         loop {
             if self.direct_inline {
-                if let Some(event) = self.compact_inline.next(self.source) {
+                if let Some(event) = self.compact_inline.next(self.source, &self.definitions) {
                     return Some(Ok(event));
                 }
                 self.direct_inline = false;

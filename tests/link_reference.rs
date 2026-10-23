@@ -12,6 +12,61 @@ use core_markdown::{
 use pretty_assertions::assert_eq;
 
 #[test]
+fn compact_references_preserve_resolution_and_event_roundtrips() {
+    use core_markdown::{render_events, Document, EventParser};
+    let options = Options::default();
+    let grammar = Options {
+        parse: ParseOptions {
+            // These fixtures contain no language prefixes. This keeps the established
+            // grammar inline resolver available as an independent comparison path.
+            inline_code_info: true,
+            ..ParseOptions::default()
+        },
+        ..Options::default()
+    };
+    let mut sources = vec![
+        "[b][z] [a] ![b][z] [x][]\n\n[z]: /z \"title\"\n[a]: /a\n[x]: /x\n[z]: /ignored"
+            .to_string(),
+        "[SS] [ϴ] [a  b] [a\tb][]\n\n[ẞ]: /ss\n[θ]: /theta\n[a b]: /space".to_string(),
+        "[*formatted*][r] [outer [inner]][r] ![outer [inner]][r]\n\n[r]: /r".to_string(),
+        "[outer [inner]][r] ![outer [inner]][r]\n\n[r]: /r\n[inner]: /inside".to_string(),
+        "[a][missing] [a][ ] [a][[b]] [a][b\n\n[a]: /a".to_string(),
+        "[a](broken [a][] [a] \\[a] [x][\\]]\n\n[a]: /a\n[\\]]: /bracket".to_string(),
+        "[a][x\\\\y] [x\\\\y]\n\n[x\\\\y]: /slash".to_string(),
+        "[a][x\\*y] [x\\*y]\n\n[x\\*y]: /star".to_string(),
+        "> [a\n> b] [x][a\n> b]\n\n[a b]: /ab".to_string(),
+        "[x][a\r\nb]\n\n[a b]: /ab".to_string(),
+        "[a\nb][]\n\n[a b]: /ab".to_string(),
+        "[a] ![a]\n\n[a]: /escaped\\*path \"a &amp; b\"".to_string(),
+        "[undefined] ![undefined] [a][]\n\n[a]: /a".to_string(),
+        "[a] [a] [b] [a]\n\n[b]: /b\n[a]: /first\n[A]: /second".to_string(),
+        "[[a]] [outer [unknown]][]\n\n[a]: /a".to_string(),
+        "[a][\tlabel\t]\n\n[label]: /label".to_string(),
+    ];
+    for length in [998, 999, 1000] {
+        let label = "x".repeat(length);
+        sources.push(format!("[text][{label}]\n\n[{label}]: /length\n[a]: /a"));
+    }
+    for source in sources {
+        let expected = to_html_with_options(&source, &grammar).unwrap();
+        assert_eq!(to_html(&source), expected, "{source:?}");
+        let mut checked = String::new();
+        render_events(
+            &source,
+            EventParser::new(&source, &options.parse).unwrap(),
+            &options.compile,
+            &mut checked,
+        )
+        .unwrap();
+        assert_eq!(checked, expected, "checked: {source:?}");
+        let document = Document::parse(&source, &options.parse).unwrap();
+        let mut arena = String::new();
+        render_events(&source, document.events(), &options.compile, &mut arena).unwrap();
+        assert_eq!(arena, expected, "arena: {source:?}");
+    }
+}
+
+#[test]
 fn link_reference() -> Result<(), message::Message> {
     let danger = Options {
         compile: CompileOptions {
