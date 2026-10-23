@@ -127,7 +127,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             } else {
                 Some(SAFE_PROTOCOL_HREF.as_slice())
             };
-        write_sanitized(value, protocols, true, |value| self.write(value))
+        write_sanitized(value, protocols, |value| self.write(value))
     }
 
     fn start(&mut self, tag: Tag<'_>) -> Result<(), StreamError> {

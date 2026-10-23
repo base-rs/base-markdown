@@ -28,7 +28,7 @@ use alloc::string::String;
 #[must_use]
 pub fn sanitize(value: &str) -> String {
     let mut output = String::with_capacity(value.len());
-    write_sanitized(value, None, false, |value| {
+    write_sanitized(value, None, |value| {
         output.push_str(value);
         Ok::<_, core::convert::Infallible>(())
     })
@@ -62,7 +62,7 @@ pub fn sanitize(value: &str) -> String {
 /// * [`micromark-util-sanitize-uri` in `micromark`](https://github.com/micromark/micromark/tree/main/packages/micromark-util-sanitize-uri)
 pub fn sanitize_with_protocols(value: &str, protocols: &[&str]) -> String {
     let mut output = String::with_capacity(value.len());
-    write_sanitized(value, Some(protocols), false, |value| {
+    write_sanitized(value, Some(protocols), |value| {
         output.push_str(value);
         Ok::<_, core::convert::Infallible>(())
     })
@@ -71,11 +71,9 @@ pub fn sanitize_with_protocols(value: &str, protocols: &[&str]) -> String {
 }
 
 /// Write normalized, HTML-safe URL byte runs without temporary strings.
-/// `replace_null` preserves the renderer's decoded-text NUL replacement.
 pub(crate) fn write_sanitized<E>(
     value: &str,
     protocols: Option<&[&str]>,
-    replace_null: bool,
     mut write: impl FnMut(&str) -> Result<(), E>,
 ) -> Result<(), E> {
     if let Some(protocols) = protocols {
@@ -104,7 +102,6 @@ pub(crate) fn write_sanitized<E>(
             continue;
         }
         let replacement = match byte {
-            0 if replace_null => Some("%EF%BF%BD"),
             b'&' => Some("&amp;"),
             b'!' | b'#' | b'$' | b'\''..=b';' | b'=' | b'?'..=b'Z' | b'_' | b'a'..=b'z' | b'~' => {
                 None
@@ -156,14 +153,14 @@ mod tests {
         );
         assert_eq!(sanitize_with_protocols("javascript:x", &["https"]), "");
         let mut output = String::new();
-        write_sanitized("é\0%é", None, true, |run| {
+        write_sanitized("é\0%é", None, |run| {
             output.push_str(run);
             Ok::<_, ()>(())
         })
         .unwrap();
-        assert_eq!(output, "%C3%A9%EF%BF%BD%25%C3%A9");
+        assert_eq!(output, "%C3%A9%00%25%C3%A9");
         for input in ["ordinary", "&", "é", "\0"] {
-            assert!(write_sanitized(input, None, true, |_| Err(())).is_err());
+            assert!(write_sanitized(input, None, |_| Err(())).is_err());
         }
         // Every ASCII byte and multibyte scalar can occur at a run boundary.
         let bytes: Vec<_> = (0..128).collect();

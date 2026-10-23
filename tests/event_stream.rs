@@ -301,6 +301,19 @@ fn edits_and_consumers_validate_the_same_contract() {
             .is_err());
         assert!(render_events("", input, &options.compile, &mut output).is_err());
     }
+    let mut builder = AstBuilder::new();
+    let mut input = vec![
+        Ok(Event {
+            kind: EventKind::Start(Tag::Document(None)),
+            span: 0..999,
+        }),
+        Ok(Event {
+            kind: EventKind::End(TagKind::Document),
+            span: 0..0,
+        }),
+    ]
+    .into_iter();
+    assert!(builder.consume(&mut input, usize::MAX).is_err());
     let input = vec![
         Ok(Event {
             kind: EventKind::Start(Tag::Document(None)),
@@ -312,4 +325,37 @@ fn edits_and_consumers_validate_the_same_contract() {
         }),
     ];
     assert!(render_events("x", input, &options.compile, &mut String::new()).is_err());
+}
+
+#[test]
+fn virtual_container_spaces_and_autolink_nulls_keep_authored_values() {
+    let options = Options::gfm();
+    for (source, expected) in [
+        ("- `a\n\tb`", "<ul>\n<li><code>a b</code></li>\n</ul>"),
+        ("- `\n\t`", "<ul>\n<li><code> </code></li>\n</ul>"),
+        (">\t</b>", "<blockquote>\n&lt;/b&gt;\n</blockquote>"),
+        (
+            "https://x.org\0",
+            "<p><a href=\"https://x.org%00\">https://x.org�</a></p>",
+        ),
+        (
+            "[x](https://x.org\0)",
+            "<p><a href=\"https://x.org%EF%BF%BD\">x</a></p>",
+        ),
+    ] {
+        assert_eq!(
+            core_markdown::to_html_with_options(source, &options).unwrap(),
+            expected
+        );
+        let document = Document::parse(source, &options.parse).unwrap();
+        let mut output = String::new();
+        render_events(
+            document.source(),
+            document.events(),
+            &options.compile,
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(output, expected);
+    }
 }

@@ -119,6 +119,9 @@ impl AstBuilder {
             if !matches!(&node.kind, EventKind::Start(tag) if tag.kind() == kind) {
                 return Err(StreamError::Unbalanced);
             }
+            if event.span.end < node.span.end {
+                return Err(StreamError::InvalidRange);
+            }
             node.span.end = event.span.end;
             return Ok(());
         }
