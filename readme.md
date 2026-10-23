@@ -1,6 +1,6 @@
 # `core-markdown`
 
-A CommonMark-compliant Markdown parser for Rust with an AST, extensions, and HTML and Markdown renderers. It is based on [`markdown-rs`](https://github.com/wooorm/markdown-rs) and adds Socketry's AST helpers and renderer APIs.
+A CommonMark-compliant Markdown parser for Rust with pull events, a source-backed AST, extensions, and HTML and Markdown renderers. It builds on [`markdown-rs`](https://github.com/wooorm/markdown-rs), with compact CommonMark parsing and Socketry's AST helpers and renderer APIs.
 
 [![Build][badge-build-image]][badge-build-url] [![Coverage][badge-coverage-image]][badge-coverage-url]
 
@@ -49,7 +49,28 @@ use core_markdown::{to_html_with_options, Options};
 let html = to_html_with_options("* [x] done", &Options::gfm()).unwrap();
 ```
 
-### Work with the AST
+### Pull events and build a source-backed AST
+
+`EventParser` yields resolved semantic events on demand. Direct HTML rendering and the source-backed `Document` AST use this same contract. A document can own the input buffer, while ordinary text values retain byte ranges into it:
+
+```rust
+use core_markdown::{render_events, CompileOptions, Document, ParseOptions};
+
+let source = String::from("# Introduction\n\nHello, *world*!");
+let document = Document::parse(source, &ParseOptions::default()).unwrap();
+let mut html = String::new();
+render_events(
+    document.source(),
+    document.events(),
+    &CompileOptions::default(),
+    &mut html,
+).unwrap();
+assert_eq!(html, "<h1>Introduction</h1>\n<p>Hello, <em>world</em>!</p>");
+```
+
+`AstBuilder::consume` accepts an event budget so callers can build the AST over several steps without collecting the complete stream. `Document::text_mut` copies a source-backed value only when it is edited, and document traversal allocates nothing. Parsing accepts a complete UTF-8 buffer and prepares block structure before yielding events; inline resolution is deferred until consumption. See the [architecture](context/pull-parser.md) and [performance comparison](benches/comparison/readme.md) for allocation measurements and compatibility paths.
+
+### Work with the legacy mdast API
 
 Parse to a syntax tree when you need to inspect or transform Markdown:
 
