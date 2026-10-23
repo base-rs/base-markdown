@@ -172,7 +172,8 @@ impl InlineParser {
         }
     }
     fn closing_tick(&mut self, opening: usize, count: usize) -> Option<usize> {
-        let mut index = *self.tick_heads.get(count)?;
+        // Every candidate run (including an escaped run's shorter suffix) is bounded by the longest indexed raw run.
+        let mut index = self.tick_heads[count];
         while index != 0 {
             let tick = &self.ticks[index - 1];
             self.tick_heads[count] = tick.next;
@@ -183,7 +184,7 @@ impl InlineParser {
         }
         None
     }
-    /// Returns false when a region needs a compatibility construct. No events have escaped yet.
+    /// Each fragment contains one physical source line. Returns false when a region needs a compatibility construct; no events have escaped yet.
     pub(crate) fn prepare(
         &mut self,
         source: &str,
@@ -276,12 +277,6 @@ impl InlineParser {
                         }
                         let found = self.closing_tick(start, count);
                         if let Some(end) = found {
-                            if bytes[at..end - count]
-                                .iter()
-                                .any(|b| matches!(b, b'\r' | b'\n'))
-                            {
-                                return false;
-                            }
                             self.append(start, end, Kind::Code(count));
                             at = end;
                         } else {
@@ -509,7 +504,7 @@ fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
 }
 
 fn entity(source: &str, start: usize, end: usize) -> Option<(usize, Text<'static>)> {
-    use crate::util::character_reference::{decode, value_max, value_test};
+    use crate::util::character_reference::{decode_numeric, value_max, value_test};
     let bytes = source.as_bytes();
     let mut begin = start + 1;
     let mut marker = b'&';
@@ -535,7 +530,10 @@ fn entity(source: &str, start: usize, end: usize) -> Option<(usize, Text<'static
             .ok()?;
         Text::Literal(references[index].1)
     } else {
-        Text::from(decode(&source[begin..at], marker, true)?)
+        Text::from(decode_numeric(
+            &source[begin..at],
+            if marker == b'#' { 10 } else { 16 },
+        ))
     };
     Some((at + 1, value))
 }

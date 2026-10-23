@@ -89,30 +89,29 @@ impl CompactParser<'_> {
         let mut child = self.blocks.nodes[index].child;
         while child != 0 {
             let node = self.blocks.nodes[child];
-            if let Body::Fragment(spaces) = node.body {
-                if spaces > 0 {
-                    value.append(Text::Literal(&"   "[..spaces]));
-                }
-                value.append(Text::Source(node.start..node.end));
+            let Body::Fragment(spaces) = node.body else {
+                unreachable!("code block children are source fragments");
+            };
+            if spaces > 0 {
+                value.append(Text::Literal(&"   "[..spaces]));
             }
+            value.append(Text::Source(node.start..node.end));
             child = node.next;
         }
         value.finish()
     }
-    fn separator(&self, mut end: usize) -> Event<'static> {
+    fn separator(&self, end: usize) -> Event<'static> {
         let bytes = self.source.as_bytes();
-        while end > 0 && matches!(bytes[end - 1], b' ' | b'\t') {
-            end -= 1;
-        }
-        let start = if end > 0 && matches!(bytes[end - 1], b'\r' | b'\n') {
-            end - 1 - usize::from(end > 1 && bytes[end - 1] == b'\n' && bytes[end - 2] == b'\r')
-        } else {
-            end
+        // Block boundaries passed here end at a physical line ending, never at container padding or a trimmed inline fragment.
+        let start = match bytes[end - 1] {
+            b'\n' => end - 1 - usize::from(end > 1 && bytes[end - 2] == b'\r'),
+            b'\r' => end - 1,
+            _ => unreachable!("authored block separators end at a source newline"),
         };
         Event {
             kind: EventKind::Separator {
                 value: Text::Source(start..end),
-                conditional: start == end,
+                conditional: false,
             },
             span: end..end,
         }
