@@ -1430,3 +1430,45 @@ fn compact_html_preserves_values_spans_and_rendering_paths() {
         }
     }
 }
+
+#[test]
+fn unclosed_html_container_boundaries_preserve_terminal_source_endings() {
+    use core_markdown::{stream::EventKind, EventParser};
+    let mut options = Options::default();
+    options.compile.allow_dangerous_html = true;
+    let mut grammar = Options::default();
+    grammar.compile.allow_dangerous_html = true;
+    grammar.parse.constructs.math_flow = true;
+    for opening in ["<script>", "<!--", "<?target", "<!DOCTYPE", "<![CDATA["] {
+        for prefix in ["- ", "> "] {
+            for between in ["", "  \n", "  \n  \n"] {
+                for following in ["- x", "> x", "text", "", "\ntext"] {
+                    for ending in ["\n", "\r", "\r\n"] {
+                        let source = format!("{prefix}{opening}\n{between}{following}")
+                            .replace('\n', ending);
+                        assert_eq!(
+                            to_html_with_options(&source, &options).unwrap(),
+                            to_html_with_options(&source, &grammar).unwrap(),
+                            "{source:?}"
+                        );
+                        let values = |parse: &ParseOptions| {
+                            EventParser::new(&source, parse)
+                                .unwrap()
+                                .map(Result::unwrap)
+                                .filter_map(|event| match event.kind {
+                                    EventKind::Html { value, block } => Some((
+                                        event.span,
+                                        value.resolve(&source).unwrap().to_string(),
+                                        block,
+                                    )),
+                                    _ => None,
+                                })
+                                .collect::<Vec<_>>()
+                        };
+                        assert_eq!(values(&options.parse), values(&grammar.parse), "{source:?}");
+                    }
+                }
+            }
+        }
+    }
+}

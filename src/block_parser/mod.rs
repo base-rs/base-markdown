@@ -455,16 +455,17 @@ impl Builder<'_> {
             let content_start = next + line.bytes_scanned();
             if !line.scan_space(4) {
                 let content = next + line.bytes_scanned();
-                if continued {
-                    if self.options.constructs.gfm_table && self.table_head(content_start).is_some()
-                    {
-                        if bytes[next..content_start].contains(&b'\t') {
-                            self.unsupported = true;
-                        }
-                        self.trim_fragment();
-                        self.pop(next);
-                        return next;
+                if self.options.constructs.gfm_table && self.table_head(content_start).is_some() {
+                    // A lazy header can become a table when its delimiter resumes the
+                    // container prefix. Preserve the grammar's context-sensitive boundary.
+                    if !continued || bytes[next..content_start].contains(&b'\t') {
+                        self.unsupported = true;
                     }
+                    self.trim_fragment();
+                    self.pop(next);
+                    return next;
+                }
+                if continued {
                     if let Some((length, level)) = scan_setext_heading(&bytes[content..]) {
                         self.trim_fragment();
                         self.blocks.nodes[paragraph].body = Body::Heading(level);
@@ -625,6 +626,12 @@ impl Builder<'_> {
             let continued = self.containers(&mut line) == self.open.len();
             let content = next + line.bytes_scanned();
             let closed = kind.closed(&bytes[at..next]);
+            if !continued && next < bytes.len() && !closed && !kind.blank_terminated() {
+                // Unclosed HTML interrupted by another container can own its terminal
+                // line ending. The grammar distinguishes flow interruption from lazy text.
+                self.unsupported = true;
+                return bytes.len();
+            }
             if closed
                 || next == bytes.len()
                 || !continued
