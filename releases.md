@@ -8,6 +8,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 - Use normalized semantic text when generating opt-in heading IDs, including multiline code and math spans. Balance mixed-list closing tags against their semantic openings, correcting previously mismatched closures after unclosed fences. Restore line positions after failed multiline frontmatter attempts. Keep collapsed spaces significant in reference labels, so `[a b]` and `[ab]` resolve independently.
 
+- Prepare ordinary CommonMark blocks directly in a compact source-backed arena, deferring inline work until consumption. Correct sibling lists after unclosed fences, container indentation tabs, and empty unclosed code bodies on this path. Definitions, raw HTML blocks, and extension configurations still use the compatibility producer.
+
 - Improve Markdown parsing throughput and large-document scaling by indexing and batching event edits, scanning ordinary byte runs, compacting internal events and states, and reusing tokenizer buffers. Retain extension support and ordinary HTML output, with the corrections described above.
 
 ## v0.1.0

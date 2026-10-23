@@ -304,11 +304,11 @@ fn heading_ids_use_normalized_semantic_code_text() {
 }
 
 #[test]
-fn mixed_list_kinds_close_their_semantic_opening_tags() {
+fn mixed_list_kinds_after_unclosed_fences_are_siblings() {
     let output = core_markdown::to_html("1. ~~~\n-");
     assert_eq!(
         output,
-        "<ol>\n<li>\n<pre><code>\n</code></pre>\n</li>\n<ul>\n<li></li>\n</ul>\n</ol>"
+        "<ol>\n<li>\n<pre><code></code></pre>\n</li>\n</ol>\n<ul>\n<li></li>\n</ul>"
     );
 }
 

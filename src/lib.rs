@@ -45,12 +45,14 @@
 )]
 
 extern crate alloc;
+mod block_parser;
 mod configuration;
 mod construct;
 mod document;
 mod event;
 mod event_html_renderer;
 mod event_parser;
+mod grammar_parser;
 pub mod markdown;
 mod parser;
 pub mod renderer;

@@ -32,7 +32,9 @@ The AST uses a contiguous arena with stable node indices and parent/child/siblin
 
 Pull-based event delivery is distinct from accepting input in chunks. The initial implementation accepts a complete UTF-8 buffer. CommonMark forward references and list tightness require preparation before some semantic events can be yielded. The block pass records source ranges, container relationships, and definitions. Inline parsing is deferred until its containing block is requested. Temporary delimiter and bracket state is bounded by the active inline region, and its storage is reused across regions.
 
-Migration starts with an adapter over the existing parser so that semantic consumers can be tested independently. The adapter is explicitly a compatibility path. Inline resolution now reuses one region’s tokenizer storage and never splices inline tokens into the whole-document block buffer. The default HTML API uses the shared event writer; the old HTML token compiler has been removed. Block preparation still uses the grammar tokenizer, so replacing expensive block token production remains a performance opportunity. Extensions retain their behavior; a slower compatibility path must be identified in documentation and measurements.
+The ordinary CommonMark block pass uses a compact arena of block relationships and source fragments. It recognizes paragraphs, headings, lists, quotes, rules, and code directly, without producing grammar enter/exit tokens or per-line edit vectors. Inline resolution reuses one region's tokenizer storage and never splices inline tokens into the document-wide block buffer. The default HTML API uses the shared event writer; the old HTML token compiler has been removed.
+
+Migration is incomplete. Documents containing reference definitions or raw block HTML, extension configurations, and individually disabled constructs currently select the grammar compatibility producer. Inline parsing still uses the grammar engine. These paths retain their behavior and must remain separately identified in performance measurements. The legacy mdast API also retains its own parser until semantic events cover its representation-specific metadata.
 
 ## Allocation and scanning budget
 
@@ -44,7 +46,7 @@ Scan ordinary byte runs before invoking syntax handlers. Use byte-class tables f
 
 The default HTML API and arena traversal share one semantic interpretation. Opt-in heading IDs are generated from normalized semantic text, so multiline code and math spans no longer contribute whitespace that has already been removed from their visible value. For example, `` `\nb `\n--- `` produces `id="b"`, where the previous mdast-based heading capture produced `id="-b-"`. The legacy mdast API remains available with its existing representation.
 
-Semantic end tags close their corresponding starts. Mixed ordered/unordered lists following unclosed fences can expose a pre-existing malformed grammar hierarchy; the shared writer balances its closing HTML tags rather than reproducing mismatched legacy closures. This does not repair every list-hierarchy issue in the underlying grammar. Failed frontmatter lookahead also restores correct line positions instead of producing orphan quote closures. Reference-label normalization now preserves a collapsed space after the first word; labels such as `a b` and `ab` no longer collide.
+Semantic end tags close their corresponding starts. The compact block producer makes mixed ordered/unordered lists following unclosed fences siblings, consumes container indentation tabs, and leaves empty unclosed code-fence bodies empty. These correct legacy hierarchy, tab, and synthetic-newline anomalies; the compatibility producer retains its old interpretation. Authored block separators retain their source line-ending style, including documents containing mixed CR/LF/CRLF endings. Failed frontmatter lookahead also restores correct line positions instead of producing orphan quote closures. Reference-label normalization now preserves a collapsed space after the first word; labels such as `a b` and `ab` no longer collide.
 
 ## Validation and performance acceptance
 
@@ -56,6 +58,10 @@ The algorithmic references are pulldown-cmark's [two-pass pull design](https://p
 
 ## Initial public API
 
-`EventParser::new(source, options)` prepares the compatibility producer. `render_events(source, events, compile_options, output)` pulls any producer through `EventHtmlRenderer`. `Document::parse(source_buffer, parse_options)` moves a caller-owned buffer into a source-backed AST, and `Document::events()` traverses it without allocating a traversal stack or cloning edited strings.
+`EventParser::new(source, options)` prepares compact block records or selects the documented compatibility producer. `render_events(source, events, compile_options, output)` pulls any producer through `EventHtmlRenderer`. `Document::parse(source_buffer, parse_options)` moves a caller-owned buffer into a source-backed AST, and `Document::events()` traverses it without allocating a traversal stack or cloning edited strings.
 
 For bounded construction, retain an `AstBuilder` and call `consume(&mut events, event_budget)` until it returns `BuildProgress::Complete`. `Pending` means the budget was exhausted without probing for another event. Drop the parser before calling `finish(source_buffer)` to move the original buffer into the resulting document. `text_mut(node_id)` materializes only the edited value; node metadata can also be assigned through checked `set_kind`. Publicly supplied event streams and source ranges are checked rather than trusted.
+
+## Borrowed implementation techniques
+
+The block/container scanners and algorithms are adapted from `pulldown-cmark` 0.13.4, revision `38e4d08f14ec4bd9783270e9623db7681ebed968`, specifically `firstpass.rs` and `scanners.rs`. The copied scanners retain their MIT notice. Unlike that revision's first pass, this block pass records only source fragments for paragraphs and headings; it does not eagerly scan inline candidates throughout the document. It recognizes CR, LF, and CRLF, distinguishes Markdown indentation from VT/FF, and caches failed thematic-break lookahead using absolute offsets.
