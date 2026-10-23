@@ -105,6 +105,50 @@ pub fn subtokenize(
             if link.previous().is_none()
                 && (filter.is_none() || &link.content == *filter.as_ref().unwrap())
             {
+                // Definitions start with `[` after optional indentation. Otherwise content is exactly one paragraph, whose line chunks already have the source boundaries needed for text tokenization.
+                if link.content == Content::Content
+                    && (!parse_state.options.constructs.definition
+                        || !matches!(parse_state.bytes[event.point.index], b'[' | b' ' | b'\t'))
+                {
+                    let start = event.point.clone();
+                    let mut current = index;
+                    let end = loop {
+                        events[current].name = Name::Data;
+                        events[current + 1].name = Name::Data;
+                        let link = events[current].link.as_mut().unwrap();
+                        link.content = Content::Text;
+                        if let Some(next) = link.next() {
+                            current = next;
+                        } else {
+                            break events[current + 1].point.clone();
+                        }
+                    };
+                    map.add(
+                        index,
+                        0,
+                        vec![Event {
+                            kind: Kind::Enter,
+                            name: Name::Paragraph,
+                            point: start,
+                            link: None,
+                        }],
+                    );
+                    map.add(
+                        current + 2,
+                        0,
+                        vec![Event {
+                            kind: Kind::Exit,
+                            name: Name::Paragraph,
+                            point: end,
+                            link: None,
+                        }],
+                    );
+                    // Later subevents are shifted by the two new paragraph boundaries.
+                    acc.1 += 2;
+                    value.done = false;
+                    index += 1;
+                    continue;
+                }
                 // Index into `events` pointing to a chunk.
                 let mut link_index = Some(index);
                 // Subtokenizer.
