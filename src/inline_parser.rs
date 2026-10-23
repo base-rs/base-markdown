@@ -6,7 +6,7 @@ use crate::grammar_parser::decode_string;
 use crate::stream::{Event, EventKind, Tag, TagKind, Text};
 use crate::util::char::{classify_opt, Kind as CharacterKind};
 use alloc::vec::Vec;
-use core::ops::Range;
+use core::{convert::TryFrom, ops::Range};
 
 #[derive(Clone, Copy)]
 enum Kind {
@@ -305,7 +305,7 @@ impl InlineParser {
                             node,
                             marker,
                             // Rule three uses the original run length, even after a partial match consumes delimiters.
-                            run_modulo: ((at - start) % 3) as u8,
+                            run_modulo: u8::try_from((at - start) % 3).unwrap(),
                             open: left
                                 && (marker != b'_'
                                     || !right
@@ -448,7 +448,7 @@ fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
         at += 1;
         let begin = at;
         while at < end && bytes[at] != b'>' {
-            if matches!(bytes[at], b'<' | b'\r' | b'\n') {
+            if matches!(bytes[at], 0 | b'<' | b'\r' | b'\n') {
                 return None;
             }
             if bytes[at] == b'\\' && at + 1 < end && bytes[at + 1].is_ascii_punctuation() {
@@ -497,7 +497,7 @@ fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
         at += 1;
         let begin = at;
         while at < end && bytes[at] != marker {
-            if matches!(bytes[at], b'\r' | b'\n') || (marker == b')' && bytes[at] == b'(') {
+            if matches!(bytes[at], 0 | b'\r' | b'\n') || (marker == b')' && bytes[at] == b'(') {
                 return None;
             }
             if bytes[at] == b'\\' && at + 1 < end && bytes[at + 1].is_ascii_punctuation() {
