@@ -155,8 +155,8 @@ pub fn to_html(value: &str) -> String {
 /// ```
 pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, message::Message> {
     let mut output = String::new();
-    let result = EventParser::new(value, &options.parse)
-        .and_then(|events| render_events(value, events, &options.compile, &mut output));
+    let result = EventHtmlRenderer::new(value, &options.compile, &mut output)
+        .render_markdown(&options.parse);
     match result {
         Ok(()) => Ok(output),
         Err(stream::StreamError::Parse(error)) => Err(error),

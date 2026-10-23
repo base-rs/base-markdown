@@ -256,7 +256,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     self.destination(
                         destination
                             .resolve(self.source)
-                            .expect("event values were validated above"),
+                            .expect("event values are source-valid"),
                         false,
                     )?;
                     self.write("\"")?;
@@ -265,7 +265,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         self.escaped(
                             title
                                 .resolve(self.source)
-                                .expect("event values were validated above"),
+                                .expect("event values are source-valid"),
                             true,
                         )?;
                         self.write("\"")?;
@@ -280,7 +280,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     self.destination(
                         destination
                             .resolve(self.source)
-                            .expect("event values were validated above"),
+                            .expect("event values are source-valid"),
                         true,
                     )?;
                     self.write("\" alt=\"")?;
@@ -293,7 +293,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         crate::util::encode::encode_into(
                             title
                                 .resolve(self.source)
-                                .expect("event values were validated above"),
+                                .expect("event values are source-valid"),
                             true,
                             &mut output,
                         );
@@ -330,7 +330,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             Tag::FootnoteDefinition(label) => {
                 let key = label
                     .resolve(self.source)
-                    .expect("event values were validated above")
+                    .expect("event values are source-valid")
                     .to_string();
                 self.captures.push(Capture {
                     key,
@@ -454,8 +454,25 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         &mut self,
         events: impl IntoIterator<Item = Result<Event<'e>, StreamError>>,
     ) -> Result<(), StreamError> {
+        self.render_inner::<true>(events)
+    }
+
+    /// Internal parser rendering uses the producer's range and tag invariants.
+    /// Keep arbitrary public event sources on the checked path above.
+    pub(crate) fn render_markdown(
+        &mut self,
+        options: &crate::ParseOptions,
+    ) -> Result<(), StreamError> {
+        let events = crate::EventParser::new(self.source, options)?;
+        self.render_inner::<false>(events)
+    }
+
+    fn render_inner<'e, const CHECK: bool>(
+        &mut self,
+        events: impl IntoIterator<Item = Result<Event<'e>, StreamError>>,
+    ) -> Result<(), StreamError> {
         for event in events {
-            self.event_ref(&event?)?;
+            self.event_ref::<CHECK>(&event?)?;
         }
         if !self.started || !self.ended || !self.stack.is_empty() {
             return Err(StreamError::Unbalanced);
@@ -468,15 +485,17 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     /// # Errors
     /// Propagates invalid source ranges, malformed streams, and writer errors.
     pub fn event(&mut self, event: Event<'_>) -> Result<(), StreamError> {
-        self.event_ref(&event)
+        self.event_ref::<true>(&event)
     }
 
     #[inline(always)]
-    fn event_ref(&mut self, event: &Event<'_>) -> Result<(), StreamError> {
+    fn event_ref<const CHECK: bool>(&mut self, event: &Event<'_>) -> Result<(), StreamError> {
         if self.ended {
             return Err(StreamError::Unbalanced);
         }
-        event.validate(Some(self.source))?;
+        if CHECK {
+            event.validate(Some(self.source))?;
+        }
         if let Some(heading) = &mut self.heading {
             match &event.kind {
                 EventKind::Text(value)
@@ -487,7 +506,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     heading.text.push_str(
                         value
                             .resolve(self.source)
-                            .expect("event values were validated above"),
+                            .expect("event values are source-valid"),
                     );
                 }
                 EventKind::HardBreak => heading.text.push('\n'),
@@ -505,7 +524,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     EventKind::Text(value) | EventKind::SoftBreak(value) => self.escaped(
                         value
                             .resolve(self.source)
-                            .expect("event values were validated above"),
+                            .expect("event values are source-valid"),
                         true,
                     ),
                     EventKind::Separator { value, conditional } => {
@@ -515,7 +534,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                             self.escaped(
                                 value
                                     .resolve(self.source)
-                                    .expect("event values were validated above"),
+                                    .expect("event values are source-valid"),
                                 true,
                             )
                         }
@@ -543,7 +562,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                                 self.escaped(
                                     language
                                         .resolve(self.source)
-                                        .expect("event values were validated above"),
+                                        .expect("event values are source-valid"),
                                     true,
                                 )?;
                                 self.write("\"")?;
@@ -553,7 +572,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         self.escaped(
                             value
                                 .resolve(self.source)
-                                .expect("event values were validated above"),
+                                .expect("event values are source-valid"),
                             true,
                         )?;
                         if self.images == 0 {
@@ -568,7 +587,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         self.escaped(
                             value
                                 .resolve(self.source)
-                                .expect("event values were validated above"),
+                                .expect("event values are source-valid"),
                             true,
                         )?;
                         if self.images == 0 {
@@ -587,7 +606,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                             return self.escaped(
                                 value
                                     .resolve(self.source)
-                                    .expect("event values were validated above"),
+                                    .expect("event values are source-valid"),
                                 true,
                             );
                         }
@@ -600,7 +619,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                             self.escaped(
                                 language
                                     .resolve(self.source)
-                                    .expect("event values were validated above"),
+                                    .expect("event values are source-valid"),
                                 true,
                             )?;
                             self.write("\"")?;
@@ -608,7 +627,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         self.write(">")?;
                         let value = value
                             .resolve(self.source)
-                            .expect("event values were validated above");
+                            .expect("event values are source-valid");
                         self.escaped(value, true)?;
                         if !value.is_empty() {
                             self.terminate()?;
@@ -625,7 +644,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         }
                         let value = value
                             .resolve(self.source)
-                            .expect("event values were validated above");
+                            .expect("event values are source-valid");
                         if self.options.allow_dangerous_html && self.options.gfm_tagfilter {
                             self.escaped(&crate::util::gfm_tagfilter::gfm_tagfilter(value), false)
                         } else {
@@ -649,7 +668,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     EventKind::FootnoteReference(value) => self.footnote_call(
                         value
                             .resolve(self.source)
-                            .expect("event values were validated above"),
+                            .expect("event values are source-valid"),
                     ),
                     EventKind::Start(_) | EventKind::End(_) => {
                         unreachable!("containers were handled above")
