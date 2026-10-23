@@ -224,7 +224,9 @@ fn consumers_reject_broken_streams_and_propagate_writer_errors() {
     assert!(!error.to_string().is_empty());
     let mut options = Options::default();
     options.parse.constructs.mdx_expression_text = true;
-    let error = EventParser::new("{", &options.parse).err().unwrap();
+    let mut events = EventParser::new("{", &options.parse).unwrap();
+    let error = events.find_map(Result::err).unwrap();
+    assert!(events.next().is_none());
     assert!(matches!(error, StreamError::Parse(_)));
     assert!(error.to_string().contains("Unexpected end of file"));
 }

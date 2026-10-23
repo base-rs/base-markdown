@@ -334,6 +334,40 @@ pub struct Tokenizer<'a> {
     pub lazy: bool,
 }
 
+/// Scratch allocations that can outlive a borrow of ParseState. No source or parser references escape here.
+#[derive(Debug)]
+pub(crate) struct TokenizerBuffers {
+    pub events: Vec<Event>,
+    stack: Vec<Name>,
+    attempts: Vec<Attempt>,
+    column_start: Vec<(usize, usize)>,
+    resolvers: Vec<ResolveName>,
+    label_starts: Vec<LabelStart>,
+    label_starts_loose: Vec<LabelStart>,
+    labels: Vec<Label>,
+    definitions: Vec<String>,
+    footnotes: Vec<String>,
+    map: EditMap,
+}
+
+impl Default for TokenizerBuffers {
+    fn default() -> Self {
+        Self {
+            events: Vec::new(),
+            stack: Vec::new(),
+            attempts: Vec::new(),
+            column_start: Vec::new(),
+            resolvers: Vec::new(),
+            label_starts: Vec::new(),
+            label_starts_loose: Vec::new(),
+            labels: Vec::new(),
+            definitions: Vec::new(),
+            footnotes: Vec::new(),
+            map: EditMap::new(),
+        }
+    }
+}
+
 impl<'a> Tokenizer<'a> {
     /// Create a new tokenizer.
     pub fn new(point: Point, parse_state: &'a ParseState) -> Tokenizer<'a> {
@@ -400,6 +434,50 @@ impl<'a> Tokenizer<'a> {
             concrete: false,
             lazy: false,
             resolvers: vec![],
+        }
+    }
+
+    /// Reborrow parse state while retaining the previous inline region's scratch allocations.
+    pub(crate) fn with_buffers(
+        point: Point,
+        parse_state: &'a ParseState,
+        mut buffers: TokenizerBuffers,
+    ) -> Self {
+        let mut tokenizer = Self::new(point, parse_state);
+        macro_rules! restore {
+            ($buffer:ident, $($field:ident).+) => {
+                buffers.$buffer.clear();
+                core::mem::swap(&mut tokenizer.$($field).+, &mut buffers.$buffer);
+            };
+        }
+        restore!(events, events);
+        restore!(stack, stack);
+        restore!(attempts, attempts);
+        restore!(column_start, column_start);
+        restore!(resolvers, resolvers);
+        restore!(label_starts, tokenize_state.label_starts);
+        restore!(label_starts_loose, tokenize_state.label_starts_loose);
+        restore!(labels, tokenize_state.labels);
+        restore!(definitions, tokenize_state.definitions);
+        restore!(footnotes, tokenize_state.gfm_footnote_definitions);
+        tokenizer.map = buffers.map;
+        tokenizer
+    }
+
+    /// Release source borrows while preserving reusable inline scratch storage.
+    pub(crate) fn into_buffers(self) -> TokenizerBuffers {
+        TokenizerBuffers {
+            events: self.events,
+            stack: self.stack,
+            attempts: self.attempts,
+            column_start: self.column_start,
+            resolvers: self.resolvers,
+            label_starts: self.tokenize_state.label_starts,
+            label_starts_loose: self.tokenize_state.label_starts_loose,
+            labels: self.tokenize_state.labels,
+            definitions: self.tokenize_state.definitions,
+            footnotes: self.tokenize_state.gfm_footnote_definitions,
+            map: self.map,
         }
     }
 

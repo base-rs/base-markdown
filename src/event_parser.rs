@@ -2,8 +2,11 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Compatibility producer: turn resolved grammar tokens into semantic events on demand.
-use crate::event::{Event as Token, Kind, Name};
+use crate::event::{Content, Event as Token, Kind, Name};
+use crate::parser::ParseState;
+use crate::state::{Name as StateName, State};
 use crate::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
+use crate::tokenizer::{Tokenizer, TokenizerBuffers};
 use crate::util::{
     constant::CHARACTER_REFERENCES,
     infer,
@@ -16,7 +19,6 @@ use crate::{
 };
 use alloc::{
     string::{String, ToString},
-    vec,
     vec::Vec,
 };
 use core::{convert::TryFrom, ops::Range};
@@ -30,10 +32,15 @@ struct Definition {
 
 /// A pull producer of resolved semantic events.
 ///
-/// The compatibility producer prepares grammar tokens and definitions in its constructor, then yields semantic events without collecting another event buffer. Ordinary text stays source-backed. Inline preparation is replaced independently of this public contract.
+/// The constructor prepares block structure and definitions. Inline regions are resolved on demand as events are pulled, reusing scratch allocations without materializing document-wide inline tokens. Ordinary text stays source-backed. The semantic stream is never collected internally.
 #[allow(clippy::struct_excessive_bools)]
 pub struct EventParser<'a> {
     source: &'a str,
+    parse_state: ParseState<'a>,
+    block_tokens: Option<(Vec<Token>, Vec<usize>, usize)>,
+    buffers: TokenizerBuffers,
+    inline_matching: Vec<usize>,
+    matching_stack: Vec<usize>,
     options: &'a ParseOptions,
     tokens: Vec<Token>,
     matching: Vec<usize>,
@@ -59,31 +66,28 @@ impl<'a> EventParser<'a> {
     /// # Errors
     /// Returns syntax errors from enabled Markdown extensions.
     pub fn new(source: &'a str, options: &'a ParseOptions) -> Result<Self, StreamError> {
-        let (tokens, _) = crate::parser::parse(source, options)?;
-        let mut matching = vec![0; tokens.len()];
+        let (mut tokens, parse_state) = crate::parser::prepare(source, options)?;
+        // Definition destinations and code-info strings are small and needed before their opening semantic events.
+        crate::subtokenize::subtokenize(&mut tokens, &parse_state, Some(&Content::String))?;
+        let mut matching = Vec::new();
         let mut stack = Vec::new();
-        for (index, token) in tokens.iter().enumerate() {
-            if token.kind == Kind::Enter {
-                stack.push(index);
+        pair_tokens(&tokens, &mut matching, &mut stack)?;
+        let line_ending = source.find(['\r', '\n']).map(|index| {
+            if source.as_bytes()[index] == b'\n' {
+                LineEnding::LineFeed
+            } else if source.as_bytes().get(index + 1) == Some(&b'\n') {
+                LineEnding::CarriageReturnLineFeed
             } else {
-                let start = stack.pop().ok_or(StreamError::Unbalanced)?;
-                matching[start] = index;
-                matching[index] = start;
-            }
-        }
-        let line_ending = tokens.iter().enumerate().find_map(|(index, token)| {
-            if token.kind == Kind::Enter
-                && matches!(token.name, Name::LineEnding | Name::BlankLineEnding)
-            {
-                source[tokens[index].point.index..tokens[matching[index]].point.index]
-                    .parse()
-                    .ok()
-            } else {
-                None
+                LineEnding::CarriageReturn
             }
         });
         let mut parser = Self {
             source,
+            parse_state,
+            block_tokens: None,
+            buffers: TokenizerBuffers::default(),
+            inline_matching: Vec::new(),
+            matching_stack: stack,
             options,
             tokens,
             matching,
@@ -122,6 +126,64 @@ impl<'a> EventParser<'a> {
             }
         }
         Ok(parser)
+    }
+
+    fn inline(&mut self, index: usize) -> Result<(), StreamError> {
+        let mut task = false;
+        if self.options.constructs.gfm_task_list_item
+            && index > 2
+            && self.tokens[index - 1].kind == Kind::Enter
+            && self.tokens[index - 1].name == Name::Paragraph
+        {
+            let before = crate::util::skip::opt_back(
+                &self.tokens,
+                index - 2,
+                &[
+                    Name::BlankLineEnding,
+                    Name::Definition,
+                    Name::LineEnding,
+                    Name::SpaceOrTab,
+                ],
+            );
+            task = self.tokens[before].kind == Kind::Exit
+                && self.tokens[before].name == Name::ListItemPrefix;
+        }
+        let mut tokenizer = Tokenizer::with_buffers(
+            self.tokens[index].point.clone(),
+            &self.parse_state,
+            core::mem::take(&mut self.buffers),
+        );
+        tokenizer
+            .tokenize_state
+            .document_at_first_paragraph_of_list_item = task;
+        let mut state = State::Next(StateName::TextStart);
+        let mut current = Some(index);
+        while let Some(current_index) = current {
+            let enter = &self.tokens[current_index];
+            let link = enter.link.as_ref().unwrap();
+            if link.previous().is_some() {
+                tokenizer.define_skip(enter.point.clone());
+            }
+            let end = &self.tokens[current_index + 1].point;
+            state = tokenizer.push(
+                (enter.point.index, enter.point.vs),
+                (end.index, end.vs),
+                state,
+            );
+            current = link.next();
+        }
+        tokenizer.flush(state, true)?;
+        // Resolve only the active inline region, never splice it into the block buffer.
+        crate::subtokenize::subtokenize(&mut tokenizer.events, &self.parse_state, None)?;
+        self.buffers = tokenizer.into_buffers();
+        let tokens = core::mem::take(&mut self.buffers.events);
+        let mut matching = core::mem::take(&mut self.inline_matching);
+        pair_tokens(&tokens, &mut matching, &mut self.matching_stack)?;
+        let blocks = core::mem::replace(&mut self.tokens, tokens);
+        let block_matching = core::mem::replace(&mut self.matching, matching);
+        self.block_tokens = Some((blocks, block_matching, self.index));
+        self.index = 0;
+        Ok(())
     }
 
     fn span(&self, index: usize) -> Range<usize> {
@@ -772,7 +834,16 @@ impl Iterator for EventParser<'_> {
                 span: 0..self.source.len(),
             }));
         }
-        while self.index < self.tokens.len() {
+        loop {
+            if self.index == self.tokens.len() {
+                if let Some((tokens, matching, index)) = self.block_tokens.take() {
+                    self.buffers.events = core::mem::replace(&mut self.tokens, tokens);
+                    self.inline_matching = core::mem::replace(&mut self.matching, matching);
+                    self.index = index;
+                    continue;
+                }
+                break;
+            }
             if self.tokens[self.index].kind == Kind::Exit
                 && self.tokens[self.index].name == Name::GfmTableRow
                 && self.column < self.align.len()
@@ -792,6 +863,20 @@ impl Iterator for EventParser<'_> {
             let index = self.index;
             self.index += 1;
             if self.tokens[index].kind == Kind::Enter {
+                if let Some(link) = &self.tokens[index].link {
+                    if link.content == Content::Text {
+                        let first = link.previous().is_none();
+                        self.index = self.matching[index] + 1;
+                        if first {
+                            if let Err(error) = self.inline(index) {
+                                self.ended = true;
+                                self.index = self.tokens.len();
+                                return Some(Err(error));
+                            }
+                        }
+                        continue;
+                    }
+                }
                 let span = self.span(index);
                 if let Some(tag) = self.start(index) {
                     self.containers.push(tag.kind());
@@ -872,5 +957,28 @@ impl<'a> ValueBuilder<'a> {
             Some(owned) => Text::from(owned),
             None => self.range.map_or(Text::Literal(""), Text::Source),
         }
+    }
+}
+
+fn pair_tokens(
+    tokens: &[Token],
+    matching: &mut Vec<usize>,
+    stack: &mut Vec<usize>,
+) -> Result<(), StreamError> {
+    matching.resize(tokens.len(), 0);
+    stack.clear();
+    for (index, token) in tokens.iter().enumerate() {
+        if token.kind == Kind::Enter {
+            stack.push(index);
+        } else {
+            let start = stack.pop().ok_or(StreamError::Unbalanced)?;
+            matching[start] = index;
+            matching[index] = start;
+        }
+    }
+    if stack.is_empty() {
+        Ok(())
+    } else {
+        Err(StreamError::Unbalanced)
     }
 }
