@@ -128,7 +128,7 @@ Each optimization has a separate commit. Three pairs per study compare successiv
 | Inline hot event transfers and small HTML writes | Mixed 1 MB | 5.361–5.413 | 5.168–5.225 |
 | Borrow semantic events through HTML rendering | Mixed 1 MB | 5.461–5.522 | 5.364–5.401 |
 | Inline compact parser iteration across the event boundary | Mixed 1 MB | 5.345–5.374 | 4.949–5.052 |
-| Inline event dispatch into the shared rendering loop | Mixed 1 MB | 4.790–4.953 | 4.573–4.729 |
+| Inline event dispatch into the shared rendering loop | Mixed 1 MB | 4.790–4.953 | 4.573–4.730 |
 | Keep ordinary leading inline links on the compact block path | Formatted links 96 KB | 1.792–1.816 | 0.729–0.749 |
 | Avoid repeated range validation for the internal parser | Mixed 1 MB | 4.579–4.685 | 4.104–4.145 |
 
