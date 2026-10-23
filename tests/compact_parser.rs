@@ -319,3 +319,17 @@ fn gfm_uses_commonmark_attention_boundaries_when_no_extension_is_present() {
         );
     }
 }
+
+#[test]
+fn gfm_preserves_the_same_literal_line_endings_as_commonmark() {
+    for source in [
+        "intro\n\n    code\r\n",
+        "intro\r\n\r\n    code\n",
+        "intro\n\n```\r\ncode\r\n```\n",
+    ] {
+        assert_eq!(
+            core_markdown::to_html_with_options(source, &core_markdown::Options::gfm()).unwrap(),
+            core_markdown::to_html(source)
+        );
+    }
+}

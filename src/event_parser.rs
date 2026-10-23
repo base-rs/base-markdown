@@ -178,7 +178,12 @@ impl CompactParser<'_> {
             }
             let populated = matches!(
                 leaf.body,
-                Body::Paragraph(_) | Body::Heading(_) | Body::Rule | Body::Code(_) | Body::Html(_)
+                Body::Paragraph(_)
+                    | Body::Heading(_)
+                    | Body::Rule
+                    | Body::Code(_)
+                    | Body::Html(_)
+                    | Body::Table
             );
             if !self.final_separator
                 && !self.suppress_final_separator
@@ -187,7 +192,7 @@ impl CompactParser<'_> {
                 && (self.source.ends_with(['\r', '\n'])
                     || (matches!(
                         last.body,
-                        Body::Paragraph(_) | Body::Heading(_) | Body::Rule
+                        Body::Paragraph(_) | Body::Heading(_) | Body::Rule | Body::Table
                     ) || last.body == Body::Quote && populated)
                         && self.source[..last.end]
                             .trim_end_matches([' ', '\t'])
@@ -198,6 +203,9 @@ impl CompactParser<'_> {
                 return Some(Ok(
                     if !populated
                         || matches!(last.body, Body::List { .. }) && leaf.end != self.source.len()
+                        || leaf.body == Body::Table
+                            && last.end > leaf.end
+                            && last.body != Body::Table
                     {
                         Event {
                             kind: EventKind::Separator {
@@ -226,11 +234,23 @@ impl CompactParser<'_> {
                 Body::Quote => TagKind::BlockQuote,
                 Body::List { .. } => TagKind::List,
                 Body::Item(_) => TagKind::Item,
+                Body::Table => TagKind::Table,
+                Body::TableHead => TagKind::TableHead,
+                Body::TableBody => TagKind::TableBody,
+                Body::TableRow => TagKind::TableRow,
+                Body::TableCell { .. } => TagKind::TableCell,
                 _ => unreachable!("only block containers yield closing events"),
             };
             // Definitions are invisible. The grammar omits a list's boundary newline before them; a following visible block terminates the output itself.
-            if !matches!(node.body, Body::Paragraph(true) | Body::Item(_))
-                && node.next != 0
+            if !matches!(
+                node.body,
+                Body::Paragraph(true) | Body::Item(_) | Body::TableCell { .. }
+            ) && (node.next != 0
+                || node.body == Body::TableRow
+                    && self.blocks.nodes[node.parent].body == Body::TableHead
+                || node.body == Body::Table
+                    && node.parent != 0
+                    && self.blocks.nodes[node.parent].end > node.end)
                 && !(matches!(node.body, Body::List { .. })
                     && matches!(self.blocks.nodes[node.next].body, Body::Definition(_)))
             {
@@ -239,11 +259,11 @@ impl CompactParser<'_> {
             self.advance();
             return Some(Ok(Event {
                 kind: EventKind::End(tag),
-                span: node.end..node.end,
+                span: node.span_end(self.source)..node.span_end(self.source),
             }));
         }
         let kind = match node.body {
-            Body::Paragraph(_) | Body::Heading(_) => {
+            Body::Paragraph(_) | Body::Heading(_) | Body::TableCell { .. } => {
                 let nodes = &self.blocks.nodes;
                 let fragments = || {
                     let mut child = node.child;
@@ -257,8 +277,40 @@ impl CompactParser<'_> {
                         }
                     })
                 };
-                self.direct_inline = !self.options.inline_code_info
-                    && if self.inline.definitions().is_empty() {
+                let mut task = self.options.constructs.gfm_task_list_item
+                    && matches!(node.body, Body::Paragraph(_))
+                    && matches!(nodes[node.parent].body, Body::Item(_))
+                    && self.source[node.start..node.end].starts_with('[');
+                if task {
+                    let mut before = nodes[node.parent].child;
+                    while before != index {
+                        if !matches!(nodes[before].body, Body::Definition(_)) {
+                            task = false;
+                            break;
+                        }
+                        before = nodes[before].next;
+                    }
+                }
+                let gfm = self.options.constructs != crate::Constructs::default();
+                self.direct_inline = !task
+                    && !self.options.inline_code_info
+                    && if gfm {
+                        if self.inline.definitions().is_empty() {
+                            self.compact_inline.prepare::<false, true>(
+                                self.source,
+                                fragments(),
+                                self.inline.definitions(),
+                                self.options,
+                            )
+                        } else {
+                            self.compact_inline.prepare::<true, true>(
+                                self.source,
+                                fragments(),
+                                self.inline.definitions(),
+                                self.options,
+                            )
+                        }
+                    } else if self.inline.definitions().is_empty() {
                         self.compact_inline.prepare::<false, false>(
                             self.source,
                             fragments(),
@@ -274,16 +326,23 @@ impl CompactParser<'_> {
                         )
                     };
                 if !self.direct_inline {
-                    self.inline.region(fragments());
+                    self.inline.region(fragments(), task);
                 }
                 self.inlines = true;
                 match node.body {
                     Body::Heading(level) => EventKind::Start(Tag::Heading(level)),
                     Body::Paragraph(tight) => EventKind::Start(Tag::Paragraph { tight }),
+                    Body::TableCell { alignment, header } => {
+                        EventKind::Start(Tag::TableCell { alignment, header })
+                    }
                     _ => unreachable!("this branch handles inline block containers"),
                 }
             }
             Body::Quote => EventKind::Start(Tag::BlockQuote),
+            Body::Table => EventKind::Start(Tag::Table),
+            Body::TableHead => EventKind::Start(Tag::TableHead),
+            Body::TableBody => EventKind::Start(Tag::TableBody),
+            Body::TableRow => EventKind::Start(Tag::TableRow),
             Body::List {
                 tight,
                 marker,
@@ -384,7 +443,16 @@ impl CompactParser<'_> {
             }
             _ => unreachable!("root and source fragments are not semantic blocks"),
         };
-        if matches!(node.body, Body::Quote | Body::List { .. } | Body::Item(_)) {
+        if matches!(
+            node.body,
+            Body::Quote
+                | Body::List { .. }
+                | Body::Item(_)
+                | Body::Table
+                | Body::TableHead
+                | Body::TableBody
+                | Body::TableRow
+        ) {
             if node.child == 0 {
                 self.closing = true;
             } else {
@@ -393,7 +461,7 @@ impl CompactParser<'_> {
         }
         Some(Ok(Event {
             kind,
-            span: node.start..node.end,
+            span: node.start..node.span_end(self.source),
         }))
     }
 }

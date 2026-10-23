@@ -7,9 +7,10 @@
 mod definition;
 mod html;
 mod scanners;
+mod table;
 use crate::definitions::Definitions;
 use crate::grammar_parser::decode_string;
-use crate::mdast::CodeFence;
+use crate::mdast::{AlignKind, CodeFence};
 use crate::stream::Text;
 use crate::ParseOptions;
 use alloc::vec;
@@ -32,6 +33,11 @@ pub(super) enum Body {
     Code(usize),
     Definition(usize),
     Html(usize),
+    Table,
+    TableHead,
+    TableBody,
+    TableRow,
+    TableCell { alignment: AlignKind, header: bool },
     Rule,
     Fragment(usize),
 }
@@ -44,6 +50,19 @@ pub(super) struct Node {
     pub next: usize,
     pub parent: usize,
     pub body: Body,
+}
+
+impl Node {
+    pub fn span_end(&self, source: &str) -> usize {
+        if matches!(
+            self.body,
+            Body::Table | Body::TableHead | Body::TableBody | Body::TableRow
+        ) {
+            table::line_end(source.as_bytes(), self.end)
+        } else {
+            self.end
+        }
+    }
 }
 
 pub(super) struct Code {
@@ -59,6 +78,7 @@ pub(super) struct Blocks {
 
 struct Builder<'a> {
     source: &'a str,
+    options: &'a ParseOptions,
     blocks: Blocks,
     open: Vec<usize>,
     current: usize,
@@ -66,12 +86,13 @@ struct Builder<'a> {
     empty_item: Option<usize>,
     unsupported: bool,
     definitions: Definitions,
+    alignments: Vec<AlignKind>,
 }
 
 impl Blocks {
     pub fn parse(source: &str, options: &ParseOptions) -> Option<(Self, Definitions)> {
         // The compatibility producer handles extension grammars and individually disabled CommonMark constructs during migration.
-        if options.constructs != crate::Constructs::default()
+        if !crate::inline_parser::supported_options(options)
             || options.html_block_blank_lines
             || options.html_tag_namespaces
         {
@@ -79,6 +100,7 @@ impl Blocks {
         }
         let mut builder = Builder {
             source,
+            options,
             blocks: Self {
                 nodes: Vec::with_capacity(source.len() / 64 + 1),
                 codes: Vec::new(),
@@ -89,6 +111,7 @@ impl Blocks {
             empty_item: None,
             unsupported: false,
             definitions: Definitions::default(),
+            alignments: Vec::new(),
         };
         builder.blocks.nodes.push(Node {
             start: 0,
@@ -302,6 +325,15 @@ impl Builder<'_> {
             return self.indented(at, line.remaining_space());
         }
         if bytes[at] == b'[' && possible_definition(&bytes[at..]) {
+            if self.options.constructs.gfm_table && self.table_head(definition_start).is_some() {
+                // Table heads can take precedence over definitions in the grammar.
+                self.unsupported = true;
+                return bytes.len();
+            }
+            if self.options.constructs.gfm_footnote_definition && bytes[at..].starts_with(b"[^") {
+                self.unsupported = true;
+                return bytes.len();
+            }
             // A continuation tab can be shared by several containers. Retain the grammar's virtual-space provenance instead of inferring it from the remaining indentation alone.
             if bytes[start..continuation_end].contains(&b'\t') {
                 self.unsupported = true;
@@ -364,12 +396,26 @@ impl Builder<'_> {
             self.finish_list(start);
             return self.fenced(at, indent, marker, length);
         }
+        if self.options.constructs.gfm_table {
+            if let Some(delimiter_end) = self.table_head(definition_start) {
+                if bytes[start..at].contains(&b'\t') {
+                    self.unsupported = true;
+                    return bytes.len();
+                }
+                self.finish_list(start);
+                return self.table(definition_start, delimiter_end);
+            }
+        }
         self.paragraph(at, start)
     }
     fn interrupts(&mut self, bytes: &[u8], current_container: bool) -> bool {
+        if self.options.constructs.gfm_footnote_definition && bytes.starts_with(b"[^") {
+            self.unsupported = true;
+            return true;
+        }
         // HTML can interrupt paragraphs even after lazy container continuations.
         if bytes.starts_with(b"<") {
-            self.unsupported = html::Html::start(bytes).is_none();
+            self.unsupported |= html::Html::start(bytes).is_none();
             return true;
         }
         scan_eol(bytes).is_some()
@@ -402,6 +448,15 @@ impl Builder<'_> {
             if !line.scan_space(4) {
                 let content = next + line.bytes_scanned();
                 if continued {
+                    if self.options.constructs.gfm_table && self.table_head(content_start).is_some()
+                    {
+                        if bytes[next..content_start].contains(&b'\t') {
+                            self.unsupported = true;
+                        }
+                        self.trim_fragment();
+                        self.pop(next);
+                        return next;
+                    }
                     if let Some((length, level)) = scan_setext_heading(&bytes[content..]) {
                         self.trim_fragment();
                         self.blocks.nodes[paragraph].body = Body::Heading(level);
@@ -434,6 +489,117 @@ impl Builder<'_> {
         {
             node.end -= 1;
         }
+    }
+    /// Recognize the delimiter row before allocating any table nodes.
+    fn table_head(&mut self, start: usize) -> Option<usize> {
+        let bytes = self.source.as_bytes();
+        let next = start + scan_nextline(&bytes[start..]);
+        let mut line = LineStart::new(&bytes[next..]);
+        if self.containers(&mut line) != self.open.len() || line.scan_space(4) {
+            return None;
+        }
+        let at = next + line.bytes_scanned();
+        if !matches!(bytes.get(at), Some(b'|' | b'-' | b':'))
+            || LineStart::new(&bytes[at..])
+                .scan_list_marker_with_indent(0)
+                .is_some()
+        {
+            return None;
+        }
+        let end = at + scan_nextline(&bytes[at..]);
+        let delimiter_end = table::line_end(bytes, end);
+        let delimiter = &bytes[at..delimiter_end];
+        if !delimiter.contains(&b'|') && !delimiter.contains(&b':') {
+            return None;
+        }
+        self.alignments.clear();
+        for (_, content) in table::Cells::new(bytes, at..delimiter_end) {
+            self.alignments.push(table::alignment(&bytes[content])?);
+        }
+        let header_end = table::line_end(bytes, next);
+        // Escaped pipes and virtual container spaces retain grammar provenance.
+        if table::grammar_dispatch(bytes[start])
+            || bytes[start..header_end].contains(&b'\\')
+            || bytes[next..at].contains(&b'\t')
+        {
+            self.unsupported = true;
+            return None;
+        }
+        if &bytes[table::trim(bytes, start..header_end)] == b"|"
+            || table::Cells::new(bytes, start..header_end).count() != self.alignments.len()
+        {
+            return None;
+        }
+        Some(end)
+    }
+    fn table_row(&mut self, start: usize, next: usize, header: bool) {
+        let bytes = self.source.as_bytes();
+        let end = table::line_end(bytes, next);
+        self.append(start, next, Body::TableRow);
+        self.push();
+        let mut cells = table::Cells::new(bytes, start..end);
+        for index in 0..self.alignments.len() {
+            let (span, content) = cells.next().unwrap_or((end..end, end..end));
+            self.append(
+                span.start,
+                span.end,
+                Body::TableCell {
+                    alignment: self.alignments[index],
+                    header,
+                },
+            );
+            self.push();
+            self.fragment(content.start, content.end, 0);
+            self.pop(span.end);
+        }
+        self.pop(next);
+    }
+    fn table(&mut self, start: usize, delimiter_end: usize) -> usize {
+        let bytes = self.source.as_bytes();
+        let header_end = start + scan_nextline(&bytes[start..]);
+        self.append(start, delimiter_end, Body::Table);
+        self.push();
+        self.append(start, delimiter_end, Body::TableHead);
+        self.push();
+        self.table_row(start, header_end, true);
+        self.pop(delimiter_end);
+        let mut at = delimiter_end;
+        let mut body = false;
+        while at < bytes.len() {
+            let mut line = LineStart::new(&bytes[at..]);
+            if self.containers(&mut line) != self.open.len() {
+                break;
+            }
+            let row = at + line.bytes_scanned();
+            if bytes[at..row].contains(&b'\t') {
+                self.unsupported = true;
+                return bytes.len();
+            }
+            if line.scan_space(4) {
+                break;
+            }
+            let content = at + line.bytes_scanned();
+            if self.interrupts(&bytes[content..], false) {
+                break;
+            }
+            let next = content + scan_nextline(&bytes[content..]);
+            if table::grammar_dispatch(bytes[row]) || bytes[row..next].contains(&b'\\') {
+                self.unsupported = true;
+                return bytes.len();
+            }
+            if !body {
+                self.append(row, row, Body::TableBody);
+                self.push();
+                body = true;
+            }
+            self.table_row(row, next, false);
+            at = next;
+        }
+        if body {
+            self.pop(at);
+        }
+        self.pop(at);
+        at
     }
     fn html(&mut self, start: usize, kind: html::Html) -> usize {
         self.append(start, start, Body::Html(start));
