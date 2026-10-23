@@ -4,7 +4,7 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
-- Add a shared pull-based semantic event contract, direct HTML writer, source-backed arena document, and incremental AST builder. Ordinary source values retain byte ranges; editing a value detaches it into owned storage.
+- Add a shared pull-based semantic event contract, direct HTML writer, source-backed arena document, and incremental AST builder. Use the same event writer for the default HTML API and document traversal. Ordinary source values retain byte ranges; editing a value detaches it into owned storage.
 
 - Improve Markdown parsing throughput and large-document scaling by indexing and batching event edits, scanning ordinary byte runs, compacting internal events and states, and reusing tokenizer buffers. Preserve existing HTML output and extension support.
 

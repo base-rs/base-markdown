@@ -2,11 +2,12 @@
 
 This crate implements a Markdown state machine that tokenizes source, resolves constructs, and can either compile events directly to HTML or build an mdast syntax tree.
 
-The [Pull Parser Architecture](pull-parser.md) specifies the source-backed semantic event contract and migration toward lazy inline parsing, shared HTML rendering, and incremental arena AST construction.
+The [Pull Parser Architecture](pull-parser.md) specifies the source-backed semantic event contract and implementation of lazy inline parsing, shared HTML rendering, and incremental arena AST construction.
 
 ## Main paths
 
-- `to_html` and `to_html_with_options` stream parser events into the built-in HTML compiler. This path does not construct an AST.
+- `to_html` and `to_html_with_options` pull `EventParser` events through the shared `EventHtmlRenderer`. This path does not construct an AST.
+- `Document::parse` builds a source-backed arena incrementally from semantic events; `Document::events` uses the same HTML writer.
 - `to_mdast` builds a `mdast::Node` tree. The `Node` enum includes a transparent `Fragment` variant for detached child lists.
 - `Renderer` is the AST-to-output interface. `HtmlRenderer` and `MarkdownRenderer` are built in; a custom renderer controls its own output and escaping behavior.
 - AST helpers include traversal, `text_content`, code-fence metadata, `extract_children`, and heading lookup and section operations. Keep these helpers working for fragments as well as document nodes.

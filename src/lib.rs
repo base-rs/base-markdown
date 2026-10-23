@@ -58,7 +58,6 @@ mod resolve;
 mod state;
 pub mod stream;
 mod subtokenize;
-mod to_html;
 mod to_mdast;
 mod tokenizer;
 mod util;
@@ -151,13 +150,16 @@ pub fn to_html(value: &str) -> String {
 /// # }
 /// ```
 pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, message::Message> {
-    let (events, parse_state) = parser::parse(value, &options.parse)?;
-    to_html::compile(
-        &events,
-        parse_state.bytes,
-        &options.compile,
-        options.parse.inline_code_info,
-    )
+    let mut output = String::new();
+    let result = EventParser::new(value, &options.parse)
+        .and_then(|events| render_events(value, events, &options.compile, &mut output));
+    match result {
+        Ok(()) => Ok(output),
+        Err(stream::StreamError::Parse(error)) => Err(error),
+        Err(_) => unreachable!(
+            "parser events are balanced and source-valid; writing to String cannot fail"
+        ),
+    }
 }
 
 /// Turn markdown into a syntax tree.

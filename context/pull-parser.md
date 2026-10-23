@@ -32,7 +32,7 @@ The AST uses a contiguous arena with stable node indices and parent/child/siblin
 
 Pull-based event delivery is distinct from accepting input in chunks. The initial implementation accepts a complete UTF-8 buffer. CommonMark forward references and list tightness require preparation before some semantic events can be yielded. The block pass records source ranges, container relationships, and definitions. Inline parsing is deferred until its containing block is requested. Temporary delimiter and bracket state is bounded by the active inline region, and its storage is reused across regions.
 
-Migration starts with an adapter over the existing parser so that semantic consumers can be tested independently. The adapter is explicitly a compatibility path, not evidence of a performance improvement. Subsequent changes eliminate whole-document inline event materialization and replace expensive token production with direct range-based scanners. Extensions retain their behavior; a slower compatibility path must be identified in documentation and measurements.
+Migration starts with an adapter over the existing parser so that semantic consumers can be tested independently. The adapter is explicitly a compatibility path. Inline resolution now reuses one region’s tokenizer storage and never splices inline tokens into the whole-document block buffer. The default HTML API uses the shared event writer; the old HTML token compiler has been removed. Block preparation still uses the grammar tokenizer, so replacing expensive block token production remains a performance opportunity. Extensions retain their behavior; a slower compatibility path must be identified in documentation and measurements.
 
 ## Allocation and scanning budget
 
