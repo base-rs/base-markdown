@@ -8,7 +8,10 @@ use crate::state::{Name as StateName, State};
 use crate::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
 use crate::tokenizer::{Tokenizer, TokenizerBuffers};
 use crate::util::{
-    constant::CHARACTER_REFERENCES, infer, normalize_identifier::normalize_identifier,
+    constant::CHARACTER_REFERENCES,
+    infer,
+    normalize_identifier::normalize_identifier,
+    slice::{Position, Slice},
 };
 use crate::{
     mdast::{AlignKind, CodeFence},
@@ -207,8 +210,16 @@ impl<'a> EventParser<'a> {
 
     fn text(&self, start: usize) -> Text<'static> {
         let end = self.matching[start];
-        let start = &self.tokens[start].point;
+        let token = &self.tokens[start];
+        let start = &token.point;
         let end = &self.tokens[end].point;
+        if matches!(token.name, Name::CodeFlowChunk | Name::MathFlowChunk)
+            && (start.vs > 0 || end.vs > 0)
+        {
+            return Text::from(
+                Slice::from_position(self.source.as_bytes(), &Position { start, end }).serialize(),
+            );
+        }
         // Virtual spaces are consumed container indentation, not authored text.
         Text::Source(start.index + usize::from(start.vs > 0)..end.index + usize::from(end.vs > 0))
     }

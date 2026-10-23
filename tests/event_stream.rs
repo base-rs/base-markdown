@@ -331,6 +331,11 @@ fn edits_and_consumers_validate_the_same_contract() {
 fn virtual_container_spaces_and_autolink_nulls_keep_authored_values() {
     let options = Options::gfm();
     for (source, expected) in [
+        (
+            "1.  \tx",
+            "<ol>\n<li>\n<pre><code> x\n</code></pre>\n</li>\n</ol>",
+        ),
+        ("   ```\n\tx\n   ```", "<pre><code> x\n</code></pre>"),
         ("- `a\n\tb`", "<ul>\n<li><code>a b</code></li>\n</ul>"),
         ("- `\n\t`", "<ul>\n<li><code> </code></li>\n</ul>"),
         (">\t</b>", "<blockquote>\n&lt;/b&gt;\n</blockquote>"),
