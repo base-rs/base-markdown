@@ -68,10 +68,11 @@ impl<'a> EventParser<'a> {
     pub fn new(source: &'a str, options: &'a ParseOptions) -> Result<Self, StreamError> {
         let (mut tokens, parse_state) = crate::parser::prepare(source, options)?;
         // Definition destinations and code-info strings are small and needed before their opening semantic events.
-        crate::subtokenize::subtokenize(&mut tokens, &parse_state, Some(&Content::String))?;
+        crate::subtokenize::subtokenize(&mut tokens, &parse_state, Some(&Content::String))
+            .expect("string tokenization has no extension syntax errors");
         let mut matching = Vec::new();
         let mut stack = Vec::new();
-        pair_tokens(&tokens, &mut matching, &mut stack)?;
+        pair_tokens(&tokens, &mut matching, &mut stack);
         let line_ending = source.find(['\r', '\n']).map(|index| {
             if source.as_bytes()[index] == b'\n' {
                 LineEnding::LineFeed
@@ -111,7 +112,11 @@ impl<'a> EventParser<'a> {
                 && parser.tokens[index].name == Name::Definition
             {
                 let (label, destination, title) = parser.definition(index);
-                let key = normalize_identifier(label.resolve(source)?);
+                let key = normalize_identifier(
+                    label
+                        .resolve(source)
+                        .expect("grammar spans are source-valid"),
+                );
                 if !parser
                     .definitions
                     .iter()
@@ -174,11 +179,12 @@ impl<'a> EventParser<'a> {
         }
         tokenizer.flush(state, true)?;
         // Resolve only the active inline region, never splice it into the block buffer.
-        crate::subtokenize::subtokenize(&mut tokenizer.events, &self.parse_state, None)?;
+        crate::subtokenize::subtokenize(&mut tokenizer.events, &self.parse_state, None)
+            .expect("resolved inline tokens contain only infallible string links");
         self.buffers = tokenizer.into_buffers();
         let tokens = core::mem::take(&mut self.buffers.events);
         let mut matching = core::mem::take(&mut self.inline_matching);
-        pair_tokens(&tokens, &mut matching, &mut self.matching_stack)?;
+        pair_tokens(&tokens, &mut matching, &mut self.matching_stack);
         let blocks = core::mem::replace(&mut self.tokens, tokens);
         let block_matching = core::mem::replace(&mut self.matching, matching);
         self.block_tokens = Some((blocks, block_matching, self.index));
@@ -357,7 +363,9 @@ impl<'a> EventParser<'a> {
             } else if trim {
                 value = match value {
                     Text::Source(range) => Text::Source(range.start + 1..range.end - 1),
-                    _ => Text::from(string[1..string.len() - 1].to_string()),
+                    _ => {
+                        unreachable!("inline code without line endings has contiguous source data")
+                    }
                 };
             }
             if self.options.inline_code_info {
@@ -488,8 +496,12 @@ impl<'a> EventParser<'a> {
                 self.tight.push(tight);
                 let start = if self.tokens[index].name == Name::ListOrdered {
                     Some(
-                        self.named(index, &Name::ListItemValue)
-                            .map_or(1, |i| self.source[self.span(i)].parse().unwrap()),
+                        self.source[self.span(
+                            self.named(index, &Name::ListItemValue)
+                                .expect("ordered lists contain a numeric item marker"),
+                        )]
+                        .parse()
+                        .unwrap(),
                     )
                 } else {
                     None
@@ -964,25 +976,20 @@ impl<'a> ValueBuilder<'a> {
     }
 }
 
-fn pair_tokens(
-    tokens: &[Token],
-    matching: &mut Vec<usize>,
-    stack: &mut Vec<usize>,
-) -> Result<(), StreamError> {
+fn pair_tokens(tokens: &[Token], matching: &mut Vec<usize>, stack: &mut Vec<usize>) {
     matching.resize(tokens.len(), 0);
     stack.clear();
     for (index, token) in tokens.iter().enumerate() {
         if token.kind == Kind::Enter {
             stack.push(index);
         } else {
-            let start = stack.pop().ok_or(StreamError::Unbalanced)?;
+            let start = stack.pop().expect("grammar exits have matching enters");
             matching[start] = index;
             matching[index] = start;
         }
     }
-    if stack.is_empty() {
-        Ok(())
-    } else {
-        Err(StreamError::Unbalanced)
-    }
+    debug_assert!(
+        stack.is_empty(),
+        "grammar containers are closed before pairing"
+    );
 }

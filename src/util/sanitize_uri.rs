@@ -76,6 +76,7 @@ pub(crate) fn write_sanitized<E>(
     protocols: Option<&[&str]>,
     mut write: impl FnMut(&str) -> Result<(), E>,
 ) -> Result<(), E> {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
     if let Some(protocols) = protocols {
         if let Some(end) = value.find([':', '?', '#', '/']) {
             if value.as_bytes()[end] == b':'
@@ -87,7 +88,6 @@ pub(crate) fn write_sanitized<E>(
             }
         }
     }
-    const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let bytes = value.as_bytes();
     let mut index = 0;
     let mut start = 0;
