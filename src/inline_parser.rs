@@ -344,12 +344,10 @@ impl InlineParser {
                         if found {
                             self.append(at, end + 1, Kind::Html);
                             at = end + 1;
-                        } else if end == range.end {
-                            // The grammar handles incomplete and cross-fragment HTML.
-                            return false;
                         } else {
-                            self.append(at, at + 1, Kind::Text);
-                            at += 1;
+                            // Rejected angles can interact with grammar delimiter resolution.
+                            // Keep malformed, incomplete, and cross-fragment syntax on that path.
+                            return false;
                         }
                     }
                     marker
