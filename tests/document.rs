@@ -369,8 +369,10 @@ fn heading_anchors_follow_the_shared_html_writer_after_edits() {
             max_level: 2
         })
         .is_empty());
-    let mut options = CompileOptions::default();
-    options.heading_ids = true;
+    let options = CompileOptions {
+        heading_ids: true,
+        ..CompileOptions::default()
+    };
     let mut output = String::new();
     document.render_html(&options, &mut output).unwrap();
     for entry in headings {
@@ -567,8 +569,10 @@ fn heading_anchors_collapse_adjacent_unicode_whitespace() {
     let document = Document::parse("# A \t\u{2003} B", &ParseOptions::default()).unwrap();
     let headings = document.headings(&HeadingOptions::default());
     assert_eq!(headings[0].anchor, "a-b");
-    let mut options = CompileOptions::default();
-    options.heading_ids = true;
+    let options = CompileOptions {
+        heading_ids: true,
+        ..CompileOptions::default()
+    };
     let mut output = String::new();
     document.render_html(&options, &mut output).unwrap();
     assert!(output.contains("id=\"a-b\""));
@@ -728,8 +732,10 @@ fn custom_heading_helpers_capture_the_same_leaf_set_and_line_endings_as_html() {
             .collect::<Vec<_>>(),
         ["title", "crème", "other", "final", "x"]
     );
-    let mut options = CompileOptions::default();
-    options.heading_ids = true;
+    let options = CompileOptions {
+        heading_ids: true,
+        ..CompileOptions::default()
+    };
     let mut output = String::new();
     document.render_node(root, &options, &mut output).unwrap();
     for entry in headings {

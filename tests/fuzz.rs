@@ -54,7 +54,7 @@ fn fuzz() -> Result<(), message::Message> {
     );
 
     assert!(
-        matches!(Document::parse("123456789. ok", &Default::default()), Ok(_)),
+        Document::parse("123456789. ok", &Default::default()).is_ok(),
         "5: lists should support high start numbers (GH-17)"
     );
 
@@ -115,7 +115,7 @@ fn fuzz() -> Result<(), message::Message> {
     );
 
     assert!(
-        matches!(Document::parse("* [ ]\na", &Default::default()), Ok(_)),
+        Document::parse("* [ ]\na", &Default::default()).is_ok(),
         "11: gfm task list items followed by eols (GH-24)"
     );
 
