@@ -353,6 +353,56 @@ fn heading_ids_use_normalized_semantic_code_text() {
 }
 
 #[test]
+fn document_completion_yields_one_terminal_separator_and_end() {
+    let options = Options::default();
+    for (source, expected_separator) in [
+        ("", None),
+        ("a", None),
+        ("a\n", Some(("\n", false))),
+        ("a\r\n", Some(("\r\n", false))),
+        ("a\r\n\r\nb\n", Some(("\n", false))),
+        ("- a\n\n", Some(("", true))),
+        (">\n", Some(("", true))),
+        ("a\n\n[x]: /a\n", None),
+        ("```\ncode\n", None),
+        ("> ```\n> code\n", Some(("\n", false))),
+        ("    code\n ", None),
+        ("<!--\nbody\n", None),
+        ("> <!--\n> body\n", None),
+        ("<!-- closed -->\r\n", Some(("\r\n", false))),
+    ] {
+        let mut parser = core_markdown::EventParser::new(source, &options.parse).unwrap();
+        assert!(matches!(
+            parser.next().unwrap().unwrap().kind,
+            EventKind::Start(Tag::Document(_))
+        ));
+        let mut terminal_separator = None;
+        loop {
+            let event = parser.next().expect("document end event").unwrap();
+            if matches!(event.kind, EventKind::End(TagKind::Document)) {
+                assert_eq!(event.span, source.len()..source.len());
+                break;
+            }
+            terminal_separator = match event.kind {
+                EventKind::Separator { value, conditional } => {
+                    Some((value.resolve(source).unwrap().to_owned(), conditional))
+                }
+                _ => None,
+            };
+        }
+        assert_eq!(
+            terminal_separator
+                .as_ref()
+                .map(|(value, conditional)| (value.as_str(), *conditional)),
+            expected_separator,
+            "{source:?}"
+        );
+        assert!(parser.next().is_none(), "{source:?}");
+        assert!(parser.next().is_none(), "{source:?}");
+    }
+}
+
+#[test]
 fn paragraph_tightness_follows_its_own_list() {
     let options = Options::default();
     for (source, expected) in [
