@@ -19,6 +19,7 @@ pub mod format_link_as_auto_link;
 pub mod longest_char_streak;
 pub mod pattern_in_scope;
 pub mod safe;
+pub mod scan;
 
 #[cfg(test)]
 mod tests;

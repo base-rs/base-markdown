@@ -5,7 +5,6 @@
 
 //! Autolink selection adapted from `mdast-util-to-markdown`.
 use crate::{markdown::state::State, stream::EventKind, Document, NodeId};
-use regex::RegexBuilder;
 
 pub fn auto_link_text<'a, S: AsRef<str>>(
     document: &'a Document<S>,
@@ -26,12 +25,17 @@ pub fn auto_link_text<'a, S: AsRef<str>>(
         return None;
     };
     let text = text.resolve(document.source()).unwrap();
-    let protocol = RegexBuilder::new("^[a-z][a-z+.-]+:")
-        .case_insensitive(true)
-        .build()
-        .unwrap();
+    let bytes = destination.as_bytes();
+    let scheme_end = bytes.iter().position(|&byte| byte == b':');
+    let protocol = scheme_end.is_some_and(|end| {
+        end >= 2
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1..end]
+                .iter()
+                .all(|byte| byte.is_ascii_alphabetic() || matches!(byte, b'+' | b'.' | b'-'))
+    });
     ((text == destination || destination.strip_prefix("mailto:") == Some(text))
-        && protocol.is_match(destination)
+        && protocol
         && !destination.chars().any(|character| {
             character.is_control() || character.is_whitespace() || matches!(character, '<' | '>')
         }))

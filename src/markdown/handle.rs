@@ -32,7 +32,6 @@ use alloc::{
     string::{String, ToString},
 };
 use core::mem;
-use regex::Regex;
 
 impl State<'_> {
     pub(super) fn blockquote<S: AsRef<str>>(
@@ -336,12 +335,7 @@ impl State<'_> {
         language: Option<&str>,
     ) -> Result<String, Message> {
         let mut value = content.to_string();
-        let mut sequence = String::from('`');
-        let mut grave_accent_match = Regex::new(&format!(r"(^|[^`]){}([^`]|$)", sequence)).unwrap();
-        while grave_accent_match.is_match(&value) {
-            sequence.push('`');
-            grave_accent_match = Regex::new(&format!(r"(^|[^`]){}([^`]|$)", sequence)).unwrap();
-        }
+        let sequence = "`".repeat(super::util::scan::delimiter_size(content, b'`', 1));
 
         let no_whitespaces = !value.chars().all(char::is_whitespace);
         let starts_with_whitespace = value.starts_with(char::is_whitespace);
@@ -391,20 +385,12 @@ impl State<'_> {
     }
 
     pub(super) fn inline_math(&mut self, content: &str) -> Result<String, Message> {
-        let mut size: usize = if !self.options.single_dollar_text_math {
-            2
-        } else {
+        let minimum = if self.options.single_dollar_text_math {
             1
+        } else {
+            2
         };
-
-        let pattern = format!("(^|[^$]){}([^$]|$)", "\\$".repeat(size));
-        let mut dollar_sign_match = Regex::new(&pattern).unwrap();
-        while dollar_sign_match.is_match(content) {
-            size += 1;
-            let pattern = format!("(^|[^$]){}([^$]|$)", "\\$".repeat(size));
-            dollar_sign_match = Regex::new(&pattern).unwrap();
-        }
-
+        let size = super::util::scan::delimiter_size(content, b'$', minimum);
         let sequence = "$".repeat(size);
 
         let no_whitespaces = !content.chars().all(char::is_whitespace);

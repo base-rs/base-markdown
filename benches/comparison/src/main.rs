@@ -28,7 +28,8 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                 output
             })
         }
-        "core-markdown" | "core-ast" | "core-arena" | "core-prepare" | "core-events" => {
+        "core-markdown" | "core-ast" | "core-arena" | "core-prepare" | "core-events" | "core-markdown-output" => {
+            let markdown = parser == "core-markdown-output";
             let prepare = parser == "core-prepare";
             let events = parser == "core-events";
             let arena = matches!(parser,"core-arena"|"core-ast");
@@ -56,6 +57,9 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                         black_box(parser);
                     }
                     String::new()
+                } else if markdown {
+                    let document = core_markdown::Document::parse(s, &options.parse).unwrap();
+                    core_markdown::to_markdown(&document).unwrap()
                 } else if arena {
                     let document = core_markdown::Document::parse(s, &options.parse).unwrap();
                     let mut output = String::new();
