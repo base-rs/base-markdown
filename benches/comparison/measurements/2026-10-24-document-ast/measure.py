@@ -11,7 +11,7 @@ import subprocess
 parser = argparse.ArgumentParser(__doc__)
 parser.add_argument('--binary', action='append', required=True, help='LABEL=/absolute/path or inkmark=inkmark')
 parser.add_argument('--rounds', type=int, default=3)
-parser.add_argument('--suite', choices=['screen', 'html', 'phases', 'control', 'ending', 'ast'], required=True)
+parser.add_argument('--suite', choices=['screen', 'html', 'phases', 'control', 'ending', 'ast', 'arena'], required=True)
 parser.add_argument('--work', type=Path, required=True)
 parser.add_argument('--output', type=Path, required=True)
 args = parser.parse_args()
@@ -38,8 +38,9 @@ if args.suite == 'control':
     inputs = inputs[:3]
 if args.suite == 'html':
     inputs.append(('commonmark', comparison / 'data/bench-definitions.json'))
-if args.suite == 'ast':
-    tasks = [('core-ast',profile,path) for profile,path in inputs[:2]]
+if args.suite in ['ast', 'arena']:
+    mode = 'core-ast' if args.suite == 'ast' else 'core-arena'
+    tasks = [(mode,profile,path) for profile,path in inputs[:2]]
 elif args.suite == 'phases':
     tasks = [(mode, profile, path) for profile, path in inputs[:2]
              for mode in ['core-prepare', 'core-events', 'core-stream', 'core-arena']]

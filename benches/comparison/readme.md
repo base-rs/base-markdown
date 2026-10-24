@@ -47,6 +47,10 @@ The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,
 
 **GFM is not an equal-output throughput comparison:** Inkmark leaves `www.example.com` unlinked in this workload even with autolinking enabled. Its table alignment attributes and empty table bodies also differ. Comrak and Commonmarker do not expose the same independent GFM tag filter as the other adapters. Read GFM timings alongside the output agreement results.
 
+## Single AST follow-up
+
+Replacing mdast and its separate compiler/HTML renderer with the source-backed `Document` removes 5,289 net lines under `src/`. Direct HTML stays effectively flat against main on the original four (0.4–1.0% lower medians), while complete AST-to-HTML conversion takes 80–81% less time than the removed legacy path. The already-existing arena path remains flat, and its node size/allocation counts are unchanged. The [full report](measurements/2026-10-24-document-ast/readme.md) records all thirteen direct fixtures against Inkmark, both AST controls, output differences, allocation traffic, validation, and remaining serializer costs. This deliberately breaks the old AST APIs and serialized representation; see the [migration guide](../../context/document.md).
+
 ## Block dispatch and empty delimiter scope follow-up
 
 The latest pass dispatches block opening and paragraph interruption by first byte, removes a fence-marker check guaranteed by that dispatch, and skips emphasis resolution for empty delimiter scopes. It adds no parser state or allocations and preserves the public event contract. A five-round identical-binary control supports a small local mixed-input regression after MDX removal, while also showing variation between repeated runs.
