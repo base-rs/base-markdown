@@ -515,16 +515,21 @@ impl Builder<'_> {
                 true
             }
             Some(b'*' | b'-' | b'+' | b'0'..=b'9') if constructs.list_item => {
-                let mut line = LineStart::new(bytes);
-                line.scan_list_marker_with_indent(0, constructs.thematic_break)
-                    .is_some_and(|(marker, number, _)| {
-                        !current_container
-                            || ((matches!(marker, b'*' | b'-' | b'+') || number == 1)
-                                && scan_blank_line(&bytes[line.bytes_scanned()..]).is_none())
-                    })
+                self.list_interrupts(bytes, current_container)
             }
             _ => false,
         }
+    }
+    // List lookahead needs an aligned line cursor; ordinary interruption dispatch does not need its stack frame.
+    #[inline(never)]
+    fn list_interrupts(&self, bytes: &[u8], current_container: bool) -> bool {
+        let mut line = LineStart::new(bytes);
+        line.scan_list_marker_with_indent(0, self.options.constructs.thematic_break)
+            .is_some_and(|(marker, number, _)| {
+                !current_container
+                    || ((matches!(marker, b'*' | b'-' | b'+') || number == 1)
+                        && scan_blank_line(&bytes[line.bytes_scanned()..]).is_none())
+            })
     }
     fn paragraph(&mut self, start: usize, line_start: usize) -> usize {
         self.finish_list(line_start);
