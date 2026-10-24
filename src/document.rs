@@ -492,27 +492,28 @@ impl Iterator for Descendants<'_> {
     type Item = NodeId;
     fn next(&mut self) -> Option<NodeId> {
         let id = self.current?;
-        let node = &self.nodes[id.index()];
-        if let Some(child) = node.first_child {
-            self.current = Some(child);
-        } else {
-            let mut at = id;
-            loop {
-                if at == self.root {
-                    self.current = None;
-                    break;
-                }
-                let node = &self.nodes[at.index()];
-                if let Some(next) = node.next_sibling {
-                    self.current = Some(next);
-                    break;
-                }
-                at = node
-                    .parent
-                    .expect("a descendant has a parent before its subtree root");
-            }
-        }
+        self.current = next_descendant(self.nodes, self.root, id);
         Some(id)
+    }
+}
+
+// Find the next preorder node using the existing links, bounded by the requested subtree.
+fn next_descendant(nodes: &[Node], root: NodeId, id: NodeId) -> Option<NodeId> {
+    if let Some(child) = nodes[id.index()].first_child {
+        return Some(child);
+    }
+    let mut at = id;
+    loop {
+        if at == root {
+            return None;
+        }
+        let node = &nodes[at.index()];
+        if let Some(next) = node.next_sibling {
+            return Some(next);
+        }
+        at = node
+            .parent
+            .expect("a descendant has a parent before its subtree root");
     }
 }
 
@@ -768,13 +769,7 @@ impl<S: AsRef<str>> Document<S> {
     fn refresh_context(&mut self, root: NodeId) {
         let mut current = Some(root);
         while let Some(id) = current {
-            let mut iterator = Descendants {
-                nodes: &self.nodes,
-                root,
-                current,
-            };
-            iterator.next();
-            current = iterator.current;
+            current = next_descendant(&self.nodes, root, id);
             if matches!(
                 self.nodes[id.index()].kind,
                 EventKind::Start(Tag::Paragraph { .. })
