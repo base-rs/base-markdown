@@ -1,0 +1,42 @@
+{
+  "source_tree": "00589535cfaa5296b4dacf60039345f665531513",
+  "coverage": {
+    "covered": 21278,
+    "measured": 21278,
+    "invariant_unreachable_exclusions": 37
+  },
+  "results": {
+    "coverage_all_features_all_targets": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-document-20261024/coverage-complete.log",
+      "log_sha256": "27f463e9d79efafcf5caeb692d6c99fe3269ae6dc3dabf0b4584e72549dfab79"
+    },
+    "clippy_all_features_all_targets": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-document-clippy-all.log",
+      "log_sha256": "cf67028996ef5dcf8aad7ab77cbf9df5e60b17f7ea5a8a8a4291369071c5f717"
+    },
+    "clippy_default_all_targets": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-document-clippy-default.log",
+      "log_sha256": "b458a21f787e9b7341546ae445bd1b0191bd7004bcc10a9799e39fe046841e8e"
+    },
+    "linux_all_features_library_check": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-document-linux-check.log",
+      "log_sha256": "36958f1bb8cc2e6df12d554bf5a6aaa474c1a40499f7afc7e3f4c8d3edf98c3f"
+    },
+    "format": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-document-fmt.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "workspace_default": {
+      "status": "passed",
+      "command": "cargo bake --locked test",
+      "log": "/tmp/core-markdown-document-default-tests.log",
+      "log_sha256": "389c6fe8741277a2db5945670636c8f65197a21ed15e3779ad91ba93440b0d49"
+    }
+  },
+  "limits": "Coverage/performance measured on native arm64 macOS. Linux is a compile check locally; GitHub CI supplies Linux runtime checks. Test-only lint cleanups after the final coverage run preserve test semantics and production source."
+}

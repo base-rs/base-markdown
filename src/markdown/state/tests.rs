@@ -4,166 +4,150 @@
 use super::{escape_table_pipes, has_matching_ticks, Info, Join, State};
 use crate::{
     markdown::{r#unsafe::Unsafe, util::safe::SafeConfig, Options},
-    mdast::{
-        Code, FootnoteDefinition, Fragment, LinkReference, ListItem, Node, Paragraph,
-        ReferenceKind, Text,
-    },
+    stream::{EventKind, Tag, Text},
+    Document, NodeId, NodeSyntax, ParseOptions,
 };
 use alloc::{string::String, vec};
+use regex::Regex;
 
-fn text(value: &str) -> Node {
-    Node::Text(Text {
-        value: value.into(),
-        position: None,
-    })
+fn empty() -> Document<String> {
+    Document::parse(String::new(), &ParseOptions::default()).unwrap()
 }
-
-fn paragraph(value: &str) -> Node {
-    Node::Paragraph(Paragraph {
-        children: vec![text(value)],
-        position: None,
-    })
+fn paragraph(document: &mut Document<String>, parent: NodeId, value: &str) -> NodeId {
+    let node = document
+        .append_child(parent, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
+    document
+        .append_child(node, EventKind::Text(Text::from(String::from(value))))
+        .unwrap();
+    node
 }
 
 #[test]
-fn serializes_fragment_and_footnote() {
+fn serializes_inline_documents_and_footnote_subtrees() {
     let options = Options::default();
     let mut state = State::new(&options);
-    let phrasing = Node::Fragment(Fragment {
-        children: vec![text("inline")],
-    });
+    let mut document = empty();
+    let root = document.root();
+    document
+        .append_child(root, EventKind::Text(Text::Literal("inline")))
+        .unwrap();
     assert_eq!(
-        state.handle(&phrasing, &Info::new("", ""), None).unwrap(),
+        state.handle(&document, root, &Info::new("", "")).unwrap(),
         "inline"
     );
 
-    let footnote = Node::FootnoteDefinition(FootnoteDefinition {
-        children: vec![paragraph("first"), paragraph("second")],
-        position: None,
-        identifier: "note".into(),
-        label: None,
-    });
-    let rendered = state.handle(&footnote, &Info::new("", ""), None).unwrap();
+    let mut document = empty();
+    let note = document
+        .append_child(
+            document.root(),
+            EventKind::Start(Tag::FootnoteDefinition(Text::Literal("note"))),
+        )
+        .unwrap();
+    paragraph(&mut document, note, "first");
+    paragraph(&mut document, note, "second");
+    let rendered = state.handle(&document, note, &Info::new("", "")).unwrap();
     assert!(rendered.contains("    second"), "{:?}", rendered);
 }
 
 #[test]
-fn handles_adjacent_text_nodes_when_looking_ahead_in_phrasing() {
+fn handles_adjacent_text_nodes_and_phrasing_lookahead_errors() {
     let options = Options::default();
     let mut state = State::new(&options);
-    let paragraph = Node::Paragraph(Paragraph {
-        children: vec![text("first"), text("second")],
-        position: None,
-    });
-
+    let mut document = empty();
+    let root = document.root();
+    let node = paragraph(&mut document, root, "first");
+    document
+        .append_child(node, EventKind::Text(Text::Literal("second")))
+        .unwrap();
     assert_eq!(
         state
-            .container_phrasing(&paragraph, &Info::new("", ""))
+            .container_phrasing(&document, node, &Info::new("", ""))
             .unwrap(),
         "firstsecond"
     );
-}
 
-#[test]
-fn propagates_errors_from_phrasing_lookahead() {
+    document
+        .append_child(node, EventKind::Start(Tag::Item { block_end: false }))
+        .unwrap();
     let options = Options {
         bullet: 'x',
         ..Options::default()
     };
-    let mut state = State::new(&options);
-    let paragraph = Node::Paragraph(Paragraph {
-        children: vec![
-            text("first"),
-            Node::ListItem(ListItem {
-                children: vec![],
-                position: None,
-                spread: false,
-                checked: None,
-            }),
-        ],
-        position: None,
-    });
-
-    let error = state
-        .container_phrasing(&paragraph, &Info::new("", ""))
-        .expect_err("lookahead must report errors while serializing a child");
-
+    let error = State::new(&options)
+        .container_phrasing(&document, node, &Info::new("", ""))
+        .unwrap_err();
     assert_eq!(*error.rule_id, "unexpected-marker");
 }
 
 #[test]
-fn joins_code_and_spread_list_children_consistently() {
+fn joins_code_and_spread_items_consistently() {
     let options = Options {
         fences: false,
         ..Options::default()
     };
     let state = State::new(&options);
-    let code = Node::Code(Code {
-        fence: None,
-        value: "indented".into(),
-        position: None,
-        lang: None,
-        meta: None,
-    });
+    let mut document = empty();
+    let root = document.root();
+    let code = document
+        .append_child(
+            root,
+            EventKind::CodeBlock {
+                value: Text::Literal("indented\n"),
+                language: None,
+                fence: None,
+                math: false,
+                unclosed: false,
+            },
+        )
+        .unwrap();
     assert!(matches!(
-        state.join_defaults(
-            &code,
-            &code,
-            &Node::Root(crate::mdast::Root {
-                children: vec![],
-                position: None,
-            })
-        ),
+        state.join_defaults(&document, code, code, root),
         Join::HtmlComment
     ));
-
-    let left = paragraph("one");
-    let right = paragraph("two");
-    let tight_item = Node::ListItem(ListItem {
-        children: vec![],
-        position: None,
-        spread: false,
-        checked: None,
-    });
-    let loose_item = Node::ListItem(ListItem {
-        children: vec![],
-        position: None,
-        spread: true,
-        checked: None,
-    });
+    let item = document
+        .append_child(root, EventKind::Start(Tag::Item { block_end: false }))
+        .unwrap();
+    let left = paragraph(&mut document, item, "one");
+    let right = document
+        .append_child(item, EventKind::Text(Text::Literal("other")))
+        .unwrap();
     assert!(matches!(
-        state.join_defaults(&left, &text("other"), &tight_item),
+        state.join_defaults(&document, left, right, item),
         Join::Lines(0)
     ));
+    document
+        .set_syntax(item, Some(NodeSyntax::ListItem { spread: true }))
+        .unwrap();
     assert!(matches!(
-        state.join_defaults(&left, &text("other"), &loose_item),
+        state.join_defaults(&document, left, right, item),
         Join::Lines(1)
     ));
+    let right = paragraph(&mut document, item, "two");
     assert!(matches!(
-        state.join_defaults(&left, &right, &tight_item),
+        state.join_defaults(&document, left, right, item),
         Join::Break
     ));
 }
 
 #[test]
-fn decodes_associations_and_escapes_at_unicode_byte_offsets() {
+fn inline_literal_normalization_preserves_crlf_and_nonmatches() {
     let options = Options::default();
     let mut state = State::new(&options);
-    let reference = LinkReference {
-        children: vec![text("label")],
-        position: None,
-        reference_kind: ReferenceKind::Shortcut,
-        identifier: "known&amp;".into(),
-        label: None,
-    };
-    assert_eq!(state.association(&reference), "known&");
-    let numeric_reference = LinkReference {
-        identifier: "known&#35;".into(),
-        ..reference.clone()
-    };
-    assert_eq!(state.association(&numeric_reference), "known#");
-
+    let mut ending = Unsafe::new('\n', None, None, vec![], vec![], true);
+    ending.set_compiled(Regex::new("\\n").unwrap());
+    state.r#unsafe = vec![ending];
+    assert_eq!(state.inline_code("one\r\ntwo", None).unwrap(), "`one two`");
+    assert_eq!(state.inline_math("one\r\ntwo").unwrap(), "$one two$");
     state.r#unsafe = vec![Unsafe::new('#', None, None, vec![], vec![], true)];
+    assert_eq!(
+        state.inline_code("ordinary code", None).unwrap(),
+        "`ordinary code`"
+    );
+    assert_eq!(
+        state.inline_math("ordinary math").unwrap(),
+        "$ordinary math$"
+    );
     assert_eq!(
         state.safe("é\n# heading", &SafeConfig::new("", "", None)),
         "é\n\\# heading"

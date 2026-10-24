@@ -4,13 +4,13 @@
 // Copyright, 2023, by Fedor Sheremetyev.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Image, Link, Node, Paragraph, Root, Text},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    CompileOptions, Options,
+    message, to_html, to_html_with_options, unist::Position, CompileOptions, Options,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Image, Link, Node, Paragraph, Root, Text};
 
 #[test]
 fn link_resource() -> Result<(), message::Message> {
@@ -472,7 +472,7 @@ fn link_resource() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast(
+        parse_fixture(
             "a [alpha]() b [bravo](charlie 'delta') c.",
             &Default::default()
         )?,
@@ -518,7 +518,7 @@ fn link_resource() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("[![name](image)](url)", &Default::default())?,
+        parse_fixture("[![name](image)](url)", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Paragraph(Paragraph {
                 children: vec![Node::Link(Link {

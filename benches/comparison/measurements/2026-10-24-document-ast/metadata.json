@@ -1,0 +1,33 @@
+{
+  "head": "c2b642ece700c44272ac7c4c6134286a213ec4d6",
+  "source_tree": "00589535cfaa5296b4dacf60039345f665531513",
+  "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.3\n",
+  "build_command": "cargo build --release --locked --manifest-path benches/comparison/Cargo.toml --bins",
+  "binaries": {
+    "final": "dde88c83c7dc716a6b8a2842095634c3b8f891920efb211a87aece7c9d86f043",
+    "final-allocations": "d897a29f7f4df561ff8fe6846ce2367c02235f4611a7825a50275f163b033fa3"
+  },
+  "baseline_head": "84bd53b4b65c35e13cb3821359900936bd088d4d",
+  "baseline_build_source_commit": "5f3f83e86896955ffa1360a0aa87af9eda186fba",
+  "baseline_source_tree": "8efeb7b09f2309eff7e42834c679c6ab788bec6f",
+  "baseline_binary_sha256": "49dc9d92bbb335f0c189e52918def7f2925301c0a0d063140e88b4a990be6b3f",
+  "baseline_allocations_sha256": "ab417dbf49548c15a7eb10f7d869084b9d944cc178a49297a043b266291f7e31",
+  "machine": "Apple M4 Pro",
+  "system": "Darwin Kusanagi.local 27.0.0 Darwin Kernel Version 27.0.0: Tue Aug 11 21:05:48 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T6041 arm64",
+  "ruby": "ruby 4.0.9 (2026-10-23 revision 3e93b23afc) +PRISM [arm64-darwin25]",
+  "inkmark_version": "0.2.1",
+  "sampling": "Three sequential alternating rounds; 200ms warmup then seven samples calibrated toward 150ms per batch per conversion; medians recomputed from raw samples. No builds/tests/review/profiling during timing. Ordinary machine background processes remain; no CPU affinity.",
+  "measured_source_matches_final_implementation": true,
+  "background_cpu_snapshot_percent": [
+    98.4,
+    93.3,
+    93.2,
+    53.1,
+    16.1,
+    5.8,
+    4.7,
+    4.0,
+    3.5,
+    3.0
+  ]
+}

@@ -4,6 +4,7 @@
 
 //! Make dangerous HTML a tiny bit safer.
 use crate::util::constant::{GFM_HTML_TAGFILTER_NAMES, GFM_HTML_TAGFILTER_SIZE_MAX};
+#[cfg(test)]
 use alloc::string::String;
 
 /// Make dangerous HTML a tiny bit safer.
@@ -24,7 +25,8 @@ use alloc::string::String;
 ///
 /// * [*§ 6.1 Disallowed Raw HTML (extension)* in GFM](https://github.github.com/gfm/#disallowed-raw-html-extension-)
 /// * [`cmark-gfm#extensions/tagfilter.c`](https://github.com/github/cmark-gfm/blob/master/extensions/tagfilter.c)
-pub fn gfm_tagfilter(value: &str) -> String {
+#[cfg(test)]
+fn gfm_tagfilter(value: &str) -> String {
     let mut result = String::with_capacity(value.len());
     write_filtered(value, |value| {
         result.push_str(value);

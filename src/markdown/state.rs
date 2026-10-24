@@ -7,31 +7,31 @@
 //!
 //! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L195.
 use crate::markdown::{
-    association::Association,
     construct_name::ConstructName,
-    handle::{
-        emphasis::peek_emphasis, html::peek_html, image::peek_image,
-        image_reference::peek_image_reference, inline_code::peek_inline_code,
-        inline_math::peek_inline_math, link::peek_link, link_reference::peek_link_reference,
-        strong::peek_strong, Handle,
-    },
     r#unsafe::Unsafe,
     util::{
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::format_heading_as_setext,
+        format_link_as_auto_link::auto_link_text,
         pattern_in_scope::pattern_in_scope,
         safe::{escape_backslashes, EscapeInfos, SafeConfig},
     },
     Options,
 };
-use crate::{mdast::Node, message::Message};
+use crate::{
+    message::Message,
+    stream::{EventKind, Tag},
+    util::normalize_identifier::{normalize_identifier, normalize_identifier_into},
+    AlignKind, Document, NodeId, NodeSyntax,
+};
 use alloc::{
+    borrow::Cow,
     collections::BTreeMap,
     format,
     string::{String, ToString},
     vec::Vec,
 };
-use regex::{Captures, Regex, RegexBuilder};
+use regex::Regex;
 
 pub struct Info<'a> {
     pub after: &'a str,
@@ -56,6 +56,9 @@ pub struct State<'a> {
     pub options: &'a Options,
     pub stack: Vec<ConstructName>,
     pub r#unsafe: Vec<Unsafe<'a>>,
+    pub serialization_root: Option<NodeId>,
+    definitions: Option<BTreeMap<String, NodeId>>,
+    reference_key: String,
 }
 
 impl<'a> Info<'a> {
@@ -65,30 +68,20 @@ impl<'a> Info<'a> {
 }
 
 impl<'a> State<'a> {
-    /// JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/main/lib/util/association.js>.
-    pub fn association(&self, node: &impl Association) -> String {
-        if node.label().is_some() || node.identifier().is_empty() {
-            return node.label().clone().unwrap_or_default();
-        }
-
-        let character_escape_or_reference =
-            RegexBuilder::new(r"\\([!-/:-@\[-`{-~])|&(#(?:\d{1,7}|x[\da-f]{1,6})|[\da-z]{1,31});")
-                .case_insensitive(true)
-                .build()
-                .unwrap();
-
-        character_escape_or_reference
-            .replace_all(node.identifier(), Self::decode)
-            .into_owned()
-    }
-
-    /// JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/util/container-flow.js#L66>.
-    fn between(&self, left: &Node, right: &Node, parent: &Node, results: &mut String) {
-        if self.options.tight_definitions {
-            Self::set_between(&self.tight_definition(left, right), results)
+    fn between<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        left: NodeId,
+        right: NodeId,
+        parent: NodeId,
+        results: &mut String,
+    ) {
+        let join = if self.options.tight_definitions {
+            self.tight_definition(document, left, right)
         } else {
-            Self::set_between(&self.join_defaults(left, right, parent), results)
-        }
+            self.join_defaults(document, left, right, parent)
+        };
+        Self::set_between(&join, results);
     }
 
     /// JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/util/compile-pattern.js>.
@@ -145,98 +138,75 @@ impl<'a> State<'a> {
         }
     }
 
-    /// JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/main/lib/util/container-flow.js>.
-    pub fn container_flow(&mut self, parent: &Node) -> Result<String, Message> {
-        let children = parent.children().expect("The node to be a flow parent.");
-
-        if children.is_empty() {
-            return Ok(String::new());
-        }
-
-        let mut results: String = String::new();
-        let mut children_iter = children.iter().peekable();
-        let mut index = 0;
-
+    pub fn container_flow<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        parent: NodeId,
+    ) -> Result<String, Message> {
+        let mut results = String::new();
+        let mut children = flow_children(document, parent).peekable();
         self.index_stack.push(0);
-
-        while let Some(child) = children_iter.next() {
-            if index > 0 {
-                let top = self
-                    .index_stack
-                    .last_mut()
-                    .expect("The stack is populated with at least one child position");
-                *top = index;
-            }
-
-            if !matches!(child, Node::List(_)) {
+        let mut index = 0;
+        while let Some(child) = children.next() {
+            *self.index_stack.last_mut().unwrap() = index;
+            if !matches!(
+                document.node(child).unwrap().kind,
+                EventKind::Start(Tag::List { .. })
+            ) {
                 self.bullet_last_used = None;
             }
-
-            results.push_str(&self.handle(child, &Info::new("\n", "\n"), Some(parent))?);
-
-            if let Some(next_child) = children_iter.peek() {
-                self.between(child, next_child, parent, &mut results);
+            results.push_str(&self.handle(document, child, &Info::new("\n", "\n"))?);
+            if let Some(&next) = children.peek() {
+                self.between(document, child, next, parent, &mut results);
             }
-
             index += 1;
         }
-
         self.index_stack.pop();
-
         Ok(results)
     }
 
-    /// JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/main/lib/util/container-phrasing.js>.
-    pub fn container_phrasing(&mut self, parent: &Node, info: &Info) -> Result<String, Message> {
-        let children = parent
-            .children()
-            .expect("The node to be a phrasing parent.");
-
-        if children.is_empty() {
-            return Ok(String::new());
-        }
-
-        let mut results: String = String::new();
-        let mut index = 0;
-        let mut children_iter = children.iter().peekable();
-
+    pub fn container_phrasing<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        parent: NodeId,
+        info: &Info,
+    ) -> Result<String, Message> {
+        let mut results = String::new();
+        let mut children = flow_children(document, parent).peekable();
         self.index_stack.push(0);
-
-        while let Some(child) = children_iter.next() {
-            if index > 0 {
-                let top = self
-                    .index_stack
-                    .last_mut()
-                    .expect("The stack is populated with at least one child position");
-                *top = index;
+        let mut index = 0;
+        let mut after_hard_break = false;
+        while let Some(child) = children.next() {
+            let kind = &document.node(child).unwrap().kind;
+            if !is_phrasing(kind) {
+                return Err(unsupported_content());
             }
-
+            if after_hard_break && matches!(kind, EventKind::SoftBreak(_)) {
+                after_hard_break = false;
+                continue;
+            }
+            after_hard_break = matches!(kind, EventKind::HardBreak);
+            *self.index_stack.last_mut().unwrap() = index;
             let mut new_info = Info::new(info.before, info.after);
             let mut buffer = [0u8; 4];
-            if let Some(child) = children_iter.peek() {
-                if let Some(first_char) = self.peek_node(child) {
-                    new_info.after = first_char.encode_utf8(&mut buffer);
+            if let Some(&next) = children.peek() {
+                if let Some(first) = self.peek_node(document, next) {
+                    new_info.after = first.encode_utf8(&mut buffer);
                 } else {
                     new_info.after = self
-                        .handle(child, &Info::new("", ""), Some(parent))?
+                        .handle(document, next, &Info::new("", ""))?
                         .chars()
-                        .nth(0)
+                        .next()
                         .unwrap_or_default()
                         .encode_utf8(&mut buffer);
                 }
             }
-
-            // In some cases, html (text) can be found in phrasing right after an eol.
-            // When we’d serialize that, in most cases that would be seen as html
-            // (flow).
-            // As we can’t escape or so to prevent it from happening, we take a somewhat
-            // reasonable approach: replace that eol with a space.
-            // See: <https://github.com/syntax-tree/mdast-util-to-markdown/issues/15>
+            // Inline HTML after a source line break would otherwise become a flow block.
             if !results.is_empty() {
-                if info.before == "\r" || info.before == "\n" && matches!(child, Node::Html(_)) {
-                    // TODO Remove this check here it might not be needed since we're
-                    // checking for the before info.
-                    if results.ends_with('\n') || results.ends_with('\r') {
+                if (info.before == "\r" || info.before == "\n")
+                    && matches!(document.node(child).unwrap().kind, EventKind::Html { .. })
+                {
+                    if results.ends_with(['\n', '\r']) {
                         results.pop();
                         if results.ends_with('\r') {
                             results.pop();
@@ -248,38 +218,13 @@ impl<'a> State<'a> {
                     new_info.before = &results;
                 }
             }
-
-            results.push_str(&self.handle(child, &new_info, Some(parent))?);
+            results.push_str(&self.handle(document, child, &new_info)?);
             index += 1;
         }
-
         self.index_stack.pop();
-
         Ok(results)
     }
 
-    /// JS equvialent: <https://github.com/micromark/micromark/blob/main/packages/micromark-util-decode-string/dev/index.js>.
-    fn decode(caps: &Captures) -> String {
-        if let Some(first_cap) = caps.get(1) {
-            return String::from(first_cap.as_str());
-        }
-
-        let capture = &caps[2];
-        if let Some(numeric_capture) = capture.strip_prefix('#') {
-            let (radix, numeric_encoded) = match numeric_capture
-                .strip_prefix('x')
-                .or_else(|| numeric_capture.strip_prefix('X'))
-            {
-                Some(value) => (16, value),
-                None => (10, numeric_capture),
-            };
-            return crate::decode_numeric(numeric_encoded, radix);
-        }
-
-        crate::decode_named(capture, true).unwrap_or(caps[0].to_string())
-    }
-
-    /// No real JS equivalent, it’s written inline.
     fn encode_char(character: char) -> String {
         let hex_code = u32::from(character);
         format!("&#x{:X};", hex_code)
@@ -293,113 +238,270 @@ impl<'a> State<'a> {
         self.stack.pop();
     }
 
-    /// No JS equivalent.
-    pub fn handle(
+    pub fn handle<S: AsRef<str>>(
         &mut self,
-        node: &Node,
+        document: &Document<S>,
+        id: NodeId,
         info: &Info,
-        parent: Option<&Node>,
     ) -> Result<String, Message> {
-        match node {
-            Node::Break(r#break) => r#break.handle(self, info, parent, node),
-            Node::Blockquote(block_quote) => block_quote.handle(self, info, parent, node),
-            Node::Code(code) => code.handle(self, info, parent, node),
-            Node::Delete(_) => Ok(format!("~~{}~~", self.container_phrasing(node, info)?)),
-            Node::Definition(definition) => definition.handle(self, info, parent, node),
-            Node::Emphasis(emphasis) => emphasis.handle(self, info, parent, node),
-            Node::Fragment(fragment) => {
-                if fragment.children.iter().any(is_phrasing) {
-                    self.container_phrasing(node, info)
-                } else {
-                    self.container_flow(node)
+        let node = document
+            .node(id)
+            .expect("serialization uses existing arena nodes");
+        let source = document.source();
+        match &node.kind {
+            EventKind::Start(tag) => match tag {
+                Tag::Document(_) => {
+                    if flow_children(document, id)
+                        .all(|child| is_phrasing(&document.node(child).unwrap().kind))
+                    {
+                        self.container_phrasing(document, id, info)
+                    } else {
+                        self.container_flow(document, id)
+                    }
                 }
-            }
-            Node::FootnoteDefinition(definition) => {
-                let label = definition
-                    .label
-                    .as_deref()
-                    .unwrap_or(&definition.identifier);
-                let mut value = format!("[^{}]:", label);
-                if !definition.children.is_empty() {
-                    let content = self.container_flow(node)?;
-                    value.push(' ');
-                    value.push_str(&self.indent_lines(&content, |line, index, blank| {
-                        if index == 0 || blank {
-                            line.to_string()
-                        } else {
-                            format!("    {}", line)
+                Tag::Paragraph { .. } => self.paragraph(document, id, info),
+                Tag::Heading(level) => self.heading(document, id, *level),
+                Tag::BlockQuote => self.blockquote(document, id),
+                Tag::List { start, .. } => self.list(document, id, start.is_some()),
+                Tag::Item { .. } => self.list_item(document, id),
+                Tag::Emphasis => self.emphasis(document, id, info),
+                Tag::Strong => self.strong(document, id, info),
+                Tag::Delete => Ok(format!(
+                    "~~{}~~",
+                    self.container_phrasing(document, id, info)?
+                )),
+                Tag::Link { destination, title } | Tag::Image { destination, title } => {
+                    let image = matches!(tag, Tag::Image { .. });
+                    let destination = destination.resolve(source).unwrap();
+                    let title = title.as_ref().map(|value| value.resolve(source).unwrap());
+                    if let Some(NodeSyntax::Reference { kind, label }) = document.syntax(id) {
+                        let label = label.resolve(source).unwrap();
+                        if self.reference_matches(document, id, label, destination, title) {
+                            return self.reference(document, id, kind, label, image);
                         }
-                    }));
+                    }
+                    self.resource(document, id, destination, title, image)
                 }
-                Ok(value)
+                Tag::Table => self.render_table(document, id),
+                Tag::TableRow => self.render_table_row(document, id),
+                Tag::TableCell { .. } => self.container_phrasing(document, id, info),
+                Tag::TableHead | Tag::TableBody => {
+                    self.render_table_rows(document, flow_children(document, id), false)
+                }
+                Tag::FootnoteDefinition(label) => {
+                    let syntax = document.syntax(id);
+                    let label = match &syntax {
+                        Some(NodeSyntax::Footnote { label }) => label.resolve(source).unwrap(),
+                        _ => label.resolve(source).unwrap(),
+                    };
+                    let mut value = format!("[^{}]:", label);
+                    if flow_children(document, id).next().is_some() {
+                        let content = self.container_flow(document, id)?;
+                        value.push(' ');
+                        value.push_str(&self.indent_lines(&content, |line, index, blank| {
+                            if index == 0 || blank {
+                                line.to_string()
+                            } else {
+                                format!("    {}", line)
+                            }
+                        }));
+                    }
+                    Ok(value)
+                }
+            },
+            EventKind::Text(text) => {
+                let mut value = text.resolve(source).unwrap();
+                if let Some(parent) = node.parent() {
+                    let marker = document
+                        .node(parent)
+                        .unwrap()
+                        .first_child()
+                        .expect("an attached node belongs to a nonempty parent");
+                    if document.node(marker).unwrap().next_sibling() == Some(id)
+                        && self.is_item_task(document, marker)
+                    {
+                        value = value.trim_start_matches([' ', '\t']);
+                    }
+                }
+                self.text(value, info)
             }
-            Node::FootnoteReference(reference) => Ok(format!(
-                "[^{}]",
-                reference.label.as_deref().unwrap_or(&reference.identifier)
-            )),
-            Node::Heading(heading) => heading.handle(self, info, parent, node),
-            Node::Html(html) => html.handle(self, info, parent, node),
-            Node::ImageReference(image_reference) => {
-                image_reference.handle(self, info, parent, node)
+            EventKind::SoftBreak(text) => self.text(text.resolve(source).unwrap(), info),
+            EventKind::HardBreak => self.hard_break(info),
+            EventKind::Rule => self.thematic_break(),
+            EventKind::Code { value, language } => self.inline_code(
+                value.resolve(source).unwrap(),
+                language
+                    .as_ref()
+                    .map(|language| language.resolve(source).unwrap()),
+            ),
+            EventKind::CodeBlock {
+                value,
+                language,
+                math,
+                ..
+            } => {
+                let value = trim_terminal_ending(value.resolve(source).unwrap());
+                let language = language
+                    .as_ref()
+                    .map(|value| normalize_nul(value.resolve(source).unwrap()));
+                let language = language.as_deref();
+                let syntax = document.syntax(id);
+                let authored_info = match &syntax {
+                    Some(NodeSyntax::Code { info }) => {
+                        Some(normalize_nul(info.resolve(source).unwrap()))
+                    }
+                    _ => None,
+                };
+                let authored_info = authored_info.as_deref();
+                if *math {
+                    self.math(
+                        value,
+                        authored_info.or(language).filter(|value| !value.is_empty()),
+                    )
+                } else {
+                    let (language, meta) = match (authored_info, language) {
+                        (Some(info), Some(language)) => {
+                            let metadata = info
+                                .strip_prefix(language)
+                                .unwrap_or("")
+                                .trim_matches([' ', '\t']);
+                            (Some(language), (!metadata.is_empty()).then_some(metadata))
+                        }
+                        _ => (language, None),
+                    };
+                    self.code(value, language, meta)
+                }
             }
-            Node::Image(image) => image.handle(self, info, parent, node),
-            Node::InlineCode(inline_code) => inline_code.handle(self, info, parent, node),
-            Node::LinkReference(link_reference) => link_reference.handle(self, info, parent, node),
-            Node::Link(link) => link.handle(self, info, parent, node),
-            Node::ListItem(list_item) => list_item.handle(self, info, parent, node),
-            Node::List(list) => list.handle(self, info, parent, node),
-            Node::Paragraph(paragraph) => paragraph.handle(self, info, parent, node),
-            Node::Root(root) => root.handle(self, info, parent, node),
-            Node::Strong(strong) => strong.handle(self, info, parent, node),
-            Node::Text(text) => text.handle(self, info, parent, node),
-            Node::ThematicBreak(thematic_break) => thematic_break.handle(self, info, parent, node),
-            Node::Math(math) => math.handle(self, info, parent, node),
-            Node::InlineMath(inline_math) => inline_math.handle(self, info, parent, node),
-
-            Node::Table(table) => self.render_table(table),
-            Node::TableRow(row) => self.render_table_row(&row.children),
-            Node::TableCell(_) => self.container_phrasing(node, info),
-            Node::Frontmatter(frontmatter) => frontmatter.handle(self, info, parent, node),
+            EventKind::Math(value) => self.inline_math(value.resolve(source).unwrap()),
+            EventKind::Html { value, .. } => Ok(value.resolve(source).unwrap().to_string()),
+            EventKind::TaskMarker(checked) => {
+                if self.is_item_task(document, id) {
+                    Ok(String::new())
+                } else {
+                    Ok(if *checked { "[x]" } else { "[ ]" }.into())
+                }
+            }
+            EventKind::Definition {
+                label,
+                destination,
+                title,
+            } => self.definition(
+                label.resolve(source).unwrap(),
+                destination.resolve(source).unwrap(),
+                title.as_ref().map(|value| value.resolve(source).unwrap()),
+            ),
+            EventKind::Opaque { value, .. } => {
+                if let Some(NodeSyntax::Frontmatter {
+                    info,
+                    fence,
+                    closing_fence_length,
+                }) = document.syntax(id)
+                {
+                    self.frontmatter(
+                        document
+                            .frontmatter_value(id)
+                            .expect("frontmatter syntax identifies a frontmatter body"),
+                        info.resolve(source).unwrap(),
+                        fence,
+                        closing_fence_length,
+                    )
+                } else {
+                    Ok(value.resolve(source).unwrap().into())
+                }
+            }
+            EventKind::FootnoteReference(label) => {
+                let syntax = document.syntax(id);
+                let label = match &syntax {
+                    Some(NodeSyntax::Footnote { label }) => label.resolve(source).unwrap(),
+                    _ => label.resolve(source).unwrap(),
+                };
+                Ok(format!("[^{}]", label))
+            }
+            EventKind::Separator { .. } => Ok(String::new()),
+            EventKind::End(_) => unreachable!("arena nodes store starts and leaves only"),
         }
     }
 
-    fn render_table(&mut self, table: &crate::mdast::Table) -> Result<String, Message> {
+    fn render_table<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        id: NodeId,
+    ) -> Result<String, Message> {
+        let rows = flow_children(document, id).flat_map(|child| {
+            let group = matches!(
+                document.node(child).unwrap().kind,
+                EventKind::Start(Tag::TableHead | Tag::TableBody)
+            );
+            (!group)
+                .then_some(child)
+                .into_iter()
+                .chain(flow_children(document, child).take(if group { usize::MAX } else { 0 }))
+        });
+        self.render_table_rows(document, rows, true)
+    }
+
+    fn render_table_rows<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        rows: impl Iterator<Item = NodeId>,
+        header: bool,
+    ) -> Result<String, Message> {
         let mut output = String::new();
-        for (index, row) in table.children.iter().enumerate() {
+        for (index, row) in rows.enumerate() {
+            if !matches!(
+                document.node(row).unwrap().kind,
+                EventKind::Start(Tag::TableRow)
+            ) {
+                return Err(unsupported_content());
+            }
             if index > 0 {
                 output.push('\n');
             }
-
-            let cells = row.children().map(Vec::as_slice).unwrap_or(&[]);
-            output.push_str(&self.render_table_row(cells)?);
-
-            if index == 0 {
-                output.push('\n');
-                let cells = row.children().map(Vec::as_slice).unwrap_or(&[]);
-                let mut alignments = Vec::new();
-                for (cell_index, _) in cells.iter().enumerate() {
-                    let alignment = table.align.get(cell_index);
-                    alignments.push(match alignment {
-                        Some(crate::mdast::AlignKind::Left) => ":---".to_string(),
-                        Some(crate::mdast::AlignKind::Right) => "---:".to_string(),
-                        Some(crate::mdast::AlignKind::Center) => ":---:".to_string(),
-                        Some(crate::mdast::AlignKind::None) | None => "---".to_string(),
+            output.push_str(&self.render_table_row(document, row)?);
+            if header && index == 0 {
+                output.push_str("\n| ");
+                for (index, cell) in flow_children(document, row).enumerate() {
+                    if index > 0 {
+                        output.push_str(" | ");
+                    }
+                    let alignment = match document.node(cell).unwrap().kind {
+                        EventKind::Start(Tag::TableCell { alignment, .. }) => alignment,
+                        _ => unreachable!("rendered table rows contain only cells"),
+                    };
+                    output.push_str(match alignment {
+                        AlignKind::Left => ":---",
+                        AlignKind::Right => "---:",
+                        AlignKind::Center => ":---:",
+                        AlignKind::None => "---",
                     });
                 }
-                output.push_str(&format!("| {} |", alignments.join(" | ")));
+                output.push_str(" |");
             }
         }
-
         Ok(output)
     }
 
-    fn render_table_row(&mut self, cells: &[Node]) -> Result<String, Message> {
-        let mut values = Vec::new();
-        for cell in cells {
-            let content = self.container_phrasing(cell, &Info::new("", ""))?;
-            values.push(escape_table_pipes(&content));
+    fn render_table_row<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        row: NodeId,
+    ) -> Result<String, Message> {
+        let mut value = String::from("| ");
+        for (index, cell) in flow_children(document, row).enumerate() {
+            if !matches!(
+                document.node(cell).unwrap().kind,
+                EventKind::Start(Tag::TableCell { .. })
+            ) {
+                return Err(unsupported_content());
+            }
+            if index > 0 {
+                value.push_str(" | ");
+            }
+            let content = self.container_phrasing(document, cell, &Info::new("", ""))?;
+            value.push_str(&escape_table_pipes(&content));
         }
-        Ok(format!("| {} |", values.join(" | ")))
+        value.push_str(" |");
+        Ok(value)
     }
 
     /// JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/main/lib/util/indent-lines.js>.
@@ -422,47 +524,63 @@ impl<'a> State<'a> {
         result
     }
 
-    /// No real JS equivalent, but see:
-    /// <https://github.com/syntax-tree/mdast-util-to-markdown/blob/main/lib/join.js>.
-    fn join_defaults(&self, left: &Node, right: &Node, parent: &Node) -> Join {
-        let indented_code_needs_separator = matches!(
-            right,
-            Node::Code(code) if format_code_as_indented(code, self)
-        ) && (matches!(left, Node::List(_))
-            || matches!(left, Node::Code(code) if format_code_as_indented(code, self)));
-
-        if indented_code_needs_separator {
+    fn join_defaults<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        left: NodeId,
+        right: NodeId,
+        parent: NodeId,
+    ) -> Join {
+        let left_kind = &document.node(left).unwrap().kind;
+        let right_kind = &document.node(right).unwrap().kind;
+        if self.indented_code(document, right)
+            && (matches!(left_kind, EventKind::Start(Tag::List { .. }))
+                || self.indented_code(document, left))
+        {
             return Join::HtmlComment;
         }
-
-        if matches!(parent, Node::ListItem(_) | Node::List(_)) {
-            if matches!(left, Node::Paragraph(_)) {
-                if matches!(right, Node::Paragraph(_)) {
+        if matches!(
+            document.node(parent).unwrap().kind,
+            EventKind::Start(Tag::Item { .. } | Tag::List { .. })
+        ) {
+            if matches!(left_kind, EventKind::Start(Tag::Paragraph { .. })) {
+                if matches!(
+                    right_kind,
+                    EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. }
+                ) {
                     return Join::Break;
                 }
-
-                if matches!(right, Node::Definition(_)) {
+                if matches!(right_kind, EventKind::Start(Tag::Heading(_)))
+                    && format_heading_as_setext(document, right, self)
+                {
                     return Join::Break;
                 }
-
-                if let Node::Heading(heading) = right {
-                    if format_heading_as_setext(heading, self) {
-                        return Join::Break;
-                    }
-                }
             }
-
-            let spread = matches!(parent, Node::List(list) if list.spread)
-                || matches!(parent, Node::ListItem(list_item) if list_item.spread);
-
-            if spread {
-                return Join::Lines(1);
-            }
-
-            return Join::Lines(0);
+            let spread = match document.node(parent).unwrap().kind {
+                EventKind::Start(Tag::List { tight, .. }) => !tight,
+                _ => self.item_spread(document, parent),
+            };
+            return Join::Lines(usize::from(spread));
         }
-
         Join::Break
+    }
+
+    fn indented_code<S: AsRef<str>>(&self, document: &Document<S>, id: NodeId) -> bool {
+        if let EventKind::CodeBlock {
+            value,
+            language,
+            math: false,
+            ..
+        } = &document.node(id).unwrap().kind
+        {
+            format_code_as_indented(
+                trim_terminal_ending(value.resolve(document.source()).unwrap()),
+                language.is_none(),
+                self,
+            )
+        } else {
+            false
+        }
     }
 
     /// No JS equivalent.
@@ -474,21 +592,85 @@ impl<'a> State<'a> {
             options,
             stack: Vec::new(),
             r#unsafe: Unsafe::get_default_unsafe(options),
+            serialization_root: None,
+            definitions: None,
+            reference_key: String::new(),
         }
     }
 
-    /// No JS equivalent.
-    fn peek_node(&self, node: &Node) -> Option<char> {
-        match node {
-            Node::Emphasis(_) => Some(peek_emphasis(self)),
-            Node::Html(_) => Some(peek_html()),
-            Node::ImageReference(_) => Some(peek_image_reference()),
-            Node::Image(_) => Some(peek_image()),
-            Node::InlineCode(_) => Some(peek_inline_code()),
-            Node::LinkReference(_) => Some(peek_link_reference()),
-            Node::Link(link) => Some(peek_link(link, node, self)),
-            Node::Strong(_) => Some(peek_strong(self)),
-            Node::InlineMath(_) => Some(peek_inline_math()),
+    /// A parsed reference is safe only while its first definition still resolves to
+    /// the stored semantic destination and title. Explicit synthetic references may
+    /// intentionally stand alone. Index only the serialized subtree, once on demand.
+    fn reference_matches<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        id: NodeId,
+        label: &str,
+        destination: &str,
+        title: Option<&str>,
+    ) -> bool {
+        let standalone = document.node(id).unwrap().span.is_empty();
+        let source = document.source();
+        let root = self.serialization_root.unwrap_or(document.root());
+        let definitions = self.definitions.get_or_insert_with(|| {
+            let mut definitions = BTreeMap::new();
+            for id in document.descendants(root) {
+                if let EventKind::Definition { label, .. } = &document.node(id).unwrap().kind {
+                    definitions
+                        .entry(normalize_identifier(label.resolve(source).unwrap()))
+                        .or_insert(id);
+                }
+            }
+            definitions
+        });
+        normalize_identifier_into(label, &mut self.reference_key);
+        let Some(definition) = definitions.get(&self.reference_key) else {
+            return standalone;
+        };
+        let EventKind::Definition {
+            destination: target,
+            title: target_title,
+            ..
+        } = &document.node(*definition).unwrap().kind
+        else {
+            unreachable!("definition index stores only definition nodes")
+        };
+        target.resolve(source).unwrap() == destination
+            && target_title
+                .as_ref()
+                .map(|value| value.resolve(source).unwrap())
+                == title
+    }
+
+    fn peek_node<S: AsRef<str>>(&mut self, document: &Document<S>, id: NodeId) -> Option<char> {
+        match &document.node(id).unwrap().kind {
+            EventKind::Start(Tag::Emphasis) => Some(self.options.emphasis),
+            EventKind::Start(Tag::Strong) => Some(self.options.strong),
+            EventKind::Start(Tag::Image { .. }) => Some('!'),
+            EventKind::Start(Tag::Link { destination, title }) => Some(
+                if matches!(document.syntax(id), Some(NodeSyntax::Reference { label, .. })
+                    if self.reference_matches(document, id, label.resolve(document.source()).unwrap(),
+                        destination.resolve(document.source()).unwrap(),
+                        title.as_ref().map(|value| value.resolve(document.source()).unwrap())))
+                {
+                    '['
+                } else if auto_link_text(
+                    document,
+                    id,
+                    destination.resolve(document.source()).unwrap(),
+                    title.is_some(),
+                    self,
+                )
+                .is_some()
+                {
+                    '>'
+                } else {
+                    '['
+                },
+            ),
+            EventKind::Html { .. } => Some('<'),
+            EventKind::Code { .. } => Some('`'),
+            EventKind::Math(_) => Some('$'),
             _ => None,
         }
     }
@@ -616,33 +798,85 @@ impl<'a> State<'a> {
         }
     }
 
-    /// No real JS equivalent, but see:
-    /// <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/util/container-flow.js#L66>.
-    fn tight_definition(&self, left: &Node, right: &Node) -> Join {
-        if matches!(left, Node::Definition(_)) && matches!(right, Node::Definition(_)) {
-            return Join::Lines(0);
+    fn tight_definition<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        left: NodeId,
+        right: NodeId,
+    ) -> Join {
+        if matches!(
+            document.node(left).unwrap().kind,
+            EventKind::Definition { .. }
+        ) && matches!(
+            document.node(right).unwrap().kind,
+            EventKind::Definition { .. }
+        ) {
+            Join::Lines(0)
+        } else {
+            Join::Break
         }
-
-        Join::Break
     }
 }
 
-pub(crate) fn is_phrasing(node: &Node) -> bool {
+pub(crate) fn is_phrasing(kind: &EventKind<'_>) -> bool {
     matches!(
-        node,
-        Node::Break(_)
-            | Node::Delete(_)
-            | Node::Emphasis(_)
-            | Node::FootnoteReference(_)
-            | Node::Image(_)
-            | Node::ImageReference(_)
-            | Node::InlineCode(_)
-            | Node::InlineMath(_)
-            | Node::Link(_)
-            | Node::LinkReference(_)
-            | Node::Strong(_)
-            | Node::Text(_)
+        kind,
+        EventKind::Start(
+            Tag::Delete | Tag::Emphasis | Tag::Image { .. } | Tag::Link { .. } | Tag::Strong
+        ) | EventKind::HardBreak
+            | EventKind::SoftBreak(_)
+            | EventKind::FootnoteReference(_)
+            | EventKind::Code { .. }
+            | EventKind::Math(_)
+            | EventKind::TaskMarker(_)
+            | EventKind::Text(_)
+            | EventKind::Html { block: false, .. }
     )
+}
+
+pub(super) fn flow_children<S: AsRef<str>>(
+    document: &Document<S>,
+    id: NodeId,
+) -> impl Iterator<Item = NodeId> + Clone + '_ {
+    document.children(id).filter(move |child| {
+        !matches!(
+            document.node(*child).unwrap().kind,
+            EventKind::Separator { .. }
+        )
+    })
+}
+
+fn normalize_nul(value: &str) -> Cow<'_, str> {
+    if value.contains('\0') {
+        Cow::Owned(value.replace('\0', "�"))
+    } else {
+        Cow::Borrowed(value)
+    }
+}
+
+pub(super) fn trim_terminal_ending(value: &str) -> &str {
+    value
+        .strip_suffix("\r\n")
+        .or_else(|| value.strip_suffix(['\r', '\n']))
+        .unwrap_or(value)
+}
+
+pub(super) fn unsupported_content() -> Message {
+    Message {
+        place: None,
+        reason: "This content shape cannot be represented in Markdown".into(),
+        rule_id: alloc::boxed::Box::new("unsupported-node".into()),
+        source: alloc::boxed::Box::new("markdown".into()),
+    }
+}
+
+pub(super) fn invalid_node() -> Message {
+    Message {
+        place: None,
+        reason: "Node does not belong to the document".into(),
+        rule_id: alloc::boxed::Box::new("invalid-node".into()),
+        source: alloc::boxed::Box::new("markdown".into()),
+    }
 }
 
 fn escape_table_pipes(value: &str) -> String {

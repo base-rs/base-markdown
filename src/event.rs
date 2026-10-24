@@ -4,7 +4,6 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Semantic labels of things happening.
-use crate::unist;
 use crate::util::constant::TAB_SIZE;
 use core::num::NonZeroUsize;
 
@@ -2807,15 +2806,6 @@ pub struct Point {
 }
 
 impl Point {
-    /// Create a unist point.
-    pub fn to_unist(&self) -> unist::Point {
-        unist::Point {
-            line: self.line,
-            column: self.column,
-            offset: self.index,
-        }
-    }
-
     /// Create a new point, that is shifted from the close earlier current
     /// point, to `index`.
     pub fn shift_to(&self, bytes: &[u8], index: usize) -> Point {

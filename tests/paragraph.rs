@@ -1,9 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{
-    mdast::Node, to_html_with_options, to_mdast, unist::Position, Options, ParseOptions,
-};
+use core_markdown::{to_html_with_options, Document, Options, ParseOptions};
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -14,24 +12,34 @@ fn paragraphs_preserve_container_chunks_and_source_positions() {
         "<blockquote>\n<p>a\tb\n<em>c</em></p>\n</blockquote>\n<p>text\nnext</p>"
             .replace('\n', "\r\n")
     );
-    let tree = to_mdast(source, &ParseOptions::default()).unwrap();
-    let children = tree.children().unwrap();
-    let paragraph = &children[0].children().unwrap()[0];
-    assert!(matches!(paragraph, Node::Paragraph(_)));
-    assert_eq!(
-        paragraph.position(),
-        Some(&Position::new(1, 3, 2, 2, 6, 12))
-    );
-    let inline = paragraph.children().unwrap();
-    assert_eq!(inline[0].position(), Some(&Position::new(1, 3, 2, 2, 1, 7)));
-    assert_eq!(
-        inline[1].position(),
-        Some(&Position::new(2, 3, 9, 2, 6, 12))
-    );
-    assert_eq!(
-        children[1].position(),
-        Some(&Position::new(4, 1, 16, 5, 5, 26))
-    );
+    let tree = Document::parse(source, &ParseOptions::default()).unwrap();
+    let children: Vec<_> = tree
+        .children(tree.root())
+        .filter(|id| {
+            !matches!(
+                tree.node(*id).unwrap().kind,
+                core_markdown::stream::EventKind::Separator { .. }
+            )
+        })
+        .collect();
+    let paragraph = tree.children(children[0]).next().unwrap();
+    assert!(matches!(
+        tree.node(paragraph).unwrap().kind,
+        core_markdown::stream::EventKind::Start(core_markdown::stream::Tag::Paragraph { .. })
+    ));
+    assert_eq!(tree.node(paragraph).unwrap().span, 2..14);
+    let emphasis = tree
+        .children(paragraph)
+        .find(|id| {
+            matches!(
+                tree.node(*id).unwrap().kind,
+                core_markdown::stream::EventKind::Start(core_markdown::stream::Tag::Emphasis)
+            )
+        })
+        .unwrap();
+    assert_eq!(tree.node(emphasis).unwrap().span, 9..12);
+    assert_eq!(tree.node(children[1]).unwrap().span, 16..26);
+    assert_eq!(tree.text_content(paragraph), "a\tb\r\nc");
 }
 
 #[test]

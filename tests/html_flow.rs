@@ -3,13 +3,14 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Html, Node, Root},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    CompileOptions, Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, CompileOptions, Constructs, Options,
+    ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Html, Node, Root};
 
 #[test]
 fn html_flow() -> Result<(), message::Message> {
@@ -71,7 +72,7 @@ fn html_flow() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("<div>\nstuff\n</div>", &Default::default())?,
+        parse_fixture("<div>\nstuff\n</div>", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Html(Html {
                 value: "<div>\nstuff\n</div>".into(),
@@ -92,36 +93,37 @@ fn html_flow_can_continue_across_blank_lines_when_indented() -> Result<(), messa
         ..Default::default()
     };
 
-    let indented = to_mdast("<div>\n\n  text\n", &options)?;
-    let children = indented.children().expect("root has children");
-    assert_eq!(children.len(), 1);
-    assert!(matches!(children[0], Node::Html(_)));
-    assert_eq!(children[0].to_string(), "<div>\n\n  text\n");
-
-    let terminated = to_mdast("<div>\n\ntext\n", &options)?;
-    let children = terminated.children().expect("root has children");
-    assert_eq!(children.len(), 2);
-    assert!(matches!(children[0], Node::Html(_)));
-    assert!(matches!(children[1], Node::Paragraph(_)));
-    assert_eq!(children[0].to_string(), "<div>\n\n");
-    assert_eq!(children[1].to_string(), "text");
-
-    let at_eof = to_mdast("<div>\n\n", &options)?;
-    let children = at_eof.children().expect("root has children");
-    assert_eq!(children.len(), 1);
-    assert_eq!(children[0].to_string(), "<div>\n\n");
-
-    let blank_with_spaces = to_mdast("<div>\n  \n  text\n", &options)?;
-    assert_eq!(blank_with_spaces.to_string(), "<div>\n  \n  text\n");
-
-    let tab_indented = to_mdast("<div>\n\n\ttext\n", &options)?;
-    assert_eq!(tab_indented.to_string(), "<div>\n\n\ttext\n");
-
-    let trailing_indent = to_mdast("<div>\n  ", &options)?;
-    assert_eq!(trailing_indent.to_string(), "<div>\n  ");
-
-    let shallower_continuation = to_mdast("<div>\n\tfirst\n  second\n\n  last\n", &options)?;
-    assert!(shallower_continuation.to_string().contains("<div>"));
+    for (source, expected_children, expected_first) in [
+        ("<div>\n\n  text\n", 1, "<div>\n\n  text\n"),
+        ("<div>\n\ntext\n", 2, "<div>\n\n"),
+        ("<div>\n\n", 1, "<div>\n\n"),
+        ("<div>\n  \n  text\n", 1, "<div>\n  \n  text\n"),
+        ("<div>\n\n\ttext\n", 1, "<div>\n\n\ttext\n"),
+        ("<div>\n  ", 1, "<div>\n  "),
+    ] {
+        let document = core_markdown::Document::parse(source, &options).unwrap();
+        let children: Vec<_> = document
+            .children(document.root())
+            .filter(|id| {
+                !matches!(
+                    document.node(*id).unwrap().kind,
+                    core_markdown::stream::EventKind::Separator { .. }
+                )
+            })
+            .collect();
+        assert_eq!(children.len(), expected_children);
+        assert!(matches!(
+            document.node(children[0]).unwrap().kind,
+            core_markdown::stream::EventKind::Html { .. }
+        ));
+        assert_eq!(document.text_content(children[0]), expected_first);
+        if children.len() > 1 {
+            assert_eq!(document.text_content(children[1]), "text");
+        }
+    }
+    let source = "<div>\n\tfirst\n  second\n\n  last\n";
+    let document = core_markdown::Document::parse(source, &options).unwrap();
+    assert!(document.text_content(document.root()).contains("<div>"));
 
     Ok(())
 }

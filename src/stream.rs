@@ -2,7 +2,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! The shared pull-based semantic event contract.
-use crate::{mdast::CodeFence, LineEnding};
+use crate::{CodeFence, LineEnding};
 use alloc::{borrow::Cow, string::String};
 use core::{fmt, ops::Range};
 
@@ -15,6 +15,32 @@ pub enum Text<'a> {
     Literal(&'static str),
     /// A constructed or edited value.
     Value(Cow<'a, str>),
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Text<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Source(range) => serializer.serialize_newtype_variant("Text", 0, "Source", range),
+            Self::Literal(value) => serializer.serialize_newtype_variant("Text", 1, "Value", value),
+            Self::Value(value) => serializer.serialize_newtype_variant("Text", 1, "Value", value),
+        }
+    }
+}
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Text<'_> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        enum Stored {
+            Source(Range<usize>),
+            Value(String),
+            Literal(String),
+        }
+        Ok(match Stored::deserialize(deserializer)? {
+            Stored::Source(range) => Self::Source(range),
+            Stored::Value(value) | Stored::Literal(value) => Self::Value(Cow::Owned(value)),
+        })
+    }
 }
 
 impl Text<'_> {
@@ -38,6 +64,16 @@ impl Text<'_> {
         }
     }
 
+    pub(crate) fn materialized(self, source: &str) -> Text<'static> {
+        match self {
+            Self::Source(range) => Text::from(String::from(
+                source.get(range).expect("document ranges are validated"),
+            )),
+            Self::Literal(value) => Text::Literal(value),
+            Self::Value(value) => Text::Value(Cow::Owned(value.into_owned())),
+        }
+    }
+
     pub(crate) fn owned(self) -> Text<'static> {
         match self {
             Self::Source(range) => Text::Source(range),
@@ -55,6 +91,7 @@ impl From<String> for Text<'static> {
 
 /// The identity of a semantic container, used to balance start/end events.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TagKind {
     /// The document root.
     Document,
@@ -103,6 +140,7 @@ impl TagKind {
 
 /// A container whose metadata is resolved before its start is yielded.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Tag<'a> {
     /// The preferred output line ending, inferred from parsed block structure.
     Document(Option<LineEnding>),
@@ -142,7 +180,7 @@ pub enum Tag<'a> {
     TableRow,
     /// A cell with its own resolved alignment and header status.
     TableCell {
-        alignment: crate::mdast::AlignKind,
+        alignment: crate::AlignKind,
         header: bool,
     },
     /// A footnote definition, identified by its normalized label.
@@ -204,6 +242,7 @@ impl<'s> Tag<'s> {
 
 /// A resolved leaf, or a start/end of a semantic container.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum EventKind<'a> {
     /// Open a container.
     Start(Tag<'a>),
@@ -355,6 +394,7 @@ impl<'s> EventKind<'s> {
 
 /// A semantic event and its original source extent.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Event<'a> {
     /// Resolved semantic meaning.
     pub kind: EventKind<'a>,

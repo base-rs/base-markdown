@@ -4,13 +4,13 @@
 // Copyright, 2023, by cel.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Emphasis, List, ListItem, Node, Paragraph, Root, Text},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    CompileOptions, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, CompileOptions, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Emphasis, List, ListItem, Node, Paragraph, Root, Text};
 
 #[test]
 fn gfm_task_list_item() -> Result<(), message::Message> {
@@ -261,7 +261,7 @@ Text.</li>
     );
 
     assert_eq!(
-        to_mdast("* [x] a\n* [ ] b\n* c", &ParseOptions::gfm())?,
+        parse_fixture("* [x] a\n* [ ] b\n* c", &ParseOptions::gfm())?,
         Node::Root(Root {
             children: vec![Node::List(List {
                 ordered: false,
@@ -313,7 +313,7 @@ Text.</li>
     );
 
     assert_eq!(
-        to_mdast(
+        parse_fixture(
             "* [x]\r\n  a\n* [ ]   b\n* [x]\t \r*c*",
             &ParseOptions::gfm()
         )?,

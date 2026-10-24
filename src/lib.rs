@@ -4,35 +4,12 @@
 // Copyright, 2024, by Bnchi.
 // Copyright, 2026, by Samuel Williams.
 
-//! Public API of `core-markdown`.
+//! A pull parser, source-backed document AST, and shared HTML writer.
 //!
-//! This module exposes primarily [`to_html()`][].
-//! It also exposes [`to_html_with_options()`][] and [`to_mdast()`][].
-//!
-//! * [`to_html()`][]
-//!   — safe way to transform (untrusted?) markdown into HTML
-//! * [`to_html_with_options()`][]
-//!   — like `to_html` but lets you configure how markdown is turned into
-//!   HTML, such as allowing dangerous HTML or turning on/off different
-//!   constructs (GFM, math, and the like)
-//! * [`to_mdast()`][]
-//!   — turn markdown into a syntax tree
-//! * [`Renderer`][]
-//!   — render AST nodes and fragments with a user-defined renderer
-//! * [`HtmlRenderer`][]
-//!   — render an AST node or fragment directly as HTML
-//! * [`MarkdownRenderer`][]
-//!   — render an AST node or fragment back to Markdown
-//!
-//! ## Features
-//!
-//! * **`default`**
-//!   — nothing is enabled by default
-//! * **`log`**
-//!   — enable logging (includes `dep:log`);
-//!   you can show logs with `RUST_LOG=debug`
-//! * **`serde`**
-//!   — enable serde to serialize ASTs and configuration (includes `dep:serde`)
+//! Use [`to_html`] for direct rendering, [`EventParser`] for custom pull consumers,
+//! and [`Document::parse`] when inspecting or editing a syntax tree. Documents
+//! traverse the same semantic event contract as the parser. [`to_markdown`]
+//! serializes documents; [`render_events`] accepts parser or document events.
 #![no_std]
 #![deny(clippy::pedantic)]
 #![allow(clippy::doc_link_with_quotes)]
@@ -45,8 +22,10 @@
 )]
 
 extern crate alloc;
+mod align_kind;
 mod block_parser;
 mod byte_scan;
+mod code_fence;
 mod configuration;
 mod construct;
 mod definitions;
@@ -55,19 +34,19 @@ mod event;
 mod event_html_renderer;
 mod event_parser;
 mod grammar_parser;
+mod headings;
 mod inline_parser;
 pub mod markdown;
+mod node_syntax;
 mod parser;
-pub mod renderer;
+mod reference_kind;
 mod resolve;
 mod state;
 pub mod stream;
 mod subtokenize;
-mod to_mdast;
 mod tokenizer;
 mod util;
 
-pub mod mdast; // To do: externalize?
 pub mod message; // To do: externalize.
 pub mod unist; // To do: externalize.
 
@@ -82,15 +61,21 @@ pub use util::location::Location;
 
 pub use util::line_ending::LineEnding;
 
+pub use align_kind::AlignKind;
+pub use code_fence::CodeFence;
 pub use configuration::{CompileOptions, Constructs, Options, ParseOptions};
 pub use document::{
-    AstBuilder, BuildProgress, Document, DocumentEvents, Node as DocumentNode, NodeId,
+    AstBuilder, BuildProgress, Children, Descendants, Document, DocumentEvents,
+    Node as DocumentNode, NodeId,
 };
 pub use event_html_renderer::{render_events, EventHtmlRenderer};
 pub use event_parser::EventParser;
+pub use headings::{HeadingEntry, HeadingOptions};
+pub use markdown::to_markdown_node;
 pub use markdown::{to_markdown, to_markdown_with_options};
 pub use markdown::{IndentOptions, LineWrapping, Options as MarkdownOptions};
-pub use renderer::{HtmlRenderer, MarkdownRenderer, Renderer};
+pub use node_syntax::NodeSyntax;
+pub use reference_kind::ReferenceKind;
 
 use alloc::string::String;
 
@@ -154,33 +139,4 @@ pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, me
             "parser events are balanced and source-valid; writing to String cannot fail"
         ),
     }
-}
-
-/// Turn markdown into a syntax tree.
-///
-/// ## Errors
-///
-/// `to_mdast()` never errors with normal markdown because markdown does not
-/// have syntax errors, so feel free to `unwrap()`.
-///
-/// ## Examples
-///
-/// ```
-/// use core_markdown::{to_mdast, ParseOptions};
-/// # fn main() -> Result<(), core_markdown::message::Message> {
-///
-/// let tree = to_mdast("# Hi *Earth*!", &ParseOptions::default())?;
-///
-/// println!("{:?}", tree);
-/// // => Root { children: [Heading { children: [Text { value: "Hi ", position: Some(1:3-1:6 (2-5)) }, Emphasis { children: [Text { value: "Earth", position: Some(1:7-1:12 (6-11)) }], position: Some(1:6-1:13 (5-12)) }, Text { value: "!", position: Some(1:13-1:14 (12-13)) }], position: Some(1:1-1:14 (0-13)), depth: 1 }], position: Some(1:1-1:14 (0-13)) }
-/// # Ok(())
-/// # }
-/// ```
-pub fn to_mdast(value: &str, options: &ParseOptions) -> Result<mdast::Node, message::Message> {
-    let (events, parse_state) = parser::parse(value, options);
-    Ok(to_mdast::compile(
-        &events,
-        parse_state.bytes,
-        options.inline_code_info,
-    ))
 }

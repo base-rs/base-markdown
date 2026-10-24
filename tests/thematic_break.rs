@@ -3,13 +3,13 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Node, Root, ThematicBreak},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Node, Root, ThematicBreak};
 
 #[test]
 fn thematic_break() -> Result<(), message::Message> {
@@ -194,7 +194,7 @@ fn thematic_break() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("***", &Default::default())?,
+        parse_fixture("***", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::ThematicBreak(ThematicBreak {
                 position: Some(Position::new(1, 1, 0, 1, 4, 3))

@@ -3,12 +3,11 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{
-    mdast::{Node, Root},
-    message, to_html, to_mdast,
-    unist::Position,
-};
+mod support;
+use core_markdown::{message, to_html, unist::Position};
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Node, Root};
 
 #[test]
 fn zero() -> Result<(), message::Message> {
@@ -35,7 +34,7 @@ fn zero() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("", &Default::default())?,
+        parse_fixture("", &Default::default())?,
         Node::Root(Root {
             children: vec![],
             position: Some(Position::new(1, 1, 0, 1, 1, 0))

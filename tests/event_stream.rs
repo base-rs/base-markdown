@@ -451,11 +451,6 @@ fn javascript_like_input_is_ordinary_markdown() {
                 )
                 .unwrap();
                 assert_eq!(output, expected);
-                let tree = core_markdown::to_mdast(source, &options.parse).unwrap();
-                assert_eq!(
-                    tree.render_with(&mut core_markdown::HtmlRenderer::new()),
-                    expected
-                );
             }
         }
     }

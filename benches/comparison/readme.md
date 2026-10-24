@@ -24,7 +24,7 @@ target/release/markdown-comparison profile core-markdown commonmark data/bench-c
 bundle exec ruby adapter.rb inkmark render commonmark data/commonmark.json
 ```
 
-The JSON input is an array of objects containing `markdown` and, for timings, `name`. `core-prepare` times parser construction and disposal; `core-events` additionally drains resolved events into `black_box`, without rendering. `core-arena` measures parsing into the source-backed document and rendering its event traversal. `core-ast` measures the separate legacy mdast/HTML-renderer path. These diagnostic modes are separate from the direct-HTML path in the six-engine table. `prepare.py` also generates `bench-scanners.json` (long prose and fenced code), `bench-references.json`, `bench-definitions.json`, and `bench-linked-attention.json` for focused diagnostics. The definition workload has 256, 1,024, and 4,096 unique labels in reverse authored order, 25% additional case-equivalent duplicates, and two forward references.
+The JSON input is an array of objects containing `markdown` and, for timings, `name`. `core-prepare` times parser construction and disposal; `core-events` additionally drains resolved events into `black_box`, without rendering. `core-arena` measures parsing into the source-backed document and rendering its event traversal. `core-ast` is now an alias for the sole arena AST path; historical binaries used that mode for the removed mdast/HTML-renderer path. These diagnostic modes are separate from the direct-HTML path in the six-engine table. `prepare.py` also generates `bench-scanners.json` (long prose and fenced code), `bench-references.json`, `bench-definitions.json`, and `bench-linked-attention.json` for focused diagnostics. The definition workload has 256, 1,024, and 4,096 unique labels in reverse authored order, 25% additional case-equivalent duplicates, and two forward references.
 
 Allocation counting uses a separate executable so timing runs retain the system allocator:
 
@@ -35,7 +35,7 @@ target/release/allocations gfm data/bench-gfm.json
 python3 run.py core-arena
 ```
 
-Counts exclude input loading and options construction. They report allocation calls, reallocations, and cumulative requested bytes, including reallocation requests; requested bytes are not peak or retained memory. Parser preparation, pulling after preparation, complete arena construction, traversal, cold HTML, HTML with reserved output, and legacy mdast construction are recorded separately. Timing and allocation profiles use the same extension and HTML options.
+Counts exclude input loading and options construction. They report allocation calls, reallocations, and cumulative requested bytes, including reallocation requests; requested bytes are not peak or retained memory. Parser preparation, pulling after preparation, complete arena construction, traversal, cold HTML, HTML with reserved output, and document HTML/Markdown rendering are recorded separately. Historical allocation reports also include removed mdast construction. Timing and allocation profiles use the same extension and HTML options.
 
 ## Method
 
@@ -46,6 +46,10 @@ The CommonMark profile disables extensions, allows raw HTML and all URL protocol
 The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,000,020 bytes repeat sections containing prose, emphasis, links, inline code, Unicode, entities, block quotes, nested lists, and fenced Rust code. The 100,130-byte GFM document additionally includes tables, tasks, and autolinks. `prepare.py` regenerates the workloads from the saved README and source literals.
 
 **GFM is not an equal-output throughput comparison:** Inkmark leaves `www.example.com` unlinked in this workload even with autolinking enabled. Its table alignment attributes and empty table bodies also differ. Comrak and Commonmarker do not expose the same independent GFM tag filter as the other adapters. Read GFM timings alongside the output agreement results.
+
+## Single AST follow-up
+
+Replacing mdast and its separate compiler/HTML renderer with the source-backed `Document` removes 5,289 net lines under `src/`. Direct HTML stays effectively flat against main on the original four (0.4–1.0% lower medians), while complete AST-to-HTML conversion takes 80–81% less time than the removed legacy path. The already-existing arena path remains flat, and its node size/allocation counts are unchanged. The [full report](measurements/2026-10-24-document-ast/readme.md) records all thirteen direct fixtures against Inkmark, both AST controls, output differences, allocation traffic, validation, and remaining serializer costs. This deliberately breaks the old AST APIs and serialized representation; see the [migration guide](../../context/document.md).
 
 ## Block dispatch and empty delimiter scope follow-up
 

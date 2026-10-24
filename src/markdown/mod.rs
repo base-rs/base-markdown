@@ -13,11 +13,10 @@
 
 pub use self::configure::{IndentOptions, LineWrapping, Options};
 use self::state::{Info, State};
-use crate::{mdast::Node, message::Message};
+use crate::{message::Message, Document, NodeId};
 use alloc::string::String;
 
 extern crate alloc;
-mod association;
 mod configure;
 mod construct_name;
 mod handle;
@@ -25,31 +24,42 @@ mod state;
 mod r#unsafe;
 mod util;
 
-/// Turn an mdast syntax tree into markdown.
+/// Serialize an arena document to Markdown.
 ///
 /// # Errors
-///
-/// Returns an error if the AST contains a node that cannot be serialized.
-pub fn to_markdown(tree: &Node) -> Result<String, Message> {
-    to_markdown_with_options(tree, &Options::default())
+/// Returns invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
+pub fn to_markdown<S: AsRef<str>>(document: &Document<S>) -> Result<String, Message> {
+    to_markdown_with_options(document, &Options::default())
 }
 
-/// Turn an mdast syntax tree, with options, into markdown.
+/// Serialize an arena document with formatting options.
 ///
 /// # Errors
+/// Returns invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
+pub fn to_markdown_with_options<S: AsRef<str>>(
+    document: &Document<S>,
+    options: &Options,
+) -> Result<String, Message> {
+    to_markdown_node(document, document.root(), options)
+}
+
+/// Serialize a document subtree with formatting options.
 ///
-/// Returns an error if an option contains an invalid marker or the AST contains
-/// a node that cannot be serialized.
-pub fn to_markdown_with_options(tree: &Node, options: &Options) -> Result<String, Message> {
-    let mut state = State::new(options);
-    let mut result = state.handle(tree, &Info::new("\n", "\n"), None)?;
-
-    if !result.is_empty() {
-        let last_char = result.chars().last().unwrap();
-        if last_char != '\n' && last_char != '\r' {
-            result.push('\n');
-        }
+/// # Errors
+/// Returns an invalid node index, invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
+pub fn to_markdown_node<S: AsRef<str>>(
+    document: &Document<S>,
+    node: NodeId,
+    options: &Options,
+) -> Result<String, Message> {
+    if document.node(node).is_none() {
+        return Err(state::invalid_node());
     }
-
+    let mut state = State::new(options);
+    state.serialization_root = Some(node);
+    let mut result = state.handle(document, node, &Info::new("\n", "\n"))?;
+    if !result.is_empty() && !result.ends_with(['\r', '\n']) {
+        result.push('\n');
+    }
     Ok(result)
 }

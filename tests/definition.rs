@@ -3,13 +3,14 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Definition, Node, Root},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    CompileOptions, Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, CompileOptions, Constructs, Options,
+    ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Definition, Node, Root};
 
 #[test]
 fn definitions_use_the_same_compact_container_rules_as_other_blocks() {
@@ -640,7 +641,7 @@ fn definition() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("[a]: <b> 'c'", &Default::default())?,
+        parse_fixture("[a]: <b> 'c'", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Definition(Definition {
                 url: "b".into(),

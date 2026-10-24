@@ -499,7 +499,7 @@ fn custom_block_events_inside_images_contribute_only_alt_text() {
         EventKind::Start(Tag::TableHead),
         EventKind::Start(Tag::TableRow),
         EventKind::Start(Tag::TableCell {
-            alignment: core_markdown::mdast::AlignKind::Left,
+            alignment: core_markdown::AlignKind::Left,
             header: true,
         }),
         EventKind::Text(Text::Literal("<&")),

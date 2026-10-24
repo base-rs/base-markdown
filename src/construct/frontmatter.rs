@@ -25,7 +25,7 @@
 //!
 //! Frontmatter can only occur once and requires a closing fence followed by a
 //! line ending or end of file. Untagged code fences remain ordinary code blocks.
-//! All forms produce a format-agnostic [`Frontmatter`][crate::mdast::Frontmatter].
+//! All forms produce a format-agnostic [`NodeSyntax::Frontmatter`][crate::NodeSyntax::Frontmatter].
 //! Untagged `---` and `+++` imply YAML and TOML. Tagged forms, such as `--- json`,
 //! `---yaml`, `+++ toml`, or a fenced code block with a language, supply an
 //! explicit format hint. The parser preserves the opaque info string and raw

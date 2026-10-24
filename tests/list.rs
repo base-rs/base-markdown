@@ -3,13 +3,14 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{List, ListItem, Node, Paragraph, Root, Text},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    CompileOptions, Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, CompileOptions, Constructs, Options,
+    ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{List, ListItem, Node, Paragraph, Root, Text};
 
 #[test]
 fn list() -> Result<(), message::Message> {
@@ -595,7 +596,7 @@ fn list() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("* a", &Default::default())?,
+        parse_fixture("* a", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::List(List {
                 ordered: false,
@@ -621,7 +622,7 @@ fn list() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("3. a\n4. b", &Default::default())?,
+        parse_fixture("3. a\n4. b", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::List(List {
                 ordered: true,
@@ -661,7 +662,7 @@ fn list() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("* a\n\n  b\n* c", &Default::default())?,
+        parse_fixture("* a\n\n  b\n* c", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::List(List {
                 ordered: false,

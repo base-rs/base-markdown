@@ -3,13 +3,13 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Math, Node, Root},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Math, Node, Root};
 
 #[test]
 fn math_flow() -> Result<(), message::Message> {
@@ -261,7 +261,7 @@ fn math_flow() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("$$extra\nabc\ndef\n$$", &math.parse)?,
+        parse_fixture("$$extra\nabc\ndef\n$$", &math.parse)?,
         Node::Root(Root {
             children: vec![Node::Math(Math {
                 meta: Some("extra".into()),

@@ -1,627 +1,287 @@
 // Released under the MIT License.
-// Copyright, 2024, by Harsha Teja Kanna.
-// Copyright, 2024-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{mdast::Node, message::Message, Constructs, ParseOptions};
+#![cfg(feature = "serde")]
 
-#[allow(unused)]
-#[derive(Debug)]
-enum Error {
-    Mdast(Message),
-    Serde(serde_json::Error),
+use core_markdown::{
+    stream::{Event, EventKind, Tag, Text},
+    CodeFence, Document, NodeSyntax, Options, ReferenceKind,
+};
+use serde_json::{json, Value};
+
+fn html(document: &Document<String>) -> String {
+    let mut output = String::new();
+    document
+        .render_html(&Options::gfm().compile, &mut output)
+        .unwrap();
+    output
 }
 
 #[test]
-#[cfg(feature = "serde")]
-fn serde_constructs() -> Result<(), Error> {
-    use pretty_assertions::assert_eq;
-
+fn document_serialization_preserves_source_edits_metadata_and_detached_subtrees() {
+    let source=String::from("# Title\n\nA [link][name] and **bold**.\n\n[name]: /url \"title\"\n\n```rust extra\nx\n```\n");
+    let mut document = Document::parse(source.clone(), &Options::gfm().parse).unwrap();
+    let paragraph = document
+        .children(document.root())
+        .find(|id| {
+            matches!(
+                document.node(*id).unwrap().kind,
+                EventKind::Start(Tag::Paragraph { .. })
+            )
+        })
+        .unwrap();
+    let text = document.children(paragraph).next().unwrap();
+    document.text_mut(text).unwrap().push_str("edited ");
+    let detached = document
+        .append_child(
+            document.root(),
+            EventKind::Start(Tag::Paragraph { tight: false }),
+        )
+        .unwrap();
+    document
+        .append_child(detached, EventKind::Text(Text::from("detached".to_owned())))
+        .unwrap();
+    document.detach(detached).unwrap();
+    let link = document
+        .descendants(paragraph)
+        .find(|id| {
+            matches!(
+                document.node(*id).unwrap().kind,
+                EventKind::Start(Tag::Link { .. })
+            )
+        })
+        .unwrap();
+    document
+        .set_syntax(
+            link,
+            Some(NodeSyntax::Reference {
+                kind: ReferenceKind::Full,
+                label: Text::Literal("name"),
+            }),
+        )
+        .unwrap();
+    let code = document
+        .children(document.root())
+        .find(|id| {
+            matches!(
+                document.node(*id).unwrap().kind,
+                EventKind::CodeBlock { .. }
+            )
+        })
+        .unwrap();
+    document.set_syntax(code, None).unwrap();
+    let stored = serde_json::to_string(&document).unwrap();
+    let restored: Document = serde_json::from_str(&stored).unwrap();
+    assert_eq!(restored.source(), source);
+    assert_eq!(restored.nodes().len(), document.nodes().len());
+    assert_eq!(html(&restored), html(&document));
+    assert_eq!(restored.text_content(detached), "detached");
     assert_eq!(
-        serde_json::to_string(&Constructs::default()).unwrap(),
-        r#"{"attention":true,"autolink":true,"blockQuote":true,"characterEscape":true,"characterReference":true,"codeIndented":true,"codeFenced":true,"codeText":true,"definition":true,"frontmatter":false,"gfmAutolinkLiteral":false,"gfmFootnoteDefinition":false,"gfmLabelStartFootnote":false,"gfmStrikethrough":false,"gfmTable":false,"gfmTaskListItem":false,"hardBreakEscape":true,"hardBreakTrailing":true,"headingAtx":true,"headingSetext":true,"htmlFlow":true,"htmlText":true,"labelStartImage":true,"labelStartLink":true,"labelEnd":true,"listItem":true,"mathFlow":false,"mathText":false,"thematicBreak":true}"#
+        core_markdown::to_markdown(&restored).unwrap(),
+        core_markdown::to_markdown(&document).unwrap()
     );
-
-    Ok(())
+    assert_eq!(serde_json::to_string(&restored).unwrap(), stored);
+    assert!(restored.syntax(code).is_none());
+    let mut detached_html = String::new();
+    restored
+        .render_node(detached, &Options::default().compile, &mut detached_html)
+        .unwrap();
+    assert_eq!(detached_html, "<p>detached</p>");
+    // An absent override map still permits derived source metadata.
+    let mut wire: Value = serde_json::from_str(&stored).unwrap();
+    wire.as_object_mut().unwrap().remove("syntax");
+    serde_json::from_value::<Document>(wire).unwrap();
 }
 
 #[test]
-#[cfg(feature = "serde")]
-fn serde_compile_options() -> Result<(), Error> {
-    use pretty_assertions::assert_eq;
+fn events_text_and_syntax_have_owned_deserialization() {
+    let kinds = vec![
+        EventKind::Text(Text::Literal("literal")),
+        EventKind::Text(Text::Source(0..1)),
+        EventKind::Start(Tag::TableCell {
+            alignment: core_markdown::AlignKind::Center,
+            header: true,
+        }),
+        EventKind::CodeBlock {
+            value: Text::from("x".to_owned()),
+            language: None,
+            fence: Some(CodeFence {
+                character: '`',
+                length: 3,
+                indent: 2,
+            }),
+            math: false,
+            unclosed: false,
+        },
+    ];
+    for kind in kinds {
+        let event = Event { kind, span: 0..1 };
+        let encoded = serde_json::to_string(&event).unwrap();
+        let decoded: Event<'static> = serde_json::from_str(&encoded).unwrap();
+        // A static literal becomes an owned semantic value after deserialization.
+        if let EventKind::Text(value) = decoded.kind {
+            assert_eq!(
+                value.resolve("x").unwrap(),
+                if encoded.contains("literal") {
+                    "literal"
+                } else {
+                    "x"
+                }
+            );
+        } else {
+            assert_eq!(serde_json::to_string(&decoded).unwrap(), encoded);
+        }
+    }
+}
 
+#[test]
+fn invalid_serialized_arena_links_ranges_and_metadata_are_rejected() {
+    let document = Document::parse("# h\n\ntext".to_owned(), &Options::default().parse).unwrap();
+    let base = serde_json::to_value(document).unwrap();
+    let paragraph = base["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| node["kind"]["Start"].get("Paragraph").is_some())
+        .unwrap();
+    let heading = base["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| node["kind"]["Start"].get("Heading").is_some())
+        .unwrap();
+    let text = heading + 1;
+    let mut cases = Vec::new();
+    let mut alter = |index: usize, field: &str, value: Value| {
+        let mut wire = base.clone();
+        wire["nodes"][index][field] = value;
+        cases.push(wire);
+    };
+    alter(0, "parent", json!(2));
+    alter(0, "next_sibling", json!(2));
+    alter(0, "kind", json!("Rule"));
+    alter(0, "first_child", json!(999));
+    alter(heading, "next_sibling", json!(heading + 1));
+    alter(heading, "parent", Value::Null);
+    alter(heading, "first_child", json!(heading + 1));
+    alter(text, "first_child", json!(paragraph + 1));
+    alter(text, "kind", json!({"End":"Paragraph"}));
+    alter(paragraph, "kind", json!({"Start":{"Document":null}}));
+    alter(paragraph, "kind", json!({"Start":{"Heading":0}}));
+    alter(paragraph, "span", json!({"start":20,"end":21}));
+    alter(paragraph, "span", json!({"start":5,"end":2}));
+    alter(
+        text,
+        "kind",
+        json!({"Text":{"Source":{"start":0,"end":999}}}),
+    );
+    alter(text, "kind", json!({"Start":{"Heading":2}}));
+    alter(
+        text,
+        "kind",
+        json!({"Start":{"FootnoteDefinition":{"Literal":"x"}}}),
+    );
+    let mut unseen = base.clone();
+    unseen["nodes"][0]["first_child"] = Value::Null;
+    cases.push(unseen);
+    let mut empty = base.clone();
+    empty["nodes"] = json!([]);
+    cases.push(empty);
+    let mut duplicate = base.clone();
+    duplicate["nodes"][text]["next_sibling"] = json!(text + 1);
+    cases.push(duplicate);
+    let mut missing_syntax = base.clone();
+    missing_syntax["syntax"] = json!({"999":null});
+    cases.push(missing_syntax);
+    let mut wrong_syntax = base.clone();
+    wrong_syntax["syntax"] = json!({"1":{"Code":{"info":{"Value":"x"}}}});
+    cases.push(wrong_syntax);
+    let mut bad_zero = base.clone();
+    bad_zero["nodes"][0]["first_child"] = json!(0);
+    cases.push(bad_zero);
+    for (index, wire) in cases.into_iter().enumerate() {
+        assert!(
+            serde_json::from_value::<Document>(wire.clone()).is_err(),
+            "case {}: {}",
+            index,
+            wire
+        );
+    }
+}
+
+#[test]
+fn alignment_and_configuration_serialization_remain_compatible() {
+    use core_markdown::AlignKind;
+    for (value, wire) in [
+        (AlignKind::None, json!(null)),
+        (AlignKind::Left, json!("left")),
+        (AlignKind::Right, json!("right")),
+        (AlignKind::Center, json!("center")),
+    ] {
+        assert_eq!(serde_json::to_value(value).unwrap(), wire);
+        assert_eq!(serde_json::from_value::<AlignKind>(wire).unwrap(), value);
+    }
+    assert!(serde_json::from_str::<AlignKind>("\"invalid\"").is_err());
+    let options = Options::gfm();
+    let wire = serde_json::to_string(&options).unwrap();
+    let restored: Options = serde_json::from_str(&wire).unwrap();
+    assert_eq!(serde_json::to_string(&restored).unwrap(), wire);
+}
+
+#[test]
+fn alignment_deserialization_accepts_byte_labels_and_optional_none() {
+    use core_markdown::AlignKind;
+    use serde::{
+        de::value::{BytesDeserializer, Error, UnitDeserializer},
+        Deserialize,
+    };
+
+    for (bytes, expected) in [
+        (b"left".as_slice(), AlignKind::Left),
+        (b"right".as_slice(), AlignKind::Right),
+        (b"center".as_slice(), AlignKind::Center),
+    ] {
+        assert_eq!(
+            AlignKind::deserialize(BytesDeserializer::<Error>::new(bytes)).unwrap(),
+            expected
+        );
+    }
+    let error = AlignKind::deserialize(BytesDeserializer::<Error>::new(b"invalid")).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("'left', 'right', 'center' or null"));
     assert_eq!(
-        serde_json::to_string(&core_markdown::CompileOptions::gfm()).unwrap(),
-        r#"{"allowAnyImgSrc":false,"allowDangerousHtml":false,"allowDangerousProtocol":false,"defaultLineEnding":"\n","gfmFootnoteBackLabel":null,"gfmFootnoteClobberPrefix":null,"gfmFootnoteLabelAttributes":null,"gfmFootnoteLabelTagName":null,"gfmFootnoteLabel":null,"gfmTaskListItemCheckable":false,"gfmTagfilter":true,"headingIds":false}"#
+        AlignKind::deserialize(UnitDeserializer::<Error>::new()).unwrap(),
+        AlignKind::None
     );
-
-    Ok(())
-}
-
-#[test]
-#[cfg(feature = "serde")]
-fn serde_parse_options() -> Result<(), Error> {
-    use pretty_assertions::assert_eq;
-
+    // An optional representation signals visit_none rather than JSON's visit_unit.
+    struct NoneDeserializer;
+    impl<'de> serde::Deserializer<'de> for NoneDeserializer {
+        type Error = Error;
+        fn deserialize_any<V: serde::de::Visitor<'de>>(
+            self,
+            visitor: V,
+        ) -> Result<V::Value, Self::Error> {
+            visitor.visit_none()
+        }
+        serde::forward_to_deserialize_any! {
+            bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes byte_buf
+            option unit unit_struct newtype_struct seq tuple tuple_struct map struct enum identifier ignored_any
+        }
+    }
     assert_eq!(
-        serde_json::to_string(&ParseOptions::gfm()).unwrap(),
-        r#"{"constructs":{"attention":true,"autolink":true,"blockQuote":true,"characterEscape":true,"characterReference":true,"codeIndented":true,"codeFenced":true,"codeText":true,"definition":true,"frontmatter":false,"gfmAutolinkLiteral":true,"gfmFootnoteDefinition":true,"gfmLabelStartFootnote":true,"gfmStrikethrough":true,"gfmTable":true,"gfmTaskListItem":true,"hardBreakEscape":true,"hardBreakTrailing":true,"headingAtx":true,"headingSetext":true,"htmlFlow":true,"htmlText":true,"labelStartImage":true,"labelStartLink":true,"labelEnd":true,"listItem":true,"mathFlow":false,"mathText":false,"thematicBreak":true},"inlineCodeInfo":false,"htmlBlockBlankLines":false,"htmlTagNamespaces":false,"gfmStrikethroughSingleTilde":true,"mathTextSingleDollar":true}"#
+        AlignKind::deserialize(NoneDeserializer).unwrap(),
+        AlignKind::None
     );
-
-    Ok(())
 }
 
 #[test]
-fn serde_blockquote() -> Result<(), Error> {
-    assert_serde(
-        "> a",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "blockquote",
-      "children": [
-        {
-          "type": "paragraph",
-          "children": [{"type": "text", "value": "a"}]
-        }
-      ]
+fn text_deserialization_rejects_unknown_variants_and_invalid_ranges() {
+    for wire in [
+        json!({"Unknown":"x"}),
+        json!({"Source":{"start":"invalid","end":2}}),
+        json!({"Value":null}),
+    ] {
+        assert!(serde_json::from_value::<Text<'static>>(wire).is_err());
     }
-  ]
-}
-"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_footnote_definition() -> Result<(), Error> {
-    assert_serde(
-        "[^a]: b",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "footnoteDefinition",
-      "identifier": "a",
-      "label": "a",
-      "children": [
-        {
-          "type": "paragraph",
-          "children": [{"type": "text", "value": "b"}]
-        }
-      ]
-    }
-  ]
-}"#,
-        ParseOptions::gfm(),
-    )
-}
-
-#[test]
-fn serde_list() -> Result<(), Error> {
-    assert_serde(
-        "* a",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "list",
-      "ordered": false,
-      "spread": false,
-      "children": [
-        {
-          "type": "listItem",
-          "spread": false,
-          "children": [
-            {
-              "type": "paragraph",
-              "children": [{"type": "text", "value": "a"}]
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_toml() -> Result<(), Error> {
-    assert_serde(
-        "+++\na: b\n+++",
-        r#"{
-  "type": "root",
-  "children": [{"type": "frontmatter", "value": "a: b\n", "info": "", "fence": "+", "fenceLength": 3, "closingFenceLength": 3}]
-}"#,
-        ParseOptions {
-            constructs: Constructs {
-                frontmatter: true,
-                ..Constructs::default()
-            },
-            ..ParseOptions::default()
-        },
-    )
-}
-
-#[test]
-fn serde_yaml() -> Result<(), Error> {
-    assert_serde(
-        "---\na: b\n---",
-        r#"{
-  "type": "root",
-  "children": [{"type": "frontmatter", "value": "a: b\n", "info": "", "fence": "-", "fenceLength": 3, "closingFenceLength": 3}]
-}"#,
-        ParseOptions {
-            constructs: Constructs {
-                frontmatter: true,
-                ..Constructs::default()
-            },
-            ..ParseOptions::default()
-        },
-    )
-}
-
-#[test]
-fn serde_break() -> Result<(), Error> {
-    assert_serde(
-        "a\\\nb",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [
-        {"type": "text", "value": "a"},
-        {"type": "break"},
-        {"type": "text", "value": "b"}
-      ]
-    }
-  ]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_inline_code() -> Result<(), Error> {
-    assert_serde(
-        "`a`",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [{"type": "inlineCode", "value": "a"}]
-    }
-  ]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_inline_math() -> Result<(), Error> {
-    assert_serde(
-        "$a$",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [{"type": "inlineMath","value": "a"}]
-    }
-  ]
-}"#,
-        ParseOptions {
-            constructs: Constructs {
-                math_text: true,
-                ..Constructs::default()
-            },
-            ..ParseOptions::default()
-        },
-    )
-}
-
-#[test]
-fn serde_delete() -> Result<(), Error> {
-    assert_serde(
-        "~~a~~",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [
-        {
-          "type": "delete",
-          "children": [{"type": "text","value": "a"}]
-        }
-      ]
-    }
-  ]
-}"#,
-        ParseOptions::gfm(),
-    )
-}
-
-#[test]
-fn serde_emphasis() -> Result<(), Error> {
-    assert_serde(
-        "*a*",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [
-        {
-          "type": "emphasis",
-          "children": [{"type": "text","value": "a"}]
-        }
-      ]
-    }
-  ]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_footnote_reference() -> Result<(), Error> {
-    assert_serde(
-        "[^a]\n\n[^a]: b",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [
-        {"type": "footnoteReference", "identifier": "a", "label": "a"}
-      ]
-    },
-    {
-      "type": "footnoteDefinition",
-      "identifier": "a",
-      "label": "a",
-      "children": [
-        {
-          "type": "paragraph",
-          "children": [{"type": "text", "value": "b"}]
-        }
-      ]
-    }
-  ]
-}"#,
-        ParseOptions::gfm(),
-    )
-}
-
-#[test]
-fn serde_html() -> Result<(), Error> {
-    assert_serde(
-        "<a>",
-        r#"{
-  "type": "root",
-  "children": [{"type": "html", "value": "<a>"}]
-}"#,
-        ParseOptions::gfm(),
-    )
-}
-
-#[test]
-fn serde_image() -> Result<(), Error> {
-    assert_serde(
-        "![a](b)",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [{"type": "image", "url": "b", "alt": "a"}]
-    }
-  ]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_image_reference() -> Result<(), Error> {
-    assert_serde(
-        "![a]\n\n[a]: b",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [
-        {
-          "type": "imageReference",
-          "alt": "a",
-          "label": "a",
-          "identifier": "a",
-          "referenceType": "shortcut"
-        }
-      ]
-    },
-    {"type": "definition", "url": "b", "identifier": "a", "label": "a"}
-  ]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_link() -> Result<(), Error> {
-    assert_serde(
-        "[a](b)",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [
-        {
-          "type": "link",
-          "url": "b",
-          "children": [{"type": "text", "value": "a"}]
-        }
-      ]
-    }
-  ]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_link_reference() -> Result<(), Error> {
-    assert_serde(
-        "[a]\n\n[a]: b",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [
-        {
-          "type": "linkReference",
-          "identifier": "a",
-          "label": "a",
-          "referenceType": "shortcut",
-          "children": [{"type": "text", "value": "a"}]
-        }
-      ]
-    },
-    {
-      "type": "definition",
-      "url": "b",
-      "identifier": "a",
-      "label": "a"
-    }
-  ]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_strong() -> Result<(), Error> {
-    assert_serde(
-        "**a**",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [
-        {
-          "type": "strong",
-          "children": [{"type": "text", "value": "a"}]
-        }
-      ]
-    }
-  ]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_text() -> Result<(), Error> {
-    assert_serde(
-        "a",
-        r#"{
-  "type": "root",
-  "children": [
-    {"type": "paragraph", "children": [{"type": "text", "value": "a"}]}
-  ]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_code() -> Result<(), Error> {
-    assert_serde(
-        "~~~js eval\nconsole.log(1)\n~~~",
-        r#"{
-  "type": "root",
-  "children": [
-    {"type": "code", "lang": "js", "meta": "eval", "value": "console.log(1)", "fence": {"character": "~", "length": 3, "indent": 0}}
-  ]
-}"#,
-        ParseOptions::default(),
-    )?;
-
-    assert_serde(
-        "```\nconsole.log(1)\n```",
-        r#"{
-  "type": "root",
-  "children": [{"type": "code", "value": "console.log(1)", "fence": {"character": "`", "length": 3, "indent": 0}}]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_math() -> Result<(), Error> {
-    assert_serde(
-        "$$\n1 + 1 = 2\n$$",
-        r#"{
-  "type": "root",
-  "children": [{"type": "math", "value": "1 + 1 = 2"}]
-}"#,
-        ParseOptions {
-            constructs: Constructs {
-                math_flow: true,
-                ..Constructs::default()
-            },
-            ..ParseOptions::default()
-        },
-    )
-}
-
-#[test]
-fn serde_heading() -> Result<(), Error> {
-    assert_serde(
-        "# a",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "heading",
-      "depth": 1,
-      "children": [{"type": "text", "value": "a"}]
-    }
-  ]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_table() -> Result<(), Error> {
-    // To do: `"none"` should serialize in serde as `null`.
-    assert_serde(
-        "| a | b | c | d |\n| - | :- | -: | :-: |\n| 1 | 2 | 3 | 4 |",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "table",
-      "align": [null, "left", "right", "center"],
-      "children": [
-        {
-          "type": "tableRow",
-          "children": [
-            {"type": "tableCell", "children": [{"type": "text", "value": "a"}]},
-            {"type": "tableCell", "children": [{"type": "text", "value": "b"}]},
-            {"type": "tableCell", "children": [{"type": "text", "value": "c"}]},
-            {"type": "tableCell", "children": [{"type": "text", "value": "d"}]}
-          ]
-        },
-        {
-          "type": "tableRow",
-          "children": [
-            {"type": "tableCell","children": [{"type": "text", "value": "1"}]},
-            {"type": "tableCell","children": [{"type": "text", "value": "2"}]},
-            {"type": "tableCell","children": [{"type": "text", "value": "3"}]},
-            {"type": "tableCell","children": [{"type": "text", "value": "4"}]}
-          ]
-        }
-      ]
-    }
-  ]
-}"#,
-        ParseOptions::gfm(),
-    )
-}
-
-#[test]
-fn serde_thematic_break() -> Result<(), Error> {
-    assert_serde(
-        "***",
-        r#"{"type": "root", "children": [{"type": "thematicBreak"}]}"#,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_definition() -> Result<(), Error> {
-    assert_serde(
-        "[a]: b",
-        r###"{
-  "type": "root",
-  "children": [
-    {"type": "definition", "url": "b", "identifier": "a", "label": "a"}
-  ]
-}"###,
-        ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_paragraph() -> Result<(), Error> {
-    assert_serde(
-        "a",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [{"type": "text", "value": "a"}]
-    }
-  ]
-}"#,
-        ParseOptions::default(),
-    )
-}
-
-/// Assert serde of mdast constructs.
-///
-/// Refer below links for the mdast JSON construct types.
-/// * <https://github.com/syntax-tree/mdast#nodes>
-/// * <https://github.com/syntax-tree/mdast-util-frontmatter#syntax-tree>
-#[cfg(feature = "serde")]
-fn assert_serde(input: &str, expected: &str, options: ParseOptions) -> Result<(), Error> {
-    use pretty_assertions::assert_eq;
-
-    let mut source = core_markdown::to_mdast(input, &options).map_err(Error::Mdast)?;
-
-    remove_position(&mut source);
-    // Serialize to JSON
-    let actual_value: serde_json::Value = serde_json::to_value(&source).map_err(Error::Serde)?;
-    let expected_value: serde_json::Value = serde_json::from_str(expected).map_err(Error::Serde)?;
-
-    // Assert serialization.
-    assert_eq!(actual_value, expected_value);
-
-    // Assert deserialization.
-    assert_eq!(
-        source,
-        serde_json::from_value(actual_value).map_err(Error::Serde)?
-    );
-
-    Ok(())
-}
-
-#[cfg(not(feature = "serde"))]
-#[allow(unused_variables)]
-fn assert_serde(input: &str, expected: &str, options: ParseOptions) -> Result<(), Error> {
-    Ok(())
-}
-
-#[allow(dead_code)]
-fn remove_position(node: &mut Node) {
-    if let Some(children) = node.children_mut() {
-        for child in children {
-            remove_position(child);
-        }
-    }
-
-    node.position_set(None);
 }

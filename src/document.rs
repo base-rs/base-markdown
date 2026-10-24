@@ -3,11 +3,16 @@
 
 //! A source-backed arena document and its incremental pull consumer.
 use crate::stream::{Event, EventKind, StreamError, Text};
-use alloc::{borrow::Cow, string::String, vec::Vec};
+use crate::{
+    stream::{Tag, TagKind},
+    NodeSyntax,
+};
+use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
 use core::{num::NonZeroUsize, ops::Range};
 
 /// A stable index into a document's contiguous node arena.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeId(NonZeroUsize);
 
 impl NodeId {
@@ -20,7 +25,8 @@ impl NodeId {
 }
 
 /// A semantic AST node. Child and sibling lists use arena indices, not heap objects.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Node {
     /// Node meaning. Container nodes store their start tag.
     pub kind: EventKind<'static>,
@@ -192,6 +198,7 @@ impl AstBuilder {
         let document = Document {
             source,
             nodes: self.nodes,
+            syntax: BTreeMap::new(),
         };
         // Public producers can supply arbitrary offsets. Validate their contract once before exposing the document.
         for event in document.events() {
@@ -213,10 +220,12 @@ impl AstBuilder {
 }
 
 /// An owned source buffer and a direct semantic AST.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Document<S = String> {
     source: S,
     nodes: Vec<Node>,
+    syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
 }
 
 impl<S: AsRef<str>> Document<S> {
@@ -263,42 +272,23 @@ impl<S: AsRef<str>> Document<S> {
             .nodes
             .get(id.index())
             .ok_or(StreamError::InvalidRange)?;
-        let document = matches!(&kind, EventKind::Start(crate::stream::Tag::Document(_)));
+        let document = matches!(&kind, EventKind::Start(Tag::Document(_)));
         if matches!(&kind, EventKind::End(_))
-            || document != node.parent.is_none()
+            || document != (id == self.root())
             || (node.first_child.is_some() && !matches!(&kind, EventKind::Start(_)))
         {
             return Err(StreamError::Unbalanced);
         }
         if let EventKind::Start(tag) = &kind {
-            let mut ancestor = node.parent;
-            while let Some(parent_id) = ancestor {
-                let parent = &self.nodes[parent_id.index()];
-                if matches!(&parent.kind, EventKind::Start(parent_tag) if !parent_tag.kind().allows_descendant(tag.kind()))
-                {
-                    return Err(StreamError::Unbalanced);
-                }
-                ancestor = parent.parent;
-            }
-            // Arena nodes are preorder-contiguous. Find the next node outside this subtree.
-            let mut after = Some(id);
-            let mut end = self.nodes.len();
-            while let Some(current) = after {
-                let current = &self.nodes[current.index()];
-                if let Some(sibling) = current.next_sibling {
-                    end = sibling.index();
-                    break;
-                }
-                after = current.parent;
-            }
-            for child in &self.nodes[id.index() + 1..end] {
-                if matches!(&child.kind, EventKind::Start(child_tag) if !tag.kind().allows_descendant(child_tag.kind()))
-                {
-                    return Err(StreamError::Unbalanced);
-                }
+            self.check_capture(node.parent, tag.kind())?;
+            if self.descendants(id).skip(1).any(|child| matches!(&self.nodes[child.index()].kind, EventKind::Start(child_tag) if !tag.kind().allows_descendant(child_tag.kind()))) {
+                return Err(StreamError::Unbalanced);
             }
         }
         self.nodes[id.index()].kind = kind;
+        self.syntax.insert(id, None);
+        self.refresh_context(id);
+        self.refresh_item(self.nodes[id.index()].parent);
         Ok(())
     }
 
@@ -307,6 +297,13 @@ impl<S: AsRef<str>> Document<S> {
     /// # Errors
     /// Returns [`StreamError::InvalidRange`] for an invalid node ID or a non-text node.
     pub fn text_mut(&mut self, id: NodeId) -> Result<&mut String, StreamError> {
+        // Frontmatter's semantic body detaches independently of its retained fence metadata.
+        let body = if matches!(self.node(id), Some(Node {kind:EventKind::Opaque {value:Text::Source(range),..},span,..}) if range==span)
+        {
+            self.frontmatter_value(id).map(String::from)
+        } else {
+            None
+        };
         let node = self
             .nodes
             .get_mut(id.index())
@@ -321,6 +318,9 @@ impl<S: AsRef<str>> Document<S> {
         else {
             return Err(StreamError::InvalidRange);
         };
+        if let Some(body) = body {
+            *text = Text::from(body);
+        }
         if let Text::Source(range) = text {
             *text = Text::Value(Cow::Owned(
                 self.source
@@ -348,6 +348,7 @@ impl<S: AsRef<str>> Document<S> {
         DocumentEvents {
             document: self,
             current: Some(self.root()),
+            root: self.root(),
             closing: false,
         }
     }
@@ -357,6 +358,7 @@ impl<S: AsRef<str>> Document<S> {
 pub struct DocumentEvents<'a, S> {
     document: &'a Document<S>,
     current: Option<NodeId>,
+    root: NodeId,
     closing: bool,
 }
 
@@ -451,6 +453,8 @@ impl<'a, S: AsRef<str>> Iterator for DocumentEvents<'a, S> {
             } else {
                 self.closing = true;
             }
+        } else if id == self.root {
+            self.current = None;
         } else if let Some(sibling) = node.next_sibling {
             self.current = Some(sibling);
             self.closing = false;
@@ -459,5 +463,667 @@ impl<'a, S: AsRef<str>> Iterator for DocumentEvents<'a, S> {
             self.closing = true;
         }
         Some(Ok(event))
+    }
+}
+
+/// A stack-free iterator over a node's direct children.
+#[derive(Clone)]
+pub struct Children<'a> {
+    nodes: &'a [Node],
+    current: Option<NodeId>,
+}
+impl Iterator for Children<'_> {
+    type Item = NodeId;
+    fn next(&mut self) -> Option<NodeId> {
+        let id = self.current?;
+        self.current = self.nodes[id.index()].next_sibling;
+        Some(id)
+    }
+}
+
+/// A stack-free preorder traversal, including its starting node.
+#[derive(Clone)]
+pub struct Descendants<'a> {
+    nodes: &'a [Node],
+    root: NodeId,
+    current: Option<NodeId>,
+}
+impl Iterator for Descendants<'_> {
+    type Item = NodeId;
+    fn next(&mut self) -> Option<NodeId> {
+        let id = self.current?;
+        let node = &self.nodes[id.index()];
+        if let Some(child) = node.first_child {
+            self.current = Some(child);
+        } else {
+            let mut at = id;
+            loop {
+                if at == self.root {
+                    self.current = None;
+                    break;
+                }
+                let node = &self.nodes[at.index()];
+                if let Some(next) = node.next_sibling {
+                    self.current = Some(next);
+                    break;
+                }
+                at = node
+                    .parent
+                    .expect("a descendant has a parent before its subtree root");
+            }
+        }
+        Some(id)
+    }
+}
+
+impl<S: AsRef<str>> Document<S> {
+    /// Direct child IDs in sibling order. Invalid IDs yield an empty iterator.
+    pub fn children(&self, id: NodeId) -> Children<'_> {
+        Children {
+            nodes: &self.nodes,
+            current: self.node(id).and_then(Node::first_child),
+        }
+    }
+    /// Preorder node IDs in a subtree, including `id`. Invalid IDs yield an empty iterator.
+    pub fn descendants(&self, id: NodeId) -> Descendants<'_> {
+        Descendants {
+            nodes: &self.nodes,
+            root: id,
+            current: self.node(id).map(|_| id),
+        }
+    }
+    /// A subtree's events, without surrounding document events unless `id` is the root.
+    pub fn subtree_events(&self, id: NodeId) -> DocumentEvents<'_, S> {
+        DocumentEvents {
+            document: self,
+            current: self.node(id).map(|_| id),
+            root: id,
+            closing: false,
+        }
+    }
+    /// Plain semantic text, including image alternative text, code and raw HTML.
+    pub fn text_content(&self, id: NodeId) -> String {
+        self.collect_text::<false>(id)
+    }
+    fn collect_text<const HEADING: bool>(&self, id: NodeId) -> String {
+        let mut text = String::new();
+        for child in self.descendants(id) {
+            match &self.nodes[child.index()].kind {
+                EventKind::Text(value)
+                | EventKind::SoftBreak(value)
+                | EventKind::Math(value)
+                | EventKind::Code { value, .. }
+                | EventKind::Html { value, .. } => text.push_str(
+                    value
+                        .resolve(self.source())
+                        .expect("document text is validated"),
+                ),
+                EventKind::CodeBlock { value, .. } if !HEADING => text.push_str(
+                    value
+                        .resolve(self.source())
+                        .expect("document text is validated"),
+                ),
+                EventKind::HardBreak => text.push('\n'),
+                _ => {}
+            }
+        }
+        text
+    }
+    /// Extract headings and anchors using the HTML writer's rules. Filtered headings still reserve their anchors.
+    pub fn headings(&self, options: &crate::HeadingOptions) -> Vec<crate::HeadingEntry> {
+        let mut anchors = crate::headings::AnchorGenerator::default();
+        let mut entries = Vec::new();
+        for id in self.descendants(self.root()) {
+            if let EventKind::Start(Tag::Heading(level)) = self.nodes[id.index()].kind {
+                let mut text = self.collect_text::<true>(id);
+                if text.ends_with("\r\n") {
+                    text.truncate(text.len() - 2);
+                } else if text.ends_with(['\r', '\n']) {
+                    text.pop();
+                }
+                let anchor = anchors.anchor_for(&text);
+                if (options.min_level..=options.max_level).contains(&level) {
+                    entries.push(crate::HeadingEntry {
+                        node: id,
+                        level,
+                        text,
+                        anchor,
+                    });
+                }
+            }
+        }
+        entries
+    }
+    /// Optional authored syntax, inferred lazily from the original source unless explicitly overridden.
+    pub fn syntax(&self, id: NodeId) -> Option<NodeSyntax<'_>> {
+        let node = self.node(id)?;
+        if let Some(value) = self.syntax.get(&id) {
+            return value.as_ref().map(NodeSyntax::borrowed);
+        }
+        if matches!(node.kind, EventKind::Start(Tag::Item { .. })) {
+            let mut previous: Option<NodeId> = None;
+            let mut spread = false;
+            for child in self
+                .children(id)
+                .filter(|id| !matches!(self.nodes[id.index()].kind, EventKind::Separator { .. }))
+            {
+                if let Some(previous) = previous {
+                    let end = self.nodes[previous.index()].span.end;
+                    let start = self.nodes[child.index()].span.start;
+                    if let Some(gap) = self.source().get(end..start) {
+                        let lines = gap.bytes().filter(|&byte| byte == b'\n').count()
+                            + gap
+                                .as_bytes()
+                                .windows(2)
+                                .filter(|pair| pair[0] == b'\r' && pair[1] != b'\n')
+                                .count()
+                            + usize::from(gap.ends_with('\r'));
+                        let ended = self
+                            .source()
+                            .as_bytes()
+                            .get(end.wrapping_sub(1))
+                            .is_some_and(|byte| matches!(byte, b'\r' | b'\n'));
+                        spread |= lines >= if ended { 1 } else { 2 };
+                    }
+                }
+                previous = Some(child);
+            }
+            return Some(NodeSyntax::ListItem { spread });
+        }
+        crate::node_syntax::infer(self.source(), node.span.clone(), &node.kind)
+    }
+    /// Override authored syntax. `None` disconnects the node from inferred source syntax.
+    ///
+    /// # Errors
+    /// Rejects invalid node IDs, source ranges and metadata for an incompatible node kind.
+    pub fn set_syntax(
+        &mut self,
+        id: NodeId,
+        syntax: Option<NodeSyntax<'static>>,
+    ) -> Result<(), StreamError> {
+        let node = self.node(id).ok_or(StreamError::InvalidRange)?;
+        if syntax
+            .as_ref()
+            .is_some_and(|value| !value.valid_for(&node.kind, self.source()))
+        {
+            return Err(StreamError::InvalidRange);
+        }
+        self.syntax.insert(id, syntax);
+        Ok(())
+    }
+    /// Frontmatter's body without its opening and closing fences. Edited bodies are returned directly.
+    pub fn frontmatter_value(&self, id: NodeId) -> Option<&str> {
+        let node = self.node(id)?;
+        let EventKind::Opaque { value: text, .. } = &node.kind else {
+            return None;
+        };
+        if !matches!(self.syntax(id), Some(NodeSyntax::Frontmatter { .. })) {
+            return None;
+        }
+        let value = text
+            .resolve(self.source())
+            .expect("document text is validated");
+        if let Text::Source(range) = text {
+            if *range == node.span {
+                if let Some((_, _, _, body)) = crate::node_syntax::frontmatter(value) {
+                    return value.get(body);
+                }
+            }
+        }
+        Some(value)
+    }
+    /// Render the whole document through the shared event HTML writer.
+    ///
+    /// # Errors
+    /// Propagates output writer errors.
+    pub fn render_html(
+        &self,
+        options: &crate::CompileOptions,
+        output: &mut impl core::fmt::Write,
+    ) -> Result<(), StreamError> {
+        crate::render_events(self.source(), self.events(), options, output)
+    }
+    /// Render one subtree through the shared event HTML writer.
+    ///
+    /// # Errors
+    /// Rejects invalid node IDs and propagates output writer errors.
+    pub fn render_node(
+        &self,
+        id: NodeId,
+        options: &crate::CompileOptions,
+        output: &mut impl core::fmt::Write,
+    ) -> Result<(), StreamError> {
+        if self.node(id).is_none() {
+            return Err(StreamError::InvalidRange);
+        }
+        if id == self.root() {
+            return self.render_html(options, output);
+        }
+        let start = Event {
+            kind: EventKind::Start(Tag::Document(None)),
+            span: 0..0,
+        };
+        let end = Event {
+            kind: EventKind::End(TagKind::Document),
+            span: self.source().len()..self.source().len(),
+        };
+        crate::render_events(
+            self.source(),
+            core::iter::once(Ok(start))
+                .chain(self.subtree_events(id))
+                .chain(core::iter::once(Ok(end))),
+            options,
+            output,
+        )
+    }
+    fn tight_paragraph(&self, id: NodeId) -> bool {
+        if !matches!(
+            self.nodes[id.index()].kind,
+            EventKind::Start(Tag::Paragraph { .. })
+        ) {
+            return false;
+        }
+        let Some(parent) = self.nodes[id.index()].parent else {
+            return false;
+        };
+        if !matches!(
+            self.nodes[parent.index()].kind,
+            EventKind::Start(Tag::Item { .. })
+        ) {
+            return false;
+        }
+        self.nodes[parent.index()].parent.is_some_and(|list| {
+            matches!(
+                self.nodes[list.index()].kind,
+                EventKind::Start(Tag::List { tight: true, .. })
+            )
+        })
+    }
+    fn refresh_item(&mut self, id: Option<NodeId>) {
+        let Some(id) = id else {
+            return;
+        };
+        if !matches!(
+            self.nodes[id.index()].kind,
+            EventKind::Start(Tag::Item { .. })
+        ) {
+            return;
+        }
+        let last = self
+            .children(id)
+            .filter(|child| {
+                !matches!(
+                    self.nodes[child.index()].kind,
+                    EventKind::Separator { .. }
+                        | EventKind::Definition { .. }
+                        | EventKind::Opaque { .. }
+                        | EventKind::Start(Tag::FootnoteDefinition(_))
+                )
+            })
+            .last();
+        let block_end = last.is_some_and(|last| !self.tight_paragraph(last));
+        self.nodes[id.index()].kind = EventKind::Start(Tag::Item { block_end });
+    }
+    // Edits can change the context of existing paragraphs and item endings. Refresh those rendering hints without adding caches or links to every arena node.
+    fn refresh_context(&mut self, root: NodeId) {
+        let mut current = Some(root);
+        while let Some(id) = current {
+            let mut iterator = Descendants {
+                nodes: &self.nodes,
+                root,
+                current,
+            };
+            iterator.next();
+            current = iterator.current;
+            if matches!(
+                self.nodes[id.index()].kind,
+                EventKind::Start(Tag::Paragraph { .. })
+            ) {
+                self.nodes[id.index()].kind = EventKind::Start(Tag::Paragraph {
+                    tight: self.tight_paragraph(id),
+                });
+            }
+            self.refresh_item(Some(id));
+        }
+    }
+    fn check_capture(&self, mut parent: Option<NodeId>, kind: TagKind) -> Result<(), StreamError> {
+        while let Some(id) = parent {
+            let node = &self.nodes[id.index()];
+            if matches!(&node.kind,EventKind::Start(tag) if !tag.kind().allows_descendant(kind)) {
+                return Err(StreamError::Unbalanced);
+            }
+            parent = node.parent;
+        }
+        Ok(())
+    }
+    /// Append a new semantic node. Its source provenance is empty; values may still reference the source buffer.
+    ///
+    /// # Errors
+    /// Rejects invalid parents, document/end kinds, source ranges, or forbidden nested capture containers.
+    pub fn append_child(
+        &mut self,
+        parent: NodeId,
+        kind: EventKind<'static>,
+    ) -> Result<NodeId, StreamError> {
+        kind.validate(Some(self.source()))?;
+        if !matches!(
+            self.node(parent).map(|node| &node.kind),
+            Some(EventKind::Start(_))
+        ) {
+            return Err(StreamError::Unbalanced);
+        }
+        match &kind {
+            EventKind::End(_) | EventKind::Start(Tag::Document(_)) => {
+                return Err(StreamError::Unbalanced)
+            }
+            EventKind::Start(tag) => self.check_capture(Some(parent), tag.kind())?,
+            _ => {}
+        }
+        let last = self.children(parent).last();
+        let id = NodeId::new(self.nodes.len());
+        self.nodes.push(Node {
+            kind,
+            span: 0..0,
+            parent: Some(parent),
+            first_child: None,
+            next_sibling: None,
+        });
+        if let Some(last) = last {
+            self.nodes[last.index()].next_sibling = Some(id);
+        } else {
+            self.nodes[parent.index()].first_child = Some(id);
+        }
+        self.refresh_context(id);
+        self.refresh_item(Some(parent));
+        Ok(id)
+    }
+    /// Detach a subtree without moving its arena slots or invalidating IDs.
+    ///
+    /// # Errors
+    /// Rejects invalid IDs and detaching the document root.
+    pub fn detach(&mut self, id: NodeId) -> Result<(), StreamError> {
+        if id == self.root() {
+            return Err(StreamError::Unbalanced);
+        }
+        let node = self.node(id).ok_or(StreamError::InvalidRange)?;
+        let Some(parent) = node.parent else {
+            return Ok(());
+        };
+        let next = node.next_sibling;
+        if self.nodes[parent.index()].first_child == Some(id) {
+            self.nodes[parent.index()].first_child = next;
+        } else {
+            let previous = self
+                .children(parent)
+                .find(|child| self.nodes[child.index()].next_sibling == Some(id))
+                .expect("an attached node occurs in its parent's child chain");
+            self.nodes[previous.index()].next_sibling = next;
+        }
+        self.nodes[id.index()].parent = None;
+        self.nodes[id.index()].next_sibling = None;
+        self.refresh_context(id);
+        self.refresh_item(Some(parent));
+        Ok(())
+    }
+    /// Move an existing subtree into a container, optionally before one of its children. No node or text allocation is required.
+    ///
+    /// # Errors
+    /// Rejects cycles, invalid IDs/positions, root moves, and forbidden capture nesting before modifying the tree.
+    pub fn attach(
+        &mut self,
+        parent: NodeId,
+        id: NodeId,
+        before: Option<NodeId>,
+    ) -> Result<(), StreamError> {
+        if id == self.root()
+            || !matches!(
+                self.node(parent).map(|node| &node.kind),
+                Some(EventKind::Start(_))
+            )
+        {
+            return Err(StreamError::Unbalanced);
+        }
+        self.node(id).ok_or(StreamError::InvalidRange)?;
+        if before.is_some_and(|before| {
+            self.node(before)
+                .map_or(true, |node| node.parent != Some(parent))
+        }) {
+            return Err(StreamError::InvalidRange);
+        }
+        let mut ancestor = Some(parent);
+        while let Some(current) = ancestor {
+            if current == id {
+                return Err(StreamError::Unbalanced);
+            }
+            ancestor = self.nodes[current.index()].parent;
+        }
+        for child in self.descendants(id) {
+            if let EventKind::Start(tag) = &self.nodes[child.index()].kind {
+                self.check_capture(Some(parent), tag.kind())?;
+            }
+        }
+        if before == Some(id) {
+            return Ok(());
+        }
+        self.detach(id)
+            .expect("the moved node was checked and is not the root");
+        let previous = self
+            .children(parent)
+            .take_while(|child| Some(*child) != before)
+            .last();
+        self.nodes[id.index()].parent = Some(parent);
+        self.nodes[id.index()].next_sibling = before;
+        if let Some(previous) = previous {
+            self.nodes[previous.index()].next_sibling = Some(id);
+        } else {
+            self.nodes[parent.index()].first_child = Some(id);
+        }
+        self.refresh_context(id);
+        self.refresh_item(Some(parent));
+        Ok(())
+    }
+    /// Detach all direct children, returning their stable IDs in order.
+    ///
+    /// # Errors
+    /// Rejects invalid node IDs.
+    pub fn extract_children(&mut self, parent: NodeId) -> Result<Vec<NodeId>, StreamError> {
+        self.node(parent).ok_or(StreamError::InvalidRange)?;
+        let children: Vec<_> = self.children(parent).collect();
+        self.nodes[parent.index()].first_child = None;
+        for &id in &children {
+            self.nodes[id.index()].parent = None;
+            self.nodes[id.index()].next_sibling = None;
+            self.refresh_context(id);
+        }
+        self.refresh_item(Some(parent));
+        Ok(children)
+    }
+    /// Replace a heading section with another document's root children, materializing their source-backed values into this document.
+    ///
+    /// `heading_index` counts direct children, including separator nodes. With `remove_subsections`, the section extends through headings deeper than the selected heading. Detached original nodes retain their IDs and can still be inspected or reattached.
+    ///
+    /// # Errors
+    /// Rejects invalid parent IDs. Returns `false` when the selected child is not a heading.
+    pub fn replace_heading_section<T: AsRef<str>>(
+        &mut self,
+        parent: NodeId,
+        heading_index: usize,
+        replacement: &Document<T>,
+        replace_heading: bool,
+        remove_subsections: bool,
+    ) -> Result<bool, StreamError> {
+        self.node(parent).ok_or(StreamError::InvalidRange)?;
+        let Some(heading) = self.children(parent).nth(heading_index) else {
+            return Ok(false);
+        };
+        let EventKind::Start(Tag::Heading(level)) = self.nodes[heading.index()].kind else {
+            return Ok(false);
+        };
+        let first = if replace_heading {
+            Some(heading)
+        } else {
+            self.nodes[heading.index()].next_sibling
+        };
+        let mut end = self.nodes[heading.index()].next_sibling;
+        while let Some(id) = end {
+            if matches!(self.nodes[id.index()].kind,EventKind::Start(Tag::Heading(next)) if !remove_subsections || next<=level)
+            {
+                break;
+            }
+            end = self.nodes[id.index()].next_sibling;
+        }
+        // Selecting an existing heading proves this parent and all its ancestors accept heading/footnote captures. Every copied subtree is already validated in its source document.
+        let mut at = first;
+        while at != end {
+            let id = at.expect("the section ends in the selected sibling chain");
+            at = self.nodes[id.index()].next_sibling;
+            self.detach(id)
+                .expect("a selected section contains existing non-root siblings");
+        }
+        for child in replacement.children(replacement.root()) {
+            self.copy_subtree(replacement, child, parent, end);
+        }
+        Ok(true)
+    }
+    fn copy_subtree<T: AsRef<str>>(
+        &mut self,
+        source: &Document<T>,
+        root: NodeId,
+        parent: NodeId,
+        before: Option<NodeId>,
+    ) {
+        let mut path: Vec<(NodeId, NodeId)> = Vec::new();
+        for original in source.descendants(root) {
+            let node = &source.nodes[original.index()];
+            while path
+                .last()
+                .is_some_and(|(original, _)| Some(*original) != node.parent)
+            {
+                path.pop();
+            }
+            let destination = path.last().map_or(parent, |(_, id)| *id);
+            let body = source.frontmatter_value(original);
+            let kind = borrow_kind(&node.kind).map_text(|value| {
+                body.map_or_else(
+                    || value.materialized(source.source()),
+                    |body| Text::from(String::from(body)),
+                )
+            });
+            let id = self
+                .append_child(destination, kind)
+                .expect("materialized source nodes remain valid below a heading's parent");
+            if original == root {
+                self.attach(parent, id, before)
+                    .expect("a copied root is new and its insertion boundary remains attached");
+            }
+            if let Some(syntax) = source
+                .syntax(original)
+                .and_then(|syntax| syntax.copied(source.source()))
+            {
+                self.set_syntax(id, Some(syntax))
+                    .expect("materialized syntax describes the copied node kind");
+            }
+            path.push((original, id));
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Document<String> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Stored {
+            source: String,
+            nodes: Vec<Node>,
+            #[serde(default)]
+            syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
+        }
+        let stored = Stored::deserialize(deserializer)?;
+        let document = Self {
+            source: stored.source,
+            nodes: stored.nodes,
+            syntax: stored.syntax,
+        };
+        document
+            .validate_storage()
+            .map_err(serde::de::Error::custom)?;
+        Ok(document)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<S: AsRef<str>> Document<S> {
+    // Validate the complete arena forest, including detached nodes, before public traversal can observe deserialized links. Each slot must be visited exactly once.
+    fn validate_storage(&self) -> Result<(), StreamError> {
+        if !matches!(
+            self.nodes.first().map(|node| &node.kind),
+            Some(EventKind::Start(Tag::Document(_)))
+        ) {
+            return Err(StreamError::Unbalanced);
+        }
+        if self.nodes[0].parent.is_some() || self.nodes[0].next_sibling.is_some() {
+            return Err(StreamError::Unbalanced);
+        }
+        let mut seen = alloc::vec![false;self.nodes.len()];
+        let mut pending = Vec::new();
+        for (index, node) in self.nodes.iter().enumerate() {
+            if node.parent.is_none() {
+                if node.next_sibling.is_some() {
+                    return Err(StreamError::Unbalanced);
+                }
+                pending.push((NodeId::new(index), None, false));
+            }
+        }
+        while let Some((id, parent, capture)) = pending.pop() {
+            let node = self.node(id).ok_or(StreamError::InvalidRange)?;
+            if seen[id.index()] || node.parent != parent {
+                return Err(StreamError::Unbalanced);
+            }
+            seen[id.index()] = true;
+            Event {
+                kind: borrow_kind(&node.kind),
+                span: node.span.clone(),
+            }
+            .validate(Some(self.source()))?;
+            let container = matches!(node.kind, EventKind::Start(_));
+            if matches!(node.kind, EventKind::End(_))
+                || (node.first_child.is_some() && !container)
+                || matches!(node.kind, EventKind::Start(Tag::Document(_))) != (id == self.root())
+            {
+                return Err(StreamError::Unbalanced);
+            }
+            if capture
+                && matches!(
+                    node.kind,
+                    EventKind::Start(Tag::Heading(_) | Tag::FootnoteDefinition(_))
+                )
+            {
+                return Err(StreamError::Unbalanced);
+            }
+            if let Some(next) = node.next_sibling {
+                pending.push((next, parent, capture));
+            }
+            if let Some(child) = node.first_child {
+                let capture = capture
+                    || matches!(
+                        node.kind,
+                        EventKind::Start(Tag::Heading(_) | Tag::Image { .. })
+                    );
+                pending.push((child, Some(id), capture));
+            }
+        }
+        if seen.iter().any(|visited| !*visited) {
+            return Err(StreamError::Unbalanced);
+        }
+        for (&id, value) in &self.syntax {
+            let node = self.node(id).ok_or(StreamError::InvalidRange)?;
+            if value
+                .as_ref()
+                .is_some_and(|value| !value.valid_for(&node.kind, self.source()))
+            {
+                return Err(StreamError::InvalidRange);
+            }
+        }
+        Ok(())
     }
 }

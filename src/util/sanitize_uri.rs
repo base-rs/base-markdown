@@ -70,7 +70,8 @@ pub fn sanitize(value: &str) -> String {
 /// ## References
 ///
 /// * [`micromark-util-sanitize-uri` in `micromark`](https://github.com/micromark/micromark/tree/main/packages/micromark-util-sanitize-uri)
-pub fn sanitize_with_protocols(value: &str, protocols: &[&str]) -> String {
+#[cfg(test)]
+fn sanitize_with_protocols(value: &str, protocols: &[&str]) -> String {
     let mut output = String::with_capacity(value.len());
     write_sanitized(value, Some(protocols), |value| {
         output.push_str(value);

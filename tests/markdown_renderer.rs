@@ -1,16 +1,23 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{
-    mdast::{
-        AlignKind, Blockquote, Break, Code, Definition, Delete, Emphasis, FootnoteDefinition,
-        FootnoteReference, Frontmatter, Heading, Html, Image, ImageReference, InlineCode,
-        InlineMath, Link, LinkReference, List, ListItem, Math, Node, Paragraph, ReferenceKind,
-        Root, Table, TableCell, TableRow, Text, ThematicBreak,
-    },
-    to_mdast, Constructs, MarkdownOptions, MarkdownRenderer, ParseOptions,
-};
+mod support;
+use core_markdown::{Constructs, Document, MarkdownOptions, ParseOptions};
 use pretty_assertions::assert_eq;
+use support::fixture::{to_markdown as markdown, to_markdown_with_options};
+use support::fixture::{
+    AlignKind, Blockquote, Break, Code, Definition, Delete, Emphasis, FootnoteDefinition,
+    FootnoteReference, Frontmatter, Heading, Html, Image, ImageReference, InlineCode, InlineMath,
+    Link, LinkReference, List, ListItem, Math, Node, Paragraph, ReferenceKind, Root, Table,
+    TableCell, TableRow, Text, ThematicBreak,
+};
+
+fn parse(
+    source: &str,
+    options: &ParseOptions,
+) -> Result<Document, core_markdown::message::Message> {
+    Ok(Document::parse(source.to_owned(), options).unwrap())
+}
 
 fn text(value: &str) -> Node {
     Node::Text(Text {
@@ -28,48 +35,58 @@ fn paragraph(children: Vec<Node>) -> Node {
 
 #[test]
 fn serializes_a_markdown_document() -> Result<(), core_markdown::message::Message> {
-    let node = to_mdast(
+    let node = parse(
         "# Hello *world*!\n\nA [link](/url).",
         &ParseOptions::default(),
     )?;
 
-    assert_eq!(node.to_markdown(), "# Hello *world*!\n\nA [link](/url).\n");
+    assert_eq!(
+        markdown(&node).unwrap(),
+        "# Hello *world*!\n\nA [link](/url).\n"
+    );
 
     Ok(())
 }
 
 #[test]
 fn serializes_extracted_fragments() -> Result<(), core_markdown::message::Message> {
-    let mut node = to_mdast("**hello**", &ParseOptions::default())?;
-    let fragment = node.extract_children().expect("root has children");
+    let mut node = parse("**hello**", &ParseOptions::default())?;
+    let fragment = node
+        .extract_children(node.root())
+        .expect("root has children");
 
-    assert_eq!(fragment.to_markdown(), "**hello**\n");
+    assert_eq!(
+        core_markdown::to_markdown_node(&node, fragment[0], &Default::default()).unwrap(),
+        "**hello**\n"
+    );
 
     Ok(())
 }
 
 #[test]
 fn renders_with_custom_markdown_options() -> Result<(), core_markdown::message::Message> {
-    let node = to_mdast("*hello*", &ParseOptions::default())?;
-    let mut renderer = MarkdownRenderer::with_options(MarkdownOptions {
+    let node = parse("*hello*", &ParseOptions::default())?;
+    let options = MarkdownOptions {
         emphasis: '_',
-        ..MarkdownOptions::default()
-    });
-
-    assert_eq!(node.render_with(&mut renderer), "_hello_\n");
+        ..Default::default()
+    };
+    assert_eq!(
+        to_markdown_with_options(&node, &options).unwrap(),
+        "_hello_\n"
+    );
 
     Ok(())
 }
 
 #[test]
 fn serializes_gfm_constructs() -> Result<(), core_markdown::message::Message> {
-    let node = to_mdast(
+    let node = parse(
         "~~old~~\n\n| A | B |\n| :- | -: |\n| x | y |\n\nCall[^note].\n\n[^note]: Details.",
         &ParseOptions::gfm(),
     )?;
 
     assert_eq!(
-        node.to_markdown(),
+        markdown(&node).unwrap(),
         "~~old~~\n\n| A | B |\n| :--- | ---: |\n| x | y |\n\nCall[^note].\n\n[^note]: Details.\n"
     );
 
@@ -85,45 +102,44 @@ fn serializes_frontmatter() -> Result<(), core_markdown::message::Message> {
         },
         ..ParseOptions::default()
     };
-    let node = to_mdast("---\ntitle: Example\n---\n\nHello", &options)?;
+    let node = parse("---\ntitle: Example\n---\n\nHello", &options)?;
 
-    assert_eq!(node.to_markdown(), "---\ntitle: Example\n---\n\nHello\n");
+    assert_eq!(
+        markdown(&node).unwrap(),
+        "---\ntitle: Example\n---\n\nHello\n"
+    );
 
     Ok(())
 }
 
 #[test]
 fn serializes_a_node_directly() {
-    let node = Node::Text(core_markdown::mdast::Text {
+    let node = Node::Text(support::fixture::Text {
         value: "hello".into(),
         position: None,
     });
 
-    assert_eq!(node.to_markdown(), "hello\n");
+    assert_eq!(markdown(&node).unwrap(), "hello\n");
 }
 
 #[test]
 fn exposes_default_options_and_fallible_rendering() {
-    let node = Node::Text(core_markdown::mdast::Text {
+    let node = Node::Text(support::fixture::Text {
         value: "hello".into(),
         position: None,
     });
-    let mut renderer = MarkdownRenderer::new();
-
-    assert_eq!(renderer.options().bullet, '-');
-    assert_eq!(renderer.try_render(&node).unwrap(), "hello\n");
+    assert_eq!(MarkdownOptions::default().bullet, '-');
+    assert_eq!(markdown(&node).unwrap(), "hello\n");
 }
 
 #[test]
-#[should_panic(expected = "Markdown rendering failed; use try_render to handle errors")]
-fn render_node_panics_for_invalid_options() {
-    let node = to_mdast("*hello*", &ParseOptions::default()).unwrap();
-    let mut renderer = MarkdownRenderer::with_options(MarkdownOptions {
+fn serialization_reports_invalid_options() {
+    let node = parse("*hello*", &ParseOptions::default()).unwrap();
+    let options = MarkdownOptions {
         emphasis: 'x',
-        ..MarkdownOptions::default()
-    });
-
-    node.render_with(&mut renderer);
+        ..Default::default()
+    };
+    assert!(to_markdown_with_options(&node, &options).is_err());
 }
 
 #[test]
@@ -196,9 +212,12 @@ fn fallible_rendering_reports_invalid_markers() {
     ];
 
     for (source, options) in cases {
-        let node = to_mdast(source, &ParseOptions::default()).unwrap();
-        let mut renderer = MarkdownRenderer::with_options(options);
-        assert!(renderer.try_render(&node).is_err(), "{}", source);
+        let node = parse(source, &ParseOptions::default()).unwrap();
+        assert!(
+            to_markdown_with_options(&node, &options).is_err(),
+            "{}",
+            source
+        );
     }
 }
 
@@ -412,7 +431,7 @@ fn serializes_ast_variants_and_custom_markdown_options() {
     ];
 
     for node in variants {
-        let markdown = node.to_markdown();
+        let markdown = markdown(&node).unwrap();
         assert!(!markdown.is_empty(), "failed to serialize {:?}", node);
     }
 
@@ -453,11 +472,11 @@ fn serializes_ast_variants_and_custom_markdown_options() {
             Node::ThematicBreak(ThematicBreak { position: None }),
         ],
     });
-    let output = core_markdown::markdown::to_markdown_with_options(&custom, &custom_options)
-        .expect("custom options serialize");
+    let output =
+        to_markdown_with_options(&custom, &custom_options).expect("custom options serialize");
     assert_eq!(
         output,
-        "*a\nb*\n--~~~~rust a ` b\n~~~\ncode\n~~~~$$ $x$\ny $$_ _ _ _\n"
+        "*a\nb*\n--\n\n~~~~rust a ` b\n~~~\ncode\n~~~~\n\n$$ $x$\ny $$\n\n_ _ _ _\n"
     );
 
     let inline_break = Node::InlineCode(InlineCode {
@@ -465,13 +484,13 @@ fn serializes_ast_variants_and_custom_markdown_options() {
         position: None,
         lang: None,
     });
-    assert_eq!(inline_break.to_markdown(), "`a #b`\n");
+    assert_eq!(markdown(&inline_break).unwrap(), "`a #b`\n");
 
     let inline_math_break = Node::InlineMath(InlineMath {
         value: "a\r\n#b".into(),
         position: None,
     });
-    assert_eq!(inline_math_break.to_markdown(), "$a #b$\n");
+    assert_eq!(markdown(&inline_math_break).unwrap(), "$a #b$\n");
 
     let nested_heading = Node::Heading(Heading {
         children: vec![Node::Emphasis(Emphasis {
@@ -481,7 +500,7 @@ fn serializes_ast_variants_and_custom_markdown_options() {
         position: None,
         depth: 2,
     });
-    assert!(nested_heading.to_markdown().starts_with("## "));
+    assert!(markdown(&nested_heading).unwrap().starts_with("## "));
 }
 
 #[test]
@@ -548,7 +567,7 @@ fn propagates_errors_from_nested_markdown_nodes() {
         }),
         list_item,
         paragraph_with_invalid_emphasis,
-        Node::Strong(core_markdown::mdast::Strong {
+        Node::Strong(support::fixture::Strong {
             children: vec![invalid_emphasis.clone()],
             position: None,
         }),
@@ -568,15 +587,14 @@ fn propagates_errors_from_nested_markdown_nodes() {
 
     for node in nodes {
         assert!(
-            core_markdown::markdown::to_markdown_with_options(&node, &invalid_emphasis_options)
-                .is_err(),
+            to_markdown_with_options(&node, &invalid_emphasis_options).is_err(),
             "expected nested emphasis to fail for {:?}",
             node
         );
     }
 
     let nested_strong = Node::Emphasis(Emphasis {
-        children: vec![Node::Strong(core_markdown::mdast::Strong {
+        children: vec![Node::Strong(support::fixture::Strong {
             children: vec![text("nested")],
             position: None,
         })],
@@ -597,7 +615,7 @@ fn propagates_errors_from_nested_markdown_nodes() {
             ..invalid_strong_options.clone()
         };
         assert!(
-            core_markdown::markdown::to_markdown_with_options(&heading, &options).is_err(),
+            to_markdown_with_options(&heading, &options).is_err(),
             "expected nested strong to fail for setext={}",
             setext
         );
@@ -622,7 +640,7 @@ fn propagates_errors_from_nested_markdown_nodes() {
             quote: 'x',
             ..MarkdownOptions::default()
         };
-        assert!(core_markdown::markdown::to_markdown_with_options(&node, &options).is_err());
+        assert!(to_markdown_with_options(&node, &options).is_err());
     }
 
     let list = Node::List(List {
@@ -641,7 +659,5 @@ fn propagates_errors_from_nested_markdown_nodes() {
         rule: 'x',
         ..MarkdownOptions::default()
     };
-    assert!(
-        core_markdown::markdown::to_markdown_with_options(&list, &invalid_rule_options).is_err()
-    );
+    assert!(to_markdown_with_options(&list, &invalid_rule_options).is_err());
 }

@@ -66,8 +66,8 @@ fn compact_inline_resolution_keeps_escaped_markers_and_unmatched_code() {
 }
 
 #[test]
-fn compact_resources_and_fallback_regions_agree_with_legacy_rendering() {
-    use core_markdown::{to_mdast, HtmlRenderer, ParseOptions};
+fn compact_resources_and_fallback_regions_agree_with_arena_rendering() {
+    use core_markdown::ParseOptions;
     for source in [
         "a [x]( b)",
         "Literal ! and !x.",
@@ -126,15 +126,11 @@ fn compact_resources_and_fallback_regions_agree_with_legacy_rendering() {
         "```&bad;\nb\n```",
         "```a\\-b\nb\n```",
     ] {
-        let expected = to_mdast(source, &ParseOptions::default())
-            .unwrap()
-            .render_with(&mut HtmlRenderer::default());
+        let expected = arena_html(source, &ParseOptions::default());
         assert_eq!(to_html(source), expected, "{source:?}");
     }
     let deep_destination = format!("a [x]({}x{})", "(".repeat(34), ")".repeat(34));
-    let expected = to_mdast(&deep_destination, &ParseOptions::default())
-        .unwrap()
-        .render_with(&mut HtmlRenderer::default());
+    let expected = arena_html(&deep_destination, &ParseOptions::default());
     assert_eq!(to_html(&deep_destination), expected);
     let options = Options {
         parse: ParseOptions {
@@ -144,9 +140,7 @@ fn compact_resources_and_fallback_regions_agree_with_legacy_rendering() {
         ..Options::default()
     };
     for source in ["#", "\t<x>", "a\n\t<b>"] {
-        let expected = to_mdast(source, &options.parse)
-            .unwrap()
-            .render_with(&mut HtmlRenderer::default());
+        let expected = arena_html(source, &options.parse);
         assert_eq!(
             core_markdown::to_html_with_options(source, &options).unwrap(),
             expected
@@ -207,8 +201,8 @@ fn compact_inlines_share_compatibility_document_structure() {
 }
 
 #[test]
-fn legacy_ast_preserves_empty_container_structure() {
-    use core_markdown::{mdast::Node, to_mdast, ParseOptions};
+fn arena_preserves_empty_container_structure() {
+    use core_markdown::stream::{EventKind, Tag};
     for source in [
         "* >\n\n* a",
         "* > \n\n* a",
@@ -216,28 +210,53 @@ fn legacy_ast_preserves_empty_container_structure() {
         "* >\n* a",
         "* > \n* a",
     ] {
-        let root = to_mdast(source, &ParseOptions::default()).unwrap();
-        let Node::List(list) = &root.children().unwrap()[0] else {
-            panic!("the document starts with a list");
-        };
-        assert_eq!(list.children.len(), 2, "{source:?}");
-        assert_eq!(list.children[0].text_content(), "", "{source:?}");
-        assert_eq!(list.children[1].text_content(), "a", "{source:?}");
+        let document = Document::parse(source, &Default::default()).unwrap();
+        let list = document
+            .children(document.root())
+            .find(|id| {
+                matches!(
+                    document.node(*id).unwrap().kind,
+                    EventKind::Start(Tag::List { .. })
+                )
+            })
+            .unwrap();
+        let items: Vec<_> = document.children(list).collect();
+        assert_eq!(items.len(), 2, "{source:?}");
+        assert_eq!(document.text_content(items[0]), "", "{source:?}");
+        assert_eq!(document.text_content(items[1]), "a", "{source:?}");
     }
-    let root = to_mdast("- a\n \n  b", &ParseOptions::default()).unwrap();
-    let item = &root.children().unwrap()[0].children().unwrap()[0];
-    assert_eq!(item.children().unwrap().len(), 2);
-    assert_eq!(item.text_content(), "ab");
-    let root = to_mdast("- \n  \n  a", &ParseOptions::default()).unwrap();
-    let children = root.children().unwrap();
-    assert!(matches!(&children[0], Node::List(list) if list.children.len() == 1));
-    assert_eq!(children[0].text_content(), "");
-    assert_eq!(children[1].text_content(), "a");
+    let document = Document::parse("- a\n \n  b", &Default::default()).unwrap();
+    let list = document.children(document.root()).next().unwrap();
+    let item = document.children(list).next().unwrap();
+    let blocks: Vec<_> = document
+        .children(item)
+        .filter(|id| {
+            !matches!(
+                document.node(*id).unwrap().kind,
+                EventKind::Separator { .. }
+            )
+        })
+        .collect();
+    assert_eq!(blocks.len(), 2);
+    assert_eq!(document.text_content(item), "ab");
+    let document = Document::parse("- \n  \n  a", &Default::default()).unwrap();
+    let children: Vec<_> = document
+        .children(document.root())
+        .filter(|id| {
+            !matches!(
+                document.node(*id).unwrap().kind,
+                EventKind::Separator { .. }
+            )
+        })
+        .collect();
+    assert_eq!(document.children(children[0]).count(), 1);
+    assert_eq!(document.text_content(children[0]), "");
+    assert_eq!(document.text_content(children[1]), "a");
 }
 
 #[test]
 fn leading_brackets_distinguish_links_from_possible_definitions() {
-    use core_markdown::{to_mdast, HtmlRenderer, ParseOptions};
+    use core_markdown::ParseOptions;
     for source in [
         "[text](url)",
         "[**strong**](url)",
@@ -251,9 +270,7 @@ fn leading_brackets_distinguish_links_from_possible_definitions() {
         "[label] : /url",
         "[label]: /url\n\n[label]",
     ] {
-        let expected = to_mdast(source, &ParseOptions::default())
-            .unwrap()
-            .render_with(&mut HtmlRenderer::default());
+        let expected = arena_html(source, &ParseOptions::default());
         assert_eq!(to_html(source), expected, "{source:?}");
         let options = Options::default();
         let document = Document::parse(source, &options.parse).unwrap();
@@ -353,4 +370,13 @@ fn grammar_fallback_preserves_virtual_spaces_in_code() {
         render_events(source, document.events(), &options.compile, &mut output).unwrap();
         assert_eq!(output, direct);
     }
+}
+
+fn arena_html(source: &str, options: &core_markdown::ParseOptions) -> String {
+    let document = Document::parse(source, options).unwrap();
+    let mut output = String::new();
+    document
+        .render_html(&Default::default(), &mut output)
+        .unwrap();
+    output
 }

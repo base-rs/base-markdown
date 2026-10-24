@@ -15,8 +15,7 @@ use crate::util::{
     slice::{Position, Slice},
 };
 use crate::{
-    mdast::{AlignKind, CodeFence},
-    LineEnding, ParseOptions,
+    LineEnding, ParseOptions, {AlignKind, CodeFence},
 };
 use alloc::{
     string::{String, ToString},
@@ -656,7 +655,7 @@ impl<'a> GrammarParser<'a> {
                 Some(Tag::BlockQuote)
             }
             Name::ListOrdered | Name::ListUnordered => {
-                let tight = !infer::list_loose(&self.tokens, index, true);
+                let tight = !infer::list_loose(&self.tokens, index);
                 self.tight.push(tight);
                 let start = if self.tokens[index].name == Name::ListOrdered {
                     Some(

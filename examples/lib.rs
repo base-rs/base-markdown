@@ -39,7 +39,11 @@ fn main() -> Result<(), core_markdown::message::Message> {
     // Access the syntax tree:
     println!(
         "{:?}",
-        core_markdown::to_mdast("# Hello, *world*!", &core_markdown::ParseOptions::default())?
+        core_markdown::Document::parse(
+            "# Hello, *world*!",
+            &core_markdown::ParseOptions::default()
+        )
+        .unwrap()
     );
 
     Ok(())

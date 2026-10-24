@@ -2,11 +2,11 @@
 // Copyright, 2024, by Bnchi.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::markdown::{
-    to_markdown as to, to_markdown_with_options as to_md_with_opts, Options,
-};
-use core_markdown::mdast::{Definition, InlineMath, Math, Node, Paragraph, Text};
+mod support;
+use core_markdown::markdown::Options;
 use pretty_assertions::assert_eq;
+use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
+use support::fixture::{Definition, InlineMath, Math, Node, Paragraph, Text};
 
 #[test]
 fn math() {

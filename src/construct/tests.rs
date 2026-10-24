@@ -4,7 +4,7 @@
 use crate::{
     construct::{
         content, flow, frontmatter, gfm_autolink_literal, html_flow, html_text, label_end,
-        partial_data, raw_flow,
+        partial_data,
     },
     event::Point,
     parser::{parse, ParseState},
@@ -48,19 +48,6 @@ fn content_resolver_subtokenizes_even_an_empty_event_stream() {
     with_tokenizer("", &ParseOptions::default(), None, |tokenizer| {
         assert!(content::resolve(tokenizer).done);
     });
-}
-
-#[test]
-fn raw_flow_info_rejects_its_own_fence_marker() {
-    for marker in *b"`$" {
-        with_tokenizer("x", &ParseOptions::default(), Some(marker), |tokenizer| {
-            tokenizer.tokenize_state.marker = marker;
-
-            assert_eq!(raw_flow::info(tokenizer), State::Nok);
-            assert_eq!(tokenizer.tokenize_state.marker, 0);
-            assert!(!tokenizer.concrete);
-        });
-    }
 }
 
 #[test]

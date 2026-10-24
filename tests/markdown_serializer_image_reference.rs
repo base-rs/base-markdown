@@ -3,9 +3,10 @@
 // Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::markdown::to_markdown as to;
-use core_markdown::mdast::{ImageReference, Node, Paragraph, ReferenceKind};
+mod support;
 use pretty_assertions::assert_eq;
+use support::fixture::to_markdown as to;
+use support::fixture::{ImageReference, Node, Paragraph, ReferenceKind};
 
 #[test]
 fn image_reference() {

@@ -3,13 +3,13 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Heading, Node, Root, Text},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Heading, Node, Root, Text};
 
 #[test]
 fn heading_setext() -> Result<(), message::Message> {
@@ -303,7 +303,7 @@ fn heading_setext() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("alpha\nbravo\n==", &Default::default())?,
+        parse_fixture("alpha\nbravo\n==", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Heading(Heading {
                 depth: 1,
@@ -323,7 +323,7 @@ fn heading_setext() -> Result<(), message::Message> {
 
 #[test]
 fn literal_underlines_join_the_following_setext_heading() {
-    use core_markdown::{render_events, Document, HtmlRenderer};
+    use core_markdown::{render_events, Document};
     for (source, expected) in [
         ("a\n=\n=\na\n=", "<h1>a</h1>\n<h1>=\na</h1>"),
         ("a\n=\n=\nb\n\nc\n=", "<h1>a</h1>\n<p>=\nb</p>\n<h1>c</h1>"),
@@ -344,12 +344,6 @@ fn literal_underlines_join_the_following_setext_heading() {
                 let mut output = String::new();
                 render_events(&input, document.events(), &options.compile, &mut output).unwrap();
                 assert_eq!(output, expected);
-                let ast = to_mdast(&input, &options.parse).unwrap();
-                assert_eq!(
-                    ast.render_with(&mut HtmlRenderer::with_options(options.compile.clone()))
-                        .trim_end(),
-                    expected.trim_end()
-                );
             }
         }
     }
@@ -359,10 +353,10 @@ fn literal_underlines_join_the_following_setext_heading() {
 fn setext_underlines_accept_trailing_spaces_and_tabs() {
     for (underline, depth) in [("=== ", 1), ("===\t", 1), ("--- \t", 2)] {
         let source = format!("heading\n{underline}\n");
-        let tree =
-            core_markdown::to_mdast(&source, &core_markdown::ParseOptions::default()).unwrap();
+        let tree = core_markdown::Document::parse(&source, &core_markdown::ParseOptions::default())
+            .unwrap();
         assert!(
-            matches!(&tree.children().unwrap()[0], core_markdown::mdast::Node::Heading(heading) if heading.depth == depth)
+            matches!(&tree.node(tree.children(tree.root()).next().unwrap()).unwrap().kind, core_markdown::stream::EventKind::Start(core_markdown::stream::Tag::Heading(level)) if *level == depth)
         );
         assert_eq!(
             core_markdown::to_html(&source),

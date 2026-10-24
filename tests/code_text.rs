@@ -4,13 +4,14 @@
 // Copyright, 2024, by Yuval Shavit.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{InlineCode, Node, Paragraph, Root, Text},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    CompileOptions, Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, CompileOptions, Constructs, Options,
+    ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{InlineCode, Node, Paragraph, Root, Text};
 
 #[test]
 fn code_text() -> Result<(), message::Message> {
@@ -187,7 +188,7 @@ fn code_text() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("a `alpha` b.", &Default::default())?,
+        parse_fixture("a `alpha` b.", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Paragraph(Paragraph {
                 children: vec![
@@ -213,7 +214,7 @@ fn code_text() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("`  alpha `", &Default::default())?,
+        parse_fixture("`  alpha `", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Paragraph(Paragraph {
                 children: vec![Node::InlineCode(InlineCode {
@@ -229,7 +230,7 @@ fn code_text() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("`   `", &Default::default())?,
+        parse_fixture("`   `", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Paragraph(Paragraph {
                 children: vec![Node::InlineCode(InlineCode {
@@ -261,46 +262,24 @@ fn parses_inline_code_info_and_removes_its_prefix() -> Result<(), message::Messa
         "<p><code>plain code</code></p>"
     );
 
-    let tree = to_mdast(
-        "rust:`code`",
-        &ParseOptions {
-            inline_code_info: true,
-            ..ParseOptions::default()
-        },
-    )?;
-
-    let Node::Root(root) = tree else {
-        panic!("expected root");
-    };
-    let Node::Paragraph(paragraph) = &root.children[0] else {
-        panic!("expected paragraph");
-    };
-    assert!(matches!(
-        paragraph.children.as_slice(),
-        [Node::InlineCode(InlineCode { value, lang: Some(lang), .. })]
-            if value == "code" && lang == "rust"
-    ));
-
-    let tree = to_mdast(
-        "before rust:`code`",
-        &ParseOptions {
-            inline_code_info: true,
-            ..ParseOptions::default()
-        },
-    )?;
-    let Node::Root(root) = tree else {
-        panic!("expected root");
-    };
-    let Node::Paragraph(paragraph) = &root.children[0] else {
-        panic!("expected paragraph");
-    };
-    assert!(matches!(
-        paragraph.children.as_slice(),
-        [
-            Node::Text(Text { value, .. }),
-            Node::InlineCode(InlineCode { value: code, lang: Some(lang), .. })
-        ] if value == "before " && code == "code" && lang == "rust"
-    ));
-
+    for (source, expected_prefix) in [("rust:`code`", ""), ("before rust:`code`", "before ")] {
+        let tree = core_markdown::Document::parse(source, &options.parse).unwrap();
+        let paragraph = tree.children(tree.root()).next().unwrap();
+        let children: Vec<_> = tree.children(paragraph).collect();
+        let code = *children.last().unwrap();
+        let core_markdown::stream::EventKind::Code {
+            value,
+            language: Some(language),
+        } = &tree.node(code).unwrap().kind
+        else {
+            panic!("expected rich inline code");
+        };
+        assert_eq!(value.resolve(source).unwrap(), "code");
+        assert_eq!(language.resolve(source).unwrap(), "rust");
+        assert_eq!(
+            tree.text_content(paragraph),
+            format!("{expected_prefix}code")
+        );
+    }
     Ok(())
 }

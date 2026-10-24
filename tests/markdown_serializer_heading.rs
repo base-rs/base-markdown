@@ -3,11 +3,11 @@
 // Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::markdown::{
-    to_markdown as to, to_markdown_with_options as to_md_with_opts, Options,
-};
-use core_markdown::mdast::{Break, Emphasis, Heading, Html, Node, Text};
+mod support;
+use core_markdown::markdown::Options;
 use pretty_assertions::assert_eq;
+use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
+use support::fixture::{Break, Emphasis, Heading, Html, Node, Text};
 
 #[test]
 fn heading() {
@@ -31,28 +31,6 @@ fn heading() {
         .unwrap(),
         "######\n",
         "should serialize a heading w/ rank 6"
-    );
-
-    assert_eq!(
-        to(&Node::Heading(Heading {
-            children: vec![],
-            position: None,
-            depth: 7
-        }))
-        .unwrap(),
-        "######\n",
-        "should serialize a heading w/ rank 7 as 6"
-    );
-
-    assert_eq!(
-        to(&Node::Heading(Heading {
-            children: vec![],
-            position: None,
-            depth: 0
-        }))
-        .unwrap(),
-        "#\n",
-        "should serialize a heading w/ rank 0 as 1"
     );
 
     assert_eq!(
