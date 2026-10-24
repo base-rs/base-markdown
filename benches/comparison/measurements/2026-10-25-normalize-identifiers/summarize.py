@@ -1,11 +1,16 @@
 """Recompute every sample/process median, retaining screening and repeat cohorts separately."""
 from collections import defaultdict
+import argparse
 import json
 from pathlib import Path
 import statistics
 
 study = Path(__file__).resolve().parent
-for path in [study / 'html.jsonl', study / 'real-repeat.jsonl', *sorted((study / 'exploratory').glob('*.jsonl'))]:
+parser = argparse.ArgumentParser(__doc__)
+parser.add_argument('--input', action='append', type=Path, help='Summarize fresh results instead of recorded cohorts')
+args = parser.parse_args()
+paths = args.input or [study / 'html.jsonl', study / 'real-repeat.jsonl', *sorted((study / 'exploratory').glob('*.jsonl'))]
+for path in paths:
     groups = defaultdict(lambda: defaultdict(list))
     for line in path.read_text().splitlines():
         run = json.loads(line)

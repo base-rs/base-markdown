@@ -24,10 +24,6 @@
       "sha256": "9880ffdb5c2b026205b67e06e38646ab2f45b6e9ef1cf8c6db2523d63bf2166c",
       "bytes": 3218608
     },
-    "candidate": {
-      "sha256": "5520780e4dcf35f12f0ac4402da538cdecd2839d9e9798556e8b2ee8a7801f3c",
-      "bytes": 3237216
-    },
     "push": {
       "sha256": "4dd0cc1a3adfb18de9c1c4f3ced63d403aaaff02fdd8f86006506185e3a51143",
       "bytes": 3219568
@@ -51,6 +47,14 @@
     "outline-fold": {
       "sha256": "0c50e8b5c2995adfdf4c478a9f899941b26bdecb155afa0ad602dbc079b540dd",
       "bytes": 3218720
+    },
+    "candidate-initial": {
+      "sha256": "5520780e4dcf35f12f0ac4402da538cdecd2839d9e9798556e8b2ee8a7801f3c",
+      "bytes": 3237216
+    },
+    "candidate-final": {
+      "sha256": "de33163b5a867286b3a1c2a9d42b9b8c1f603811a6a2e799f37aceaf79a00746",
+      "bytes": 3218720
     }
   },
   "base": "d0d0a821badba7719a583a4a52691205b3523bda",
@@ -72,5 +76,53 @@
   },
   "host_observation": "During string-fold screening an unrelated process used roughly one CPU core; no thermal/power warning was reported. Shared-host variability affects timings; final cohort is separate.",
   "selected_commit": "7663402ac2a9f0414e99f71f98f0d226b35b0504",
-  "outline_fold_patch_base": "7663402ac2a9f0414e99f71f98f0d226b35b0504"
+  "outline_fold_patch_base": "7663402ac2a9f0414e99f71f98f0d226b35b0504",
+  "cohort_binaries": {
+    "unicode": {
+      "baseline": "baseline",
+      "unicode": "unicode"
+    },
+    "shared": {
+      "unicode-once": "unicode-once",
+      "shared": "shared"
+    },
+    "direct-push": {
+      "baseline": "baseline",
+      "direct-push": "direct-push"
+    },
+    "fused": {
+      "unicode-once": "unicode-once",
+      "fused": "fused"
+    },
+    "dense-screen": {
+      "baseline": "baseline",
+      "candidate": "candidate-initial"
+    },
+    "upper-property": {
+      "baseline": "baseline",
+      "upper-property": "upper-property"
+    },
+    "push": {
+      "baseline": "baseline",
+      "push": "push"
+    },
+    "string-fold": {
+      "baseline": "baseline",
+      "string-fold": "string-fold"
+    },
+    "unicode-once": {
+      "baseline": "baseline",
+      "unicode-once": "unicode-once"
+    },
+    "word-iterator": {
+      "baseline": "baseline",
+      "direct-push": "direct-push",
+      "word-iterator": "word-iterator"
+    },
+    "outline-fold": {
+      "candidate": "candidate-final",
+      "outline-fold": "outline-fold"
+    }
+  },
+  "candidate_alias_note": "dense-screen uses candidate-initial (early c984/1d9699a body); outline-fold uses candidate-final, matching ../metadata.json and approved7663402. Raw rows retain their exact hashes; aliases are scoped per cohort."
 }
