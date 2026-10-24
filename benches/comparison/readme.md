@@ -4,20 +4,22 @@ This harness compares the public Markdown-to-HTML APIs of core-markdown, markdow
 
 ## Recorded comparison
 
-The [reference key and separator study](measurements/2026-10-25-event-delivery/readme.md) compares production source **`62b32ef5807029b84bcedc48c2f3605daade919a`** with merged #51 and Inkmark 0.2.1. These numbers describe that recorded revision; subsequent source changes require new measurements. [Metadata](measurements/2026-10-25-event-delivery/metadata.json) records executable hashes, source trees, compiler, host, and lockfiles.
+The [Unicode folding and real-document study](measurements/2026-10-25-normalize-identifiers/readme.md) compares production **`7663402ac2a9f0414e99f71f98f0d226b35b0504`** with squash-merged #52 and Inkmark 0.2.1. [Metadata](measurements/2026-10-25-normalize-identifiers/metadata.json) pins binaries, sources, compiler, locks and inputs.
 
 The original four workloads, in milliseconds per complete conversion; lower is faster:
 
 | Workload | Input bytes | core-markdown ms | Inkmark ms |
 | --- | ---: | ---: | ---: |
-| README | 9,019 | 0.013607 | 0.019196 |
-| Mixed 100 KB | 100,252 | 0.401426 | 0.415969 |
-| Mixed 1 MB | 1,000,020 | 4.024360 | 4.423371 |
-| GFM 100 KB | 100,130 | 0.614622 | 0.713234 |
+| README | 9,019 | 0.013521 | 0.019388 |
+| Mixed 100 KB | 100,252 | 0.396697 | 0.412547 |
+| Mixed 1 MB | 1,000,020 | 3.982911 | 4.422400 |
+| GFM 100 KB | 100,130 | 0.608064 | 0.714119 |
 
-Compared with #51, the original four medians take 0.3–1.5% less time; those are small local differences. The three established definition workloads take **9–12% less time than #51** and **5–11% less than Inkmark**, closing the gap on those inputs. Core-markdown has lower medians on all twelve established workloads in this run. New controls retain the unfavorable cases: Unicode keys take 3.2% more time than Inkmark, and repeated-space keys take 3.9% more time than #51. Event-consumption diagnostics are close to neutral. See the [full table and raw samples](measurements/2026-10-25-event-delivery/readme.md#direct-html) before generalizing.
+The original four range from 0.5% less time to 1.6% more time versus #52. The original Unicode-label control takes **10.6% less time**, and long lowercase Unicode labels **33.3% less time**, each saving **1,027 allocations**. The late-uppercase stress case takes **7.5% more time**. Small slower medians on real documents persist in a separate paired repeat; the full report retains them and a code-equivalent variability control.
 
-These are local measurements on a shared Apple M4 Pro Mac, without CPU affinity or full machine isolation. Small differences are sensitive to background activity and process/compiler layout. **GFM has unequal output:** Inkmark leaves the workload's `www.example.com` unlinked and formats tables differently. The three original CommonMark samples agree with Inkmark after entity decoding, rather than byte for byte. These timings do not establish a universal ranking.
+Core-markdown has lower medians than Inkmark on all twelve established workloads and all six pinned real documents in this run. It has twenty-eight lower medians across all twenty-nine inputs; mixed dense-Unicode keys remain **3.7% behind Inkmark**. Real documents agree after entity decoding. **Generated GFM output differs:** Inkmark leaves `www.` unlinked and table formatting differs. These shared-host measurements do not establish a universal ranking; the candidate README process medians alone span 39.4%. See the [complete tables, repeats and raw samples](measurements/2026-10-25-normalize-identifiers/readme.md) before generalizing.
+
+The [preceding reference-key study](measurements/2026-10-25-event-delivery/readme.md) retains the #51 comparison and separator-delivery diagnostics.
 
 ## Reproduction
 

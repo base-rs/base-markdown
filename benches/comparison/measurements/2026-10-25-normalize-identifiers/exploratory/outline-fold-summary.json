@@ -1,0 +1,222 @@
+{
+  "core-markdown/rust-readme": {
+    "candidate": {
+      "median_ms": 0.009308407391350193,
+      "process_medians_ms": [
+        0.009230918482031359,
+        0.009385896300669027
+      ],
+      "process_spread_percent": 1.6788992226433708,
+      "control_engine": "candidate",
+      "time_change_percent": 0.0
+    },
+    "outline-fold": {
+      "median_ms": 0.009290634598124303,
+      "process_medians_ms": [
+        0.009195162230425491,
+        0.009386106965823116
+      ],
+      "process_spread_percent": 2.0765782115927944,
+      "control_engine": "candidate",
+      "time_change_percent": -0.1909326964181446
+    }
+  },
+  "core-markdown/clap-readme": {
+    "candidate": {
+      "median_ms": 0.006494016553094863,
+      "process_medians_ms": [
+        0.006484855883395357,
+        0.00650317722279437
+      ],
+      "process_spread_percent": 0.2825250048489991,
+      "control_engine": "candidate",
+      "time_change_percent": 0.0
+    },
+    "outline-fold": {
+      "median_ms": 0.006524889708315528,
+      "process_medians_ms": [
+        0.006345310903111561,
+        0.006704468513519494
+      ],
+      "process_spread_percent": 5.66020508517262,
+      "control_engine": "candidate",
+      "time_change_percent": 0.47540924739328805
+    }
+  },
+  "core-markdown/tokio-changelog": {
+    "candidate": {
+      "median_ms": 1.0120387970068028,
+      "process_medians_ms": [
+        1.0083372266666666,
+        1.015740367346939
+      ],
+      "process_spread_percent": 0.7341929351101673,
+      "control_engine": "candidate",
+      "time_change_percent": 0.0
+    },
+    "outline-fold": {
+      "median_ms": 1.0374583653205964,
+      "process_medians_ms": [
+        1.04934190070922,
+        1.0255748299319727
+      ],
+      "process_spread_percent": 2.3174389701845266,
+      "control_engine": "candidate",
+      "time_change_percent": 2.5117187591003676
+    }
+  },
+  "core-markdown/rust-nll-rfc": {
+    "candidate": {
+      "median_ms": 0.17743567165331148,
+      "process_medians_ms": [
+        0.1753096726190476,
+        0.1795616706875754
+      ],
+      "process_spread_percent": 2.4254212588529,
+      "control_engine": "candidate",
+      "time_change_percent": 0.0
+    },
+    "outline-fold": {
+      "median_ms": 0.18152601564899257,
+      "process_medians_ms": [
+        0.18564859173754558,
+        0.17740343956043958
+      ],
+      "process_spread_percent": 4.647684507997929,
+      "control_engine": "candidate",
+      "time_change_percent": 2.305254607243312
+    }
+  },
+  "core-markdown/awesome-rust-readme": {
+    "candidate": {
+      "median_ms": 1.1710148125,
+      "process_medians_ms": [
+        1.1731676484375,
+        1.1688619765625
+      ],
+      "process_spread_percent": 0.368364440056701,
+      "control_engine": "candidate",
+      "time_change_percent": 0.0
+    },
+    "outline-fold": {
+      "median_ms": 1.2214523772474881,
+      "process_medians_ms": [
+        1.2551782786885248,
+        1.1877264758064516
+      ],
+      "process_spread_percent": 5.679068729715264,
+      "control_engine": "candidate",
+      "time_change_percent": 4.307167100628639
+    }
+  },
+  "core-markdown/commonmark-spec": {
+    "candidate": {
+      "median_ms": 0.4705345696624531,
+      "process_medians_ms": [
+        0.4639400958466453,
+        0.4771290434782609
+      ],
+      "process_spread_percent": 2.8428126281146326,
+      "control_engine": "candidate",
+      "time_change_percent": 0.0
+    },
+    "outline-fold": {
+      "median_ms": 0.4652678295081968,
+      "process_medians_ms": [
+        0.4631332,
+        0.4674024590163935
+      ],
+      "process_spread_percent": 0.9218209829037205,
+      "control_engine": "candidate",
+      "time_change_percent": -1.1193099282874153
+    }
+  },
+  "core-markdown/keys-uppercase-1024": {
+    "candidate": {
+      "median_ms": 0.13292632623859613,
+      "process_medians_ms": [
+        0.1316219574861368,
+        0.13423069499105544
+      ],
+      "process_spread_percent": 1.981992636140073,
+      "control_engine": "candidate",
+      "time_change_percent": 0.0
+    },
+    "outline-fold": {
+      "median_ms": 0.13312212489196462,
+      "process_medians_ms": [
+        0.13236007720930235,
+        0.13388417257462687
+      ],
+      "process_spread_percent": 1.1514766366556684,
+      "control_engine": "candidate",
+      "time_change_percent": 0.1472986269228871
+    }
+  },
+  "core-markdown/keys-unicode-1024": {
+    "candidate": {
+      "median_ms": 0.16970179547985115,
+      "process_medians_ms": [
+        0.1687950773542601,
+        0.17060851360544216
+      ],
+      "process_spread_percent": 1.0743419059408232,
+      "control_engine": "candidate",
+      "time_change_percent": 0.0
+    },
+    "outline-fold": {
+      "median_ms": 0.17159770082026712,
+      "process_medians_ms": [
+        0.17043906250000002,
+        0.17275633914053423
+      ],
+      "process_spread_percent": 1.359592458761738,
+      "control_engine": "candidate",
+      "time_change_percent": 1.1171981622557947
+    }
+  },
+  "core-markdown/keys-spaced-1024": {
+    "candidate": {
+      "median_ms": 0.15091569972638813,
+      "process_medians_ms": [
+        0.15004718228105907,
+        0.1517842171717172
+      ],
+      "process_spread_percent": 1.157659120452137,
+      "control_engine": "candidate",
+      "time_change_percent": 0.0
+    },
+    "outline-fold": {
+      "median_ms": 0.1512782222879372,
+      "process_medians_ms": [
+        0.15075296987951808,
+        0.15180347469635627
+      ],
+      "process_spread_percent": 0.6968385549404044,
+      "control_engine": "candidate",
+      "time_change_percent": 0.24021527396176356
+    }
+  },
+  "core-markdown/keys-random-1024": {
+    "candidate": {
+      "median_ms": 0.12051460439949724,
+      "process_medians_ms": [
+        0.1196575175510204,
+        0.12137169124797406
+      ],
+      "process_spread_percent": 1.4325666552648997,
+      "control_engine": "candidate",
+      "time_change_percent": 0.0
+    },
+    "outline-fold": {
+      "median_ms": 0.12096446526516338,
+      "process_medians_ms": [
+        0.12085621612903227,
+        0.12107271440129451
+      ],
+      "process_spread_percent": 0.17913705988534812,
+      "control_engine": "candidate",
+      "time_change_percent": 0.3732832779128392
+    }
+  }
+}

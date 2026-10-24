@@ -1,0 +1,111 @@
+{
+  "baseline_commit": "d0d0a821badba7719a583a4a52691205b3523bda",
+  "source_commit": "7663402ac2a9f0414e99f71f98f0d226b35b0504",
+  "source_src_tree": "d980bef94cd839e92d6fe623238e66c671eca7bf",
+  "baseline_src_tree": "35098334cf2caa3cc3bd70408c1d55e369d0b60d",
+  "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.3",
+  "validation_compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "build_command": "cargo build --release --locked --manifest-path benches/comparison/Cargo.toml",
+  "machine": "Apple M4 Pro",
+  "system": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "ruby": "ruby 4.0.9 (2026-10-23 revision 3e93b23afc) +PRISM [arm64-darwin25]",
+  "inkmark_version": "0.2.1 (Gemfile.lock)",
+  "comparison_lock_sha256": "f5e800843ee0953d706b17e637b17645604493bc2f331190518fd12989b169a2",
+  "gem_lock_sha256": "b65055f3d64957fe2f81f5bfc3e7ffe00a3695b0ad5dbc7924657e25c207c94c",
+  "binaries": {
+    "baseline": {
+      "sha256": "a59d3021b6fc98590b96107ae410e3c150c11160e2b141cb325eda90f8349ed6",
+      "bytes": 3218128
+    },
+    "candidate": {
+      "sha256": "de33163b5a867286b3a1c2a9d42b9b8c1f603811a6a2e799f37aceaf79a00746",
+      "bytes": 3218720
+    },
+    "baseline-allocations": {
+      "sha256": "40ceb4d15fe9e3e4cee0d1cf1d91a39f7325beb27e2bdfc91a6bf247f88df656",
+      "bytes": 1612592
+    },
+    "candidate-allocations": {
+      "sha256": "2de315fc1b8a3770f078297425e64fc56a6de8c838da969c68857584d7165f8b",
+      "bytes": 1613248
+    },
+    "baseline-driver": {
+      "sha256": "b110dddcac7216a934218bb58edc41403de85d4f81ec90ea2191abb67d9ec669",
+      "bytes": 1649840
+    },
+    "candidate-driver": {
+      "sha256": "dcc3dc9db24fab51675577054f3a541236fb155d15d62baaed26c963efa0d959",
+      "bytes": 1651088
+    }
+  },
+  "baseline_binary_provenance": "Frozen PR #52 adapter built from 62b32ef5807029b84bcedc48c2f3605daade919a, with src tree identical to squash-merged d0d0a82. Its SHA matches that study. Allocator diagnostic baseline rebuilt in detached d0d0a82 worktree; baseline diagnostic driver is the frozen #52 candidate driver.",
+  "sampling": "Three sequential alternating rounds, seven calibrated ~150 ms batches per process after 200 ms warmup. Shared machine without affinity or full isolation. This task's builds, tests, diagnostics and source review complete before final timing; unrelated background work is not controlled. Every final raw sample is retained; rejected/noisy screening stays separate.",
+  "inputs": [
+    {
+      "profile": "commonmark",
+      "path": "../../data/bench-commonmark.json",
+      "sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67",
+      "documents": 3
+    },
+    {
+      "profile": "gfm",
+      "path": "../../data/bench-gfm.json",
+      "sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7",
+      "documents": 1
+    },
+    {
+      "profile": "commonmark",
+      "path": "../../data/bench-references.json",
+      "sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3",
+      "documents": 1
+    },
+    {
+      "profile": "commonmark",
+      "path": "../../data/bench-scanners.json",
+      "sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9",
+      "documents": 2
+    },
+    {
+      "profile": "commonmark",
+      "path": "../../data/bench-definitions.json",
+      "sha256": "a810afe06b08e2c92674901b6bbfc126f9ee15652731ef5dc9780908dc537fde",
+      "documents": 3
+    },
+    {
+      "profile": "commonmark",
+      "path": "../2026-10-25-recover-single-parser/multiline.json",
+      "sha256": "38d2e42297e42e779fd65ddc8f5f9a9a3301634e449b0115d890cfa91f5fc597",
+      "documents": 2
+    },
+    {
+      "profile": "commonmark",
+      "path": "../2026-10-25-event-delivery/key-shapes.json",
+      "sha256": "86a2f80fecb82e875cf5636eeb6da7bb20e9978a137c3d67bc4cf41b43a0cdbb",
+      "documents": 4
+    },
+    {
+      "profile": "commonmark",
+      "path": "../../data/bench-key-controls.json",
+      "sha256": "3bd5d7a80c37d9e96b274f9d368bc995ceaa20fd0cac36f44e7c4cdef75d4445",
+      "documents": 7
+    },
+    {
+      "profile": "gfm",
+      "path": "../../data/bench-real-gfm.json",
+      "sha256": "9e91567c7e62115e52768bef02558c5a057f0b147624b1849fce2cabe61cd4bd",
+      "documents": 5
+    },
+    {
+      "profile": "commonmark",
+      "path": "../../data/bench-real-commonmark.json",
+      "sha256": "e17341c01e9be291c65e674acda0d23eff13702e4c12cd827ed441d7a7c7c22f",
+      "documents": 1
+    }
+  ],
+  "load_average_before": [
+    6.46630859375,
+    9.27880859375,
+    7.88818359375
+  ],
+  "background_observation": "An unrelated CPU-bound task and occasional unrelated builds were observed before timing; no thermal/power warning reported."
+}

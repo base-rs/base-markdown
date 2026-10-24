@@ -1,0 +1,222 @@
+{
+  "core-markdown/keys-long-uppercase-1024": {
+    "baseline": {
+      "median_ms": 0.6850174432594335,
+      "process_medians_ms": [
+        0.7458603974358975,
+        0.6241744890829695
+      ],
+      "process_spread_percent": 19.495495327229364,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "string-fold": {
+      "median_ms": 0.9155203495058402,
+      "process_medians_ms": [
+        1.0231742704402516,
+        0.8078664285714287
+      ],
+      "process_spread_percent": 26.65141590913209,
+      "control_engine": "baseline",
+      "time_change_percent": 33.64920244214999
+    }
+  },
+  "core-markdown/keys-long-spaced-1024": {
+    "baseline": {
+      "median_ms": 1.17023724032882,
+      "process_medians_ms": [
+        1.7061808636363633,
+        0.6342936170212766
+      ],
+      "process_spread_percent": 168.98912709366448,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "string-fold": {
+      "median_ms": 0.8623597150449551,
+      "process_medians_ms": [
+        0.8735402342857144,
+        0.8511791958041958
+      ],
+      "process_spread_percent": 2.627065909475368,
+      "control_engine": "baseline",
+      "time_change_percent": -26.30898374054099
+    }
+  },
+  "core-markdown/keys-unicode-dense-1024": {
+    "baseline": {
+      "median_ms": 0.5321107926273605,
+      "process_medians_ms": [
+        0.663072808080808,
+        0.40114877717391306
+      ],
+      "process_spread_percent": 65.29348855358496,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "string-fold": {
+      "median_ms": 0.9312895121951219,
+      "process_medians_ms": [
+        1.360218125,
+        0.5023608993902439
+      ],
+      "process_spread_percent": 170.765126555631,
+      "control_engine": "baseline",
+      "time_change_percent": 75.01797089977613
+    }
+  },
+  "core-markdown/keys-unicode-long-1024": {
+    "baseline": {
+      "median_ms": 5.289011029411764,
+      "process_medians_ms": [
+        6.224029411764706,
+        4.353992647058823
+      ],
+      "process_spread_percent": 42.94992932450439,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "string-fold": {
+      "median_ms": 10.705388233766232,
+      "process_medians_ms": [
+        15.782208285714285,
+        5.628568181818181
+      ],
+      "process_spread_percent": 180.394725193081,
+      "control_engine": "baseline",
+      "time_change_percent": 102.40812836718302
+    }
+  },
+  "core-markdown/keys-unicode-upper-long-1024": {
+    "baseline": {
+      "median_ms": 6.730043664285715,
+      "process_medians_ms": [
+        8.312281761904762,
+        5.147805566666666
+      ],
+      "process_spread_percent": 61.472333293410955,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "string-fold": {
+      "median_ms": 10.700547493333332,
+      "process_medians_ms": [
+        14.754666666666665,
+        6.64642832
+      ],
+      "process_spread_percent": 121.99391848201961,
+      "control_engine": "baseline",
+      "time_change_percent": 58.996702356002054
+    }
+  },
+  "core-markdown/keys-unicode-lower-long-1024": {
+    "baseline": {
+      "median_ms": 4.948478101393189,
+      "process_medians_ms": [
+        5.48415352631579,
+        4.412802676470588
+      ],
+      "process_spread_percent": 24.278240573903954,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "string-fold": {
+      "median_ms": 3.5499989382239385,
+      "process_medians_ms": [
+        3.9694121621621625,
+        3.1305857142857145
+      ],
+      "process_spread_percent": 26.794552982486785,
+      "control_engine": "baseline",
+      "time_change_percent": -28.26079320782533
+    }
+  },
+  "core-markdown/keys-uppercase-1024": {
+    "baseline": {
+      "median_ms": 0.15497073141671747,
+      "process_medians_ms": [
+        0.17396029028815369,
+        0.13598117254528122
+      ],
+      "process_spread_percent": 27.929688376694628,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "string-fold": {
+      "median_ms": 0.1497640031855098,
+      "process_medians_ms": [
+        0.1643788305785124,
+        0.1351491757925072
+      ],
+      "process_spread_percent": 21.627697405185152,
+      "control_engine": "baseline",
+      "time_change_percent": -3.3598139362243318
+    }
+  },
+  "core-markdown/keys-unicode-1024": {
+    "baseline": {
+      "median_ms": 0.24705134072369195,
+      "process_medians_ms": [
+        0.3014133900481541,
+        0.1926892913992298
+      ],
+      "process_spread_percent": 56.42456716687001,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "string-fold": {
+      "median_ms": 0.19252450542733418,
+      "process_medians_ms": [
+        0.20864455177993527,
+        0.1764044590747331
+      ],
+      "process_spread_percent": 18.276234554560645,
+      "control_engine": "baseline",
+      "time_change_percent": -22.07105419328279
+    }
+  },
+  "core-markdown/keys-spaced-1024": {
+    "baseline": {
+      "median_ms": 0.2083040694014917,
+      "process_medians_ms": [
+        0.2598191304347826,
+        0.15678900836820084
+      ],
+      "process_spread_percent": 65.7125924443807,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "string-fold": {
+      "median_ms": 0.18214249674838,
+      "process_medians_ms": [
+        0.21159054939106903,
+        0.15269444410569102
+      ],
+      "process_spread_percent": 38.57121693609997,
+      "control_engine": "baseline",
+      "time_change_percent": -12.559319041764406
+    }
+  },
+  "core-markdown/keys-random-1024": {
+    "baseline": {
+      "median_ms": 0.15185345169900155,
+      "process_medians_ms": [
+        0.18179969418960246,
+        0.12190720920840065
+      ],
+      "process_spread_percent": 49.12956778365378,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "string-fold": {
+      "median_ms": 0.1618363635623045,
+      "process_medians_ms": [
+        0.20147518248175184,
+        0.12219754464285715
+      ],
+      "process_spread_percent": 64.8766209424231,
+      "control_engine": "baseline",
+      "time_change_percent": 6.574043429115273
+    }
+  }
+}

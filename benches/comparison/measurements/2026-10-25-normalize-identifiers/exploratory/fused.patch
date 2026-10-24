@@ -1,0 +1,126 @@
+--- a/src/definitions.rs
++++ b/src/definitions.rs
+@@ -7 +7 @@
+-    normalize_identifier, normalize_reference_identifier_into,
++    normalize_identifier, normalize_reference_identifier, normalize_reference_identifier_into,
+@@ -40 +40 @@
+-            Text::Source(range) => reference_key(&source[range.clone()]),
++            Text::Source(range) => normalize_reference_identifier(&source[range.clone()]),
+@@ -112,23 +111,0 @@
+-fn reference_key(value: &str) -> Cow<'_, str> {
+-    if is_canonical_reference_key(value) {
+-        Cow::Borrowed(value)
+-    } else {
+-        Cow::Owned(owned_reference_key(value))
+-    }
+-}
+-
+-fn is_canonical_reference_key(value: &str) -> bool {
+-    let mut previous = b' ';
+-    for byte in value.bytes() {
+-        if !byte.is_ascii()
+-            || byte.is_ascii_uppercase()
+-            || matches!(byte, b'\t' | b'\r' | b'\n')
+-            || byte == b' ' && previous == b' '
+-        {
+-            return false;
+-        }
+-        previous = byte;
+-    }
+-    value.is_empty() || previous != b' '
+-}
+-
+@@ -137 +114 @@
+-    use super::{normalize_reference_identifier_into, reference_key};
++    use super::{normalize_reference_identifier, normalize_reference_identifier_into};
+@@ -159 +136 @@
+-            let key = reference_key(value);
++            let key = normalize_reference_identifier(value);
+--- a/src/util/normalize_identifier.rs
++++ b/src/util/normalize_identifier.rs
+@@ -7 +7 @@
+-use alloc::string::String;
++use alloc::{borrow::Cow, string::String};
+@@ -58,0 +59 @@
++    result.clear();
+@@ -60 +61 @@
+-        collapse_whitespace_into(value, result);
++        append_collapsed_whitespace(value, result);
+@@ -63 +64 @@
+-        normalize_unicode_identifier_into(value, result);
++        append_folded_identifier(value, result);
+@@ -69,0 +71,31 @@
++    result.clear();
++    append_reference_identifier(value, result);
++}
++
++/// Borrow an unchanged label, or normalize only the suffix after its canonical ASCII prefix.
++pub(crate) fn normalize_reference_identifier(value: &str) -> Cow<'_, str> {
++    let mut previous = b' ';
++    let mut end = value.len();
++    for (index, byte) in value.bytes().enumerate() {
++        if !byte.is_ascii()
++            || byte.is_ascii_uppercase()
++            || matches!(byte, b'\t' | b'\r' | b'\n')
++            || byte == b' ' && previous == b' '
++        {
++            end = index;
++            break;
++        }
++        previous = byte;
++    }
++    if end == value.len() && (value.is_empty() || previous != b' ') {
++        return Cow::Borrowed(value);
++    }
++    // Keep the whitespace boundary with the suffix so trimming and collapse also work across the split.
++    end = end.saturating_sub(usize::from(previous == b' '));
++    let mut result = String::with_capacity(value.len());
++    result.push_str(&value[..end]);
++    append_reference_identifier(&value[end..], &mut result);
++    Cow::Owned(result)
++}
++
++fn append_reference_identifier(value: &str, result: &mut String) {
+@@ -71 +103 @@
+-        collapse_whitespace_into(value, result);
++        append_collapsed_whitespace(value, result);
+@@ -74 +106 @@
+-        normalize_unicode_identifier_into(value, result);
++        append_folded_identifier(value, result);
+@@ -79,2 +111 @@
+-fn normalize_unicode_identifier_into(value: &str, result: &mut String) {
+-    result.clear();
++fn append_folded_identifier(value: &str, result: &mut String) {
+@@ -100,2 +131 @@
+-fn collapse_whitespace_into(value: &str, result: &mut String) {
+-    result.clear();
++fn append_collapsed_whitespace(value: &str, result: &mut String) {
+@@ -102,0 +133 @@
++    let mut space = false;
+@@ -106 +137 @@
+-            if !result.is_empty() {
++            if space && !result.is_empty() {
+@@ -116,0 +148 @@
++        space = padding > 0;
+@@ -176,0 +209,21 @@
++    fn borrowed_prefixes_preserve_whitespace_and_case_boundaries() {
++        for length in [0, 1, 15, 16, 17, 31, 32, 33, 63, 64, 65] {
++            for separator in ["", " "] {
++                for suffix in [
++                    "", "a", "A", "é", "ẞ", "Σ", "İ", " ", "  ", " a", "\ta", "\r\nÉ",
++                ] {
++                    let value = alloc::format!("{}{separator}{suffix}", "a".repeat(length));
++                    let mut expected = String::new();
++                    super::normalize_reference_identifier_into(&value, &mut expected);
++                    let actual = super::normalize_reference_identifier(&value);
++                    assert_eq!(actual, expected, "{value:?}");
++                    if value.is_ascii() && value == expected {
++                        assert!(matches!(actual, alloc::borrow::Cow::Borrowed(_)));
++                        assert_eq!(actual.as_ptr(), value.as_ptr());
++                    }
++                }
++            }
++        }
++    }
++
++    #[test]

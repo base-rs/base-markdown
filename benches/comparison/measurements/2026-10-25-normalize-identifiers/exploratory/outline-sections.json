@@ -1,0 +1,14 @@
+{
+  "candidate": {
+    "text_size": 1287868,
+    "text_offset": 2240,
+    "text_sha256": "2468c3cc904a81e9ac2583cb6c5e27d1de5973834e09a16d6d53650eb3f0b641",
+    "assembly_sha256": "84faa27cf5abd8ff2cbe0d8c7d676b19bbe825ab1eae59926e5f556cd2a05f92"
+  },
+  "outline-fold": {
+    "text_size": 1287868,
+    "text_offset": 2240,
+    "text_sha256": "2468c3cc904a81e9ac2583cb6c5e27d1de5973834e09a16d6d53650eb3f0b641",
+    "assembly_sha256": "84faa27cf5abd8ff2cbe0d8c7d676b19bbe825ab1eae59926e5f556cd2a05f92"
+  }
+}

@@ -1,0 +1,52 @@
+--- a/src/util/normalize_identifier.rs
++++ b/src/util/normalize_identifier.rs
+@@ -6 +5,0 @@
+-use crate::byte_scan::AsciiSet;
+@@ -8,2 +6,0 @@
+-
+-static WHITESPACE: AsciiSet = AsciiSet::new(b" \t\r\n");
+@@ -59,21 +55,0 @@
+-    if value.is_ascii() {
+-        collapse_whitespace_into(value, result);
+-        result.make_ascii_uppercase();
+-    } else {
+-        normalize_unicode_identifier_into(value, result);
+-    }
+-}
+-
+-/// Reference matching uses lowercase ASCII so canonical source labels can be borrowed.
+-/// Footnote identifiers retain the original uppercase form because it is visible in HTML.
+-pub(crate) fn normalize_reference_identifier_into(value: &str, result: &mut String) {
+-    if value.is_ascii() {
+-        collapse_whitespace_into(value, result);
+-        result.make_ascii_lowercase();
+-    } else {
+-        normalize_unicode_identifier_into(value, result);
+-        result.make_ascii_lowercase();
+-    }
+-}
+-
+-fn normalize_unicode_identifier_into(value: &str, result: &mut String) {
+@@ -100,18 +76,4 @@
+-fn collapse_whitespace_into(value: &str, result: &mut String) {
+-    result.clear();
+-    let mut remaining = value;
+-    while !remaining.is_empty() {
+-        let end = WHITESPACE.find(remaining.as_bytes());
+-        if end > 0 {
+-            if !result.is_empty() {
+-                result.push(' ');
+-            }
+-            result.push_str(&remaining[..end]);
+-        }
+-        remaining = &remaining[end..];
+-        let padding = remaining
+-            .bytes()
+-            .take_while(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
+-            .count();
+-        remaining = &remaining[padding..];
+-    }
++/// Reference matching uses lowercase ASCII; visible footnote identifiers retain uppercase.
++pub(crate) fn normalize_reference_identifier_into(value: &str, result: &mut String) {
++    normalize_identifier_into(value, result);
++    result.make_ascii_lowercase();
