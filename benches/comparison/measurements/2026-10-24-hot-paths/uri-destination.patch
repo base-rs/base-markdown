@@ -1,0 +1,233 @@
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index 2d621db..6a27583 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -127,7 +127,14 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+             } else {
+                 Some(SAFE_PROTOCOL_HREF.as_slice())
+             };
+-        write_sanitized(value, protocols, |value| self.write(value))
++        if let Some(heading) = self.heading.as_mut() {
++            write_destination(&mut heading.output, &mut self.last, value, protocols)
++        } else if let Some(capture) = self.captures.last_mut() {
++            write_destination(&mut capture.output, &mut self.last, value, protocols)
++        } else {
++            write_destination(self.output, &mut self.last, value, protocols)
++        }
++        .map_err(StreamError::Write)
+     }
+ 
+     fn start(&mut self, tag: &Tag<'_>, end: usize) -> Result<(), StreamError> {
+@@ -823,6 +830,22 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+     }
+ }
+ 
++// A destination can emit multiple percent escapes and HTML replacements; keep its writer selected for the whole value.
++fn write_destination(
++    output: &mut impl Write,
++    last: &mut Option<u8>,
++    value: &str,
++    protocols: Option<&[&str]>,
++) -> fmt::Result {
++    write_sanitized(value, protocols, |value| {
++        output.write_str(value)?;
++        if let Some(&byte) = value.as_bytes().last() {
++            *last = Some(byte);
++        }
++        Ok(())
++    })
++}
++
+ #[inline]
+ fn find_escape(bytes: &[u8], encode: bool) -> usize {
+     static ESCAPES: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0&\"<>");
+@@ -882,3 +905,45 @@ pub fn render_events<'a>(
+ ) -> Result<(), StreamError> {
+     EventHtmlRenderer::new(source, options, output).render(events)
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::write_destination;
++    use alloc::string::String;
++    use core::fmt::{self, Write};
++
++    #[test]
++    fn failed_destination_writes_preserve_the_last_completed_byte() {
++        struct Writer {
++            output: String,
++            fail_on: &'static str,
++        }
++        impl Write for Writer {
++            fn write_str(&mut self, value: &str) -> fmt::Result {
++                if value == self.fail_on {
++                    return Err(fmt::Error);
++                }
++                self.output.push_str(value);
++                Ok(())
++            }
++        }
++        for (value, fail_on, expected, byte) in [
++            ("value&tail", "&amp;", "value", b'e'),
++            ("valueé", "%C3", "value", b'e'),
++            ("é", "%A9", "%C3", b'3'),
++            ("&tail", "tail", "&amp;", b';'),
++            ("%GG", "%GG", "", b'"'),
++            ("%", "%25", "", b'"'),
++        ] {
++            let mut writer = Writer {
++                output: String::new(),
++                fail_on,
++            };
++            // The opening href/src attribute has already written its quote.
++            let mut last = Some(b'"');
++            assert!(write_destination(&mut writer, &mut last, value, None).is_err());
++            assert_eq!(writer.output, expected);
++            assert_eq!(last, Some(byte));
++        }
++    }
++}
+diff --git a/src/util/sanitize_uri.rs b/src/util/sanitize_uri.rs
+index 6e1fe6a..2f0b327 100644
+--- a/src/util/sanitize_uri.rs
++++ b/src/util/sanitize_uri.rs
+@@ -6,6 +6,16 @@
+ //! Make urls safe.
+ use alloc::string::String;
+ 
++const URI_SAFE: [bool; 256] = {
++    let mut safe = [false; 256];
++    let mut byte = 0_u8;
++    while byte < 128 {
++        safe[byte as usize] = matches!(byte, b'!' | b'#' | b'$' | b'\''..=b';' | b'=' | b'?'..=b'Z' | b'_' | b'a'..=b'z' | b'~');
++        byte += 1;
++    }
++    safe
++};
++
+ /// Make a value safe for injection as a URL.
+ ///
+ /// This encodes unsafe characters with percent-encoding and skips already
+@@ -92,6 +102,13 @@ pub(crate) fn write_sanitized<E>(
+     let mut index = 0;
+     let mut start = 0;
+     while index < bytes.len() {
++        index += bytes[index..]
++            .iter()
++            .position(|byte| !URI_SAFE[usize::from(*byte)])
++            .unwrap_or(bytes.len() - index);
++        if index == bytes.len() {
++            break;
++        }
+         let byte = bytes[index];
+         // Preserve the historical acceptance of two alphanumeric bytes, not just hex digits.
+         if byte == b'%'
+@@ -101,10 +118,12 @@ pub(crate) fn write_sanitized<E>(
+             index += 3;
+             continue;
+         }
+-        let replacement = match byte {
+-            b'&' => Some("&amp;"),
+-            b'!' | b'#' | b'$' | b'\''..=b';' | b'=' | b'?'..=b'Z' | b'_' | b'a'..=b'z' | b'~' => {
+-                None
++        match byte {
++            b'&' => {
++                if start < index {
++                    write(&value[start..index])?;
++                }
++                write("&amp;")?;
+             }
+             _ => {
+                 if start < index {
+@@ -117,19 +136,15 @@ pub(crate) fn write_sanitized<E>(
+                 ];
+                 // Every byte is an ASCII percent sign or hex digit.
+                 write(core::str::from_utf8(&encoded).unwrap())?;
+-                index += 1;
+-                start = index;
+-                continue;
+             }
+-        };
+-        if let Some(replacement) = replacement {
+-            write(&value[start..index])?;
+-            write(replacement)?;
+-            start = index + 1;
+         }
+         index += 1;
++        start = index;
+     }
+-    write(&value[start..])
++    if start < value.len() || value.is_empty() {
++        write(&value[start..])?;
++    }
++    Ok(())
+ }
+ 
+ #[cfg(test)]
+@@ -152,6 +167,19 @@ mod tests {
+             "relative/path:ok"
+         );
+         assert_eq!(sanitize_with_protocols("javascript:x", &["https"]), "");
++        for (input, expected) in [
++            ("%A", "%25A"),
++            ("%AA", "%AA"),
++            ("%GG", "%GG"),
++            ("%a9", "%a9"),
++            ("%A_", "%25A_"),
++            ("%é", "%25%C3%A9"),
++            ("%%41", "%25%41"),
++            ("%41%", "%41%25"),
++            ("left&&right", "left&amp;&amp;right"),
++        ] {
++            assert_eq!(sanitize(input), expected);
++        }
+         let mut output = String::new();
+         write_sanitized("é\0%é", None, |run| {
+             output.push_str(run);
+@@ -166,8 +194,14 @@ mod tests {
+         let bytes: Vec<_> = (0..128).collect();
+         let input = core::str::from_utf8(&bytes).unwrap();
+         let output = sanitize(input);
+-        assert!(output.is_ascii());
+-        assert!(output.contains("%00%01%02"));
+-        assert!(output.contains("%7F"));
++        assert_eq!(
++            output,
++            concat!(
++                "%00%01%02%03%04%05%06%07%08%09%0A%0B%0C%0D%0E%0F",
++                "%10%11%12%13%14%15%16%17%18%19%1A%1B%1C%1D%1E%1F",
++                "%20!%22#$%25&amp;'()*+,-./0123456789:;%3C=%3E?@ABCDEFGHIJKLMNOPQRSTUVWXYZ",
++                "%5B%5C%5D%5E_%60abcdefghijklmnopqrstuvwxyz%7B%7C%7D~%7F"
++            )
++        );
+     }
+ }
+diff --git a/tests/event_html_escaping.rs b/tests/event_html_escaping.rs
+index ed2debd..d7f8ea8 100644
+--- a/tests/event_html_escaping.rs
++++ b/tests/event_html_escaping.rs
+@@ -63,15 +63,21 @@ fn escaping_preserves_unicode_and_handles_adjacent_markers_at_scan_boundaries()
+ 
+ #[test]
+ fn escaping_uses_heading_capture_before_footnote_capture() {
+-    let source = "# Main &\"<>\0\n\nNote[^n].\n\n[^n]: # Nested &\"<>\0\n\n    Body &\"<>\0\n";
++    let source = "# Main &\"<>\0 [main](https://example.com/main?x=é&y=%GG)\n\nNote[^n].\n\n[^n]: # Nested &\"<>\0 [nested](https://example.com/nested?x=é&y=%GG)\n\n    Body &\"<>\0 [body](https://example.com/body?x=é&y=%GG)\n";
+     let mut options = Options::gfm();
+     options.compile.heading_ids = true;
+     let expected = core_markdown::to_html_with_options(source, &options).unwrap();
+     let marker = "&amp;&quot;&lt;&gt;�";
+     let footnotes = expected.find("<section data-footnotes").unwrap();
+-    assert!(expected[..footnotes].contains(&format!("Main {marker}</h1>")));
+-    assert!(expected[footnotes..].contains(&format!("Nested {marker}</h1>")));
++    assert!(expected[..footnotes].contains(&format!("Main {marker} <a ")));
++    assert!(expected[footnotes..].contains(&format!("Nested {marker} <a ")));
+     assert!(expected[footnotes..].contains(&format!("Body {marker}")));
++    assert!(expected[..footnotes].contains("href=\"https://example.com/main?x=%C3%A9&amp;y=%GG\""));
++    for path in ["nested", "body"] {
++        assert!(expected[footnotes..].contains(&format!(
++            "href=\"https://example.com/{path}?x=%C3%A9&amp;y=%GG\""
++        )));
++    }
+     let ast = Document::parse(source, &options.parse).unwrap();
+     let mut output = String::new();
+     render_events(source, ast.events(), &options.compile, &mut output).unwrap();

@@ -1,0 +1,30 @@
+{
+  "source_commit": "bab3050a58289dc58e0475070c4fb72b4ddcf44b",
+  "source_sha256": {
+    "src/byte_scan.rs": "7e58d631719dbc18b35d058e0660912eaf689eab232eca6642a946ec51a0f98c",
+    "src/util/sanitize_uri.rs": "1846af147976652bd106428d3c0e19db8019b8342ef726b026c059e6d48155e1"
+  },
+  "format": "passed",
+  "clippy_workspace_all_targets_all_features": "passed",
+  "coverage": {
+    "target": "aarch64-apple-darwin",
+    "features": "all",
+    "all_targets": true,
+    "covered_regions": 26922,
+    "measured_regions": 26922,
+    "excluded_invariant_unreachable_regions": 68
+  },
+  "workspace_tests": "passed",
+  "portable_library_check": {
+    "target": "x86_64-unknown-linux-gnu",
+    "result": "passed with rustup stable"
+  },
+  "saved_outputs": 2117,
+  "rendering_paths": [
+    "direct",
+    "checked events",
+    "arena"
+  ],
+  "allocation_records_identical": true,
+  "note": "Local arm64 gate covers the changed NEON path; portable Linux library check covers scalar compilation. Public events/source ranges/AST representation unchanged."
+}

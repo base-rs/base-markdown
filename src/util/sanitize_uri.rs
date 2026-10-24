@@ -6,6 +6,16 @@
 //! Make urls safe.
 use alloc::string::String;
 
+const URI_SAFE: [bool; 256] = {
+    let mut safe = [false; 256];
+    let mut byte = 0_u8;
+    while byte < 128 {
+        safe[byte as usize] = matches!(byte, b'!' | b'#' | b'$' | b'\''..=b';' | b'=' | b'?'..=b'Z' | b'_' | b'a'..=b'z' | b'~');
+        byte += 1;
+    }
+    safe
+};
+
 /// Make a value safe for injection as a URL.
 ///
 /// This encodes unsafe characters with percent-encoding and skips already
@@ -92,6 +102,13 @@ pub(crate) fn write_sanitized<E>(
     let mut index = 0;
     let mut start = 0;
     while index < bytes.len() {
+        index += bytes[index..]
+            .iter()
+            .position(|byte| !URI_SAFE[usize::from(*byte)])
+            .unwrap_or(bytes.len() - index);
+        if index == bytes.len() {
+            break;
+        }
         let byte = bytes[index];
         // Preserve the historical acceptance of two alphanumeric bytes, not just hex digits.
         if byte == b'%'
@@ -101,35 +118,27 @@ pub(crate) fn write_sanitized<E>(
             index += 3;
             continue;
         }
-        let replacement = match byte {
-            b'&' => Some("&amp;"),
-            b'!' | b'#' | b'$' | b'\''..=b';' | b'=' | b'?'..=b'Z' | b'_' | b'a'..=b'z' | b'~' => {
-                None
-            }
-            _ => {
-                if start < index {
-                    write(&value[start..index])?;
-                }
-                let encoded = [
-                    b'%',
-                    HEX[usize::from(byte >> 4)],
-                    HEX[usize::from(byte & 15)],
-                ];
-                // Every byte is an ASCII percent sign or hex digit.
-                write(core::str::from_utf8(&encoded).unwrap())?;
-                index += 1;
-                start = index;
-                continue;
-            }
-        };
-        if let Some(replacement) = replacement {
+        if start < index {
             write(&value[start..index])?;
-            write(replacement)?;
-            start = index + 1;
+        }
+        if byte == b'&' {
+            write("&amp;")?;
+        } else {
+            let encoded = [
+                b'%',
+                HEX[usize::from(byte >> 4)],
+                HEX[usize::from(byte & 15)],
+            ];
+            // Every byte is an ASCII percent sign or hex digit.
+            write(core::str::from_utf8(&encoded).unwrap())?;
         }
         index += 1;
+        start = index;
     }
-    write(&value[start..])
+    if start < value.len() || value.is_empty() {
+        write(&value[start..])?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -152,6 +161,19 @@ mod tests {
             "relative/path:ok"
         );
         assert_eq!(sanitize_with_protocols("javascript:x", &["https"]), "");
+        for (input, expected) in [
+            ("%A", "%25A"),
+            ("%AA", "%AA"),
+            ("%GG", "%GG"),
+            ("%a9", "%a9"),
+            ("%A_", "%25A_"),
+            ("%é", "%25%C3%A9"),
+            ("%%41", "%25%41"),
+            ("%41%", "%41%25"),
+            ("left&&right", "left&amp;&amp;right"),
+        ] {
+            assert_eq!(sanitize(input), expected);
+        }
         let mut output = String::new();
         write_sanitized("é\0%é", None, |run| {
             output.push_str(run);
@@ -166,8 +188,14 @@ mod tests {
         let bytes: Vec<_> = (0..128).collect();
         let input = core::str::from_utf8(&bytes).unwrap();
         let output = sanitize(input);
-        assert!(output.is_ascii());
-        assert!(output.contains("%00%01%02"));
-        assert!(output.contains("%7F"));
+        assert_eq!(
+            output,
+            concat!(
+                "%00%01%02%03%04%05%06%07%08%09%0A%0B%0C%0D%0E%0F",
+                "%10%11%12%13%14%15%16%17%18%19%1A%1B%1C%1D%1E%1F",
+                "%20!%22#$%25&amp;'()*+,-./0123456789:;%3C=%3E?@ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                "%5B%5C%5D%5E_%60abcdefghijklmnopqrstuvwxyz%7B%7C%7D~%7F"
+            )
+        );
     }
 }

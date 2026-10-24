@@ -1,0 +1,60 @@
+{
+  "timestamp_utc": "2026-10-24T02:20:09.394791+00:00",
+  "candidate_head": "bab3050a58289dc58e0475070c4fb72b4ddcf44b",
+  "baseline_head": "4d18a7169bc9545f165c63e593d6a547e858c3c1",
+  "binary_sha256": {
+    "baseline": "221cd2ae571bddfe6d17787273d3015d2313772f267b4cdf192d12a1566b1c1a",
+    "candidate": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941"
+  },
+  "source_sha256": {
+    "src/byte_scan.rs": "7e58d631719dbc18b35d058e0660912eaf689eab232eca6642a946ec51a0f98c",
+    "src/util/sanitize_uri.rs": "1846af147976652bd106428d3c0e19db8019b8342ef726b026c059e6d48155e1"
+  },
+  "machine": "Apple M4 Pro",
+  "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)",
+  "ruby": "ruby 4.0.9 (2026-10-23 revision 3e93b23afc) +PRISM [arm64-darwin25]",
+  "inkmark": "0.2.1",
+  "inputs": {
+    "readme": {
+      "bytes": 9019,
+      "sha256": "e9fcb242b7ba8f45fd18b1a97b7e021755babea8825d6f3cb86bb6f89dcd2e14"
+    },
+    "mixed-100k": {
+      "bytes": 100252,
+      "sha256": "a9b31b8c20db1c4469a87e788ae77c98155cb4371738d291826abc94cfb12021"
+    },
+    "mixed-1m": {
+      "bytes": 1000020,
+      "sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356"
+    },
+    "gfm-100k": {
+      "bytes": 100130,
+      "sha256": "6c7091f969014c4396cbb98e6c3358d3d6d2c64e4dd6b7f35af273c15cb11c5d"
+    },
+    "references": {
+      "bytes": 80025,
+      "sha256": "f5d995fc94efcc42927c9274759866fc60699865dd9cd1504b3f0e9380edc4cf"
+    },
+    "definitions-256": {
+      "bytes": 8753,
+      "sha256": "5018cdfdf81690b0503e58ab5c2a47800c7d15d4e1f7b9f4887b14d0d5044ba9"
+    },
+    "definitions-1024": {
+      "bytes": 36096,
+      "sha256": "e0e0786ff62f122cf27bb30ea84f658c365c8c599f29b481827c874114c42ecf"
+    },
+    "definitions-4096": {
+      "bytes": 155136,
+      "sha256": "589b9c546dd20166efc74b1b199ad2866e619eb61e57b435302c4a3ddfea9a65"
+    },
+    "long-lines-1m": {
+      "bytes": 1026456,
+      "sha256": "4edbe39e17d6254bc1d33654c36e1e3c0473c10c08817cce6d1fd2f24f79b261"
+    },
+    "code-1m": {
+      "bytes": 1041008,
+      "sha256": "9614745b8b4188bcf96a751410cd0f9b3841f0adc3bdfde4f0685849e80d6e2e"
+    }
+  },
+  "method": "Five alternating baseline/candidate/Inkmark runs of original four workloads, references, and scanner regressions. Same launch path and environment for Rust revisions, seven calibrated samples per process, 200ms warmup. Definitions are single-process regression observations. Checked event rendering and arena parse/render also use three alternating pairs. Sequential with no concurrent project builds/tests/review workloads; no machine-wide isolation. GFM HTML differs between engines; see output agreement. Small mixed-workload differences remain process-layout sensitive."
+}

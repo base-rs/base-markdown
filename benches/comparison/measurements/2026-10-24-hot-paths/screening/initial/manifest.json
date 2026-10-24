@@ -1,0 +1,386 @@
+[
+  {
+    "file": "0-baseline-commonmark.jsonl",
+    "label": "baseline",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67"
+  },
+  {
+    "file": "0-baseline-gfm.jsonl",
+    "label": "baseline",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7"
+  },
+  {
+    "file": "0-baseline-references.jsonl",
+    "label": "baseline",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3"
+  },
+  {
+    "file": "0-baseline-scanners.jsonl",
+    "label": "baseline",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9"
+  },
+  {
+    "file": "0-producer-dispatch-commonmark.jsonl",
+    "label": "producer-dispatch",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67"
+  },
+  {
+    "file": "0-producer-dispatch-gfm.jsonl",
+    "label": "producer-dispatch",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7"
+  },
+  {
+    "file": "0-producer-dispatch-references.jsonl",
+    "label": "producer-dispatch",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3"
+  },
+  {
+    "file": "0-producer-dispatch-scanners.jsonl",
+    "label": "producer-dispatch",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9"
+  },
+  {
+    "file": "0-simd-match-commonmark.jsonl",
+    "label": "simd-match",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67"
+  },
+  {
+    "file": "0-simd-match-gfm.jsonl",
+    "label": "simd-match",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7"
+  },
+  {
+    "file": "0-simd-match-references.jsonl",
+    "label": "simd-match",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3"
+  },
+  {
+    "file": "0-simd-match-scanners.jsonl",
+    "label": "simd-match",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9"
+  },
+  {
+    "file": "0-uri-runs-commonmark.jsonl",
+    "label": "uri-runs",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67"
+  },
+  {
+    "file": "0-uri-runs-gfm.jsonl",
+    "label": "uri-runs",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7"
+  },
+  {
+    "file": "0-uri-runs-references.jsonl",
+    "label": "uri-runs",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3"
+  },
+  {
+    "file": "0-uri-runs-scanners.jsonl",
+    "label": "uri-runs",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9"
+  },
+  {
+    "file": "1-uri-runs-commonmark.jsonl",
+    "label": "uri-runs",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67"
+  },
+  {
+    "file": "1-uri-runs-gfm.jsonl",
+    "label": "uri-runs",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7"
+  },
+  {
+    "file": "1-uri-runs-references.jsonl",
+    "label": "uri-runs",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3"
+  },
+  {
+    "file": "1-uri-runs-scanners.jsonl",
+    "label": "uri-runs",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9"
+  },
+  {
+    "file": "1-simd-match-commonmark.jsonl",
+    "label": "simd-match",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67"
+  },
+  {
+    "file": "1-simd-match-gfm.jsonl",
+    "label": "simd-match",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7"
+  },
+  {
+    "file": "1-simd-match-references.jsonl",
+    "label": "simd-match",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3"
+  },
+  {
+    "file": "1-simd-match-scanners.jsonl",
+    "label": "simd-match",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9"
+  },
+  {
+    "file": "1-producer-dispatch-commonmark.jsonl",
+    "label": "producer-dispatch",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67"
+  },
+  {
+    "file": "1-producer-dispatch-gfm.jsonl",
+    "label": "producer-dispatch",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7"
+  },
+  {
+    "file": "1-producer-dispatch-references.jsonl",
+    "label": "producer-dispatch",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3"
+  },
+  {
+    "file": "1-producer-dispatch-scanners.jsonl",
+    "label": "producer-dispatch",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9"
+  },
+  {
+    "file": "1-baseline-commonmark.jsonl",
+    "label": "baseline",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "input_sha256": "7f3a5c97372d4fb1e62392eb98a07b4260a517804d3f15703f5500485f115a67"
+  },
+  {
+    "file": "1-baseline-gfm.jsonl",
+    "label": "baseline",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "gfm",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-gfm.json"
+    ],
+    "input_sha256": "d46b0ce621a00a9027d76654826139e585c9dae4d9ae1e98a4236cf7c73483c7"
+  },
+  {
+    "file": "1-baseline-references.jsonl",
+    "label": "baseline",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-references.json"
+    ],
+    "input_sha256": "df9180bf91249b97205fa2a65eebc0f6a27b88b8635fef6d40e96b337ee42ec3"
+  },
+  {
+    "file": "1-baseline-scanners.jsonl",
+    "label": "baseline",
+    "command": [
+      "/tmp/core-markdown-parallel-20261024/screen-run",
+      "bench",
+      "core-markdown",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-scanners.json"
+    ],
+    "input_sha256": "72c2da2592f75df2ed0911968f61be6d45c69db5adcf330d049b739ddd3360d9"
+  }
+]

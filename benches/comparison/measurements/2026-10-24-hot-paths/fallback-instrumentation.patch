@@ -1,0 +1,49 @@
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index 5b664ea..79034bc 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -7,6 +7,7 @@ use crate::grammar_parser::{GrammarParser, ValueBuilder};
+ use crate::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
+ use crate::{LineEnding, ParseOptions};
+ use alloc::boxed::Box;
++extern crate std;
+ 
+ /// A pull producer of resolved semantic events. Preparation records block structure; inline syntax is scanned only when its containing block is consumed.
+ pub struct EventParser<'a> {
+@@ -43,7 +44,7 @@ impl<'a> EventParser<'a> {
+                 separator: None,
+             })
+         } else {
+-            Producer::Compatibility(Box::new(GrammarParser::new(source, options)?))
++            { std::eprintln!("FALLBACK block {}", source.len()); Producer::Compatibility(Box::new(GrammarParser::new(source, options)?)) }
+         };
+         Ok(Self { producer })
+     }
+@@ -329,6 +330,7 @@ impl CompactParser<'_> {
+                         )
+                     };
+                 if !self.direct_inline {
++                    std::eprintln!("FALLBACK compact-inline {}", node.end-node.start);
+                     self.inline.region(fragments(), task);
+                 }
+                 self.inlines = true;
+diff --git a/src/grammar_parser.rs b/src/grammar_parser.rs
+index 2876157..2f45bd3 100644
+--- a/src/grammar_parser.rs
++++ b/src/grammar_parser.rs
+@@ -2,6 +2,7 @@
+ // Copyright, 2026, by Samuel Williams.
+ 
+ //! Compatibility producer: turn resolved grammar tokens into semantic events on demand.
++extern crate std;
+ use crate::definitions::Definitions;
+ use crate::event::{Content, Event as Token, Kind, Name};
+ use crate::parser::ParseState;
+@@ -279,6 +280,7 @@ impl<'a> GrammarParser<'a> {
+                 return Ok(());
+             }
+         }
++        std::eprintln!("FALLBACK grammar-inline {}", self.tokens[index].point.index);
+         let mut tokenizer = Tokenizer::with_buffers(
+             self.tokens[index].point.clone(),
+             &self.parse_state,

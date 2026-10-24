@@ -1,0 +1,56 @@
+diff --git a/src/byte_scan.rs b/src/byte_scan.rs
+index 5a9911e..c70aa12 100644
+--- a/src/byte_scan.rs
++++ b/src/byte_scan.rs
+@@ -58,18 +58,24 @@ impl AsciiSet {
+         #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+         {
+             use core::arch::aarch64::{
+-                vandq_u8, vdupq_n_u8, vld1q_u8, vmaxvq_u8, vqtbl1q_u8, vshrq_n_u8, vtstq_u8,
++                vandq_u8, vbslq_u8, vdupq_n_u8, vld1q_u8, vmaxvq_u8, vminvq_u8, vqtbl1q_u8,
++                vshrq_n_u8, vtstq_u8,
+             };
+             // NEON is enabled by the target. Every vector load stays within its slice; the lookup tables each contain exactly sixteen bytes. UTF-8 continuation bytes map to zero in the high-nibble table.
+             unsafe {
+                 let low = vld1q_u8(self.low.as_ptr());
+                 let high = vld1q_u8([1, 2, 4, 8, 16, 32, 64, 128, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr());
++                let indices =
++                    vld1q_u8([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].as_ptr());
+                 while bytes.len() - offset >= 16 {
+                     let input = vld1q_u8(bytes.as_ptr().add(offset));
+                     let low_bits = vqtbl1q_u8(low, vandq_u8(input, vdupq_n_u8(15)));
+                     let high_bits = vqtbl1q_u8(high, vshrq_n_u8::<4>(input));
+-                    if vmaxvq_u8(vtstq_u8(low_bits, high_bits)) != 0 {
+-                        break;
++                    let matches = vtstq_u8(low_bits, high_bits);
++                    if vmaxvq_u8(matches) != 0 {
++                        // A matched lane retains its byte index; other lanes become 255. Compute the minimum only for a matching chunk so safe runs keep their detection-only loop.
++                        let first = vminvq_u8(vbslq_u8(matches, indices, vdupq_n_u8(u8::MAX)));
++                        return offset + usize::from(first);
+                     }
+                     offset += 16;
+                 }
+@@ -114,4 +120,23 @@ mod tests {
+             }
+         }
+     }
++
++    #[test]
++    fn multiple_candidates_return_the_first_lane_across_vector_and_tail_boundaries() {
++        let set = AsciiSet::new(b"\0&\"<>");
++        for alignment in 0..16 {
++            for length in [15, 16, 17, 31, 32, 33, 64, 65] {
++                let mut bytes = vec![0x80; alignment + length];
++                for first in 0..length {
++                    bytes[alignment + first] = b'&';
++                    for second in first + 1..length {
++                        bytes[alignment + second] = b'<';
++                        assert_eq!(set.find(&bytes[alignment..]), first);
++                        bytes[alignment + second] = 0x80;
++                    }
++                    bytes[alignment + first] = 0x80;
++                }
++            }
++        }
++    }
+ }

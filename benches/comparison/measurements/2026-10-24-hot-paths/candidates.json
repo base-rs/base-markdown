@@ -1,0 +1,33 @@
+{
+  "producer-dispatch": {
+    "commit": "7cfe2aa13658bbd2c8c9eebd3fafcf49a7febb30",
+    "binary_sha256": "0470358b302b2c2beb0cbb094690fd1da480b9e18bd8cc03b5ab0183d65f7fe3",
+    "worktree": "/tmp/core-markdown-producer-dispatch"
+  },
+  "simd-match": {
+    "commit": "2b9716ef0a915ac4a78c3c2052512ff668add65d",
+    "binary_sha256": "37efa4ece57293d47d5887fb5dd2e4cb8f9183cd4bd1511b33942becda2e24dc",
+    "worktree": "/tmp/core-markdown-simd-match"
+  },
+  "uri-runs": {
+    "commit": "7f9c2531887a7ff4919dd401ae8d14a5cd71673a",
+    "binary_sha256": "af91aac3c8daa893913a5a1c4caf3c3129bcbc63d40ef37b3f215e5098312930",
+    "worktree": "/tmp/core-markdown-uri-runs"
+  },
+  "simd-conditional": {
+    "commit": "ec51ba4c7e54b4a6f4ea6090d8e111992a86139f",
+    "binary_sha256": "cc2e4afc1b4cf46c5624db8496964a5b6b4b33eea61ff52e087caebe12fc6553",
+    "worktree": "/tmp/core-markdown-simd-match"
+  },
+  "uri-destination": {
+    "commit": "84028efe08b59ed334b01f8763d16451cea3aeb1",
+    "binary_sha256": "52c85edd1b011aaa44b7b85f0af202e365723ad22141306e71bb2490c314d80b",
+    "worktree": "/tmp/core-markdown-uri-runs"
+  },
+  "combined": {
+    "commit": "7b7ba6f9ce13ba458addff7c34ba5fcc6539edbd",
+    "binary_sha256": "fb4f08c5652da0af926f38c55374f8953bfd0be4b73fd17313b9b574ac7b684c",
+    "worktree": "/Users/samuel/Developer/core-rs/core-markdown",
+    "note": "Screened before minor URI Clippy cleanup (equality match to if; common prefix write hoisted). Final complete measurements use source64b27f9+bab3050."
+  }
+}
