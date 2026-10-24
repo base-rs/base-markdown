@@ -782,3 +782,51 @@ fn item_source_spacing_handles_all_line_endings_and_reordered_provenance() {
     let foreign = larger.descendants(larger.root()).last().unwrap();
     assert!(document.frontmatter_value(foreign).is_none());
 }
+
+#[test]
+fn section_copy_preserves_nested_siblings_empty_containers_and_insertion_boundaries() {
+    let mut replacement = Document::parse(
+        "a *b **c** d* e\n\n> q\n>\n> > r\n>\n> s\n\n- u\n  - v\n- w\n\nz".to_owned(),
+        &ParseOptions::default(),
+    )
+    .unwrap();
+    let root = replacement.root();
+    let empty_quote = replacement
+        .append_child(root, EventKind::Start(Tag::BlockQuote))
+        .unwrap();
+    replacement
+        .append_child(
+            empty_quote,
+            EventKind::Start(Tag::Paragraph { tight: false }),
+        )
+        .unwrap();
+    replacement
+        .append_child(root, EventKind::Text(Text::Literal("tail")))
+        .unwrap();
+    let expected = html(&replacement);
+    for (prefix, suffix) in [("", ""), ("# Keep\n\nprefix\n\n", "# End\n\nsuffix")] {
+        let source = format!("{prefix}# Old\n\nold\n\n{suffix}");
+        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+        let root = document.root();
+        let index = document
+            .children(root)
+            .position(|id| document.text_content(id) == "Old")
+            .unwrap();
+        let existing: Vec<_> = document.descendants(root).collect();
+        document
+            .replace_heading_section(root, index, &replacement, true, true)
+            .unwrap();
+        let prefix_html = core_markdown::to_html(prefix);
+        let suffix_html = core_markdown::to_html(suffix);
+        let expected = format!("{prefix_html}{expected}\n{suffix_html}");
+        assert_eq!(html(&document).trim_end(), expected.trim_end());
+        let copied: Vec<_> = document
+            .descendants(root)
+            .filter(|id| !existing.contains(id))
+            .collect();
+        assert_eq!(copied.len(), replacement.nodes().len() - 1);
+        assert!(copied
+            .iter()
+            .all(|id| document.node(*id).unwrap().span.is_empty()));
+    }
+}

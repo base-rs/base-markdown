@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Consolidate Markdown destination/title formatting and construct-specific option checks. Share AST linking and preorder advancement; copy sections without per-subtree mapping stacks or repeated insertion-position scans, while preserving rendered output, edit semantics, and diagnostics.
+
 - Simplify parser ownership and event delivery: remove the private inline workspace wrapper, keep document completion outside the hot event loop, and share allocation-free block-child traversal while preserving the semantic event and document APIs.
 
 - Scan ordinary inline link destination runs with the shared byte scanner, retaining escape, nesting, whitespace, control-byte and Unicode behavior without additional allocations.

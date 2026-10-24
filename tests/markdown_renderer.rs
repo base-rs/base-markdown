@@ -661,3 +661,56 @@ fn propagates_errors_from_nested_markdown_nodes() {
     };
     assert!(to_markdown_with_options(&list, &invalid_rule_options).is_err());
 }
+
+#[test]
+fn formatting_options_are_checked_only_when_their_construct_is_serialized() {
+    let options = core_markdown::MarkdownOptions {
+        bullet: 'x',
+        bullet_ordered: 'x',
+        bullet_other: 'x',
+        emphasis: 'x',
+        strong: 'x',
+        fence: 'x',
+        quote: 'x',
+        rule: 'x',
+        rule_repetition: 0,
+        ..core_markdown::MarkdownOptions::default()
+    };
+    let document =
+        core_markdown::Document::parse("plain text", &core_markdown::ParseOptions::default())
+            .unwrap();
+    assert_eq!(
+        core_markdown::to_markdown_with_options(&document, &options).unwrap(),
+        "plain text\n"
+    );
+    for (source, options, reason) in [
+        (
+            "*text*",
+            options.clone(),
+            "Cannot serialize emphasis with `x` for `options.emphasis`, expected `*`, or `_`",
+        ),
+        (
+            "[text](/url)",
+            options.clone(),
+            "Cannot serialize title with `x`  for `options.quote`, expected `\"`, or `'`",
+        ),
+        // A list item's fallback bullet is checked even in an ordered list.
+        (
+            "1. text",
+            core_markdown::MarkdownOptions {
+                bullet: 'x',
+                ..core_markdown::MarkdownOptions::default()
+            },
+            "Cannot serialize items with `x` for `options.bullet`, expected `*`, `+`, or `-`",
+        ),
+    ] {
+        let document =
+            core_markdown::Document::parse(source, &core_markdown::ParseOptions::default())
+                .unwrap();
+        let error = core_markdown::to_markdown_with_options(&document, &options).unwrap_err();
+        assert_eq!(error.reason, reason);
+        assert_eq!(error.source, "mdast-util-to-markdown");
+        assert_eq!(error.rule_id, "unexpected-marker");
+        assert_eq!(error.span, None);
+    }
+}

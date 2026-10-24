@@ -6,6 +6,9 @@
 //! Configuration.
 //!
 //! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L307.
+use crate::message::Message;
+use alloc::{format, string::String};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Configuration for indent of lists.
 pub enum IndentOptions {
@@ -121,3 +124,137 @@ impl Default for Options {
         }
     }
 }
+
+impl Options {
+    pub(super) fn check_bullet(&self) -> Result<char, Message> {
+        let marker = self.bullet;
+
+        if marker != '*' && marker != '+' && marker != '-' {
+            return Err(invalid_option(
+                format!("Cannot serialize items with `{marker}` for `options.bullet`, expected `*`, `+`, or `-`"),
+                "unexpected-marker",
+            ));
+        }
+
+        Ok(marker)
+    }
+
+    pub(super) fn check_bullet_ordered(&self) -> Result<char, Message> {
+        let marker = self.bullet_ordered;
+
+        if marker != '.' && marker != ')' {
+            return Err(invalid_option(format!("Cannot serialize items with `{marker}` for `options.bullet_ordered`, expected `.` or `)`"), "unexpected-marker"));
+        }
+
+        Ok(marker)
+    }
+
+    pub(super) fn check_bullet_other(&self) -> Result<char, Message> {
+        let bullet = self.check_bullet()?;
+        let mut bullet_other = self.bullet_other;
+
+        if bullet != '*' {
+            bullet_other = '*';
+        }
+
+        if bullet_other != '*' && bullet_other != '+' && bullet_other != '-' {
+            return Err(invalid_option(format!("Cannot serialize items with `{bullet_other}` for `options.bullet_other`, expected `*`, `+`, or `-`"), "unexpected-marker"));
+        }
+
+        if bullet_other == bullet {
+            return Err(invalid_option(
+                format!("Expected `bullet` (`{bullet}`) and `bullet_other` (`{bullet_other}`) to be different"),
+                "bullet-match-bullet_other",
+            ));
+        }
+
+        Ok(bullet_other)
+    }
+
+    pub(super) fn check_emphasis(&self) -> Result<char, Message> {
+        let marker = self.emphasis;
+
+        if marker != '*' && marker != '_' {
+            return Err(invalid_option(
+                format!("Cannot serialize emphasis with `{marker}` for `options.emphasis`, expected `*`, or `_`"),
+                "unexpected-marker",
+            ));
+        }
+
+        Ok(marker)
+    }
+
+    pub(super) fn check_fence(&self) -> Result<char, Message> {
+        let marker = self.fence;
+
+        if marker != '`' && marker != '~' {
+            return Err(invalid_option(
+                format!("Cannot serialize code with `{marker}` for `options.fence`, expected `` ` `` or `~`"),
+                "unexpected-marker",
+            ));
+        }
+
+        Ok(marker)
+    }
+
+    pub(super) fn check_quote(&self) -> Result<char, Message> {
+        let marker = self.quote;
+
+        if marker != '"' && marker != '\'' {
+            return Err(invalid_option(
+                format!("Cannot serialize title with `{marker}`  for `options.quote`, expected `\"`, or `'`"),
+                "unexpected-marker",
+            ));
+        }
+
+        Ok(marker)
+    }
+
+    pub(super) fn check_rule(&self) -> Result<char, Message> {
+        let marker = self.rule;
+
+        if marker != '*' && marker != '-' && marker != '_' {
+            return Err(invalid_option(
+                format!("Cannot serialize rules with `{marker}` for `options.rule`, expected `*`, `-`, or `_`"),
+                "unexpected-marker",
+            ));
+        }
+
+        Ok(marker)
+    }
+
+    pub(super) fn check_rule_repetition(&self) -> Result<u32, Message> {
+        let repetition = self.rule_repetition;
+
+        if repetition < 3 {
+            return Err(invalid_option(format!("Cannot serialize rules with repetition `{repetition}` for `options.rule_repetition`, expected `3` or more"), "unexpected-marker"));
+        }
+
+        Ok(repetition)
+    }
+
+    pub(super) fn check_strong(&self) -> Result<char, Message> {
+        let marker = self.strong;
+
+        if marker != '*' && marker != '_' {
+            return Err(invalid_option(
+                format!("Cannot serialize strong with `{marker}` for `options.strong`, expected `*`, or `_`"),
+                "unexpected-marker",
+            ));
+        }
+
+        Ok(marker)
+    }
+}
+
+fn invalid_option(reason: String, rule_id: &'static str) -> Message {
+    Message {
+        span: None,
+        reason: reason.into(),
+        rule_id,
+        source: "mdast-util-to-markdown",
+    }
+}
+
+#[cfg(test)]
+mod tests;

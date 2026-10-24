@@ -14,6 +14,8 @@ MDX is no longer supported. JavaScript expressions and import/export statements 
 - `Document` is the only AST. Markdown serialization traverses its node IDs directly; HTML rendering traverses semantic events through `EventHtmlRenderer`. Custom renderers consume events or node IDs.
 - AST helpers include stack-free traversal, `text_content`, code-fence metadata, subtree detachment/attachment, and heading lookup and section replacement. Detached nodes remain in their document arena and retain stable IDs. See [Document AST and migration](document.md).
 
+AST edits share private arena-link operations. Moves refresh subtree context after reaching their final position. Section copies carry the insertion position and ascend corresponding source/destination parent links without a mapping stack, materializing source-backed values before releasing the replacement document. Preorder traversal and edit refreshes use the same subtree-bounded successor helper.
+
 `EventParser` directly owns its compact block arena, prepared definition indexes, source/configuration references and reusable `InlineParser`. Reference specialization is selected beside block preparation; no separate workspace wrapper mediates ownership. Start and end handling, including the final separator policy, share a cold document-boundary handler. Prepared child walks use one cloneable, allocation-free iterator over the block arena's sibling links.
 
 The parser does not produce a document-wide grammar token stream or select a compatibility backend. Block and inline syntax handlers consume source bytes directly, and HTML/autolink recognizers are small shared byte state machines.
@@ -27,6 +29,8 @@ Reference and footnote indexes normalize raw identifiers before inline resolutio
 Reference keys borrow contiguous canonical ASCII labels from source; other forms use owned normalized storage. Their ASCII letters use lowercase internally after Unicode folding; footnote keys retain uppercase because they appear in rendered IDs. Pending block separators are explicit delivery phases rather than independent parser state.
 
 Unicode identifier folding shares a helper that skips the intermediate lowercase string when the label contains no non-ASCII uppercase character. Labels containing those characters retain the full string lower-then-upper conversion, including contextual casing and expansions. Exhaustive scalar and contextual tests preserve the existing matching rules.
+
+The Markdown serializer shares destination/title formatting for definitions, links and images. Formatting-option checks live beside their options and run only at the original construct-specific call sites.
 
 The Markdown serializer writes recursively into one output string. Output ranges
 provide preceding context without copying parent strings; reusable scratch handles
