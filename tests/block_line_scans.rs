@@ -82,3 +82,46 @@ fn definition_offsets_include_the_authored_indentation() {
         );
     }
 }
+
+#[test]
+fn paragraph_boundaries_distinguish_block_markers_from_ordinary_text() {
+    for options in [Options::default(), Options::gfm()] {
+        for (source, expected) in [
+            ("first\nordinary", "<p>first\nordinary</p>"),
+            ("first\né中", "<p>first\né中</p>"),
+            ("first\n#not heading", "<p>first\n#not heading</p>"),
+            ("first\n####### heading", "<p>first\n####### heading</p>"),
+            ("first\n*not a list", "<p>first\n*not a list</p>"),
+            ("first\n_not a rule", "<p>first\n_not a rule</p>"),
+            ("first\n-not setext", "<p>first\n-not setext</p>"),
+            ("first\n+not a list", "<p>first\n+not a list</p>"),
+            (
+                "first\n42. not an interrupt",
+                "<p>first\n42. not an interrupt</p>",
+            ),
+            ("first\n[link](/x)", "<p>first\n<a href=\"/x\">link</a></p>"),
+            ("first\n`code`", "<p>first\n<code>code</code></p>"),
+            ("first\n~~not a fence", "<p>first\n~~not a fence</p>"),
+            ("first\n# heading", "<p>first</p>\n<h1>heading</h1>"),
+            ("first\n***", "<p>first</p>\n<hr />"),
+            ("first\n___", "<p>first</p>\n<hr />"),
+            ("first\n1. item", "<p>first</p>\n<ol>\n<li>item</li>\n</ol>"),
+            (
+                "first\n> quote",
+                "<p>first</p>\n<blockquote>\n<p>quote</p>\n</blockquote>",
+            ),
+            (
+                "first\n~~~\ncode\n~~~",
+                "<p>first</p>\n<pre><code>code\n</code></pre>",
+            ),
+        ] {
+            for ending in ["\n", "\r", "\r\n"] {
+                assert_rendering_paths(
+                    &source.replace('\n', ending),
+                    &options,
+                    &expected.replace('\n', ending),
+                );
+            }
+        }
+    }
+}
