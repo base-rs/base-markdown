@@ -25,7 +25,7 @@ use scanners::{
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Body {
     Root,
-    Paragraph(bool),
+    Paragraph,
     Heading(u8),
     Quote,
     List {
@@ -99,6 +99,19 @@ struct Builder<'a> {
 }
 
 impl Blocks {
+    /// Only paragraphs directly inside a tight list item omit their own tags.
+    #[inline]
+    pub fn tight_paragraph(&self, node: &Node) -> bool {
+        if node.body != Body::Paragraph {
+            return false;
+        }
+        let parent = &self.nodes[node.parent];
+        matches!(parent.body, Body::Item(_))
+            && matches!(
+                self.nodes[parent.parent].body,
+                Body::List { tight: true, .. }
+            )
+    }
     pub fn parse(source: &str, options: &ParseOptions) -> Option<(Self, Definitions)> {
         // The compatibility producer handles extension grammars and individually disabled CommonMark constructs during migration.
         if !crate::inline_parser::supported_options(options)
@@ -177,17 +190,6 @@ impl Builder<'_> {
             self.blocks.nodes[index].body,
             Body::List { tight: true, .. }
         ) {
-            let mut item = self.blocks.nodes[index].child;
-            while item != 0 {
-                let mut child = self.blocks.nodes[item].child;
-                while child != 0 {
-                    if let Body::Paragraph(ref mut tight) = self.blocks.nodes[child].body {
-                        *tight = true;
-                    }
-                    child = self.blocks.nodes[child].next;
-                }
-                item = self.blocks.nodes[item].next;
-            }
             self.empty_item = None;
         }
     }
@@ -441,7 +443,7 @@ impl Builder<'_> {
     }
     fn paragraph(&mut self, start: usize, line_start: usize) -> usize {
         self.finish_list(line_start);
-        let paragraph = self.append(start, start, Body::Paragraph(false));
+        let paragraph = self.append(start, start, Body::Paragraph);
         self.push();
         let bytes = self.source.as_bytes();
         let mut at = start;

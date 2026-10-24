@@ -306,6 +306,29 @@ fn heading_ids_use_normalized_semantic_code_text() {
 }
 
 #[test]
+fn paragraph_tightness_follows_its_own_list() {
+    let options = Options::default();
+    for (source, expected) in [
+        ("text", vec![false]),
+        ("- a\n  > b\n  - c\n- d", vec![true, false, true, true]),
+        (
+            "- a\n\n  > b\n\n  - c\n- d",
+            vec![false, false, true, false],
+        ),
+        ("- a\n\n  b\n- c", vec![false, false, false]),
+    ] {
+        let actual: Vec<_> = core_markdown::EventParser::new(source, &options.parse)
+            .unwrap()
+            .filter_map(|event| match event.unwrap().kind {
+                EventKind::Start(Tag::Paragraph { tight }) => Some(tight),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(actual, expected, "{source:?}");
+    }
+}
+
+#[test]
 fn mixed_list_kinds_after_unclosed_fences_are_siblings() {
     let output = core_markdown::to_html("1. ~~~\n-");
     assert_eq!(
