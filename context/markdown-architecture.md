@@ -21,9 +21,21 @@ reusable grammar workspace, allocating that workspace once. Both producers share
 source-backed value construction and decoding without depending on each other's
 representation.
 
+Grammar block preparation temporarily owns normalized reference identifiers.
+Inline tokenization borrows the prepared semantic definition index and footnote
+identifiers instead of cloning them into a retained parse context. Document and
+inline-region lifecycles have explicit phases; inline workspaces omit document
+boundaries and document line-ending detection. The common grammar event reader
+and reusable token buffers remain shared.
+
 The Markdown serializer writes recursively into one output string. Output ranges
 provide preceding context without copying parent strings; reusable scratch handles
 indentation and table escaping. Formatting and escaping use byte scanners and static scope rules; regex is a test-only dependency. The escape matcher retains non-overlapping neighbor consumption and uses ASCII digits for ordered-list markers.
+
+List markers are written directly into the shared output. Ordered items reuse the
+current traversal position, making sibling numbering linear in the number of
+items. Serializing an attached item on its own scans its source-list siblings once
+to retain its original number and uses the configured ordered marker.
 
 Diagnostics use static identifiers, borrowed or owned reasons, and optional
 half-open byte spans. `Message::span` replaces the former boxed `Place`; public

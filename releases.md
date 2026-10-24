@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Serialize list markers directly and reuse traversal positions instead of rescanning siblings for each ordered item. Correct the ordered marker when serializing an attached item on its own. Borrow prepared reference indexes during grammar inline tokenization, remove the retained duplicate parse context, and distinguish document and inline-region lifecycles. Share byte-based source line-ending detection.
+
 - Share inline HTML and angle autolink recognizers between compact and grammar parsing, keeping complete single-line constructs on the compact path. Replace serializer escape regexes with static byte rules and remove the runtime regex dependency. Preserve Unicode digits as ordinary text when escaping ordered-list markers, which require ASCII digits.
 
 - Streamline Markdown serialization with byte scanners, one shared output buffer, and reusable escaping scratch. Keep compact inline storage separate from grammar fallback, transferring it on demand. Simplify diagnostics to borrowed reasons, static identifiers, and byte spans; remove public unist coordinates and the hidden location utility. Serialize Unicode lookalikes in URL schemes as resource links rather than invalid autolinks.
