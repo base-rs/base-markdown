@@ -494,3 +494,30 @@ fn ordered_marker_escaping_uses_markdown_ascii_digits() {
         assert_eq!(to_markdown(&document).unwrap(), expected);
     }
 }
+
+#[test]
+fn ordered_list_positions_survive_nested_and_direct_item_serialization() {
+    let source = "9. outer\n   1. nested\n   2. nested again\n10. next\n";
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    assert_eq!(to_markdown(&document).unwrap(), source);
+    let list = document.children(document.root()).next().unwrap();
+    let second = document.children(list).nth(1).unwrap();
+    assert_eq!(
+        to_markdown_node(&document, second, &Default::default()).unwrap(),
+        "10. next\n"
+    );
+
+    let source: String = (9..265)
+        .map(|number| format!("{number}. value\n"))
+        .collect();
+    let document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+    assert_eq!(to_markdown(&document).unwrap(), source);
+    let options = core_markdown::MarkdownOptions {
+        increment_list_marker: false,
+        ..Default::default()
+    };
+    assert_eq!(
+        core_markdown::to_markdown_with_options(&document, &options).unwrap(),
+        "9. value\n".repeat(256)
+    );
+}
