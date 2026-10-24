@@ -460,10 +460,10 @@ fn javascript_like_input_is_ordinary_markdown() {
 fn custom_producer_diagnostics_reach_both_consumers() {
     use core_markdown::{message::Message, stream::StreamError};
     let diagnostic = Message {
-        place: None,
+        span: Some(0..0),
         reason: "custom input failed".into(),
-        rule_id: Box::new("example".into()),
-        source: Box::new("custom-producer".into()),
+        rule_id: "example",
+        source: "custom-producer",
     };
     let mut output = String::new();
     let error = render_events(
@@ -475,7 +475,7 @@ fn custom_producer_diagnostics_reach_both_consumers() {
     .unwrap_err();
     assert_eq!(
         error.to_string(),
-        "custom input failed (custom-producer:example)"
+        "0..0: custom input failed (custom-producer:example)"
     );
     let mut builder = AstBuilder::new();
     let mut events = core::iter::once(Err(StreamError::from(diagnostic.clone())));

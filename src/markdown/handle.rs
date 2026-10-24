@@ -27,7 +27,6 @@ use crate::{
 };
 use alloc::{
     borrow::Cow,
-    boxed::Box,
     format,
     string::{String, ToString},
 };
@@ -689,10 +688,10 @@ impl State<'_> {
             || (fence.character == '`' && authored_info.contains('`'))
         {
             return Err(Message {
-                place: None,
+                span: None,
                 reason: "Frontmatter requires a valid fence and a single-line info string; code fences require a language hint".into(),
-                rule_id: Box::new("invalid-frontmatter".into()),
-                source: Box::new("mdast-util-to-markdown".into()),
+                rule_id: "invalid-frontmatter",
+                source: "mdast-util-to-markdown",
             });
         }
         let mut marker = fence.character;

@@ -50,16 +50,12 @@ mod util;
 mod value_builder;
 
 pub mod message; // To do: externalize.
-pub mod unist; // To do: externalize.
 
 #[doc(hidden)]
 pub use util::character_reference::{decode_named, decode_numeric};
 
 #[doc(hidden)]
 pub use util::sanitize_uri::sanitize;
-
-#[doc(hidden)]
-pub use util::location::Location;
 
 pub use util::line_ending::LineEnding;
 

@@ -12,7 +12,6 @@ pub mod gfm_tagfilter;
 pub mod infer;
 pub(crate) mod inline_code_info;
 pub mod line_ending;
-pub mod location;
 pub mod normalize_identifier;
 pub mod sanitize_uri;
 pub mod skip;

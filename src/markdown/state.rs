@@ -883,19 +883,19 @@ pub(super) fn trim_terminal_ending(value: &str) -> &str {
 
 pub(super) fn unsupported_content() -> Message {
     Message {
-        place: None,
+        span: None,
         reason: "This content shape cannot be represented in Markdown".into(),
-        rule_id: alloc::boxed::Box::new("unsupported-node".into()),
-        source: alloc::boxed::Box::new("markdown".into()),
+        rule_id: "unsupported-node",
+        source: "markdown",
     }
 }
 
 pub(super) fn invalid_node() -> Message {
     Message {
-        place: None,
+        span: None,
         reason: "Node does not belong to the document".into(),
-        rule_id: alloc::boxed::Box::new("invalid-node".into()),
-        source: alloc::boxed::Box::new("markdown".into()),
+        rule_id: "invalid-node",
+        source: "markdown",
     }
 }
 

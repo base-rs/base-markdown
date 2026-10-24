@@ -75,7 +75,7 @@ fn handles_adjacent_text_nodes_and_phrasing_lookahead_errors() {
     let error = State::new(&options)
         .container_phrasing(&document, node, &Info::new("", ""))
         .unwrap_err();
-    assert_eq!(*error.rule_id, "unexpected-marker");
+    assert_eq!(error.rule_id, "unexpected-marker");
 }
 
 #[test]

@@ -8,11 +8,10 @@
 // To do: clippy introduced this in 1.72 but breaks when it fixes it.
 // Remove when solved.
 mod support;
-use core_markdown::{
-    message, to_html, to_html_with_options, unist::Position, Options, ParseOptions,
-};
+use core_markdown::{message, to_html, to_html_with_options, Options, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
+use support::fixture::Position;
 use support::fixture::{Delete, Node, Paragraph, Root, Text};
 
 #[test]

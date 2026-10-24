@@ -5,10 +5,11 @@
 
 mod support;
 use core_markdown::{
-    message, to_html, to_html_with_options, unist::Position, CompileOptions, Options, ParseOptions,
+    message, to_html, to_html_with_options, CompileOptions, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
+use support::fixture::Position;
 use support::fixture::{FootnoteDefinition, FootnoteReference, Node, Paragraph, Root, Text};
 
 #[test]

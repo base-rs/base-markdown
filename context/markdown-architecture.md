@@ -13,6 +13,22 @@ MDX is no longer supported. JavaScript expressions and import/export statements 
 - `Document` is the only AST. Markdown serialization traverses its node IDs directly; HTML rendering traverses semantic events through `EventHtmlRenderer`. Custom renderers consume events or node IDs.
 - AST helpers include stack-free traversal, `text_content`, code-fence metadata, subtree detachment/attachment, and heading lookup and section replacement. Detached nodes remain in their document arena and retain stable IDs. See [Document AST and migration](document.md).
 
+The compact producer owns only its inline candidates and reference definitions.
+When a region needs grammar tokenization, it transfers those buffers into a
+reusable grammar workspace, allocating that workspace once. Both producers share
+source-backed value construction and decoding without depending on each other's
+representation.
+
+The Markdown serializer writes recursively into one output string. Output ranges
+provide preceding context without copying parent strings; reusable scratch handles
+indentation and table escaping. Simple formatting decisions use byte scanners;
+complex configured escape patterns retain their regex implementation.
+
+Diagnostics use static identifiers, borrowed or owned reasons, and optional
+half-open byte spans. `Message::span` replaces the former boxed `Place`; public
+`unist` coordinates and the hidden `Location` helper have been removed. Custom
+producers can still return `StreamError::Parse(Message)`.
+
 The Markdown serializer lives in `src/markdown/`. Keep its construct handlers and safety logic separate from the parser's event-to-HTML compiler. Serializer changes should preserve references, extensions, and formatting options when possible.
 
 `MarkdownOptions::line_wrapping` controls soft source line breaks in text. `Preserve` is the default and keeps round-trip behavior; `Unwrap` joins those breaks with spaces. Explicit hard-break nodes, code, and block boundaries are not unwrapped. The serializer does not currently enforce a line width.

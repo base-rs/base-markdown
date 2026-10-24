@@ -445,7 +445,7 @@ fn rejects_an_invalid_bullet_marker() {
     )
     .expect_err("unsupported list markers should be rejected");
 
-    assert_eq!(*error.rule_id, "unexpected-marker");
+    assert_eq!(error.rule_id, "unexpected-marker");
 }
 
 trait IntoVecNode {

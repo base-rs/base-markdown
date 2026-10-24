@@ -5,12 +5,21 @@
 //! These types describe fixtures only; there is no parser or renderer implementation here.
 #![allow(dead_code)]
 use core_markdown::stream::Text as EventText;
-use core_markdown::unist::Position;
 pub use core_markdown::{AlignKind, CodeFence, ReferenceKind};
 use core_markdown::{Document, NodeId, NodeSyntax, ParseOptions};
 use std::collections::BTreeMap;
 
 use core_markdown::stream::{EventKind, Tag};
+/// Historical source coordinates retained only as fixture descriptions.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Position([usize; 6]);
+
+impl Position {
+    pub fn new(a: usize, b: usize, c: usize, d: usize, e: usize, f: usize) -> Self {
+        Self([a, b, c, d, e, f])
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Node {
     Fragment(Fragment),

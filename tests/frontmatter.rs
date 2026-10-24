@@ -6,11 +6,11 @@
 
 mod support;
 use core_markdown::{
-    message, to_html, to_html_with_options, unist::Position, Constructs, Document, NodeSyntax,
-    Options, ParseOptions,
+    message, to_html, to_html_with_options, Constructs, Document, NodeSyntax, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
+use support::fixture::Position;
 use support::fixture::{Frontmatter, Node, Root};
 
 #[test]
@@ -521,7 +521,7 @@ fn serialization_rejects_invalid_edited_frontmatter_metadata() {
         } else {
             result.unwrap();
             assert_eq!(
-                *core_markdown::to_markdown(&document).unwrap_err().rule_id,
+                core_markdown::to_markdown(&document).unwrap_err().rule_id,
                 "invalid-frontmatter"
             );
         }
