@@ -1,0 +1,82 @@
+{
+  "core-arena/readme": {
+    "baseline": {
+      "median_ms": 0.027600290966192497,
+      "process_medians_ms": [
+        0.02742108602941177,
+        0.027600290966192497,
+        0.02764237790912449
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "final": {
+      "median_ms": 0.027785745390203013,
+      "process_medians_ms": [
+        0.027820288224299064,
+        0.027785745390203013,
+        0.02755587717673212
+      ],
+      "time_reduction_percent": -0.6719292352304507
+    }
+  },
+  "core-arena/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.846760593220339,
+      "process_medians_ms": [
+        0.8441755617977527,
+        0.8601581420454546,
+        0.846760593220339
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "final": {
+      "median_ms": 0.8659440457142857,
+      "process_medians_ms": [
+        0.8666276531791908,
+        0.8659440457142857,
+        0.8525231988636364
+      ],
+      "time_reduction_percent": -2.265510776899715
+    }
+  },
+  "core-arena/mixed-1m": {
+    "baseline": {
+      "median_ms": 9.400725470588235,
+      "process_medians_ms": [
+        9.424686294117649,
+        9.400725470588235,
+        9.363551470588236
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "final": {
+      "median_ms": 9.484591125,
+      "process_medians_ms": [
+        9.484591125,
+        9.5567213125,
+        9.470164235294117
+      ],
+      "time_reduction_percent": -0.8921189611817981
+    }
+  },
+  "core-arena/gfm-100k": {
+    "baseline": {
+      "median_ms": 1.3014629572649574,
+      "process_medians_ms": [
+        1.303351452173913,
+        1.288531341880342,
+        1.3014629572649574
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "final": {
+      "median_ms": 1.302052895652174,
+      "process_medians_ms": [
+        1.3038452869565218,
+        1.3010301724137932,
+        1.302052895652174
+      ],
+      "time_reduction_percent": -0.04532886502250921
+    }
+  }
+}

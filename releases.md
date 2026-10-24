@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Share inline HTML and angle autolink recognizers between compact and grammar parsing, keeping complete single-line constructs on the compact path. Replace serializer escape regexes with static byte rules and remove the runtime regex dependency. Preserve Unicode digits as ordinary text when escaping ordered-list markers, which require ASCII digits.
+
 - Streamline Markdown serialization with byte scanners, one shared output buffer, and reusable escaping scratch. Keep compact inline storage separate from grammar fallback, transferring it on demand. Simplify diagnostics to borrowed reasons, static identifiers, and byte spans; remove public unist coordinates and the hidden location utility. Serialize Unicode lookalikes in URL schemes as resource links rather than invalid autolinks.
 
 - Make the source-backed `Document` arena the sole AST. Remove `mdast`, `to_mdast`, the separate tree compiler, and the legacy `Renderer`, `HtmlRenderer`, and `MarkdownRenderer` APIs. Markdown serialization now accepts documents or subtree IDs and shares the existing semantic event representation. Add checked subtree editing, heading and section helpers, lazy authored-syntax metadata, and validated arena serialization. This is a breaking API and serialized-AST format change; see the migration guide in `context/document.md`.

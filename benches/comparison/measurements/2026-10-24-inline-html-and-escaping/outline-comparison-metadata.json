@@ -1,0 +1,15 @@
+{
+  "baseline_commit": "9fe0d684e3657dc45212643d97931712113adc4c",
+  "baseline_binary": {
+    "sha256": "73334da6d32d2770c5da8a0811dcbc472503e5b8f08bc0a7e08f9ae10b400f3f",
+    "bytes": 3389472
+  },
+  "final_commit": "923ff3d0eece5682fcb5acc99fc07a0db540ac3a",
+  "final_binary": {
+    "sha256": "b11c90ebf2d683ff2fcf7716a6187677c275b1fbe1d62e54666f55da8d6b4b7a",
+    "bytes": 3389360
+  },
+  "labels": "Here baseline is the initial implementation, not merged main; final is the outlined helper.",
+  "suite": "ending",
+  "rounds": 3
+}

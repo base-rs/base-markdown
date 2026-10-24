@@ -11,24 +11,6 @@ pub struct EscapeInfos {
     pub before: bool,
 }
 
-#[cfg(test)]
-pub struct SafeConfig<'a> {
-    pub after: &'a str,
-    pub before: &'a str,
-    pub encode: Option<char>,
-}
-
-#[cfg(test)]
-impl<'a> SafeConfig<'a> {
-    pub(crate) fn new(before: &'a str, after: &'a str, encode: Option<char>) -> Self {
-        SafeConfig {
-            after,
-            before,
-            encode,
-        }
-    }
-}
-
 /// JS: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/util/safe.js#L148>.
 pub fn write_backslashes(value: &str, after: &str, results: &mut String) {
     let mut start = 0;

@@ -14,6 +14,8 @@ MDX is no longer supported. JavaScript expressions and import/export statements 
 - AST helpers include stack-free traversal, `text_content`, code-fence metadata, subtree detachment/attachment, and heading lookup and section replacement. Detached nodes remain in their document arena and retain stable IDs. See [Document AST and migration](document.md).
 
 The compact producer owns only its inline candidates and reference definitions.
+Inline HTML and angle autolinks share byte recognizers with the grammar tokenizer. Complete single-line constructs stay source-backed in the compact producer; rejected, multiline, or incomplete angles retain grammar handling for container prefixes and line endings.
+
 When a region needs grammar tokenization, it transfers those buffers into a
 reusable grammar workspace, allocating that workspace once. Both producers share
 source-backed value construction and decoding without depending on each other's
@@ -21,8 +23,7 @@ representation.
 
 The Markdown serializer writes recursively into one output string. Output ranges
 provide preceding context without copying parent strings; reusable scratch handles
-indentation and table escaping. Simple formatting decisions use byte scanners;
-complex configured escape patterns retain their regex implementation.
+indentation and table escaping. Formatting and escaping use byte scanners and static scope rules; regex is a test-only dependency. The escape matcher retains non-overlapping neighbor consumption and uses ASCII digits for ordered-list markers.
 
 Diagnostics use static identifiers, borrowed or owned reasons, and optional
 half-open byte spans. `Message::span` replaces the former boxed `Place`; public

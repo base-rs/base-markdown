@@ -380,3 +380,60 @@ fn arena_html(source: &str, options: &core_markdown::ParseOptions) -> String {
         .unwrap();
     output
 }
+
+#[test]
+fn inline_angles_share_grammar_rules_and_preserve_authored_ranges() {
+    use core_markdown::{stream::EventKind, to_html_with_options};
+    let mut cases = vec![
+        "plain < 3 and **bold**".to_string(),
+        "__<_\n?_>".to_string(),
+        "x <?a>b?> <![CDAx[broken]> <![CDATA[unfinished".to_string(),
+        "x <a\rtitle=\"a\0b\"> y </a>".to_string(),
+        "x <a title=\"a\0b\"> y <!--c\0d-->".to_string(),
+        "text <i>HTML</i> [a]\n\n[a]: /a".to_string(),
+        "before <x a='>' b=word c d=\"value\"/> after".to_string(),
+        "x <!--> <!---> <!-- a--b --> <?a??> <![CDATA[x]]]> <!doctype x>".to_string(),
+        "x <a\n  title='two\n  lines'> y </a\n >".to_string(),
+        "> before <span\n> title='value'>after</span>\n\n[a] <i>x</i>\n\n[a]: /a".to_string(),
+        "before <a q=\"bad\"x> **after**".to_string(),
+        "before <a / > <a q=> <a q=/> <a q='unterminated".to_string(),
+        "[<https://example.test?a=1&amp;b=2>](outer) ![<b>x</b>](image)".to_string(),
+        "<https://example.test/é> <user@example.test> <a:x> <ab:x>".to_string(),
+        "<user@a-b> <user@-bad> <user@bad-> <user@a..b> <@a>".to_string(),
+    ];
+    for size in [1, 2, 31, 32, 33] {
+        cases.push(format!("text <{}:path> after", "a".repeat(size)));
+    }
+    for size in [62, 63, 64] {
+        cases.push(format!("text <user@{}.test> after", "a".repeat(size)));
+    }
+    for source in cases {
+        let options = Options::default();
+        let mut grammar = Options::default();
+        // Force grammar inline tokenization without changing these inputs' semantics.
+        grammar.parse.inline_code_info = true;
+        let expected = to_html_with_options(&source, &grammar).unwrap();
+        assert_eq!(
+            to_html_with_options(&source, &options).unwrap(),
+            expected,
+            "{source:?}"
+        );
+        let document = Document::parse(source.as_str(), &options.parse).unwrap();
+        let mut output = String::new();
+        document.render_html(&options.compile, &mut output).unwrap();
+        assert_eq!(output, expected, "AST: {source:?}");
+    }
+    let source = "text <ab:é> and <i q='x'>";
+    let document = Document::parse(source, &Default::default()).unwrap();
+    for node in document.nodes() {
+        if matches!(
+            node.kind,
+            EventKind::Start(core_markdown::stream::Tag::Link { .. })
+        ) {
+            assert_eq!(&source[node.span.clone()], "<ab:é>");
+        }
+        if matches!(node.kind, EventKind::Html { block: false, .. }) {
+            assert_eq!(&source[node.span.clone()], "<i q='x'>");
+        }
+    }
+}

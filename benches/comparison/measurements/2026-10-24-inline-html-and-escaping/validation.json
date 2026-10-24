@@ -1,0 +1,55 @@
+{
+  "source_tree": "fbbb17b4584f9da0537f9020756552f20ee1e0ee",
+  "coverage": {
+    "covered": 20979,
+    "measured": 20979,
+    "invariant_unreachable_exclusions": 37
+  },
+  "results": {
+    "coverage_all_features_all_targets": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-inline-20261024/coverage-outlined.log",
+      "log_sha256": "a03a917e6a4fba299df90486f45c9aef07dac7e94ad00709c8738bed372772e0"
+    },
+    "clippy_all_features_all_targets": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-inline-20261024/outlined-clippy.log",
+      "log_sha256": "96879dfb8318e2944e46aa56466198c6934477dd3a5d4f6ad13ab9de629012d0"
+    },
+    "clippy_default_all_targets": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-inline-20261024/clippy-default-outlined.log",
+      "log_sha256": "d733216915af46997619c32db2cd4b6b40409bbb88422c7f6e3b39d98f2e9413"
+    },
+    "workspace_default": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-inline-20261024/workspace-outlined.log",
+      "log_sha256": "db7de6cbb9ae14b68633b32f398c2cb9272945800313d0f44b9cf33299ede1c1"
+    },
+    "linux_all_features_library_check": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-inline-20261024/linux-outlined.log",
+      "log_sha256": "fba48e78fd7ee8b03ccdc24b7a485c1ade1ce3511f0656b14cafac659e51c360"
+    },
+    "format": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-inline-20261024/format-outlined.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "preservation": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-inline-20261024/preservation-outlined.log",
+      "log_sha256": "6a5712c127e596ec1cf3a1aed1860af18985ee56659cd130fc58056027e52044"
+    },
+    "generated_angle_preservation": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-inline-20261024/angles-outlined.log",
+      "log_sha256": "a797805c0e0fc2cb7b09de2e430f2ebf105878d4b63a74a617188a3c7a0a6ed0"
+    }
+  },
+  "review": {
+    "commit": "923ff3d0eece5682fcb5acc99fc07a0db540ac3a",
+    "result": "Independent adversarial source review approved after shared angle helper followup."
+  },
+  "limits": "Native arm64 macOS runtime coverage and default workspace tests. Linux is a compile-only library check locally; CI supplies Linux runtime coverage."
+}
