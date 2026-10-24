@@ -21,6 +21,30 @@ pub(crate) struct Definitions {
     ordered: Vec<usize>,
 }
 
+/// Block preparation owns normalized keys; inline tokenization borrows the prepared semantic index.
+#[derive(Debug)]
+pub(crate) enum DefinitionLookup<'a> {
+    Keys(Vec<String>),
+    Prepared(&'a Definitions),
+}
+
+impl DefinitionLookup<'_> {
+    pub fn from_keys(mut keys: Vec<String>) -> Self {
+        keys.sort_unstable();
+        keys.dedup();
+        Self::Keys(keys)
+    }
+
+    pub fn contains(&self, key: &str) -> bool {
+        match self {
+            Self::Keys(keys) => keys
+                .binary_search_by(|value| value.as_str().cmp(key))
+                .is_ok(),
+            Self::Prepared(definitions) => definitions.find(key).is_some(),
+        }
+    }
+}
+
 impl Definitions {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
@@ -62,12 +86,6 @@ impl Definitions {
             .binary_search_by(|&index| self.entries[index].key.as_str().cmp(key))
             .ok()
             .map(|index| self.ordered[index])
-    }
-
-    pub fn keys(&self) -> impl Iterator<Item = &String> {
-        self.ordered
-            .iter()
-            .map(move |&index| &self.entries[index].key)
     }
 }
 

@@ -3,13 +3,14 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Turn bytes of markdown into events.
+use crate::definitions::{DefinitionLookup, Definitions};
 use crate::event::{Event, Point};
 use crate::state::{Name as StateName, State};
 #[cfg(test)]
 use crate::subtokenize::subtokenize;
 use crate::tokenizer::Tokenizer;
 use crate::ParseOptions;
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{borrow::Cow, string::String, vec::Vec};
 
 /// Info needed, in all content types, when parsing markdown.
 ///
@@ -22,9 +23,26 @@ pub struct ParseState<'a> {
     /// List of chars.
     pub bytes: &'a [u8],
     /// Set of defined definition identifiers.
-    pub definitions: Vec<String>,
+    pub definitions: DefinitionLookup<'a>,
     /// Set of defined GFM footnote definition identifiers.
-    pub gfm_footnote_definitions: Vec<String>,
+    pub gfm_footnote_definitions: Cow<'a, [String]>,
+}
+
+impl<'a> ParseState<'a> {
+    /// Inline parsing needs a borrowed lookup context, never another definition owner.
+    pub fn inline(
+        bytes: &'a [u8],
+        options: &'a ParseOptions,
+        definitions: &'a Definitions,
+        footnotes: &'a [String],
+    ) -> Self {
+        Self {
+            bytes,
+            options,
+            definitions: DefinitionLookup::Prepared(definitions),
+            gfm_footnote_definitions: Cow::Borrowed(footnotes),
+        }
+    }
 }
 
 /// Turn a string of markdown into events.
@@ -36,8 +54,8 @@ pub fn prepare<'a>(value: &'a str, options: &'a ParseOptions) -> (Vec<Event>, Pa
     let mut parse_state = ParseState {
         options,
         bytes,
-        definitions: vec![],
-        gfm_footnote_definitions: vec![],
+        definitions: DefinitionLookup::Keys(Vec::new()),
+        gfm_footnote_definitions: Cow::Borrowed(&[]),
     };
 
     let start = Point {
@@ -53,13 +71,11 @@ pub fn prepare<'a>(value: &'a str, options: &'a ParseOptions) -> (Vec<Event>, Pa
         (parse_state.bytes.len(), 0),
         State::Next(StateName::DocumentStart),
     );
-    let mut result = tokenizer.flush(state, true);
+    let result = tokenizer.flush(state, true);
     let events = tokenizer.events;
 
-    parse_state
-        .gfm_footnote_definitions
-        .append(&mut result.gfm_footnote_definitions);
-    parse_state.definitions.append(&mut result.definitions);
+    parse_state.gfm_footnote_definitions = Cow::Owned(result.gfm_footnote_definitions);
+    parse_state.definitions = DefinitionLookup::from_keys(result.definitions);
     (events, parse_state)
 }
 
@@ -71,8 +87,14 @@ pub fn parse<'a>(value: &'a str, options: &'a ParseOptions) -> (Vec<Event>, Pars
         let mut result = subtokenize(&mut events, &parse_state, None);
         parse_state
             .gfm_footnote_definitions
+            .to_mut()
             .append(&mut result.gfm_footnote_definitions);
-        parse_state.definitions.append(&mut result.definitions);
+        let DefinitionLookup::Keys(keys) = &mut parse_state.definitions else {
+            unreachable!("the grammar-only parser owns its definition identifiers");
+        };
+        keys.append(&mut result.definitions);
+        keys.sort_unstable();
+        keys.dedup();
         if result.done {
             return (events, parse_state);
         }
