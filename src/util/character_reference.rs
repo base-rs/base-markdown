@@ -86,6 +86,10 @@ pub fn decode_named(value: &str, html5: bool) -> Option<String> {
 /// * [`micromark-util-decode-numeric-character-reference` in `micromark`](https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-numeric-character-reference)
 /// * [*§ 2.5 Entity and numeric character references* in `CommonMark`](https://spec.commonmark.org/0.31/#entity-and-numeric-character-references)
 pub fn decode_numeric(value: &str, radix: u32) -> String {
+    decode_numeric_char(value, radix).into()
+}
+
+fn decode_numeric_char(value: &str, radix: u32) -> char {
     if let Some(char) = char::from_u32(u32::from_str_radix(value, radix).unwrap()) {
         if !matches!(char,
             // C0 except for HT, LF, FF, CR, space.
@@ -95,11 +99,52 @@ pub fn decode_numeric(value: &str, radix: u32) -> String {
             // Lone surrogates, noncharacters, and out of range are handled by
             // Rust.
         ) {
-            return char.into();
+            return char;
         }
     }
 
-    char::REPLACEMENT_CHARACTER.into()
+    char::REPLACEMENT_CHARACTER
+}
+
+/// A resolved reference that requires no owned string until its text is consumed.
+pub(crate) enum Reference {
+    Named(usize),
+    Numeric(char),
+}
+
+/// Scan an HTML 5 character reference beginning at `start`, without reading past `end`.
+/// Both bounds refer to the complete source; callers check the opening ampersand.
+pub(crate) fn scan(source: &str, start: usize, end: usize) -> Option<(usize, Reference)> {
+    let bytes = &source.as_bytes()[..end];
+    let mut begin = start + 1;
+    let mut marker = b'&';
+    if bytes.get(begin) == Some(&b'#') {
+        marker = b'#';
+        begin += 1;
+        if matches!(bytes.get(begin), Some(b'x' | b'X')) {
+            marker = b'x';
+            begin += 1;
+        }
+    }
+    let mut at = begin;
+    while at < end && at - begin < value_max(marker) && value_test(marker)(&bytes[at]) {
+        at += 1;
+    }
+    if at == begin || at == end || bytes[at] != b';' {
+        return None;
+    }
+    let value = if marker == b'&' {
+        let index = CHARACTER_REFERENCES
+            .binary_search_by_key(&&source[begin..at], |entry| entry.0)
+            .ok()?;
+        Reference::Named(index)
+    } else {
+        Reference::Numeric(decode_numeric_char(
+            &source[begin..at],
+            if marker == b'#' { 10 } else { 16 },
+        ))
+    };
+    Some((at + 1, value))
 }
 
 /// Decode a character reference.
@@ -236,6 +281,61 @@ mod tests {
                 assert_eq!(decode_named(name, html5).as_deref(), Some(value));
             }
             assert_eq!(decode_named("notAnEntity", html5), None);
+        }
+    }
+
+    #[test]
+    fn bounded_scanning_requires_the_semicolon_inside_the_region() {
+        for (source, expected) in [
+            ("&amp;", "&"),
+            ("&NotEqualTilde;", "≂̸"),
+            ("&#65;", "A"),
+            ("&#x41;", "A"),
+            ("&#X1F600;", "😀"),
+            ("&#0;", "�"),
+            ("&#55296;", "�"),
+            ("&#x110000;", "�"),
+        ] {
+            let input = alloc::format!("é{source}tail");
+            let start = "é".len();
+            let finish = start + source.len();
+            for end in start..finish {
+                assert!(
+                    super::scan(&input, start, end).is_none(),
+                    "{:?}, end={}",
+                    input,
+                    end
+                );
+            }
+            let (end, reference) = super::scan(&input, start, finish).unwrap();
+            assert_eq!(end, finish);
+            let actual: alloc::string::String = match reference {
+                super::Reference::Named(index) => CHARACTER_REFERENCES[index].1.into(),
+                super::Reference::Numeric(character) => character.into(),
+            };
+            assert_eq!(actual, expected);
+        }
+        for source in [
+            "&",
+            "&#",
+            "&#x",
+            "&;",
+            "&#;",
+            "&#x;",
+            "&amp",
+            "&unknown;",
+            "&amp ;",
+            "&amp!;",
+            "&#xg;",
+            "&#12345678;",
+            "&#x1234567;",
+            "&ThisNameIsLongerThanAnyValidNamedReference;",
+        ] {
+            assert!(
+                super::scan(source, 0, source.len()).is_none(),
+                "{:?}",
+                source
+            );
         }
     }
 

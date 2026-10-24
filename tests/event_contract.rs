@@ -397,8 +397,8 @@ fn document_completion_yields_one_terminal_separator_and_end() {
             expected_separator,
             "{source:?}"
         );
-        assert!(parser.next().is_none(), "{source:?}");
-        assert!(parser.next().is_none(), "{source:?}");
+        assert!(parser.next().is_none(), "{:?}", source);
+        assert!(parser.next().is_none(), "{:?}", source);
     }
 }
 
