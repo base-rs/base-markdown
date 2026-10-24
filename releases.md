@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Reduce ordinary parsing overhead in the unified parser: finish blank paragraphs before block lookahead, dispatch scanners by opening byte, skip disabled extension bookkeeping, and scan definition destinations directly within their physical source line. Keep unchanged raw inline values outside the owned normalization path.
+
 - Use one source-backed pull parser for every construct configuration. Remove the grammar tokenizer, token-edit pipeline, and compatibility dispatch; handle multiline inline syntax, definitions, footnotes, math, and frontmatter directly while retaining the semantic event and document APIs. Correct multiline reference labels inside containers and table recognition after headers or rows beginning with syntax markers. The former tokenizer tracing `log` feature remains accepted as a no-op.
 
 - Name individual extensions by their syntax: remove `gfm_` from construct flags, parser and HTML options, internal modules, and tokenizer state. For example, `gfm_table` becomes `table` and `gfm_footnote_definitions` becomes `footnote_definitions`. Serialized configuration keys drop the corresponding `gfm` prefix. This is a breaking API and configuration-format rename; the `gfm()` presets and extension behavior remain unchanged. See `context/extensions.md` for migration examples.
