@@ -1,0 +1,121 @@
+{
+  "readme": {
+    "baseline": {
+      "process_medians_ms": [
+        0.01467705538400239,
+        0.014719516082769925
+      ],
+      "median_ms": 0.014698285733386158
+    },
+    "candidate": {
+      "process_medians_ms": [
+        0.014531573967703479,
+        0.014530644342973112
+      ],
+      "median_ms": 0.014531109155338295
+    },
+    "time_reduction_percent": 1.137388271532458
+  },
+  "mixed-100k": {
+    "baseline": {
+      "process_medians_ms": [
+        0.42729047126436787,
+        0.4354064610951009
+      ],
+      "median_ms": 0.4313484661797344
+    },
+    "candidate": {
+      "process_medians_ms": [
+        0.43403252706552714,
+        0.43435878124999994
+      ],
+      "median_ms": 0.4341956541577635
+    },
+    "time_reduction_percent": -0.6600667908351232
+  },
+  "mixed-1m": {
+    "baseline": {
+      "process_medians_ms": [
+        4.328932142857143,
+        4.437008588235294
+      ],
+      "median_ms": 4.382970365546218
+    },
+    "candidate": {
+      "process_medians_ms": [
+        4.385064285714286,
+        4.390604771428571
+      ],
+      "median_ms": 4.387834528571428
+    },
+    "time_reduction_percent": -0.11097868841292158
+  },
+  "gfm-100k": {
+    "baseline": {
+      "process_medians_ms": [
+        0.6287736567796609,
+        0.6373267478632478
+      ],
+      "median_ms": 0.6330502023214544
+    },
+    "candidate": {
+      "process_medians_ms": [
+        0.6321779661016949,
+        0.6404813628691983
+      ],
+      "median_ms": 0.6363296644854466
+    },
+    "time_reduction_percent": -0.5180414052418092
+  },
+  "references": {
+    "baseline": {
+      "process_medians_ms": [
+        0.611673695473251,
+        0.6077150746887967
+      ],
+      "median_ms": 0.6096943850810239
+    },
+    "candidate": {
+      "process_medians_ms": [
+        0.6091485447154471,
+        0.6084504485596707
+      ],
+      "median_ms": 0.608799496637559
+    },
+    "time_reduction_percent": 0.1467765597588766
+  },
+  "long-lines-1m": {
+    "baseline": {
+      "process_medians_ms": [
+        0.12140637570394207,
+        0.1219626585563666
+      ],
+      "median_ms": 0.12168451713015432
+    },
+    "candidate": {
+      "process_medians_ms": [
+        0.1206850652699436,
+        0.12133799275945294
+      ],
+      "median_ms": 0.12101152901469828
+    },
+    "time_reduction_percent": 0.5530597740189158
+  },
+  "code-1m": {
+    "baseline": {
+      "process_medians_ms": [
+        0.07340934133202742,
+        0.07386328746327131
+      ],
+      "median_ms": 0.07363631439764937
+    },
+    "candidate": {
+      "process_medians_ms": [
+        0.07348595499021526,
+        0.07355500294550811
+      ],
+      "median_ms": 0.07352047896786168
+    },
+    "time_reduction_percent": 0.15730747897315656
+  }
+}

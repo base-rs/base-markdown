@@ -1,0 +1,121 @@
+{
+  "readme": {
+    "baseline": {
+      "process_medians_ms": [
+        0.014622471210706502,
+        0.015275164157558259
+      ],
+      "median_ms": 0.01494881768413238
+    },
+    "candidate": {
+      "process_medians_ms": [
+        0.014528984254533608,
+        0.014691956190083497
+      ],
+      "median_ms": 0.014610470222308552
+    },
+    "time_reduction_percent": 2.263372722666701
+  },
+  "mixed-100k": {
+    "baseline": {
+      "process_medians_ms": [
+        0.4324115043227666,
+        0.44347777878787875
+      ],
+      "median_ms": 0.43794464155532264
+    },
+    "candidate": {
+      "process_medians_ms": [
+        0.43255208522727273,
+        0.4355999273255814
+      ],
+      "median_ms": 0.43407600627642706
+    },
+    "time_reduction_percent": 0.8833617110044933
+  },
+  "mixed-1m": {
+    "baseline": {
+      "process_medians_ms": [
+        4.416597628571429,
+        4.523623764705882
+      ],
+      "median_ms": 4.470110696638656
+    },
+    "candidate": {
+      "process_medians_ms": [
+        4.63107196969697,
+        4.436761029411764
+      ],
+      "median_ms": 4.533916499554367
+    },
+    "time_reduction_percent": -1.4273875356977328
+  },
+  "gfm-100k": {
+    "baseline": {
+      "process_medians_ms": [
+        0.6485806379310346,
+        0.6486883888888889
+      ],
+      "median_ms": 0.6486345134099618
+    },
+    "candidate": {
+      "process_medians_ms": [
+        0.6357563025210083,
+        0.6481175739130435
+      ],
+      "median_ms": 0.6419369382170259
+    },
+    "time_reduction_percent": 1.0325653437289084
+  },
+  "references": {
+    "baseline": {
+      "process_medians_ms": [
+        0.6319220290456432,
+        0.6234643389830509
+      ],
+      "median_ms": 0.627693184014347
+    },
+    "candidate": {
+      "process_medians_ms": [
+        0.6210690413223141,
+        0.6267280334728033
+      ],
+      "median_ms": 0.6238985373975587
+    },
+    "time_reduction_percent": 0.6045384454424152
+  },
+  "long-lines-1m": {
+    "baseline": {
+      "process_medians_ms": [
+        0.12326977397831526,
+        0.12616652784704904
+      ],
+      "median_ms": 0.12471815091268215
+    },
+    "candidate": {
+      "process_medians_ms": [
+        0.12178398853398853,
+        0.1264416867371847
+      ],
+      "median_ms": 0.12411283763558661
+    },
+    "time_reduction_percent": 0.48534497398003973
+  },
+  "code-1m": {
+    "baseline": {
+      "process_medians_ms": [
+        0.0735179680746562,
+        0.07375218015794668
+      ],
+      "median_ms": 0.07363507411630144
+    },
+    "candidate": {
+      "process_medians_ms": [
+        0.07396756290083867,
+        0.07518185620253164
+      ],
+      "median_ms": 0.07457470955168516
+    },
+    "time_reduction_percent": -1.2760704686731739
+  }
+}
