@@ -303,52 +303,17 @@ impl InlineParser {
                 match bytes[at] {
                     0 => return false,
                     b'<' => {
-                        let mut link = crate::util::autolink::Autolink::default();
-                        let mut end = at + 1;
-                        let mut found = false;
-                        while end < range.end {
-                            match link.advance(bytes[end]) {
-                                None => break,
-                                Some(true) => {
-                                    found = true;
-                                    break;
-                                }
-                                Some(false) => end += 1,
-                            }
-                        }
-                        if found {
-                            self.append(at, end + 1, Kind::AngleLink(link.email()));
-                            self.append(at + 1, end, Kind::Text);
-                            self.append(end + 1, end + 1, Kind::End(TagKind::Link));
-                            at = end + 1;
-                            continue;
-                        }
-                        let mut html = crate::util::html_text::HtmlText::default();
-                        end = at + 1;
-                        while end < range.end {
-                            let byte = if bytes[end] == b'\r' {
-                                b'\n'
-                            } else {
-                                bytes[end]
-                            };
-                            match html.advance(byte, options.html_tag_namespaces) {
-                                None => break,
-                                Some(true) => {
-                                    found = true;
-                                    break;
-                                }
-                                Some(false) if byte == b'\n' => return false,
-                                Some(false) => end += 1,
-                            }
-                        }
-                        if found {
-                            self.append(at, end + 1, Kind::Html);
-                            at = end + 1;
-                        } else {
-                            // Rejected angles can interact with grammar delimiter resolution.
-                            // Keep malformed, incomplete, and cross-fragment syntax on that path.
+                        let Some((end, kind)) =
+                            angle(bytes, at, range.end, options.html_tag_namespaces)
+                        else {
                             return false;
+                        };
+                        self.append(at, end, kind);
+                        if matches!(kind, Kind::AngleLink(_)) {
+                            self.append(at + 1, end - 1, Kind::Text);
+                            self.append(end, end, Kind::End(TagKind::Link));
                         }
+                        at = end;
                     }
                     marker
                         if GFM
@@ -784,6 +749,31 @@ fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
     } else {
         None
     }
+}
+
+/// Keep angle recognition shared across the compact parser's inline configurations.
+#[inline(never)]
+fn angle(bytes: &[u8], start: usize, limit: usize, namespaces: bool) -> Option<(usize, Kind)> {
+    let mut link = crate::util::autolink::Autolink::default();
+    for (offset, &byte) in bytes[start + 1..limit].iter().enumerate() {
+        match link.advance(byte) {
+            None => break,
+            Some(true) => return Some((start + offset + 2, Kind::AngleLink(link.email()))),
+            Some(false) => {}
+        }
+    }
+    let mut html = crate::util::html_text::HtmlText::default();
+    for (offset, &byte) in bytes[start + 1..limit].iter().enumerate() {
+        let byte = if byte == b'\r' { b'\n' } else { byte };
+        match html.advance(byte, namespaces)? {
+            true => return Some((start + offset + 2, Kind::Html)),
+            false if byte == b'\n' => return None,
+            false => {}
+        }
+    }
+    // Rejected angles can interact with grammar delimiter resolution.
+    // Keep malformed, incomplete, and cross-fragment syntax on that path.
+    None
 }
 
 /// Recognize whitespace-delimited ASCII addresses without path or delimiter ambiguity.

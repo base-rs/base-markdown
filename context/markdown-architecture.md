@@ -14,7 +14,7 @@ MDX is no longer supported. JavaScript expressions and import/export statements 
 - AST helpers include stack-free traversal, `text_content`, code-fence metadata, subtree detachment/attachment, and heading lookup and section replacement. Detached nodes remain in their document arena and retain stable IDs. See [Document AST and migration](document.md).
 
 The compact producer owns only its inline candidates and reference definitions.
-Inline HTML and angle autolinks share byte recognizers with the grammar tokenizer. Complete single-line constructs stay source-backed in the compact producer; multiline or incomplete HTML retains grammar handling for container prefixes and line endings.
+Inline HTML and angle autolinks share byte recognizers with the grammar tokenizer. Complete single-line constructs stay source-backed in the compact producer; rejected, multiline, or incomplete angles retain grammar handling for container prefixes and line endings.
 
 When a region needs grammar tokenization, it transfers those buffers into a
 reusable grammar workspace, allocating that workspace once. Both producers share
