@@ -542,11 +542,14 @@ impl Builder<'_> {
             let mut line = LineStart::new(&bytes[next..]);
             let continued = self.containers(&mut line) == self.open.len();
             let content_start = next + line.bytes_scanned();
-            let indented = line.scan_space(4);
-            if !self.options.constructs.code_indented {
-                line.scan_all_space();
+            let indented = line.scan_space(4) && self.options.constructs.code_indented;
+            line.scan_all_space();
+            if line.is_at_eol() {
+                self.trim_fragment();
+                self.pop(next);
+                return next;
             }
-            if !indented || !self.options.constructs.code_indented {
+            if !indented {
                 let content = next + line.bytes_scanned();
                 if self.options.constructs.table && self.table_delimiter(content_start).is_some() {
                     self.definition_context = true;
@@ -576,12 +579,6 @@ impl Builder<'_> {
                     self.pop(next);
                     return next;
                 }
-            }
-            line.scan_all_space();
-            if line.is_at_eol() {
-                self.trim_fragment();
-                self.pop(next);
-                return next;
             }
             at = content_start;
         }
