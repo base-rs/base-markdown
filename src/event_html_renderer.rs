@@ -646,7 +646,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                             .resolve(self.source)
                             .expect("event values are source-valid");
                         if self.options.allow_dangerous_html && self.options.gfm_tagfilter {
-                            self.escaped(&crate::util::gfm_tagfilter::gfm_tagfilter(value), false)
+                            crate::util::gfm_tagfilter::write_filtered(value, |part| {
+                                self.escaped(part, false)
+                            })
                         } else {
                             self.escaped(value, !self.options.allow_dangerous_html)
                         }
@@ -835,4 +837,70 @@ pub fn render_events<'a>(
     output: &mut impl fmt::Write,
 ) -> Result<(), StreamError> {
     EventHtmlRenderer::new(source, options, output).render(events)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EventHtmlRenderer;
+    use crate::stream::{Event, EventKind, Tag, Text};
+    use crate::CompileOptions;
+    use alloc::string::String;
+    use core::fmt::{self, Write};
+
+    #[test]
+    fn filtered_html_preserves_written_prefix_when_a_writer_fails() {
+        struct Writer {
+            remaining: usize,
+            output: String,
+        }
+        impl Write for Writer {
+            fn write_str(&mut self, value: &str) -> fmt::Result {
+                if self.remaining == 0 {
+                    return Err(fmt::Error);
+                }
+                self.remaining -= 1;
+                self.output.push_str(value);
+                Ok(())
+            }
+        }
+        let options = CompileOptions {
+            allow_dangerous_html: true,
+            gfm_tagfilter: true,
+            ..CompileOptions::default()
+        };
+        for (remaining, expected) in [
+            "",
+            "prefix",
+            "prefix&lt;",
+            "prefix&lt;script>",
+            "prefix&lt;script>�",
+        ]
+        .iter()
+        .copied()
+        .enumerate()
+        {
+            let mut writer = Writer {
+                remaining,
+                output: String::new(),
+            };
+            let mut renderer = EventHtmlRenderer::new("", &options, &mut writer);
+            renderer
+                .event(Event {
+                    kind: EventKind::Start(Tag::Document(None)),
+                    span: 0..0,
+                })
+                .unwrap();
+            renderer
+                .event(Event {
+                    kind: EventKind::Html {
+                        value: Text::Literal("prefix<script>\0tail"),
+                        block: false,
+                    },
+                    span: 0..0,
+                })
+                .unwrap_err();
+            assert_eq!(renderer.last, expected.as_bytes().last().copied());
+            assert_eq!(writer.output, expected);
+        }
+    }
 }

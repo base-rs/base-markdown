@@ -47,6 +47,21 @@ The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,
 
 **GFM is not an equal-output throughput comparison:** Inkmark leaves `www.example.com` unlinked in this workload even with autolinking enabled. Its table alignment attributes and empty table bodies also differ. Comrak and Commonmarker do not expose the same independent GFM tag filter as the other adapters. Read GFM timings alongside the output agreement results.
 
+## Event and storage simplification follow-up
+
+The latest pass keeps the active child cursor in the AST builder instead of every node, uses explicit compact document phases, shares bounded character-reference scanning without a decoded-value vector, and streams GFM tag filtering directly into the shared HTML writer. On arm64, arena nodes shrink from 128 to 120 bytes and `EventParser` from 1,176 to 1,152 bytes. Public APIs, event semantics, features, and dependencies are unchanged.
+
+Three alternating runs compare merged main `49a38ba` with final production source `bdf9d9c`, in milliseconds:
+
+| Workload | Main | Final | Inkmark 0.2.1 |
+| --- | ---: | ---: | ---: |
+| README 9 KB | 0.01399 | 0.01386 | 0.01921 |
+| Mixed 100 KB | 0.41361 | 0.40312 | 0.42041 |
+| Mixed 1 MB | 4.31308 | 4.02921 | 4.47121 |
+| GFM 100 KB | 0.62911 | 0.61153 | 0.72991 |
+
+The added HTML-heavy fixtures take 29–31% less time than main; mixed inputs take 2.5–6.6% less in this run. The exact mixed gain varies across controls, and small differences remain sensitive to machine activity and process layout. GFM's `www.` linking follows the specification, but its unequal output prevents an equal-output throughput ranking. All 2,117 saved outputs remain unchanged through direct, checked-event, and arena HTML. The [full report](measurements/2026-10-24-simplify-events/readme.md) retains every sample, allocation counts, source identities, rejected experiments, and validation evidence.
+
 ## Source-backed text coalescing follow-up
 
 The compact scanner combines escaped punctuation with following ordinary source text, preserving source ranges and existing structured link/code details. On mixed 1 MB this removes 5,134 semantic events (3.0%) and AST nodes (4.1%), with unchanged allocation measurements and output bytes. Three alternating runs compare merged main `3f633ab` with `7d853c7`:

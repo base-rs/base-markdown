@@ -1,0 +1,237 @@
+{
+  "core-markdown/readme": {
+    "baseline": {
+      "median_ms": 0.013701927586530343,
+      "process_medians_ms": [
+        0.013621821282906933,
+        0.013838494948541214,
+        0.013701927586530343
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "combined": {
+      "median_ms": 0.014144210399614828,
+      "process_medians_ms": [
+        0.013843362182233648,
+        0.014265522053231939,
+        0.014144210399614828
+      ],
+      "time_reduction_percent": -3.227887538387453
+    },
+    "phase-cold": {
+      "median_ms": 0.013765987962005078,
+      "process_medians_ms": [
+        0.013632390715486643,
+        0.013765987962005078,
+        0.01840379033158424
+      ],
+      "time_reduction_percent": -0.4675282004680259
+    },
+    "filter-outline": {
+      "median_ms": 0.013978268835454975,
+      "process_medians_ms": [
+        0.013878738417811462,
+        0.013978268835454975,
+        0.014308774478716249
+      ],
+      "time_reduction_percent": -2.0168056441656423
+    },
+    "both-outline": {
+      "median_ms": 0.01381378054511278,
+      "process_medians_ms": [
+        0.013729478659678024,
+        0.01381378054511278,
+        0.013942437031413115
+      ],
+      "time_reduction_percent": -0.8163300957187536
+    }
+  },
+  "core-markdown/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.40390613978494627,
+      "process_medians_ms": [
+        0.4035328172043011,
+        0.40390613978494627,
+        0.4045322345013477
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "combined": {
+      "median_ms": 0.41697069505494505,
+      "process_medians_ms": [
+        0.4079299863387978,
+        0.41711673553719003,
+        0.41697069505494505
+      ],
+      "time_reduction_percent": -3.234552284091241
+    },
+    "phase-cold": {
+      "median_ms": 0.4071235430107527,
+      "process_medians_ms": [
+        0.39495855091383814,
+        0.4071235430107527,
+        0.4347190700280112
+      ],
+      "time_reduction_percent": -0.796572002475493
+    },
+    "filter-outline": {
+      "median_ms": 0.41976960784313727,
+      "process_medians_ms": [
+        0.41976960784313727,
+        0.4174488324175824,
+        0.42636461189801694
+      ],
+      "time_reduction_percent": -3.927513472966093
+    },
+    "both-outline": {
+      "median_ms": 0.40376998921832885,
+      "process_medians_ms": [
+        0.4085015423280423,
+        0.39849566666666664,
+        0.40376998921832885
+      ],
+      "time_reduction_percent": 0.03370846669721317
+    }
+  },
+  "core-markdown/mixed-1m": {
+    "baseline": {
+      "median_ms": 4.1126328918918915,
+      "process_medians_ms": [
+        4.114175675675677,
+        4.1126328918918915,
+        4.091966216216217
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "combined": {
+      "median_ms": 4.159309027777778,
+      "process_medians_ms": [
+        4.132806694444445,
+        4.160986486486487,
+        4.159309027777778
+      ],
+      "time_reduction_percent": -1.1349453528397557
+    },
+    "phase-cold": {
+      "median_ms": 3.9989879473684216,
+      "process_medians_ms": [
+        3.9295523333333335,
+        3.9989879473684216,
+        4.220189805555555
+      ],
+      "time_reduction_percent": 2.7633136122487967
+    },
+    "filter-outline": {
+      "median_ms": 4.180218486486487,
+      "process_medians_ms": [
+        4.180218486486487,
+        4.14613627027027,
+        4.215975694444445
+      ],
+      "time_reduction_percent": -1.643365609603542
+    },
+    "both-outline": {
+      "median_ms": 4.0182631578947365,
+      "process_medians_ms": [
+        3.9981019736842103,
+        4.0182631578947365,
+        4.051362594594595
+      ],
+      "time_reduction_percent": 2.2946306290358653
+    }
+  },
+  "core-markdown/gfm-100k": {
+    "baseline": {
+      "median_ms": 0.6171239583333334,
+      "process_medians_ms": [
+        0.6109481707317073,
+        0.6184555925925925,
+        0.6171239583333334
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "combined": {
+      "median_ms": 0.6256165269709544,
+      "process_medians_ms": [
+        0.6232090336134454,
+        0.6256165269709544,
+        0.629109243697479
+      ],
+      "time_reduction_percent": -1.3761528008986668
+    },
+    "phase-cold": {
+      "median_ms": 0.6015196572580646,
+      "process_medians_ms": [
+        0.6015196572580646,
+        0.5988402217741935,
+        0.6155349504132231
+      ],
+      "time_reduction_percent": 2.5285521433021985
+    },
+    "filter-outline": {
+      "median_ms": 0.6304898445378151,
+      "process_medians_ms": [
+        0.6173930541666667,
+        0.6331774291666666,
+        0.6304898445378151
+      ],
+      "time_reduction_percent": -2.165834922464982
+    },
+    "both-outline": {
+      "median_ms": 0.6044414655870445,
+      "process_medians_ms": [
+        0.6043903061224489,
+        0.6044414655870445,
+        0.612027609053498
+      ],
+      "time_reduction_percent": 2.0550964802177774
+    }
+  },
+  "core-markdown/references": {
+    "baseline": {
+      "median_ms": 0.5552973740740741,
+      "process_medians_ms": [
+        0.5505760261194029,
+        0.5552973740740741,
+        0.5575686553030303
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "combined": {
+      "median_ms": 0.5482262333333333,
+      "process_medians_ms": [
+        0.5475621992753623,
+        0.5482262333333333,
+        0.5501265407407407
+      ],
+      "time_reduction_percent": 1.2733971149299084
+    },
+    "phase-cold": {
+      "median_ms": 0.5592627499999999,
+      "process_medians_ms": [
+        0.5533898698884758,
+        0.5592627499999999,
+        0.5634664179104478
+      ],
+      "time_reduction_percent": -0.7140995277598483
+    },
+    "filter-outline": {
+      "median_ms": 0.5622313609022558,
+      "process_medians_ms": [
+        0.5582509433962264,
+        0.5622313609022558,
+        0.5690895846153846
+      ],
+      "time_reduction_percent": -1.2486979323004466
+    },
+    "both-outline": {
+      "median_ms": 0.5616294,
+      "process_medians_ms": [
+        0.5670501240601503,
+        0.5591730864661654,
+        0.5616294
+      ],
+      "time_reduction_percent": -1.1402945919714025
+    }
+  }
+}

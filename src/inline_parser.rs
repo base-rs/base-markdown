@@ -6,6 +6,7 @@ use crate::definitions::{scan_label, Definitions};
 use crate::grammar_parser::decode_string;
 use crate::stream::{Event, EventKind, Tag, TagKind, Text};
 use crate::util::char::{classify_opt, Kind as CharacterKind};
+use crate::util::character_reference::{scan as scan_character_reference, Reference};
 use crate::util::normalize_identifier::normalize_identifier_into;
 use alloc::{string::String, vec::Vec};
 use core::{convert::TryFrom, ops::Range};
@@ -46,7 +47,8 @@ impl AutolinkPrefix {
 #[derive(Clone, Copy)]
 enum Kind {
     Text,
-    Decoded(usize),
+    NamedEntity(usize),
+    NumericEntity(char),
     Code(usize),
     SoftBreak,
     HardBreak,
@@ -95,7 +97,6 @@ pub(crate) struct InlineParser {
     links: Vec<Link>,
     tick_heads: Vec<usize>,
     ticks: Vec<Tick>,
-    values: Vec<Text<'static>>,
     reference_key: String,
     last: usize,
     cursor: usize,
@@ -251,7 +252,6 @@ impl InlineParser {
         self.delimiters.clear();
         self.brackets.clear();
         self.links.clear();
-        self.values.clear();
         self.last = 0;
         self.cursor = 0;
         self.link_bottom = 0;
@@ -361,10 +361,13 @@ impl InlineParser {
                         self.append(start, at, Kind::SoftBreak);
                     }
                     b'&' => {
-                        if let Some((end, value)) = entity(source, at, range.end) {
-                            let index = self.values.len();
-                            self.values.push(value);
-                            self.append(at, end, Kind::Decoded(index));
+                        if let Some((end, value)) = scan_character_reference(source, at, range.end)
+                        {
+                            let kind = match value {
+                                Reference::Named(index) => Kind::NamedEntity(index),
+                                Reference::Numeric(character) => Kind::NumericEntity(character),
+                            };
+                            self.append(at, end, kind);
                             at = end;
                         } else {
                             self.append(at, at + 1, Kind::Text);
@@ -563,10 +566,12 @@ impl InlineParser {
             let kind = match node.kind {
                 Kind::Text if node.start == node.end => continue,
                 Kind::Text => EventKind::Text(Text::Source(node.start..node.end)),
-                Kind::Decoded(index) => EventKind::Text(core::mem::replace(
-                    &mut self.values[index],
-                    Text::Literal(""),
+                Kind::NamedEntity(index) => EventKind::Text(Text::Literal(
+                    crate::util::constant::CHARACTER_REFERENCES[index].1,
                 )),
+                Kind::NumericEntity(character) => {
+                    EventKind::Text(Text::from(String::from(character)))
+                }
                 Kind::SoftBreak => EventKind::SoftBreak(Text::Source(node.start..node.end)),
                 Kind::HardBreak => EventKind::HardBreak,
                 Kind::Task(checked) => EventKind::TaskMarker(checked),
@@ -711,41 +716,6 @@ fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
     } else {
         None
     }
-}
-
-fn entity(source: &str, start: usize, end: usize) -> Option<(usize, Text<'static>)> {
-    use crate::util::character_reference::{decode_numeric, value_max, value_test};
-    let bytes = source.as_bytes();
-    let mut begin = start + 1;
-    let mut marker = b'&';
-    if bytes.get(begin) == Some(&b'#') {
-        marker = b'#';
-        begin += 1;
-        if matches!(bytes.get(begin), Some(b'x' | b'X')) {
-            marker = b'x';
-            begin += 1;
-        }
-    }
-    let mut at = begin;
-    while at < end && at - begin < value_max(marker) && value_test(marker)(&bytes[at]) {
-        at += 1;
-    }
-    if at == begin || at == end || bytes[at] != b';' {
-        return None;
-    }
-    let value = if marker == b'&' {
-        let references = crate::util::constant::CHARACTER_REFERENCES.as_slice();
-        let index = references
-            .binary_search_by_key(&&source[begin..at], |entry| entry.0)
-            .ok()?;
-        Text::Literal(references[index].1)
-    } else {
-        Text::from(decode_numeric(
-            &source[begin..at],
-            if marker == b'#' { 10 } else { 16 },
-        ))
-    };
-    Some((at + 1, value))
 }
 
 /// Recognize whitespace-delimited ASCII addresses without path or delimiter ambiguity.

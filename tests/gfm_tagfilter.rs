@@ -173,3 +173,28 @@ javascript:/*--></title></style></textarea></script></xmp><svg/onload='+/"/+/onm
 
     Ok(())
 }
+
+#[test]
+fn filtered_html_uses_the_same_heading_and_footnote_captures() {
+    use core_markdown::{render_events, Document, EventParser};
+    let mut options = Options::gfm();
+    options.compile.allow_dangerous_html = true;
+    options.compile.heading_ids = true;
+    let source = "# <iframe>é</iframe>\n\nCall[^x].\n\n[^x]: <style>😀</style>\n";
+    let expected = to_html_with_options(source, &options).unwrap();
+    assert!(expected.contains("&lt;iframe>é&lt;/iframe>"));
+    assert!(expected.contains("&lt;style>😀&lt;/style>"));
+    let mut checked = String::new();
+    render_events(
+        source,
+        EventParser::new(source, &options.parse).unwrap(),
+        &options.compile,
+        &mut checked,
+    )
+    .unwrap();
+    assert_eq!(checked, expected);
+    let document = Document::parse(source, &options.parse).unwrap();
+    checked.clear();
+    render_events(source, document.events(), &options.compile, &mut checked).unwrap();
+    assert_eq!(checked, expected);
+}

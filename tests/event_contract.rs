@@ -140,6 +140,53 @@ fn builder_failures_are_permanent_and_completion_does_not_pull_again() {
 }
 
 #[test]
+fn builder_links_siblings_across_nested_and_empty_containers() {
+    let input = document(vec![
+        EventKind::Start(Tag::BlockQuote),
+        EventKind::Start(Tag::Paragraph { tight: false }),
+        EventKind::Text(Text::Literal("a")),
+        EventKind::Start(Tag::Strong),
+        EventKind::Text(Text::Literal("b")),
+        EventKind::End(TagKind::Strong),
+        EventKind::Text(Text::Literal("c")),
+        EventKind::End(TagKind::Paragraph),
+        EventKind::Start(Tag::Paragraph { tight: false }),
+        EventKind::End(TagKind::Paragraph),
+        EventKind::End(TagKind::BlockQuote),
+        EventKind::Rule,
+        EventKind::Start(Tag::Paragraph { tight: false }),
+        EventKind::Text(Text::Literal("tail")),
+        EventKind::End(TagKind::Paragraph),
+    ]);
+    let input: Vec<_> = input.into_iter().map(Result::unwrap).collect();
+    for budget in [1, 2, 3, 7, usize::MAX] {
+        let mut builder = AstBuilder::new();
+        let mut events = input.iter().cloned().map(Ok);
+        while builder.consume(&mut events, budget).unwrap() == BuildProgress::Pending {}
+        let ast = builder.finish("").unwrap();
+        assert_eq!(
+            ast.events().map(Result::unwrap).collect::<Vec<_>>(),
+            input,
+            "budget {budget}"
+        );
+        // Every child in each sibling chain keeps its own parent, including after closing nested and empty containers.
+        let mut parents = vec![ast.root()];
+        let mut visited = 0;
+        while let Some(parent) = parents.pop() {
+            visited += 1;
+            let mut child = ast.node(parent).unwrap().first_child();
+            while let Some(id) = child {
+                let node = ast.node(id).unwrap();
+                assert_eq!(node.parent(), Some(parent));
+                parents.push(id);
+                child = node.next_sibling();
+            }
+        }
+        assert_eq!(visited, ast.nodes().len());
+    }
+}
+
+#[test]
 fn edits_detach_every_supported_leaf_and_preserve_arena_links() {
     use std::borrow::Cow;
     let kinds = vec![
@@ -302,6 +349,56 @@ fn heading_ids_use_normalized_semantic_code_text() {
         let mut output = String::new();
         render_events(source, ast.events(), &options.compile, &mut output).unwrap();
         assert_eq!(output, expected);
+    }
+}
+
+#[test]
+fn document_completion_yields_one_terminal_separator_and_end() {
+    let options = Options::default();
+    for (source, expected_separator) in [
+        ("", None),
+        ("a", None),
+        ("a\n", Some(("\n", false))),
+        ("a\r\n", Some(("\r\n", false))),
+        ("a\r\n\r\nb\n", Some(("\n", false))),
+        ("- a\n\n", Some(("", true))),
+        (">\n", Some(("", true))),
+        ("a\n\n[x]: /a\n", None),
+        ("```\ncode\n", None),
+        ("> ```\n> code\n", Some(("\n", false))),
+        ("    code\n ", None),
+        ("<!--\nbody\n", None),
+        ("> <!--\n> body\n", None),
+        ("<!-- closed -->\r\n", Some(("\r\n", false))),
+    ] {
+        let mut parser = core_markdown::EventParser::new(source, &options.parse).unwrap();
+        assert!(matches!(
+            parser.next().unwrap().unwrap().kind,
+            EventKind::Start(Tag::Document(_))
+        ));
+        let mut terminal_separator = None;
+        loop {
+            let event = parser.next().expect("document end event").unwrap();
+            if matches!(event.kind, EventKind::End(TagKind::Document)) {
+                assert_eq!(event.span, source.len()..source.len());
+                break;
+            }
+            terminal_separator = match event.kind {
+                EventKind::Separator { value, conditional } => {
+                    Some((value.resolve(source).unwrap().to_owned(), conditional))
+                }
+                _ => None,
+            };
+        }
+        assert_eq!(
+            terminal_separator
+                .as_ref()
+                .map(|(value, conditional)| (value.as_str(), *conditional)),
+            expected_separator,
+            "{source:?}"
+        );
+        assert!(parser.next().is_none(), "{:?}", source);
+        assert!(parser.next().is_none(), "{:?}", source);
     }
 }
 

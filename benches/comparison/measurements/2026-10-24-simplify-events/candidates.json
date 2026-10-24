@@ -1,0 +1,99 @@
+{
+  "baseline": {
+    "commit": "49a38ba1dc4bbd38e22a939f7d7256323aefb610",
+    "src_tree": "cd1a52fa817b297672018d7d2bdbe8fa6982d43e",
+    "binary_sha256": "8c50263bc8fe9cb2ed746a3ab977adf4a3783513f084e11d7b777309cd72cf07",
+    "allocation_binary_sha256": "04b1dd34c2dd8883d571db503303e7ab1194afae420b3c12e9ed1662a2d80fe8",
+    "patch": null
+  },
+  "arena": {
+    "commit": "1d3f76a726451a594220e580771b228f13d07b70",
+    "src_tree": "671682dcc66e6cc883a187a9fbe55ece1b5033c0",
+    "binary_sha256": "3393c501d7067aa67701cb73cfbf4d0ebb2080656ae81c4f13a81bad47e3b726",
+    "allocation_binary_sha256": "51db47073a8e1fe0247307454fe05f356706a182a08adf90d4b2e4edc40fcfc5",
+    "patch": "arena.patch"
+  },
+  "blocks": {
+    "commit": "969a7105e35c765130aa1522d8c615c385b8d59f",
+    "src_tree": "ddedd73df4bcd60a8bb36081a6c4b1e02d48291f",
+    "binary_sha256": "176d87bb9b4464435ded7a1c2a49831502e43e82d12e336e1708fa2b33062d2d",
+    "allocation_binary_sha256": "5504dcad94be66eeadd465432dd13d23857556f1fcd626763153b69a3cadf38f",
+    "patch": "blocks.patch"
+  },
+  "tagfilter": {
+    "commit": "c31ac19f30842101990308c868924545acd726b8",
+    "src_tree": "4aac572fc08a3681cab7dd473f892e44175dead3",
+    "binary_sha256": "ddbb55bfd08bd5ec02a15c13b8542054cff36e2e272abc9ce2446e22b4d9b71b",
+    "allocation_binary_sha256": "b43b7fc62e13ee3da04b552e0a9f2624374ce7a6e85f7cc7acafac41782abea5",
+    "patch": "tagfilter.patch"
+  },
+  "entities": {
+    "commit": "bc8adc51ebd27e870a7e7a81bcd5f6a722348238",
+    "src_tree": "6d3478ef19670788c6cca9f91a4649c1a1b0bf33",
+    "binary_sha256": "ad1f2a5625c32521d458e604994a9836fd0550536de44cabd4cf0213083bf79b",
+    "allocation_binary_sha256": "1ad5104dcf3c80a4f746a674289435d9a5ab775ee7b45a4e2712317dfd811ebf",
+    "patch": "entities.patch"
+  },
+  "combined": {
+    "commit": "f7e6e9ee5471d76aec66c9526f765b582b95fba4",
+    "src_tree": "d0c98099c833eb78b07a5f58bca86ab448966700",
+    "binary_sha256": "4b04d8c1707b224ca97a0f668ab32596eca61c3ec65541b74091c136d5f8c640",
+    "allocation_binary_sha256": "93054e8f212ede6c51605520e2f8ad0ca775d568eae1709adb75c85e6984340f",
+    "patch": "combined.patch"
+  },
+  "phase-final": {
+    "commit": "de18f1c6e87cfe3235f9823c49fd18501640affd",
+    "src_tree": "fb9d41942a4d6b4db2d6411607ac6e2147f36895",
+    "binary_sha256": "18f9895738df407da55835cb8d19523a05b14ec44a75b2242984de0405ad7967",
+    "allocation_binary_sha256": "5713709f9c8aaeba37f536afe66168f7b994e32855f5df7b61827438174ef370",
+    "patch": "phase-final.patch"
+  },
+  "final": {
+    "commit": "bdf9d9c0f4e74b6fbe2e77651fbdc7a3cff8c9a3",
+    "src_tree": "4a9ca460436bee1a55336901fd8f9b68467d6d98",
+    "binary_sha256": "bbc3279016084dba15569872afe3fb2176618bbde01970e69edf04583d0be70f",
+    "allocation_binary_sha256": "29861ba475f35d9a4d0575f0d647486384d0b974a15456cbce8ecd9fc96295a1",
+    "patch": "final.patch"
+  },
+  "no-phase": {
+    "base_commit": "f7e6e9ee5471d76aec66c9526f765b582b95fba4",
+    "patches": [
+      "phase-control.patch"
+    ],
+    "binary_sha256": "fd4451a75e15d523a610d93070cb6aafa48c0c7999d00a32ad980d295afb4a6b",
+    "allocation_binary_sha256": "0e8c675ffa2acfc3528a20d987a56b8f944ac8c146295e513f58970c838a1f91"
+  },
+  "phase-cold": {
+    "base_commit": "f7e6e9ee5471d76aec66c9526f765b582b95fba4",
+    "patches": [
+      "phase-cold.patch"
+    ],
+    "binary_sha256": "18f9895738df407da55835cb8d19523a05b14ec44a75b2242984de0405ad7967",
+    "allocation_binary_sha256": "5713709f9c8aaeba37f536afe66168f7b994e32855f5df7b61827438174ef370"
+  },
+  "filter-outline": {
+    "base_commit": "f7e6e9ee5471d76aec66c9526f765b582b95fba4",
+    "patches": [
+      "filter-outline.patch"
+    ],
+    "binary_sha256": "e67cc44985202379183c1bae08826f259fbfbeb603d841274bc2b92c7e6ae2a1",
+    "allocation_binary_sha256": "ab3312aeb34910f11142d43127461f5349d868adec221c716f7f3a47f30b2072"
+  },
+  "both-outline": {
+    "base_commit": "f7e6e9ee5471d76aec66c9526f765b582b95fba4",
+    "patches": [
+      "phase-cold.patch",
+      "filter-outline.patch"
+    ],
+    "binary_sha256": "c8a23b8dc3dab7312244128aa36dae25174d4086c0b72335010e0b7e43d9a21a",
+    "allocation_binary_sha256": "2a3d76d7b6d9102039b060fc4139206a99201dd3476d80026319c2790d99a0ee"
+  },
+  "line-ending": {
+    "base_commit": "de18f1c6e87cfe3235f9823c49fd18501640affd",
+    "patches": [
+      "line-ending.patch"
+    ],
+    "binary_sha256": "df874cd3a180126749ea077753f1a7ce342ef5934642dd3a0e21511a60310deb",
+    "allocation_binary_sha256": "f0e7899911a03e42f4d551b7f19c32111e9b33de957320289939ab0dbccdca71"
+  }
+}

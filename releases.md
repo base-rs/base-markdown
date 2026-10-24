@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Keep the active child cursor in the AST builder instead of every arena node, share bounded character-reference scanning without a separate buffer of decoded values, and stream GFM tag filtering directly to the HTML writer. Use explicit phases for compact document completion.
+
 - Share the reusable inline workspace across compact and grammar parsing, derive paragraph tightness from its containing list, and use the same SIMD HTML encoder for event rendering and legacy helpers. Align local block scanner state to avoid sensitivity to stack layout. Remove duplicate scratch state, paragraph flag rewrites, and a separate scalar escaping loop while preserving output.
 
 - Locate the first matching NEON candidate directly after detection, avoiding scalar rescans while preserving the original loop for chunks without candidates.

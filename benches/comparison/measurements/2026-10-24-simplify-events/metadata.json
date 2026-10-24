@@ -1,0 +1,76 @@
+{
+  "baseline_head": "49a38ba1dc4bbd38e22a939f7d7256323aefb610",
+  "source_head": "bdf9d9c0f4e74b6fbe2e77651fbdc7a3cff8c9a3",
+  "source_sha256": {
+    "src/document.rs": "8902d3470531e9e4eb0fca77c2b24caa2e50d8f364ce6b936efcd5877ddbd93f",
+    "src/event_parser.rs": "c732f84346f6c7517f70050e2d114b75b3a7db7d391d2eedbce0eac8ef3e9c8a",
+    "src/event_html_renderer.rs": "8c883f6f90980bdd2672f39955a21dea34db9105c76d3a5e45d09f730ce407ae",
+    "src/util/gfm_tagfilter.rs": "bd65c5f3a241f845e71670d847a2ec25e6216c3ff536df28a83903907fd8ed52",
+    "src/grammar_parser.rs": "c282d589cea70b58cadacd9c3b795c2b7f2ed780d2a188ff5ea7e386524aa473",
+    "src/inline_parser.rs": "2cce9d77cddbda0cbe5238402ff0582b0f9a757e38a246085cb0f214d419fec9",
+    "src/util/character_reference.rs": "e36e6cb204a92f778846ac3e2d4616e8ae000ddc9715aa877919df81d3810fb4"
+  },
+  "src_tree": "4a9ca460436bee1a55336901fd8f9b68467d6d98",
+  "machine": "Apple M4 Pro",
+  "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)",
+  "coverage_rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "ruby": "ruby 4.0.9 (2026-10-23 revision 3e93b23afc) +PRISM [arm64-darwin25]",
+  "flags": {},
+  "method": "Sequential alternating engine order, same Rust executable launch path/arguments/environment within each fixture/mode. No concurrent project builds, tests, profiling, or independent review. Machine otherwise not isolated; no CPU affinity. Process startup/input I/O excluded by pinned adapters; 200ms warmup and seven calibrated samples per process. Screening: two process medians per variant; final direct and complete operations: three. GFM engine outputs differ; report agreement separately. Initial combined rendering, controls, and rejected candidates are retained separately; final-html.jsonl and phases.jsonl identify the final published sources.",
+  "inputs": {
+    "references": {
+      "bytes": 80025,
+      "sha256": "f5d995fc94efcc42927c9274759866fc60699865dd9cd1504b3f0e9380edc4cf"
+    },
+    "definitions-256": {
+      "bytes": 8753,
+      "sha256": "5018cdfdf81690b0503e58ab5c2a47800c7d15d4e1f7b9f4887b14d0d5044ba9"
+    },
+    "definitions-1024": {
+      "bytes": 36096,
+      "sha256": "e0e0786ff62f122cf27bb30ea84f658c365c8c599f29b481827c874114c42ecf"
+    },
+    "definitions-4096": {
+      "bytes": 155136,
+      "sha256": "589b9c546dd20166efc74b1b199ad2866e619eb61e57b435302c4a3ddfea9a65"
+    },
+    "gfm-100k": {
+      "bytes": 100130,
+      "sha256": "6c7091f969014c4396cbb98e6c3358d3d6d2c64e4dd6b7f35af273c15cb11c5d"
+    },
+    "long-lines-1m": {
+      "bytes": 1026456,
+      "sha256": "4edbe39e17d6254bc1d33654c36e1e3c0473c10c08817cce6d1fd2f24f79b261"
+    },
+    "code-1m": {
+      "bytes": 1041008,
+      "sha256": "9614745b8b4188bcf96a751410cd0f9b3841f0adc3bdfde4f0685849e80d6e2e"
+    },
+    "readme": {
+      "bytes": 9019,
+      "sha256": "e9fcb242b7ba8f45fd18b1a97b7e021755babea8825d6f3cb86bb6f89dcd2e14"
+    },
+    "mixed-100k": {
+      "bytes": 100252,
+      "sha256": "a9b31b8c20db1c4469a87e788ae77c98155cb4371738d291826abc94cfb12021"
+    },
+    "mixed-1m": {
+      "bytes": 1000020,
+      "sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356"
+    },
+    "entities-100k": {
+      "bytes": 100050,
+      "sha256": "bd618f27a5ad3e9f4210b5b0a685f51eec98940cf4fe1155e281cdabb6685e28"
+    },
+    "html-safe-100k": {
+      "bytes": 100011,
+      "sha256": "a7b27a68ee4b4eb74d966778d918fb0a17e6695b2c0946b76bbee0feb2393e1e"
+    },
+    "html-filtered-100k": {
+      "bytes": 100039,
+      "sha256": "84b6b9ff58b1751f9fda9c19591e3ed65b46b9d5a6284e0d160983da41863b2b"
+    }
+  },
+  "final_binary_sha256": "bbc3279016084dba15569872afe3fb2176618bbde01970e69edf04583d0be70f",
+  "inkmark": "0.2.1"
+}

@@ -1174,7 +1174,7 @@ fn pair_tokens(tokens: &[Token], matching: &mut Vec<usize>, stack: &mut Vec<usiz
 }
 
 pub(crate) fn decode_string(source: &str, range: Range<usize>) -> Text<'static> {
-    use crate::util::character_reference::{decode, value_max, value_test};
+    use crate::util::character_reference::{scan, Reference};
     let bytes = source.as_bytes();
     let mut value = ValueBuilder::new(source);
     let mut start = range.start;
@@ -1189,31 +1189,16 @@ pub(crate) fn decode_string(source: &str, range: Range<usize>) -> Text<'static> 
             continue;
         }
         if bytes[index] == b'&' {
-            let mut begin = index + 1;
-            let mut marker = b'&';
-            if bytes.get(begin) == Some(&b'#') {
-                marker = b'#';
-                begin += 1;
-                if matches!(bytes.get(begin), Some(b'x' | b'X')) {
-                    marker = b'x';
-                    begin += 1;
-                }
-            }
-            let mut end = begin;
-            while end < range.end
-                && end - begin < value_max(marker)
-                && value_test(marker)(&bytes[end])
-            {
-                end += 1;
-            }
-            if end > begin && end < range.end && bytes[end] == b';' {
-                if let Some(decoded) = decode(&source[begin..end], marker, true) {
-                    value.append(Text::Source(start..index));
-                    value.append(Text::from(decoded));
-                    index = end + 1;
-                    start = index;
-                    continue;
-                }
+            if let Some((end, reference)) = scan(source, index, range.end) {
+                let decoded = match reference {
+                    Reference::Named(index) => Text::Literal(CHARACTER_REFERENCES[index].1),
+                    Reference::Numeric(character) => Text::from(String::from(character)),
+                };
+                value.append(Text::Source(start..index));
+                value.append(decoded);
+                index = end;
+                start = index;
+                continue;
             }
         }
         index += 1;

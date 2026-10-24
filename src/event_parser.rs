@@ -34,10 +34,7 @@ impl<'a> EventParser<'a> {
                 cursor: 0,
                 closing: false,
                 inlines: false,
-                started: false,
-                ended: false,
-                final_separator: false,
-                suppress_final_separator: false,
+                phase: Phase::Start,
                 separator: None,
             })
         } else {
@@ -58,7 +55,12 @@ impl Iterator for EventParser<'_> {
         }
     }
 }
-#[allow(clippy::struct_excessive_bools)]
+enum Phase {
+    Start,
+    Body,
+    DocumentEnd,
+    Done,
+}
 struct CompactParser<'a> {
     blocks: Blocks,
     source: &'a str,
@@ -68,10 +70,7 @@ struct CompactParser<'a> {
     cursor: usize,
     closing: bool,
     inlines: bool,
-    started: bool,
-    ended: bool,
-    final_separator: bool,
-    suppress_final_separator: bool,
+    phase: Phase,
     separator: Option<usize>,
 }
 impl CompactParser<'_> {
@@ -117,12 +116,46 @@ impl CompactParser<'_> {
             span: end..end,
         }
     }
+    fn end_document(&mut self) -> Event<'static> {
+        self.phase = Phase::Done;
+        Event {
+            kind: EventKind::End(TagKind::Document),
+            span: self.source.len()..self.source.len(),
+        }
+    }
+    // Document bookends are infrequent; keep their state transitions out of the hot body loop.
+    #[cold]
+    fn document_boundary(&mut self) -> Option<Result<Event<'static>, StreamError>> {
+        match self.phase {
+            Phase::Start => {
+                self.phase = Phase::Body;
+                self.cursor = self.blocks.nodes[0].child;
+                self.closing = self.cursor == 0;
+                let line_ending = self.source.find(['\r', '\n']).map(|index| {
+                    if self.source.as_bytes()[index] == b'\n' {
+                        LineEnding::LineFeed
+                    } else if self.source.as_bytes().get(index + 1) == Some(&b'\n') {
+                        LineEnding::CarriageReturnLineFeed
+                    } else {
+                        LineEnding::CarriageReturn
+                    }
+                });
+                Some(Ok(Event {
+                    kind: EventKind::Start(Tag::Document(line_ending)),
+                    span: 0..self.source.len(),
+                }))
+            }
+            Phase::DocumentEnd => Some(Ok(self.end_document())),
+            Phase::Done => None,
+            Phase::Body => unreachable!("body delivery bypasses document boundary handling"),
+        }
+    }
     // Paired mixed-document benchmarks justify inlining this event boundary.
     #[allow(clippy::inline_always)]
     #[inline(always)]
     fn next(&mut self) -> Option<Result<Event<'static>, StreamError>> {
-        if self.ended {
-            return None;
+        if !matches!(self.phase, Phase::Body) {
+            return self.document_boundary();
         }
         if let Some(end) = self.separator.take() {
             return Some(Ok(self.separator(end)));
@@ -134,25 +167,8 @@ impl CompactParser<'_> {
             self.inlines = false;
             self.closing = true;
         }
-        if !self.started {
-            self.started = true;
-            self.cursor = self.blocks.nodes[0].child;
-            self.closing = self.cursor == 0;
-            let line_ending = self.source.find(['\r', '\n']).map(|index| {
-                if self.source.as_bytes()[index] == b'\n' {
-                    LineEnding::LineFeed
-                } else if self.source.as_bytes().get(index + 1) == Some(&b'\n') {
-                    LineEnding::CarriageReturnLineFeed
-                } else {
-                    LineEnding::CarriageReturn
-                }
-            });
-            return Some(Ok(Event {
-                kind: EventKind::Start(Tag::Document(line_ending)),
-                span: 0..self.source.len(),
-            }));
-        }
         if self.cursor == 0 {
+            self.phase = Phase::DocumentEnd;
             let mut last = self.blocks.nodes[0].child;
             while self.blocks.nodes[last].next != 0 {
                 last = self.blocks.nodes[last].next;
@@ -177,8 +193,18 @@ impl CompactParser<'_> {
                     | Body::Html(_)
                     | Body::Table
             );
-            if !self.final_separator
-                && !self.suppress_final_separator
+            let suppress_separator = match leaf.body {
+                Body::Html(end) => end == leaf.end && leaf.end == self.source.len(),
+                Body::Code(metadata) if leaf.parent == 0 => {
+                    let code = &self.blocks.codes[metadata];
+                    code.unclosed && leaf.end == self.source.len()
+                        || code.fence.is_none()
+                            && self.source[leaf.end..].trim().is_empty()
+                            && !self.source.ends_with(['\r', '\n'])
+                }
+                _ => false,
+            };
+            if !suppress_separator
                 && self.blocks.nodes[0].child != 0
                 && (!matches!(last.body, Body::Definition(_)) || last.end < self.source.len())
                 && (self.source.ends_with(['\r', '\n'])
@@ -190,7 +216,6 @@ impl CompactParser<'_> {
                             .trim_end_matches([' ', '\t'])
                             .ends_with(['\r', '\n']))
             {
-                self.final_separator = true;
                 // Populated containers retain their final semantic line ending. Empty containers and lists followed by blank lines use the document style.
                 return Some(Ok(
                     if !populated
@@ -209,11 +234,7 @@ impl CompactParser<'_> {
                     },
                 ));
             }
-            self.ended = true;
-            return Some(Ok(Event {
-                kind: EventKind::End(TagKind::Document),
-                span: self.source.len()..self.source.len(),
-            }));
+            return Some(Ok(self.end_document()));
         }
         let index = self.cursor;
         let node = self.blocks.nodes[index];
@@ -351,9 +372,6 @@ impl CompactParser<'_> {
                 }));
             }
             Body::Html(end) => {
-                if end == node.end && node.end == self.source.len() {
-                    self.suppress_final_separator = true;
-                }
                 let kind = EventKind::Html {
                     value: self.value(index),
                     block: true,
@@ -370,14 +388,6 @@ impl CompactParser<'_> {
             Body::Code(metadata) => {
                 let code = &self.blocks.codes[metadata];
                 let value = self.value(index);
-                if code.unclosed && node.parent == 0 && node.end == self.source.len()
-                    || code.fence.is_none()
-                        && node.parent == 0
-                        && self.source[node.end..].trim().is_empty()
-                        && !self.source.ends_with(['\r', '\n'])
-                {
-                    self.suppress_final_separator = true;
-                }
                 let kind = EventKind::CodeBlock {
                     value,
                     language: if code.info.is_empty() {

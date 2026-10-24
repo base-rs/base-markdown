@@ -1,0 +1,450 @@
+[
+  {
+    "engine": "baseline",
+    "padding_bytes": null,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "8c50263bc8fe9cb2ed746a3ab977adf4a3783513f084e11d7b777309cd72cf07",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 168,
+      "median_seconds": 0.0009008707797619047,
+      "mib_per_second": 1058.6350576767893,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.0008887802619047618,
+        0.0008946922083333334,
+        0.000897763886904762,
+        0.0009008707797619047,
+        0.0009032083333333334,
+        0.000908467755952381,
+        0.0009147274285714286
+      ]
+    }
+  },
+  {
+    "engine": "final",
+    "padding_bytes": null,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "bbc3279016084dba15569872afe3fb2176618bbde01970e69edf04583d0be70f",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 170,
+      "median_seconds": 0.0008849362764705883,
+      "mib_per_second": 1077.6972480958916,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.000877150494117647,
+        0.0008779308823529412,
+        0.0008838490235294117,
+        0.0008849362764705883,
+        0.0008857338235294119,
+        0.0008979497588235294,
+        0.0009129813705882352
+      ]
+    }
+  },
+  {
+    "engine": "final",
+    "padding_bytes": 0,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "bbc3279016084dba15569872afe3fb2176618bbde01970e69edf04583d0be70f",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 169,
+      "median_seconds": 0.0008932458106508875,
+      "mib_per_second": 1067.6718306662349,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.0008777509822485206,
+        0.000886201674556213,
+        0.0008882749053254438,
+        0.0008932458106508875,
+        0.000895849852071006,
+        0.000897455124260355,
+        0.0009102647928994083
+      ]
+    }
+  },
+  {
+    "engine": "baseline",
+    "padding_bytes": 0,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "8c50263bc8fe9cb2ed746a3ab977adf4a3783513f084e11d7b777309cd72cf07",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 168,
+      "median_seconds": 0.000894953369047619,
+      "mib_per_second": 1065.634727882491,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.000884858386904762,
+        0.0008874352678571428,
+        0.0008935039642857143,
+        0.000894953369047619,
+        0.0008996515357142858,
+        0.0009010267857142857,
+        0.0009035062023809525
+      ]
+    }
+  },
+  {
+    "engine": "baseline",
+    "padding_bytes": 1,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "8c50263bc8fe9cb2ed746a3ab977adf4a3783513f084e11d7b777309cd72cf07",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 168,
+      "median_seconds": 0.0008809481666666667,
+      "mib_per_second": 1082.5760538229677,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.000871125744047619,
+        0.0008783948392857143,
+        0.0008803472261904761,
+        0.0008809481666666667,
+        0.0008810567976190476,
+        0.000883173363095238,
+        0.000893002482142857
+      ]
+    }
+  },
+  {
+    "engine": "final",
+    "padding_bytes": 1,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "bbc3279016084dba15569872afe3fb2176618bbde01970e69edf04583d0be70f",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 170,
+      "median_seconds": 0.0008958784294117647,
+      "mib_per_second": 1064.5343816557508,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.0008780992647058823,
+        0.0008847007352941176,
+        0.0008952468117647058,
+        0.0008958784294117647,
+        0.0008976063764705882,
+        0.0009002090647058824,
+        0.0009050242647058824
+      ]
+    }
+  },
+  {
+    "engine": "final",
+    "padding_bytes": 15,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "bbc3279016084dba15569872afe3fb2176618bbde01970e69edf04583d0be70f",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 172,
+      "median_seconds": 0.0009113396279069768,
+      "mib_per_second": 1046.474180084622,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.0008987255290697674,
+        0.0009039663255813954,
+        0.0009102664709302325,
+        0.0009113396279069768,
+        0.0009149866744186046,
+        0.0009151044069767442,
+        0.0009232211744186047
+      ]
+    }
+  },
+  {
+    "engine": "baseline",
+    "padding_bytes": 15,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "8c50263bc8fe9cb2ed746a3ab977adf4a3783513f084e11d7b777309cd72cf07",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 171,
+      "median_seconds": 0.0008979731988304093,
+      "mib_per_second": 1062.0510624757433,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.0008824444444444445,
+        0.0008828937602339182,
+        0.0008906035555555557,
+        0.0008979731988304093,
+        0.0008992324561403509,
+        0.0009017897192982456,
+        0.0009094705204678363
+      ]
+    }
+  },
+  {
+    "engine": "baseline",
+    "padding_bytes": 31,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "8c50263bc8fe9cb2ed746a3ab977adf4a3783513f084e11d7b777309cd72cf07",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 172,
+      "median_seconds": 0.0008932693837209302,
+      "mib_per_second": 1067.6436551759455,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.000885883238372093,
+        0.0008923098372093023,
+        0.0008926230639534884,
+        0.0008932693837209302,
+        0.0008938587674418605,
+        0.000895844238372093,
+        0.000899546511627907
+      ]
+    }
+  },
+  {
+    "engine": "final",
+    "padding_bytes": 31,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "bbc3279016084dba15569872afe3fb2176618bbde01970e69edf04583d0be70f",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 169,
+      "median_seconds": 0.0008768476331360946,
+      "mib_per_second": 1087.6386658895804,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.0008720833313609468,
+        0.0008726577869822485,
+        0.0008748025147928994,
+        0.0008768476331360946,
+        0.0008809676982248521,
+        0.0008892142544378698,
+        0.0008892961065088759
+      ]
+    }
+  },
+  {
+    "engine": "final",
+    "padding_bytes": 63,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "bbc3279016084dba15569872afe3fb2176618bbde01970e69edf04583d0be70f",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 168,
+      "median_seconds": 0.0008972028809523809,
+      "mib_per_second": 1062.9629152329878,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.0008857219761904762,
+        0.0008896785714285713,
+        0.0008930858154761905,
+        0.0008972028809523809,
+        0.0008992281785714285,
+        0.0009008298571428571,
+        0.0009127762916666667
+      ]
+    }
+  },
+  {
+    "engine": "baseline",
+    "padding_bytes": 63,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "8c50263bc8fe9cb2ed746a3ab977adf4a3783513f084e11d7b777309cd72cf07",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 170,
+      "median_seconds": 0.0008845781882352941,
+      "mib_per_second": 1078.1335133247708,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.0008783561294117647,
+        0.0008791803882352941,
+        0.0008820823529411765,
+        0.0008845781882352941,
+        0.000884585294117647,
+        0.0008848637294117648,
+        0.0008857421588235294
+      ]
+    }
+  },
+  {
+    "engine": "baseline",
+    "padding_bytes": 127,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "8c50263bc8fe9cb2ed746a3ab977adf4a3783513f084e11d7b777309cd72cf07",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 170,
+      "median_seconds": 0.0008914076,
+      "mib_per_second": 1069.8735235066183,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.0008835196058823529,
+        0.0008867414235294118,
+        0.0008901156823529411,
+        0.0008914076,
+        0.0008950769588235294,
+        0.000896372794117647,
+        0.0009020453470588235
+      ]
+    }
+  },
+  {
+    "engine": "final",
+    "padding_bytes": 127,
+    "command": [
+      "/tmp/core-markdown-simplify-20261024/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/tmp/core-markdown-simplify-20261024/data/layout.json"
+    ],
+    "input_sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "binary_sha256": "bbc3279016084dba15569872afe3fb2176618bbde01970e69edf04583d0be70f",
+    "result": {
+      "bytes": 1000020,
+      "document": "mixed-1m",
+      "iterations_per_sample": 170,
+      "median_seconds": 0.0008862622529411764,
+      "mib_per_second": 1076.0848571939318,
+      "parser": "core-prepare",
+      "profile": "commonmark",
+      "samples_seconds": [
+        0.0008808924000000001,
+        0.0008824710764705882,
+        0.0008830497588235295,
+        0.0008862622529411764,
+        0.0008917985294117648,
+        0.0008948242647058823,
+        0.000897458088235294
+      ]
+    }
+  }
+]
