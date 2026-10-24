@@ -24,7 +24,6 @@ use core::{convert::TryFrom, ops::Range};
 /// A pull producer of resolved semantic events.
 ///
 /// The constructor prepares block structure and definitions. Inline regions are resolved on demand as events are pulled, reusing scratch allocations without materializing document-wide inline tokens. Ordinary text stays source-backed. The semantic stream is never collected internally.
-#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct GrammarParser<'a> {
     source: &'a str,
     footnote_definitions: Vec<String>,
@@ -39,8 +38,7 @@ pub(crate) struct GrammarParser<'a> {
     matching: Vec<usize>,
     definitions: Definitions,
     index: usize,
-    started: bool,
-    ended: bool,
+    phase: Phase,
     slurp: bool,
     tight: Vec<bool>,
     containers: Vec<TagKind>,
@@ -51,6 +49,14 @@ pub(crate) struct GrammarParser<'a> {
     pending: Option<Event<'static>>,
     synthetic_end: Option<usize>,
     padding_end: Option<usize>,
+}
+
+/// Inline workspaces deliver only their region; full producers surround it with document events.
+enum Phase {
+    Start,
+    Document,
+    Inline,
+    Done,
 }
 
 impl<'a> GrammarParser<'a> {
@@ -71,6 +77,7 @@ impl<'a> GrammarParser<'a> {
             options,
             tokens,
             parse_state.gfm_footnote_definitions.into_owned(),
+            Phase::Start,
         )
     }
 
@@ -79,19 +86,24 @@ impl<'a> GrammarParser<'a> {
         options: &'a ParseOptions,
         tokens: Vec<Token>,
         footnote_definitions: Vec<String>,
+        phase: Phase,
     ) -> Self {
         let mut matching = Vec::new();
         let mut stack = Vec::new();
         pair_tokens(&tokens, &mut matching, &mut stack);
-        let line_ending = source.find(['\r', '\n']).map(|index| {
-            if source.as_bytes()[index] == b'\n' {
-                LineEnding::LineFeed
-            } else if source.as_bytes().get(index + 1) == Some(&b'\n') {
-                LineEnding::CarriageReturnLineFeed
-            } else {
-                LineEnding::CarriageReturn
-            }
-        });
+        let line_ending = if matches!(phase, Phase::Start) {
+            source.find(['\r', '\n']).map(|index| {
+                if source.as_bytes()[index] == b'\n' {
+                    LineEnding::LineFeed
+                } else if source.as_bytes().get(index + 1) == Some(&b'\n') {
+                    LineEnding::CarriageReturnLineFeed
+                } else {
+                    LineEnding::CarriageReturn
+                }
+            })
+        } else {
+            None
+        };
         let mut parser = Self {
             source,
             footnote_definitions,
@@ -106,8 +118,7 @@ impl<'a> GrammarParser<'a> {
             matching,
             definitions: Definitions::default(),
             index: 0,
-            started: false,
-            ended: false,
+            phase,
             slurp: false,
             tight: Vec::new(),
             containers: Vec::new(),
@@ -137,7 +148,7 @@ impl<'a> GrammarParser<'a> {
         definitions: Definitions,
         compact_inline: crate::inline_parser::InlineParser,
     ) -> Self {
-        let mut parser = Self::from_tokens(source, options, Vec::new(), Vec::new());
+        let mut parser = Self::from_tokens(source, options, Vec::new(), Vec::new(), Phase::Inline);
         parser.definitions = definitions;
         parser.compact_inline = compact_inline;
         parser
@@ -195,8 +206,7 @@ impl<'a> GrammarParser<'a> {
     ) {
         self.buffers.events = core::mem::take(&mut self.tokens);
         self.index = 0;
-        self.started = true;
-        self.ended = true;
+        self.phase = Phase::Inline;
         let mut fragments = fragments.enumerate();
         let Some((_, first)) = fragments.next() else {
             return;
@@ -250,8 +260,6 @@ impl<'a> GrammarParser<'a> {
         self.tokens = core::mem::take(&mut self.buffers.events);
         pair_tokens(&self.tokens, &mut self.matching, &mut self.matching_stack);
         self.index = 0;
-        self.started = true;
-        self.ended = true;
         self.containers.clear();
         self.containers.push(TagKind::Paragraph);
     }
@@ -1006,8 +1014,8 @@ impl Iterator for GrammarParser<'_> {
                 span: end..end,
             }));
         }
-        if !self.started {
-            self.started = true;
+        if matches!(self.phase, Phase::Start) {
+            self.phase = Phase::Document;
             return Some(Ok(Event {
                 kind: EventKind::Start(Tag::Document(self.line_ending.clone())),
                 span: 0..self.source.len(),
@@ -1082,15 +1090,15 @@ impl Iterator for GrammarParser<'_> {
                 }));
             }
         }
-        if self.ended {
-            None
-        } else {
-            self.ended = true;
+        if matches!(self.phase, Phase::Document) {
+            self.phase = Phase::Done;
             let end = self.source.len();
             Some(Ok(Event {
                 kind: EventKind::End(TagKind::Document),
                 span: end..end,
             }))
+        } else {
+            None
         }
     }
 }
