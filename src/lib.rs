@@ -33,7 +33,6 @@ mod event_html_renderer;
 mod event_parser;
 mod headings;
 mod inline_parser;
-mod inline_workspace;
 pub mod markdown;
 mod node_syntax;
 mod reference_kind;

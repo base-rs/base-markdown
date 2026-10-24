@@ -1,0 +1,43 @@
+{
+  "cohorts": [
+    {
+      "input": "2026-10-25-single-parser/cases.jsonl.gz",
+      "cases": 10944,
+      "input_sha256": "afa50ec06c1d197b3a1d87eb8ec204f6bbe2ab7305d7013e5fcae78c03e76e88",
+      "events_sha256": "97fde5b94789fb7b76460a829b08f402f237004f263ae1e6ca1eece1afce0e52",
+      "differences": 0
+    },
+    {
+      "input": "2026-10-25-single-parser/generated-cases.jsonl.gz",
+      "cases": 12000,
+      "input_sha256": "82342d1da276e1154f6522e89e476684b3d16de8c9c2501e19a34092f9fd6db3",
+      "events_sha256": "0d88fb85d19b67d21029e2f54f2e44ea8226859e314382a08a662526ca7c09b1",
+      "differences": 0
+    },
+    {
+      "input": "2026-10-25-normalize-identifiers/label-boundaries.jsonl.gz",
+      "cases": 180,
+      "input_sha256": "0c069ab641b94b0d3a25620cdebd89f3bc3dd09ab87c72688f454ddee68deb53",
+      "events_sha256": "1902d7185099394dfb1a44ccb2b4ad2f74d0fbb65583a9fcce915e08da524a08",
+      "differences": 0
+    },
+    {
+      "input": "2026-10-25-normalize-identifiers/boundary-cases.jsonl.gz",
+      "cases": 1152,
+      "input_sha256": "b3e1898343972b1537ce34b4f1af71af927079a55a14c2539d7fbe22895dc1c9",
+      "events_sha256": "49aabae5abe934ed5e16e333d0d0d453be78038f5418eac3c23c2386bc49c79d",
+      "differences": 0
+    },
+    {
+      "input": "2026-10-25-inline-destinations/destination-boundaries.jsonl.gz",
+      "cases": 34320,
+      "input_sha256": "bd59c74f36383fadbcff327a58050c539cfa23ed212d00bf81a562a1033f1c0d",
+      "events_sha256": "06698b2d0bd9e7765fb3e437a1d8f103348355a13c36bc12c5e944b7593e4f10",
+      "differences": 0
+    }
+  ],
+  "parser_bytes": {
+    "baseline": 520,
+    "candidate": 520
+  }
+}

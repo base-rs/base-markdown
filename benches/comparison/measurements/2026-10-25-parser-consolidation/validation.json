@@ -1,0 +1,35 @@
+{
+  "source_commit": "561ae1d4d872c98874966742588516d8f4dd5a76",
+  "source_src_tree": "8e564055055e70205d51bf2e3e6041ed159941c5",
+  "coverage": {
+    "covered": 13521,
+    "total": 13521,
+    "unreachable_exclusions": 22,
+    "target": "aarch64-apple-darwin",
+    "all_features": true
+  },
+  "checks": [
+    "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test:coverage --package core-markdown --all-targets true --all-features true",
+    "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test",
+    "CARGO_INCREMENTAL=0 rustup run stable cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+    "CARGO_INCREMENTAL=0 rustup run stable cargo check --lib --all-features --target x86_64-unknown-linux-gnu --locked",
+    "cargo fmt --all -- --check"
+  ],
+  "all_passed": true,
+  "source_review": {
+    "commit": "561ae1d4d872c98874966742588516d8f4dd5a76",
+    "independent": true,
+    "findings": 0
+  },
+  "preserved": {
+    "corpus_outputs": 8468,
+    "existing_probes": 24276,
+    "destination_probes": 34320,
+    "complete_serialized_event_probes": 58596
+  },
+  "production_diff": {
+    "insertions": 158,
+    "deletions": 211,
+    "net_lines": -53
+  }
+}

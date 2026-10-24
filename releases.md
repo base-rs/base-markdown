@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Simplify parser ownership and event delivery: remove the private inline workspace wrapper, keep document completion outside the hot event loop, and share allocation-free block-child traversal while preserving the semantic event and document APIs.
+
 - Scan ordinary inline link destination runs with the shared byte scanner, retaining escape, nesting, whitespace, control-byte and Unicode behavior without additional allocations.
 
 - Skip the intermediate lowercase string when Unicode identifier folding can uppercase directly, preserving reference matching and visible footnote identifiers.
