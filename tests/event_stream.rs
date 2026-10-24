@@ -95,6 +95,29 @@ fn construction_pulls_only_its_budget_and_detaches_edits() {
 }
 
 #[test]
+fn one_event_budgets_preserve_empty_regions_and_block_separators() {
+    let options = Options::gfm();
+    for (source, expected) in [
+        ("", ""),
+        ("#\n\ntext\n\n---\n", "<h1></h1>\n<p>text</p>\n<hr />\n"),
+        (
+            "| | b |\n| - | - |\n| c | |\n\nlast\n",
+            "<table>\n<thead>\n<tr>\n<th></th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>c</td>\n<td></td>\n</tr>\n</tbody>\n</table>\n<p>last</p>\n",
+        ),
+    ] {
+        let mut events = EventParser::new(source, &options.parse).unwrap();
+        let mut builder = AstBuilder::new();
+        while builder.consume(&mut events, 1).unwrap() == BuildProgress::Pending {}
+        assert!(events.next().is_none());
+        assert!(events.next().is_none());
+        let document = builder.finish(source).unwrap();
+        let mut output = String::new();
+        render_events(source, document.events(), &options.compile, &mut output).unwrap();
+        assert_eq!(output, expected, "{source:?}");
+    }
+}
+
+#[test]
 fn extended_metadata_and_rendering_options_roundtrip() {
     let mut options = Options::gfm();
     options.parse.inline_code_info = true;
