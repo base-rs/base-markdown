@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Write unescaped HTML spans directly, select the output destination once for spans needing replacements, and skip empty runs around escaped characters without temporary allocations.
+
 - Skip redundant root-container checks and reuse scanned block indentation during compact preparation, preserving source ranges and HTML output.
 
 - Coalesce escaped punctuation and following ordinary source text into a single semantic event and AST text node. Retain source-backed ranges and existing structured link/code metadata without allocating combined strings.
