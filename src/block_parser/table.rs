@@ -2,7 +2,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Source ranges for unescaped table rows; no per-cell temporary allocation.
-use crate::mdast::AlignKind;
+use crate::AlignKind;
 use core::ops::Range;
 
 /// The compatibility flow dispatcher treats these unindented candidates

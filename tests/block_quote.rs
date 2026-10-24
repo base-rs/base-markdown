@@ -4,13 +4,13 @@
 // Copyright, 2024, by Harsha Teja Kanna.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Blockquote, Node, Paragraph, Root, Text},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Blockquote, Node, Paragraph, Root, Text};
 
 #[test]
 fn block_quote() -> Result<(), message::Message> {
@@ -225,7 +225,7 @@ fn block_quote() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("> a", &Default::default())?,
+        parse_fixture("> a", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Blockquote(Blockquote {
                 children: vec![Node::Paragraph(Paragraph {

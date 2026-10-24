@@ -3,14 +3,12 @@
 // Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::markdown::{
-    to_markdown as to, to_markdown_with_options as to_md_with_opts, Options,
-};
-use core_markdown::{
-    mdast::{Break, Heading, Node, Text},
-    to_mdast as from,
-};
+mod support;
+use core_markdown::markdown::Options;
+use core_markdown::Document;
 use pretty_assertions::assert_eq;
+use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
+use support::fixture::{Break, Heading, Node, Text};
 
 #[test]
 fn r#break() {
@@ -64,7 +62,7 @@ fn r#break() {
 
     assert_eq!(
         to_md_with_opts(
-            &from("a  \nb\n=\n", &Default::default()).unwrap(),
+            &Document::parse("a  \nb\n=\n", &Default::default()).unwrap(),
             &Options {
                 setext: true,
                 ..Default::default()

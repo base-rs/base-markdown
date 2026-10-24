@@ -3,13 +3,13 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Code, CodeFence, Node, Root},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Code, CodeFence, Node, Root};
 
 #[test]
 fn code_fenced() -> Result<(), message::Message> {
@@ -291,7 +291,7 @@ fn code_fenced() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast(
+        parse_fixture(
             "```js extra\nconsole.log(1)\nconsole.log(2)\n```",
             &Default::default()
         )?,
@@ -313,7 +313,7 @@ fn code_fenced() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("```\nasd", &Default::default())?,
+        parse_fixture("```\nasd", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Code(Code {
                 fence: Some(CodeFence {
@@ -332,7 +332,7 @@ fn code_fenced() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("```\rasd\r```", &Default::default())?,
+        parse_fixture("```\rasd\r```", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Code(Code {
                 fence: Some(CodeFence {
@@ -351,7 +351,7 @@ fn code_fenced() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("```\r\nasd\r\n```", &Default::default())?,
+        parse_fixture("```\r\nasd\r\n```", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Code(Code {
                 fence: Some(CodeFence {

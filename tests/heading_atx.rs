@@ -3,13 +3,13 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Heading, Node, Root, Text},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Heading, Node, Root, Text};
 
 #[test]
 fn heading_atx() -> Result<(), message::Message> {
@@ -230,7 +230,7 @@ fn heading_atx() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("## alpha #", &Default::default())?,
+        parse_fixture("## alpha #", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Heading(Heading {
                 depth: 2,

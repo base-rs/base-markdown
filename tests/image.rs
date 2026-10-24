@@ -4,13 +4,16 @@
 // Copyright, 2025, by Ophir Lojkine.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Definition, Image, ImageReference, Node, Paragraph, ReferenceKind, Root, Text},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    CompileOptions, Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, CompileOptions, Constructs, Options,
+    ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{
+    Definition, Image, ImageReference, Node, Paragraph, ReferenceKind, Root, Text,
+};
 
 #[test]
 fn image() -> Result<(), message::Message> {
@@ -258,7 +261,7 @@ fn image() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast(
+        parse_fixture(
             "a ![alpha]() b ![bravo](charlie 'delta') c.",
             &Default::default()
         )?,
@@ -298,7 +301,7 @@ fn image() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast(
+        parse_fixture(
             "[x]: y\n\na ![x] b ![x][] c ![d][x] e.",
             &Default::default()
         )?,

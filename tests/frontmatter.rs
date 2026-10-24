@@ -4,13 +4,14 @@
 // Copyright, 2024, by Nokome Bentley.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Frontmatter, Node, Root},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, Constructs, Document, NodeSyntax,
+    Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Frontmatter, Node, Root};
 
 #[test]
 fn frontmatter() -> Result<(), message::Message> {
@@ -146,7 +147,7 @@ fn frontmatter() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("---\na: b\n---", &frontmatter.parse)?,
+        parse_fixture("---\na: b\n---", &frontmatter.parse)?,
         Node::Root(Root {
             children: vec![Node::Frontmatter(Frontmatter {
                 info: String::new(),
@@ -162,7 +163,7 @@ fn frontmatter() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("+++\ntitle = \"Jupyter\"\n+++", &frontmatter.parse)?,
+        parse_fixture("+++\ntitle = \"Jupyter\"\n+++", &frontmatter.parse)?,
         Node::Root(Root {
             children: vec![Node::Frontmatter(Frontmatter {
                 info: String::new(),
@@ -190,11 +191,28 @@ fn parse_options() -> ParseOptions {
     }
 }
 
+fn parse_document(source: &str, options: &ParseOptions) -> Document {
+    Document::parse(source.to_owned(), options).unwrap()
+}
+
 fn parse_frontmatter(source: &str) -> Frontmatter {
-    let document = to_mdast(source, &parse_options()).unwrap();
-    match &document.children().unwrap()[0] {
-        Node::Frontmatter(node) => node.clone(),
-        node => panic!("expected frontmatter for {:?}, got {:?}", source, node),
+    let document = parse_document(source, &parse_options());
+    let id = document.children(document.root()).next().unwrap();
+    let NodeSyntax::Frontmatter {
+        info,
+        fence,
+        closing_fence_length,
+    } = document.syntax(id).expect("frontmatter syntax")
+    else {
+        panic!("expected frontmatter for {:?}", source);
+    };
+    Frontmatter {
+        value: document.frontmatter_value(id).unwrap().to_owned(),
+        info: info.resolve(source).unwrap().to_owned(),
+        fence: fence.character,
+        fence_length: fence.length,
+        closing_fence_length,
+        position: None,
     }
 }
 
@@ -222,8 +240,6 @@ fn delimiter_defaults_keep_the_authored_info_and_body() {
         assert_eq!(node.info, info);
         assert_eq!(node.value, body);
         let ast = Node::Frontmatter(node);
-        assert_eq!(ast.code_language(), Some(language));
-        assert_eq!(ast.code_info().as_deref(), Some(info));
 
         let output = ast.to_markdown();
         let reparsed = parse_frontmatter(&output);
@@ -316,8 +332,8 @@ fn tagged_frontmatter_keeps_opaque_info_and_literal_body() {
             (fence, opening, closing)
         );
         assert_eq!(node.language(), info.split_ascii_whitespace().next());
-        let document = to_mdast(source, &parse_options()).unwrap();
-        let output = document.to_markdown();
+        let document = parse_document(source, &parse_options());
+        let output = core_markdown::to_markdown(&document).unwrap();
         let reparsed = parse_frontmatter(&output);
         assert_eq!(reparsed.info, info);
         assert_eq!(reparsed.value, body);
@@ -355,13 +371,11 @@ fn only_closed_tagged_fences_at_document_start_are_frontmatter() {
         "+++json\nbody",
         "----json\nbody\n----",
     ] {
-        let document = to_mdast(source, &parse_options()).unwrap();
+        let document = parse_document(source, &parse_options());
         assert!(
             !document
-                .children()
-                .unwrap()
-                .iter()
-                .any(|node| matches!(node, Node::Frontmatter(_))),
+                .children(document.root())
+                .any(|id| document.frontmatter_value(id).is_some()),
             "{:?}",
             source
         );
@@ -372,12 +386,10 @@ fn only_closed_tagged_fences_at_document_start_are_frontmatter() {
         "~~~toml\na = 1\n~~~",
         "---json\n{}\n---",
     ] {
-        let document = to_mdast(source, &ParseOptions::default()).unwrap();
+        let document = parse_document(source, &ParseOptions::default());
         assert!(!document
-            .children()
-            .unwrap()
-            .iter()
-            .any(|node| matches!(node, Node::Frontmatter(_))));
+            .children(document.root())
+            .any(|id| document.frontmatter_value(id).is_some()));
     }
 }
 
@@ -407,33 +419,41 @@ fn both_html_paths_omit_frontmatter_and_keep_later_code() {
     let source = "--- json\n{}\n---\n\n# Neptune\n\n```rust\nlet x = 1;\n```";
     let expected = "<h1>Neptune</h1>\n<pre><code class=\"language-rust\">let x = 1;\n</code></pre>";
     assert_eq!(to_html_with_options(source, &options).unwrap(), expected);
-    let document = to_mdast(source, &options.parse).unwrap();
-    assert_eq!(
-        document.render_with(&mut core_markdown::HtmlRenderer::new()),
-        expected
-    );
-    assert_eq!(document.children().unwrap().len(), 3);
-    assert!(matches!(&document.children().unwrap()[2], Node::Code(_)));
+    let document = parse_document(source, &options.parse);
+    let mut output = String::new();
+    document.render_html(&options.compile, &mut output).unwrap();
+    assert_eq!(output, expected);
+    let children: Vec<_> = document
+        .children(document.root())
+        .filter(|id| {
+            !matches!(
+                document.node(*id).unwrap().kind,
+                core_markdown::stream::EventKind::Separator { .. }
+            )
+        })
+        .collect();
+    assert_eq!(children.len(), 3);
+    assert!(matches!(
+        document.node(children[2]).unwrap().kind,
+        core_markdown::stream::EventKind::CodeBlock { .. }
+    ));
 }
 
 #[test]
-fn frontmatter_ast_helpers_and_source_positions() {
-    let mut node = Node::Frontmatter(parse_frontmatter("```json title=x\n{}\n```"));
-    assert_eq!(node.code_language(), Some("json"));
-    assert_eq!(node.code_info().as_deref(), Some("json title=x"));
-    assert_eq!(node.text_content(), "{}\n");
-    assert_eq!(node.to_string(), "{}\n");
-    assert!(format!("{node:?}").starts_with("Frontmatter {"));
-    assert!(node.children().is_none());
-    assert!(node.children_mut().is_none());
-    assert_eq!(node.position(), Some(&Position::new(1, 1, 0, 3, 4, 22)));
-    node.position_mut().unwrap().start.line = 2;
-    assert_eq!(node.position().unwrap().start.line, 2);
-    node.position_set(None);
-    assert_eq!(node.position(), None);
-    let mut visited = 0;
-    node.walk(&mut |_| visited += 1);
-    assert_eq!(visited, 1);
+fn frontmatter_preserves_source_spans_and_body_after_detaching() {
+    let source = "```json title=x\n{}\n```";
+    let mut document = parse_document(source, &parse_options());
+    let node = document.children(document.root()).next().unwrap();
+    assert_eq!(document.node(node).unwrap().span, 0..22);
+    assert_eq!(document.frontmatter_value(node), Some("{}\n"));
+    assert_eq!(document.children(node).count(), 0);
+    assert_eq!(document.descendants(node).count(), 1);
+    document.detach(node).unwrap();
+    assert_eq!(document.frontmatter_value(node), Some("{}\n"));
+    assert_eq!(
+        core_markdown::to_markdown_node(&document, node, &Default::default()).unwrap(),
+        "```json title=x\n{}\n```\n"
+    );
 }
 
 #[test]
@@ -482,48 +502,64 @@ fn serialization_rejects_invalid_edited_frontmatter_metadata() {
         ('~', "json\rother"),
         ('`', "json`other"),
     ] {
-        let mut frontmatter = parse_frontmatter("~~~json\n~~~");
-        frontmatter.fence = fence;
-        frontmatter.info = info.into();
-        let result = core_markdown::to_markdown(&Node::Frontmatter(frontmatter));
-        assert_eq!(*result.unwrap_err().rule_id, "invalid-frontmatter");
+        let mut document = parse_document("~~~json\n~~~", &parse_options());
+        let id = document.children(document.root()).next().unwrap();
+        let result = document.set_syntax(
+            id,
+            Some(NodeSyntax::Frontmatter {
+                info: info.to_string().into(),
+                fence: core_markdown::CodeFence {
+                    character: fence,
+                    length: 3,
+                    indent: 0,
+                },
+                closing_fence_length: 3,
+            }),
+        );
+        if fence == '!' {
+            assert!(result.is_err());
+        } else {
+            result.unwrap();
+            assert_eq!(
+                *core_markdown::to_markdown(&document).unwrap_err().rule_id,
+                "invalid-frontmatter"
+            );
+        }
     }
 }
 
 #[cfg(feature = "serde")]
 #[test]
 fn frontmatter_serde_roundtrip_preserves_body_and_fences() {
-    let mut node = parse_frontmatter("~~~~custom title=x\nraw\n~~~~~");
-    let json = serde_json::to_value(&node).unwrap();
-    assert_eq!(json["info"], "custom title=x");
-    assert_eq!(json["value"], "raw\n");
-    assert_eq!(json["fenceLength"], 4);
-    assert_eq!(json["closingFenceLength"], 5);
+    let document = parse_document("~~~~custom title=x\nraw\n~~~~~", &parse_options());
+    let json = serde_json::to_string(&document).unwrap();
+    let restored: Document = serde_json::from_str(&json).unwrap();
+    let id = restored.children(restored.root()).next().unwrap();
+    assert_eq!(restored.frontmatter_value(id), Some("raw\n"));
+    let NodeSyntax::Frontmatter {
+        info,
+        fence,
+        closing_fence_length,
+    } = restored.syntax(id).unwrap()
+    else {
+        panic!("frontmatter syntax");
+    };
+    assert_eq!(info.resolve(restored.source()).unwrap(), "custom title=x");
+    assert_eq!(fence.length, 4);
+    assert_eq!(closing_fence_length, 5);
     assert_eq!(
-        serde_json::from_value::<core_markdown::mdast::Frontmatter>(json).unwrap(),
-        node
+        core_markdown::to_markdown(&document).unwrap(),
+        core_markdown::to_markdown(&restored).unwrap()
     );
-    let ast = Node::Frontmatter(node.clone());
-    assert_eq!(
-        serde_json::from_str::<Node>(&serde_json::to_string(&ast).unwrap()).unwrap(),
-        ast
-    );
-    node.position = None;
-    assert!(serde_json::to_value(&node)
-        .unwrap()
-        .get("position")
-        .is_none());
 }
 
 #[test]
 fn frontmatter_does_not_require_the_code_fenced_construct() {
     let mut options = parse_options();
     options.constructs.code_fenced = false;
-    let document = to_mdast("```json\n{}\n```", &options).unwrap();
-    assert!(matches!(
-        &document.children().unwrap()[0],
-        Node::Frontmatter(_)
-    ));
+    let document = parse_document("```json\n{}\n```", &options);
+    let id = document.children(document.root()).next().unwrap();
+    assert!(document.frontmatter_value(id).is_some());
 }
 
 #[test]

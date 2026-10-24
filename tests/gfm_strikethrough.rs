@@ -7,13 +7,13 @@
 
 // To do: clippy introduced this in 1.72 but breaks when it fixes it.
 // Remove when solved.
+mod support;
 use core_markdown::{
-    mdast::{Delete, Node, Paragraph, Root, Text},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Delete, Node, Paragraph, Root, Text};
 
 #[test]
 fn gfm_strikethrough() -> Result<(), message::Message> {
@@ -410,7 +410,7 @@ u ~**xxx**~ zzz
     );
 
     assert_eq!(
-        to_mdast("a ~~alpha~~ b.", &ParseOptions::gfm())?,
+        parse_fixture("a ~~alpha~~ b.", &ParseOptions::gfm())?,
         Node::Root(Root {
             children: vec![Node::Paragraph(Paragraph {
                 children: vec![

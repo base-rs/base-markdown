@@ -3,13 +3,13 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Break, Node, Paragraph, Root, Text},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Break, Node, Paragraph, Root, Text};
 
 #[test]
 fn hard_break_trailing() -> Result<(), message::Message> {
@@ -134,7 +134,7 @@ fn hard_break_trailing() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast("a  \nb.", &Default::default())?,
+        parse_fixture("a  \nb.", &Default::default())?,
         Node::Root(Root {
             children: vec![Node::Paragraph(Paragraph {
                 children: vec![

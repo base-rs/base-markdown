@@ -3,13 +3,14 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{Code, Node, Root},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    CompileOptions, Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, CompileOptions, Constructs, Options,
+    ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Code, Node, Root};
 
 #[test]
 fn code_indented() -> Result<(), message::Message> {
@@ -208,7 +209,7 @@ fn code_indented() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_mdast(
+        parse_fixture(
             "\tconsole.log(1)\n    console.log(2)\n",
             &Default::default()
         )?,

@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Make the source-backed `Document` arena the sole AST. Remove `mdast`, `to_mdast`, the separate tree compiler, and the legacy `Renderer`, `HtmlRenderer`, and `MarkdownRenderer` APIs. Markdown serialization now accepts documents or subtree IDs and shares the existing semantic event representation. Add checked subtree editing, heading and section helpers, lazy authored-syntax metadata, and validated arena serialization. This is a breaking API and serialized-AST format change; see the migration guide in `context/document.md`.
+
 - Dispatch compact block recognition and paragraph interruption by opening byte, and skip delimiter resolution for empty inline scopes, preserving output and allocation counts.
 
 - Share source and configuration references between compact block delivery and its reusable inline workspace, removing duplicate parser fields without additional allocations.

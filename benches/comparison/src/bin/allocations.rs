@@ -104,12 +104,15 @@ fn main() {
             .unwrap()
         });
         assert_eq!(html, output);
-        let (mdast, legacy_ast) =
-            measure(|| core_markdown::to_mdast(source, &options.parse).unwrap());
-        black_box(mdast);
+        let (_, ast_html) = measure(|| {
+            let mut output=String::new();
+            document.render_html(&options.compile,&mut output).unwrap();
+            output
+        });
+        let (_, markdown) = measure(|| core_markdown::to_markdown(&document).unwrap());
         println!(
             "{}",
-            json!({"document": case["name"], "bytes": source.len(), "events": event_count, "nodes": document.nodes().len(), "node_bytes": std::mem::size_of::<core_markdown::DocumentNode>(), "prepare": prepare, "pull_after_prepare": pull, "arena_total": arena, "arena_traversal": traversal, "html_total": html_cold, "html_reserved_output": html_reserved, "legacy_mdast_total": legacy_ast})
+            json!({"document": case["name"], "bytes": source.len(), "events": event_count, "nodes": document.nodes().len(), "node_bytes": std::mem::size_of::<core_markdown::DocumentNode>(), "prepare": prepare, "pull_after_prepare": pull, "arena_total": arena, "arena_traversal": traversal, "html_total": html_cold, "html_reserved_output": html_reserved, "ast_html":ast_html,"ast_markdown":markdown})
         );
     }
 }

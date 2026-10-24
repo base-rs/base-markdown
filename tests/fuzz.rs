@@ -4,7 +4,7 @@
 // Copyright, 2023, by Mick van Gelderen.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{mdast, message, to_html, to_html_with_options, to_mdast, Options};
+use core_markdown::{message, to_html, to_html_with_options, Document, Options};
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -54,10 +54,7 @@ fn fuzz() -> Result<(), message::Message> {
     );
 
     assert!(
-        matches!(
-            to_mdast("123456789. ok", &Default::default()),
-            Ok(mdast::Node::Root(_))
-        ),
+        matches!(Document::parse("123456789. ok", &Default::default()), Ok(_)),
         "5: lists should support high start numbers (GH-17)"
     );
 
@@ -118,10 +115,7 @@ fn fuzz() -> Result<(), message::Message> {
     );
 
     assert!(
-        matches!(
-            to_mdast("* [ ]\na", &Default::default()),
-            Ok(mdast::Node::Root(_))
-        ),
+        matches!(Document::parse("* [ ]\na", &Default::default()), Ok(_)),
         "11: gfm task list items followed by eols (GH-24)"
     );
 

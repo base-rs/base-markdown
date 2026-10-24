@@ -3,11 +3,11 @@
 // Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::markdown::{
-    to_markdown as to, to_markdown_with_options as to_md_with_opts, Options,
-};
-use core_markdown::mdast::{Link, Node, Text};
+mod support;
+use core_markdown::markdown::Options;
 use pretty_assertions::assert_eq;
+use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
+use support::fixture::{Link, Node, Text};
 
 #[test]
 fn text() {

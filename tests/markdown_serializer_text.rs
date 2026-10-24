@@ -3,11 +3,13 @@
 // Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::markdown::to_markdown as to;
-use core_markdown::markdown::{to_markdown_with_options as to_with_options, LineWrapping, Options};
-use core_markdown::mdast::{Node, Text};
-use core_markdown::to_mdast;
+mod support;
+use core_markdown::markdown::{LineWrapping, Options};
+use core_markdown::Document;
 use pretty_assertions::assert_eq;
+use support::fixture::to_markdown as to;
+use support::fixture::to_markdown_with_options as to_with_options;
+use support::fixture::{Node, Text};
 
 #[test]
 fn text() {
@@ -54,7 +56,7 @@ fn unwraps_soft_line_breaks_and_adjacent_indentation() {
 #[test]
 fn unwrapping_preserves_hard_breaks_and_code_blocks() {
     let source = "first\nsecond  \nthird\n\n```text\ncode\nline\n```\n";
-    let node = to_mdast(source, &Default::default()).unwrap();
+    let node = Document::parse(source, &Default::default()).unwrap();
 
     let output = to_with_options(
         &node,
@@ -73,7 +75,7 @@ fn unwrapping_preserves_hard_breaks_and_code_blocks() {
 
 #[test]
 fn unwraps_soft_line_breaks_inside_emphasis() {
-    let node = to_mdast("*first\nsecond*", &Default::default()).unwrap();
+    let node = Document::parse("*first\nsecond*", &Default::default()).unwrap();
 
     let output = to_with_options(
         &node,

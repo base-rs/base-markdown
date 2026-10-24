@@ -5,6 +5,7 @@
 //! Turn bytes of markdown into events.
 use crate::event::{Event, Point};
 use crate::state::{Name as StateName, State};
+#[cfg(test)]
 use crate::subtokenize::subtokenize;
 use crate::tokenizer::Tokenizer;
 use crate::ParseOptions;
@@ -62,7 +63,8 @@ pub fn prepare<'a>(value: &'a str, options: &'a ParseOptions) -> (Vec<Event>, Pa
     (events, parse_state)
 }
 
-/// Resolve all inline tokens for the legacy mdast compiler.
+/// Fully resolve grammar tokens for tokenizer regression tests.
+#[cfg(test)]
 pub fn parse<'a>(value: &'a str, options: &'a ParseOptions) -> (Vec<Event>, ParseState<'a>) {
     let (mut events, mut parse_state) = prepare(value, options);
     loop {

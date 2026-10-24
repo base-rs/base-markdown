@@ -31,8 +31,7 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
         "core-markdown" | "core-ast" | "core-arena" | "core-prepare" | "core-events" => {
             let prepare = parser == "core-prepare";
             let events = parser == "core-events";
-            let ast = parser == "core-ast";
-            let arena = parser == "core-arena";
+            let arena = matches!(parser,"core-arena"|"core-ast");
             let mut options = if profile.starts_with("gfm") {
                 core_markdown::Options::gfm()
             } else {
@@ -68,12 +67,6 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                     )
                     .unwrap();
                     output
-                } else if ast {
-                    core_markdown::to_mdast(s, &options.parse)
-                        .unwrap()
-                        .render_with(&mut core_markdown::HtmlRenderer::with_options(
-                            options.compile.clone(),
-                        ))
                 } else {
                     core_markdown::to_html_with_options(s, &options).unwrap()
                 }

@@ -147,30 +147,6 @@ pub(crate) fn scan(source: &str, start: usize, end: usize) -> Option<(usize, Ref
     Some((at + 1, value))
 }
 
-/// Decode a character reference.
-///
-/// This turns the number (in string form as either hexadecimal or decimal) or
-/// name from a character reference into a string.
-///
-/// The marker specifies the format: `#` for hexadecimal, `x` for decimal, and
-/// `&` for named.
-///
-/// The `html5` boolean is used for named character references, and specifier
-/// whether the 2125 names from HTML 5 or the 252 names from HTML 4 are
-/// supported.
-///
-/// ## Panics
-///
-/// Panics if `marker` is not `b'&'`, `b'x'`, or `b'#'`.
-pub fn decode(value: &str, marker: u8, html5: bool) -> Option<String> {
-    match marker {
-        b'#' => Some(decode_numeric(value, 10)),
-        b'x' => Some(decode_numeric(value, 16)),
-        b'&' => decode_named(value, html5),
-        _ => unreachable!("Unexpected marker `{}`", marker),
-    }
-}
-
 /// Get the maximum size of a value for different kinds of references.
 ///
 /// The value is the stuff after the markers, before the `;`.
@@ -276,19 +252,13 @@ mod tests {
         }
     }
 
-    use super::{decode, decode_numeric, value_max, value_test};
+    use super::{decode_numeric, value_max, value_test};
 
     #[test]
     fn replaces_disallowed_numeric_codepoints_but_keeps_ascii_whitespace() {
         assert_eq!(decode_numeric("128", 10), "�");
         assert_eq!(decode_numeric("55296", 10), "�");
         assert_eq!(decode_numeric("9", 10), "\t");
-    }
-
-    #[test]
-    #[should_panic(expected = "Unexpected marker")]
-    fn decode_rejects_unknown_markers() {
-        decode("value", b'?', true);
     }
 
     #[test]

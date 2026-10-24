@@ -3,13 +3,13 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use core_markdown::{
-    mdast::{FootnoteDefinition, FootnoteReference, Node, Paragraph, Root, Text},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    CompileOptions, Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, CompileOptions, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{FootnoteDefinition, FootnoteReference, Node, Paragraph, Root, Text};
 
 #[test]
 fn gfm_footnote() -> Result<(), message::Message> {
@@ -1627,7 +1627,7 @@ multi-paragraph list items. <a href="#user-content-fnref-longnote" data-footnote
     );
 
     assert_eq!(
-        to_mdast("[^a]: b\n\tc\n\nd [^a] e.", &ParseOptions::gfm())?,
+        parse_fixture("[^a]: b\n\tc\n\nd [^a] e.", &ParseOptions::gfm())?,
         Node::Root(Root {
             children: vec![
                 Node::FootnoteDefinition(FootnoteDefinition {

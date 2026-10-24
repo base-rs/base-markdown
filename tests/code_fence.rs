@@ -1,21 +1,31 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{
-    mdast::{CodeFence, Node},
-    to_mdast, Constructs, ParseOptions,
-};
+use core_markdown::stream::EventKind;
+use core_markdown::{CodeFence, Constructs, Document, NodeId, NodeSyntax, ParseOptions};
 use pretty_assertions::assert_eq;
 
-fn code(source: &str, options: &ParseOptions) -> Node {
-    let document = to_mdast(source, options).unwrap();
-    let mut result = None;
-    document.walk(|node| {
-        if matches!(node, Node::Code(_)) {
-            result = Some(node.clone());
-        }
-    });
-    result.expect("a code block")
+fn code(source: &str, options: &ParseOptions) -> EventKind<'static> {
+    let document = Document::parse(source, options).unwrap();
+    document
+        .nodes()
+        .iter()
+        .find(|node| matches!(node.kind, EventKind::CodeBlock { math: false, .. }))
+        .expect("code block")
+        .kind
+        .clone()
+}
+fn fence(kind: &EventKind<'_>) -> Option<CodeFence> {
+    match kind {
+        EventKind::CodeBlock { fence, .. } => *fence,
+        _ => None,
+    }
+}
+fn document_fence<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> Option<CodeFence> {
+    fence(&document.node(id).unwrap().kind).or_else(|| match document.syntax(id) {
+        Some(NodeSyntax::Frontmatter { fence, .. }) => Some(fence),
+        _ => None,
+    })
 }
 
 #[test]
@@ -38,17 +48,13 @@ fn opening_fences_match_markly_character_length_and_indent() {
             length,
             indent,
         };
-        assert_eq!(node.code_fence(), Some(expected), "{source:?}");
-        let Node::Code(node) = node else {
-            unreachable!()
-        };
-        assert_eq!(node.fence, Some(expected));
+        assert_eq!(fence(&node), Some(expected), "{source:?}");
+        assert!(matches!(node, EventKind::CodeBlock {fence:Some(actual),..} if actual==expected));
     }
     let opening = "~".repeat(300);
     let source = format!("{opening}\ncode\n{opening}");
     assert_eq!(
-        code(&source, &ParseOptions::default())
-            .code_fence()
+        fence(&code(&source, &ParseOptions::default()))
             .unwrap()
             .length,
         300
@@ -69,8 +75,7 @@ fn indentation_excludes_container_prefixes_and_expands_tabs() {
         ("> -   ~~~\n>     code\n>     ~~~", 0),
     ] {
         assert_eq!(
-            code(source, &ParseOptions::default())
-                .code_fence()
+            fence(&code(source, &ParseOptions::default()))
                 .unwrap()
                 .indent,
             indent,
@@ -92,7 +97,7 @@ fn indentation_excludes_container_prefixes_and_expands_tabs() {
         ("    ~~~\n~~~", 4),
     ] {
         assert_eq!(
-            code(source, &options).code_fence().unwrap().indent,
+            fence(&code(source, &options)).unwrap().indent,
             indent,
             "{source:?}"
         );
@@ -102,17 +107,19 @@ fn indentation_excludes_container_prefixes_and_expands_tabs() {
 #[test]
 fn unfenced_nodes_have_no_code_fence() {
     let node = code("    puts 'wow'", &ParseOptions::default());
-    assert_eq!(node.code_fence(), None);
-    let document = to_mdast("# Heading\n\n`code`", &ParseOptions::default()).unwrap();
-    document.walk(|node| assert_eq!(node.code_fence(), None));
-    let node = Node::Code(core_markdown::mdast::Code {
-        value: "created without source".into(),
-        position: None,
-        lang: None,
-        meta: None,
+    assert_eq!(fence(&node), None);
+    let document = Document::parse("# Heading\n\n`code`", &ParseOptions::default()).unwrap();
+    for id in document.descendants(document.root()) {
+        assert_eq!(document_fence(&document, id), None);
+    }
+    let kind = EventKind::CodeBlock {
+        value: "created without source".to_string().into(),
+        language: None,
         fence: None,
-    });
-    assert_eq!(node.code_fence(), None);
+        math: false,
+        unclosed: false,
+    };
+    assert_eq!(fence(&kind), None);
 }
 
 #[test]
@@ -132,9 +139,12 @@ fn frontmatter_exposes_its_existing_opening_fence() {
         ("````json\n{}\n`````", '`', 4),
         ("~~~~~json\n{}\n~~~~~", '~', 5),
     ] {
-        let document = to_mdast(source, &options).unwrap();
+        let document = Document::parse(source, &options).unwrap();
         assert_eq!(
-            document.children().unwrap()[0].code_fence(),
+            document_fence(
+                &document,
+                document.children(document.root()).next().unwrap()
+            ),
             Some(CodeFence {
                 character,
                 length,
@@ -145,38 +155,57 @@ fn frontmatter_exposes_its_existing_opening_fence() {
 }
 
 #[test]
-fn cloned_and_detached_nodes_keep_metadata_without_positions() {
+fn detached_and_edited_nodes_keep_fence_metadata() {
     let source = "  ~~~~ruby\n  puts 'wow'\n  ~~~~";
-    let mut document = to_mdast(source, &ParseOptions::default()).unwrap();
-    let mut detached = document.extract_children().unwrap();
-    detached.walk_mut(|node| node.position_set(None));
-    let mut node = detached.children().unwrap()[0].clone();
+    let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+    let children = document.extract_children(document.root()).unwrap();
+    let node = children[0];
     let expected = Some(CodeFence {
         character: '~',
         length: 4,
         indent: 2,
     });
-    assert_eq!(node.code_fence(), expected);
-    let Node::Code(ref mut code) = node else {
-        unreachable!()
+    assert_eq!(document_fence(&document, node), expected);
+    let EventKind::CodeBlock { fence, .. } = document.node(node).unwrap().kind else {
+        panic!("code block");
     };
-    code.value = "edited".into();
-    code.lang = Some("python".into());
-    assert_eq!(node.code_fence(), expected);
-    assert_eq!(node.to_markdown(), "```python\nedited\n```\n");
+    document
+        .set_kind(
+            node,
+            EventKind::CodeBlock {
+                value: "edited\n".to_string().into(),
+                language: Some("python".to_string().into()),
+                fence,
+                math: false,
+                unclosed: false,
+            },
+        )
+        .unwrap();
+    document.set_syntax(node, None).unwrap();
+    assert_eq!(document_fence(&document, node), expected);
+    assert_eq!(
+        core_markdown::to_markdown_node(&document, node, &Default::default()).unwrap(),
+        "```python\nedited\n```\n"
+    );
 }
 
 #[cfg(feature = "serde")]
 #[test]
-fn serde_preserves_metadata_and_accepts_older_code_nodes() {
-    let node = code("  ~~~~ruby\n  puts 'wow'\n  ~~~~", &ParseOptions::default());
-    let json = serde_json::to_value(&node).unwrap();
+fn serde_preserves_fence_metadata() {
+    let document = Document::parse(
+        "  ~~~~ruby\n  puts 'wow'\n  ~~~~".to_string(),
+        &ParseOptions::default(),
+    )
+    .unwrap();
+    let json = serde_json::to_string(&document).unwrap();
+    let restored: Document = serde_json::from_str(&json).unwrap();
+    let node = restored.children(restored.root()).next().unwrap();
     assert_eq!(
-        json["fence"],
-        serde_json::json!({"character":"~", "length":4, "indent":2})
+        document_fence(&restored, node),
+        Some(CodeFence {
+            character: '~',
+            length: 4,
+            indent: 2
+        })
     );
-    assert_eq!(serde_json::from_value::<Node>(json).unwrap(), node);
-    let old = serde_json::from_str::<Node>(r#"{"type":"code","value":"legacy"}"#).unwrap();
-    assert_eq!(old.code_fence(), None);
-    assert!(serde_json::to_value(&old).unwrap().get("fence").is_none());
 }

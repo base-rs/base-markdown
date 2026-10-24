@@ -111,7 +111,7 @@ pub struct Constructs {
     /// Frontmatter with an unindented opening fence on the first document line,
     /// outside list items and blockquotes, and a matching closing fence.
     ///
-    /// All forms produce a [`Frontmatter`][crate::mdast::Frontmatter] node.
+    /// All forms produce a source-backed opaque node with [`NodeSyntax::Frontmatter`][crate::NodeSyntax::Frontmatter] metadata.
     /// Untagged `---` and `+++` imply YAML and TOML. A format hint after either
     /// delimiter, or a language-tagged backtick/tilde code fence, supplies an
     /// explicit language. The parser preserves the raw body and authored info
@@ -898,7 +898,7 @@ pub struct CompileOptions {
     /// and tables of contents.
     ///
     /// IDs use the same text normalization and duplicate suffixes as
-    /// [`mdast::Headings::extract`][crate::mdast::Headings::extract].
+    /// [`Document::headings`][crate::Document::headings].
     ///
     /// The default is `false`.
     pub heading_ids: bool,

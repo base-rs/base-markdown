@@ -3,9 +3,10 @@
 // Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::markdown::to_markdown as to;
-use core_markdown::mdast::{Html, Node, Paragraph, Text};
+mod support;
 use pretty_assertions::assert_eq;
+use support::fixture::to_markdown as to;
+use support::fixture::{Html, Node, Paragraph, Text};
 
 #[test]
 fn html() {

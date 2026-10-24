@@ -24,7 +24,7 @@ target/release/markdown-comparison profile core-markdown commonmark data/bench-c
 bundle exec ruby adapter.rb inkmark render commonmark data/commonmark.json
 ```
 
-The JSON input is an array of objects containing `markdown` and, for timings, `name`. `core-prepare` times parser construction and disposal; `core-events` additionally drains resolved events into `black_box`, without rendering. `core-arena` measures parsing into the source-backed document and rendering its event traversal. `core-ast` measures the separate legacy mdast/HTML-renderer path. These diagnostic modes are separate from the direct-HTML path in the six-engine table. `prepare.py` also generates `bench-scanners.json` (long prose and fenced code), `bench-references.json`, `bench-definitions.json`, and `bench-linked-attention.json` for focused diagnostics. The definition workload has 256, 1,024, and 4,096 unique labels in reverse authored order, 25% additional case-equivalent duplicates, and two forward references.
+The JSON input is an array of objects containing `markdown` and, for timings, `name`. `core-prepare` times parser construction and disposal; `core-events` additionally drains resolved events into `black_box`, without rendering. `core-arena` measures parsing into the source-backed document and rendering its event traversal. `core-ast` is now an alias for the sole arena AST path; historical binaries used that mode for the removed mdast/HTML-renderer path. These diagnostic modes are separate from the direct-HTML path in the six-engine table. `prepare.py` also generates `bench-scanners.json` (long prose and fenced code), `bench-references.json`, `bench-definitions.json`, and `bench-linked-attention.json` for focused diagnostics. The definition workload has 256, 1,024, and 4,096 unique labels in reverse authored order, 25% additional case-equivalent duplicates, and two forward references.
 
 Allocation counting uses a separate executable so timing runs retain the system allocator:
 
@@ -35,7 +35,7 @@ target/release/allocations gfm data/bench-gfm.json
 python3 run.py core-arena
 ```
 
-Counts exclude input loading and options construction. They report allocation calls, reallocations, and cumulative requested bytes, including reallocation requests; requested bytes are not peak or retained memory. Parser preparation, pulling after preparation, complete arena construction, traversal, cold HTML, HTML with reserved output, and legacy mdast construction are recorded separately. Timing and allocation profiles use the same extension and HTML options.
+Counts exclude input loading and options construction. They report allocation calls, reallocations, and cumulative requested bytes, including reallocation requests; requested bytes are not peak or retained memory. Parser preparation, pulling after preparation, complete arena construction, traversal, cold HTML, HTML with reserved output, and document HTML/Markdown rendering are recorded separately. Historical allocation reports also include removed mdast construction. Timing and allocation profiles use the same extension and HTML options.
 
 ## Method
 

@@ -50,7 +50,7 @@ pub struct EventHtmlRenderer<'a, W> {
     started: bool,
     ended: bool,
     heading: Option<HeadingCapture>,
-    anchors: crate::mdast::AnchorGenerator,
+    anchors: crate::headings::AnchorGenerator,
 }
 
 impl<'a, W: Write> EventHtmlRenderer<'a, W> {
@@ -71,7 +71,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             started: false,
             ended: false,
             heading: None,
-            anchors: crate::mdast::AnchorGenerator::default(),
+            anchors: crate::headings::AnchorGenerator::default(),
         }
     }
 
@@ -307,14 +307,14 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 frame.flag = *header;
                 self.terminate()?;
                 self.write(match (header, alignment) {
-                    (true, crate::mdast::AlignKind::Left) => "<th align=\"left\">",
-                    (true, crate::mdast::AlignKind::Right) => "<th align=\"right\">",
-                    (true, crate::mdast::AlignKind::Center) => "<th align=\"center\">",
-                    (true, crate::mdast::AlignKind::None) => "<th>",
-                    (false, crate::mdast::AlignKind::Left) => "<td align=\"left\">",
-                    (false, crate::mdast::AlignKind::Right) => "<td align=\"right\">",
-                    (false, crate::mdast::AlignKind::Center) => "<td align=\"center\">",
-                    (false, crate::mdast::AlignKind::None) => "<td>",
+                    (true, crate::AlignKind::Left) => "<th align=\"left\">",
+                    (true, crate::AlignKind::Right) => "<th align=\"right\">",
+                    (true, crate::AlignKind::Center) => "<th align=\"center\">",
+                    (true, crate::AlignKind::None) => "<th>",
+                    (false, crate::AlignKind::Left) => "<td align=\"left\">",
+                    (false, crate::AlignKind::Right) => "<td align=\"right\">",
+                    (false, crate::AlignKind::Center) => "<td align=\"center\">",
+                    (false, crate::AlignKind::None) => "<td>",
                 })?;
             }
             Tag::FootnoteDefinition(label) => {

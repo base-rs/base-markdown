@@ -4,9 +4,9 @@
 
 //! Infer things from events.
 //!
-//! Used to share between `to_html` and `to_mdast`.
+//! Shared by semantic event producers.
 use crate::event::{Event, Kind, Name};
-use crate::mdast::AlignKind;
+use crate::AlignKind;
 use alloc::{vec, vec::Vec};
 
 /// Figure out if a list is spread or not.

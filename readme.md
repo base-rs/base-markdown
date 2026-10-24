@@ -1,6 +1,6 @@
 # `core-markdown`
 
-A CommonMark-compliant Markdown parser for Rust with pull events, a source-backed AST, extensions, and HTML and Markdown renderers. It builds on [`markdown-rs`](https://github.com/wooorm/markdown-rs), with compact CommonMark parsing and Socketry's AST helpers and renderer APIs.
+A CommonMark-compliant Markdown parser for Rust with pull events, a source-backed AST, extensions, and HTML and Markdown renderers. It builds on [`markdown-rs`](https://github.com/wooorm/markdown-rs), with compact CommonMark parsing and a single source-backed document representation.
 
 [![Build][badge-build-image]][badge-build-url] [![Coverage][badge-coverage-image]][badge-coverage-url]
 
@@ -16,9 +16,7 @@ The fork adds three parsing options to `ParseOptions`, all disabled by default s
 
 The existing `Constructs::frontmatter` option also supports language-agnostic frontmatter, following [Markly](https://github.com/socketry/markly) and [cmarkly](https://github.com/socketry/cmarkly). A closed, language-tagged backtick or tilde fence at the start of a document becomes frontmatter; format hints on `---` or `+++` do too. The AST preserves the full info string and raw body without parsing the named format, and HTML output omits it.
 
-For tools that inspect code blocks and frontmatter, `Node::code_fence()` exposes the source opening fence's character, length, and indentation, following Markly's fence structure. This metadata remains available when nodes are cloned or detached, even after source positions are removed.
-
-Beyond parsing, the fork adds AST traversal, text extraction, heading and section editing, and `Fragment` nodes for working with detached content. `HtmlRenderer`, `MarkdownRenderer`, and the custom `Renderer` interface render edited trees; Markdown serialization preserves language metadata and can unwrap soft line breaks. Optional `CompileOptions::heading_ids` generates unique heading anchors for in-page links and tables of contents.
+The AST stores nodes in a contiguous arena and ordinary text as offsets into one source buffer. `Document` provides traversal, text extraction, heading lookup, section replacement, and checked subtree editing. Both parsed source and edited documents feed the same semantic event contract into the same HTML writer. Markdown serialization preserves reference style, code info strings, and frontmatter; optional heading IDs share their anchors with the table-of-contents helper.
 
 The fork also includes fixes for parsing and serialization edge cases, including CRLF handling in inline code and math. See [releases.md](releases.md) for changes and the [API documentation](https://docs.rs/core-markdown/latest/core_markdown/) for configuration details.
 
@@ -70,43 +68,41 @@ assert_eq!(html, "<h1>Introduction</h1>\n<p>Hello, <em>world</em>!</p>");
 
 `AstBuilder::consume` accepts an event budget so callers can build the AST over several steps without collecting the complete stream. `Document::text_mut` copies a source-backed value only when it is edited, and document traversal allocates nothing. Parsing accepts a complete UTF-8 buffer and prepares block structure before yielding events; inline resolution is deferred until consumption. See the [architecture](context/pull-parser.md) and [performance comparison](benches/comparison/readme.md) for allocation measurements and compatibility paths.
 
-### Work with the legacy mdast API
+### Edit and serialize a document
 
-Parse to a syntax tree when you need to inspect or transform Markdown:
-
-```rust
-use core_markdown::{to_mdast, ParseOptions};
-
-let document = to_mdast("# Introduction\n\nHello, *world*!", &ParseOptions::default()).unwrap();
-assert_eq!(document.text_content(), "IntroductionHello, world!");
-```
-
-Nodes provide traversal, text extraction, code-fence information, heading lookup, and child or section editing. `extract_children()` returns a `Fragment` that can be cloned, rendered, or serialized on its own.
-
-Use `HtmlRenderer` or a custom `Renderer` to render an AST. Serialize nodes and fragments back to Markdown with `Node::to_markdown()`:
+Nodes use stable `NodeId` indices. Editing text materializes that value; detaching or moving a subtree retains its IDs and source metadata:
 
 ```rust
-let markdown = document.to_markdown();
-assert!(markdown.starts_with("# Introduction"));
+use core_markdown::{to_markdown, Document, HeadingOptions, ParseOptions};
+
+let mut document = Document::parse(String::from("# Introduction\n\nHello"), &ParseOptions::default()).unwrap();
+let heading = document.headings(&HeadingOptions::default())[0].node;
+let text = document.children(heading).next().unwrap();
+document.text_mut(text).unwrap().push_str(" updated");
+assert!(to_markdown(&document).unwrap().starts_with("# Introduction updated"));
 ```
 
-`MarkdownOptions::line_wrapping` can preserve soft source line breaks or unwrap them into spaces when serializing Markdown.
+`append_child`, `detach`, and `attach` edit structure without rebuilding the tree. `extract_children` returns detached IDs in the same document. `replace_heading_section` copies replacement content from another document, materializing its source references before that source can be dropped. Detached arena slots remain available until the document is dropped. `render_node` and `to_markdown_node` render individual subtrees.
+
+`NodeSyntax` provides optional authored formatting outside the hot event/node layout. Source metadata is inferred on demand; `set_syntax` stores an explicit override, and `None` disconnects that relationship. `set_kind` replaces semantic content and clears inferred syntax for that node; `text_mut` preserves it. `MarkdownOptions::line_wrapping` preserves soft breaks by default or unwraps them into spaces.
 
 ### Inspect code fences
 
-`Node::code_fence()` exposes the opening marker, length, and indentation, following Markly's fence structure:
+Code-block events retain the opening marker, length, and indentation independently of source offsets:
 
 ```rust
-use core_markdown::{to_mdast, ParseOptions};
+use core_markdown::{stream::EventKind, Document, ParseOptions};
 
-let document = to_mdast("  ~~~~rust\n  let x = 1;\n  ~~~~", &ParseOptions::default()).unwrap();
-let fence = document.children().unwrap()[0].code_fence().unwrap();
-assert_eq!(fence.character, '~');
-assert_eq!(fence.length, 4);
-assert_eq!(fence.indent, 2);
+let document = Document::parse("  ~~~~rust\n  let x = 1;\n  ~~~~", &ParseOptions::default()).unwrap();
+let code = document.children(document.root()).next().unwrap();
+if let EventKind::CodeBlock { fence: Some(fence), .. } = &document.node(code).unwrap().kind {
+    assert_eq!(fence.character, '~');
+    assert_eq!(fence.length, 4);
+    assert_eq!(fence.indent, 2);
+}
 ```
 
-Indentation is measured in columns relative to the containing block. Fence metadata survives cloning, detaching nodes, and removing source positions. The helper also supports frontmatter; inline and indented code return `None`. This describes the source opening fence, while ordinary code serialization uses `MarkdownOptions` to choose its output formatting.
+Indentation is measured in columns relative to the containing block. `NodeSyntax::Code` exposes the full decoded info string; frontmatter metadata also retains its closing fence length. Ordinary code serialization chooses output formatting from `MarkdownOptions`.
 
 ### Extensions
 
@@ -117,21 +113,21 @@ The parser inherits support for CommonMark, GFM, frontmatter, and math construct
 Enable the existing frontmatter construct to accept any format. The opening fence must be unindented on the first line of the document, outside list items and blockquotes, and have a matching closing fence:
 
 ````rust
-use core_markdown::{mdast::Node, to_mdast, Constructs, ParseOptions};
+use core_markdown::{Document, NodeSyntax, Constructs, ParseOptions};
 
 let options = ParseOptions {
     constructs: Constructs { frontmatter: true, ..Constructs::default() },
     ..ParseOptions::default()
 };
-let document = to_mdast("```json title=example\n{\"draft\": true}\n```\n\n# Hello", &options).unwrap();
-if let Node::Frontmatter(frontmatter) = &document.children().unwrap()[0] {
-    assert_eq!(frontmatter.language(), Some("json"));
-    assert_eq!(frontmatter.info, "json title=example");
-    assert_eq!(frontmatter.value, "{\"draft\": true}\n");
+let document = Document::parse("```json title=example\n{\"draft\": true}\n```\n\n# Hello", &options).unwrap();
+let node = document.children(document.root()).next().unwrap();
+if let Some(NodeSyntax::Frontmatter { info, .. }) = document.syntax(node) {
+    assert_eq!(info.resolve(document.source()).unwrap(), "json title=example");
+    assert_eq!(document.frontmatter_value(node), Some("{\"draft\": true}\n"));
 }
 ````
 
-All frontmatter uses `Node::Frontmatter`. Untagged `---` and `+++` imply YAML and TOML respectively, with an empty `info` string. Tagged forms such as `--- json` and `---yaml` supply an explicit language hint. `language()` and `Node::code_language()` return the effective language; `Node::code_info()` returns the authored info string. Backtick/tilde fences without a language, fences later in a document, and unclosed fences remain ordinary Markdown.
+Frontmatter uses an opaque semantic leaf with `NodeSyntax::Frontmatter` metadata. Untagged `---` and `+++` imply YAML and TOML respectively, with an empty info string. Tagged forms such as `--- json` and `---yaml` supply an explicit language hint. Backtick/tilde fences without a language, fences later in a document, and unclosed fences remain ordinary Markdown.
 
 Markdown serialization retains the stored info string and body while normalizing spacing around the info string. It can lengthen fences or change their marker when edited content would close them prematurely, and adds a line ending before the closing fence when an edited body needs one. When changing an untagged dash/plus delimiter to a code fence, it writes the implied language explicitly. Round trips preserve the body and effective language while allowing these formatting adjustments.
 

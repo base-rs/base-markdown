@@ -7,13 +7,13 @@
 
 // To do: clippy introduced this in 1.72 but breaks when it fixes it.
 // Remove when solved.
+mod support;
 use core_markdown::{
-    mdast::{Link, Node, Paragraph, Root, Text},
-    message, to_html, to_html_with_options, to_mdast,
-    unist::Position,
-    Options, ParseOptions,
+    message, to_html, to_html_with_options, unist::Position, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::parse_fixture;
+use support::fixture::{Link, Node, Paragraph, Root, Text};
 
 #[test]
 fn gfm_autolink_literal() -> Result<(), message::Message> {
@@ -2754,7 +2754,7 @@ www.a/~
     );
 
     assert_eq!(
-        to_mdast(
+        parse_fixture(
             "a https://alpha.com b bravo@charlie.com c www.delta.com d xmpp:echo@foxtrot.com e mailto:golf@hotel.com f.",
             &ParseOptions::gfm()
         )?,

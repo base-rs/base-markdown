@@ -15,8 +15,7 @@ use crate::util::{
     slice::{Position, Slice},
 };
 use crate::{
-    mdast::{AlignKind, CodeFence},
-    LineEnding, ParseOptions,
+    LineEnding, ParseOptions, {AlignKind, CodeFence},
 };
 use alloc::{
     string::{String, ToString},
