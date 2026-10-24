@@ -1027,9 +1027,7 @@ impl InlineParser {
             return self.normalized_raw_text(source, range);
         }
         let value = &source[range.clone()];
-        if value.starts_with(' ')
-            && value.ends_with(' ')
-            && value.bytes().any(|byte| byte != b' ')
+        if value.starts_with(' ') && value.ends_with(' ') && value.bytes().any(|byte| byte != b' ')
         {
             range.start += 1;
             range.end -= 1;
