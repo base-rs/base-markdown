@@ -5,7 +5,6 @@
 use crate::stream::Text;
 use crate::util::normalize_identifier::normalize_identifier;
 use alloc::{string::String, vec::Vec};
-use core::ops::Range;
 
 #[derive(Debug)]
 pub(crate) struct Definition {
@@ -19,6 +18,8 @@ pub(crate) struct Definition {
 pub(crate) struct Definitions {
     pub entries: Vec<Definition>,
     ordered: Vec<usize>,
+    footnotes: Vec<String>,
+    footnote_order: Vec<usize>,
 }
 
 impl Definitions {
@@ -49,12 +50,20 @@ impl Definitions {
     }
 
     pub fn finish(&mut self) {
+        self.ordered.clear();
         self.ordered.extend(0..self.entries.len());
         let entries = &self.entries;
         self.ordered
             .sort_unstable_by(|&a, &b| entries[a].key.cmp(&entries[b].key).then(a.cmp(&b)));
         self.ordered
             .dedup_by(|a, b| entries[*a].key == entries[*b].key);
+        self.footnote_order.clear();
+        self.footnote_order.extend(0..self.footnotes.len());
+        let footnotes = &self.footnotes;
+        self.footnote_order
+            .sort_unstable_by(|&a, &b| footnotes[a].cmp(&footnotes[b]).then(a.cmp(&b)));
+        self.footnote_order
+            .dedup_by(|a, b| footnotes[*a] == footnotes[*b]);
     }
 
     pub fn find(&self, key: &str) -> Option<usize> {
@@ -63,28 +72,25 @@ impl Definitions {
             .ok()
             .map(|index| self.ordered[index])
     }
-}
 
-/// Scan a single-line full-reference label. The grammar producer handles multiline labels.
-pub(crate) fn scan_label(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Range<usize>)> {
-    let begin = start + 1;
-    let mut at = begin;
-    let mut content = false;
-    let mut tab_expansion = 0;
-    while at < end && at - begin + tab_expansion <= crate::util::constant::LINK_REFERENCE_SIZE_MAX {
-        match bytes[at] {
-            b']' => return content.then_some((at + 1, begin..at)),
-            b'[' | b'\r' | b'\n' => return None,
-            b'\\' if at + 1 < end && matches!(bytes[at + 1], b'[' | b'\\' | b']') => {
-                content = true;
-                at += 1;
-            }
-            // The grammar counts virtual tab spaces toward its label limit. Use an upper bound so only potentially oversized labels need its exact column accounting, including stripped container prefixes.
-            b'\t' => tab_expansion += 3,
-            b' ' => {}
-            _ => content = true,
-        }
-        at += 1;
+    pub fn push_footnote(&mut self, source: &str, label: &Text<'_>) -> usize {
+        let index = self.footnotes.len();
+        self.footnotes.push(normalize_identifier(
+            label
+                .resolve(source)
+                .expect("footnote labels are source-valid"),
+        ));
+        index
     }
-    None
+
+    pub fn footnote_key(&self, index: usize) -> &str {
+        &self.footnotes[index]
+    }
+
+    pub fn find_footnote(&self, key: &str) -> Option<usize> {
+        self.footnote_order
+            .binary_search_by(|&index| self.footnotes[index].as_str().cmp(key))
+            .ok()
+            .map(|index| self.footnote_order[index])
+    }
 }

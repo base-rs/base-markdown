@@ -1,10 +1,12 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-//! Source-backed text construction and decoding shared by both producers.
+//! Source-backed text construction and syntax-aware string decoding.
 use crate::{stream::Text, util::constant::CHARACTER_REFERENCES};
 use alloc::string::{String, ToString};
 use core::ops::Range;
+
+static STRING_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\\&\0");
 
 /// Keep a contiguous source range until normalization actually requires an owned string.
 pub(crate) struct ValueBuilder<'a> {
@@ -58,13 +60,44 @@ impl<'a> ValueBuilder<'a> {
 }
 
 pub(crate) fn decode_string(source: &str, range: Range<usize>) -> Text<'static> {
+    decode(source, range, true, true, false)
+}
+
+pub(crate) fn decode_string_with_options(
+    source: &str,
+    range: Range<usize>,
+    options: &crate::ParseOptions,
+) -> Text<'static> {
+    decode(
+        source,
+        range,
+        options.constructs.character_escape,
+        options.constructs.character_reference,
+        true,
+    )
+}
+
+fn decode(
+    source: &str,
+    range: Range<usize>,
+    escapes: bool,
+    references: bool,
+    replace_nulls: bool,
+) -> Text<'static> {
     use crate::util::character_reference::{scan, Reference};
     let bytes = source.as_bytes();
     let mut value = ValueBuilder::new(source);
     let mut start = range.start;
     let mut index = start;
     while index < range.end {
-        if bytes[index] == b'\\' && index + 1 < range.end && bytes[index + 1].is_ascii_punctuation()
+        index += STRING_MARKERS.find(&bytes[index..range.end]);
+        if index == range.end {
+            break;
+        }
+        if escapes
+            && bytes[index] == b'\\'
+            && index + 1 < range.end
+            && bytes[index + 1].is_ascii_punctuation()
         {
             value.append(Text::Source(start..index));
             index += 1;
@@ -72,7 +105,14 @@ pub(crate) fn decode_string(source: &str, range: Range<usize>) -> Text<'static> 
             index += 1;
             continue;
         }
-        if bytes[index] == b'&' {
+        if replace_nulls && bytes[index] == 0 {
+            value.append(Text::Source(start..index));
+            value.append(Text::Literal("�"));
+            index += 1;
+            start = index;
+            continue;
+        }
+        if references && bytes[index] == b'&' {
             if let Some((end, reference)) = scan(source, index, range.end) {
                 let decoded = match reference {
                     Reference::Named(index) => Text::Literal(CHARACTER_REFERENCES[index].1),

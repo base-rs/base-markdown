@@ -3,29 +3,14 @@
 // Copyright, 2023, by cel.
 // Copyright, 2026, by Samuel Williams.
 
-//! Constants needed to parse markdown.
-//!
-//! Most of these constants are magic numbers, such as the number of markers
-//! needed to parse [code (fenced)][raw_flow]
-//! ([`CODE_FENCED_SEQUENCE_SIZE_MIN`][]) or the max number of allowed markers
-//! in a [heading (atx)][heading_atx]
-//! ([`HEADING_ATX_OPENING_FENCE_SIZE_MAX`][]).
-//!
-//! Some constants are instead lists of things, such as the list of tag names
-//! considered in the **raw** production of [HTML (flow)][html_flow]
-//! ([`HTML_RAW_NAMES`][]), or the list of named character references
-//! ([`CHARACTER_REFERENCES`][]).
-//!
-//! [raw_flow]: crate::construct::raw_flow
-//! [heading_atx]: crate::construct::heading_atx
-//! [html_flow]: crate::construct::html_flow
+//! Syntax limits and lookup tables shared by the parser and renderer.
 
 /// The number of characters allowed in a protocol of an [autolink][].
 ///
 /// The protocol part is the `xxx` in `<xxx://example.com>`.
 /// 32 characters is fine, 33 is too many.
 ///
-/// [autolink]: crate::construct::autolink
+/// [autolink]: crate::util::autolink
 pub const AUTOLINK_SCHEME_SIZE_MAX: usize = 32;
 
 /// The number of characters allowed in a domain of an email [autolink][].
@@ -34,7 +19,7 @@ pub const AUTOLINK_SCHEME_SIZE_MAX: usize = 32;
 /// A domain part is each `xxx` in `<example@xxx.xxx.xxx>`.
 /// 63 characters is fine, 64 is too many.
 ///
-/// [autolink]: crate::construct::autolink
+/// [autolink]: crate::util::autolink
 pub const AUTOLINK_DOMAIN_SIZE_MAX: usize = 63;
 
 /// The max number of characters in a decimal numeric
@@ -43,7 +28,7 @@ pub const AUTOLINK_DOMAIN_SIZE_MAX: usize = 63;
 /// To illustrate, this allows `&#9999999;` and disallows `&#99999990;`.
 /// This limit is imposed because all bigger numbers are invalid.
 ///
-/// [character_reference]: crate::construct::character_reference
+/// [character_reference]: crate::util::character_reference
 pub const CHARACTER_REFERENCE_DECIMAL_SIZE_MAX: usize = 7;
 
 /// The max number of characters in a hexadecimal numeric
@@ -52,7 +37,7 @@ pub const CHARACTER_REFERENCE_DECIMAL_SIZE_MAX: usize = 7;
 /// To illustrate, this allows `&#xff9999;` and disallows `&#xff99990;`.
 /// This limit is imposed because all bigger numbers are invalid.
 ///
-/// [character_reference]: crate::construct::character_reference
+/// [character_reference]: crate::util::character_reference
 pub const CHARACTER_REFERENCE_HEXADECIMAL_SIZE_MAX: usize = 6;
 
 /// The max number of characters in a named
@@ -62,22 +47,8 @@ pub const CHARACTER_REFERENCE_HEXADECIMAL_SIZE_MAX: usize = 6;
 /// It allows `&CounterClockwiseContourIntegral;` and prevents the parser from
 /// continuing for eons.
 ///
-/// [character_reference]: crate::construct::character_reference
+/// [character_reference]: crate::util::character_reference
 pub const CHARACTER_REFERENCE_NAMED_SIZE_MAX: usize = 31;
-
-/// The number of markers needed for [code (fenced)][raw_flow] to form.
-///
-/// Like many things in markdown, the number is `3`.
-///
-/// [raw_flow]: crate::construct::raw_flow
-pub const CODE_FENCED_SEQUENCE_SIZE_MIN: usize = 3;
-
-/// The number of markers needed for [frontmatter][] to form.
-///
-/// Like many things in markdown, the number is `3`.
-///
-/// [frontmatter]: crate::construct::frontmatter
-pub const FRONTMATTER_SEQUENCE_SIZE: usize = 3;
 
 /// The number of the longest tag name in [`HTML_TAGFILTER_NAMES`][].
 ///
@@ -104,20 +75,6 @@ pub const HTML_TAGFILTER_NAMES: [&str; 9] = [
     "xmp",
 ];
 
-/// The number of preceding spaces needed for a [hard break
-/// (trailing)][whitespace] to form.
-///
-/// [whitespace]: crate::construct::partial_whitespace
-pub const HARD_BREAK_PREFIX_SIZE_MIN: usize = 2;
-
-/// The max number of markers allowed to form a [heading (atx)][heading_atx].
-///
-/// This limitation is imposed by HTML, which imposes a max heading rank of
-/// `6`.
-///
-/// [heading_atx]: crate::construct::heading_atx
-pub const HEADING_ATX_OPENING_FENCE_SIZE_MAX: usize = 6;
-
 /// List of HTML tag names that form the **basic** production of
 /// [HTML (flow)][html_flow].
 ///
@@ -137,7 +94,7 @@ pub const HEADING_ATX_OPENING_FENCE_SIZE_MAX: usize = 6;
 /// * [*§ 4.6 HTML blocks* in `CommonMark`](https://spec.commonmark.org/0.31/#html-blocks)
 /// * [*Remove source element as HTML block start condition* as `commonmark/commonmark-spec#710`](https://github.com/commonmark/commonmark-spec/pull/710)
 ///
-/// [html_flow]: crate::construct::html_flow
+/// [html_flow]: crate::block_parser
 pub const HTML_BLOCK_NAMES: [&str; 62] = [
     "address",
     "article",
@@ -203,15 +160,6 @@ pub const HTML_BLOCK_NAMES: [&str; 62] = [
     "ul",
 ];
 
-/// Magic string of CDATA (after `<![`).
-///
-/// Used in the **cdata** production of [HTML (flow)][html_flow] and
-/// [HTML (text)][html_text].
-///
-/// [html_flow]: crate::construct::html_flow
-/// [html_text]: crate::construct::html_text
-pub const HTML_CDATA_PREFIX: [u8; 6] = *b"CDATA[";
-
 /// List of HTML tag names that form the **raw** production of
 /// [HTML (flow)][html_flow].
 ///
@@ -220,56 +168,17 @@ pub const HTML_CDATA_PREFIX: [u8; 6] = *b"CDATA[";
 /// Tag name matching must be performed insensitive to case, and thus this list
 /// includes lowercase tag names.
 ///
-/// The number of the longest tag name is also stored as a constant in
-/// [`HTML_RAW_SIZE_MAX`][].
-///
 /// > 👉 **Note**: `textarea` was added in `CommonMark@0.30`.
 ///
 /// ## References
 ///
 /// * [*§ 4.6 HTML blocks* in `CommonMark`](https://spec.commonmark.org/0.31/#html-blocks)
 ///
-/// [html_flow]: crate::construct::html_flow
+/// [html_flow]: crate::block_parser
 pub const HTML_RAW_NAMES: [&str; 4] = ["pre", "script", "style", "textarea"];
-
-/// The number of the longest tag name in [`HTML_RAW_NAMES`][].
-///
-/// This is currently the size of `textarea`.
-pub const HTML_RAW_SIZE_MAX: usize = 8;
 
 /// To safeguard performance, labels are capped at a large number: `999`.
 pub const LINK_REFERENCE_SIZE_MAX: usize = 999;
-
-/// The max number of decimals allowed to form an (ordered)
-/// [list item][list-item].
-///
-/// `CommonMark` caps this at 10 digits (9 is fine, 10 not).
-/// This limit is imposed because bigger numbers result in integer overflows
-/// in some browsers.
-///
-/// ## References
-///
-/// * [*§ 5.2 List items* in `CommonMark`](https://spec.commonmark.org/0.31/#ordered-list-marker)
-///
-/// [list-item]: crate::construct::list_item
-pub const LIST_ITEM_VALUE_SIZE_MAX: usize = 10;
-
-/// The number of markers needed for [math (flow)][raw_flow] to form.
-///
-/// Unlike code (fenced), this number is `2`.
-///
-/// [raw_flow]: crate::construct::raw_flow
-pub const MATH_FLOW_SEQUENCE_SIZE_MIN: usize = 2;
-
-/// Maximum allowed unbalanced parens in destination.
-///
-/// There can be many balanced parens, but if there are 33 opens that were not
-/// yet closed, the destination does not parse.
-/// `CommonMark` requires that at least 3 opening parens are allowed.
-/// See: <https://spec.commonmark.org/0.31/#link-destination>,
-/// In practice, this is quite low, and several places instead cap it at 32.
-/// See: <https://github.com/remarkjs/react-markdown/issues/658#issuecomment-984345577>.
-pub const RESOURCE_DESTINATION_BALANCE_MAX: usize = 32;
 
 /// List of protocols allowed, when operating safely, as `href` on `a`.
 ///
@@ -280,22 +189,6 @@ pub const SAFE_PROTOCOL_HREF: [&str; 6] = ["http", "https", "irc", "ircs", "mail
 ///
 /// This list is based on what is allowed by GitHub.
 pub const SAFE_PROTOCOL_SRC: [&str; 2] = ["http", "https"];
-
-/// The number of characters that form a tab stop.
-///
-/// This relates to the number of whitespace characters needed to form certain
-/// constructs in markdown, most notable the whitespace required to form
-/// [code (indented)][code_indented].
-///
-/// [code_indented]: crate::construct::code_indented
-pub const TAB_SIZE: usize = 4;
-
-/// The number of markers needed for a [thematic break][thematic_break] to form.
-///
-/// Like many things in markdown, the number is `3`.
-///
-/// [thematic_break]: crate::construct::thematic_break
-pub const THEMATIC_BREAK_MARKER_COUNT_MIN: usize = 3;
 
 // Important: please touch the below lists as few times as possible to keep Git small.
 
@@ -310,7 +203,7 @@ pub const THEMATIC_BREAK_MARKER_COUNT_MIN: usize = 3;
 ///
 /// * [*§ 2.5 Entity and numeric character references* in `CommonMark`](https://spec.commonmark.org/0.31/#entity-and-numeric-character-references)
 ///
-/// [character_reference]: crate::construct::character_reference
+/// [character_reference]: crate::util::character_reference
 pub static CHARACTER_REFERENCES: [(&str, &str); 2125] = [
     ("AElig", "Æ"),
     ("AMP", "&"),
@@ -2734,12 +2627,6 @@ mod tests {
             HTML_TAGFILTER_SIZE_MAX,
             longest(&HTML_TAGFILTER_NAMES).unwrap().len(),
             "`HTML_TAGFILTER_SIZE_MAX`"
-        );
-
-        assert_eq!(
-            HTML_RAW_SIZE_MAX,
-            longest(&HTML_RAW_NAMES).unwrap().len(),
-            "`HTML_RAW_SIZE_MAX`"
         );
     }
 

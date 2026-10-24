@@ -5,16 +5,6 @@
 use crate::AlignKind;
 use core::ops::Range;
 
-/// The compatibility flow dispatcher treats these unindented candidates
-/// differently from ordinary table rows, even when their construct fails.
-/// Preserve that behavior rather than silently changing existing table boundaries.
-pub(super) fn grammar_dispatch(byte: u8) -> bool {
-    matches!(
-        byte,
-        b'#' | b'$' | b'`' | b'~' | b'*' | b'_' | b'e' | b'i' | b'{'
-    )
-}
-
 pub(super) fn trim(bytes: &[u8], mut range: Range<usize>) -> Range<usize> {
     while range.start < range.end && matches!(bytes[range.start], b' ' | b'\t') {
         range.start += 1;
@@ -50,7 +40,10 @@ impl<'a> Cells<'a> {
         if bytes.get(content.start) == Some(&b'|') && content.start < content.end {
             content.start += 1;
         }
-        if content.end > content.start && bytes[content.end - 1] == b'|' {
+        if content.end > content.start
+            && bytes[content.end - 1] == b'|'
+            && !escaped(bytes, content.end - 1)
+        {
             content.end -= 1;
         }
         Self {
@@ -70,8 +63,18 @@ impl Iterator for Cells<'_> {
         if self.finished {
             return None;
         }
-        if let Some(offset) = memchr::memchr(b'|', &self.bytes[self.start..self.end]) {
-            let pipe = self.start + offset;
+        let mut cursor = self.start;
+        let pipe = loop {
+            let Some(offset) = memchr::memchr(b'|', &self.bytes[cursor..self.end]) else {
+                break None;
+            };
+            let pipe = cursor + offset;
+            if !escaped(self.bytes, pipe) {
+                break Some(pipe);
+            }
+            cursor = pipe + 1;
+        };
+        if let Some(pipe) = pipe {
             let cell = (self.span_start..pipe, trim(self.bytes, self.start..pipe));
             self.span_start = pipe;
             self.start = pipe + 1;
@@ -100,4 +103,12 @@ pub(super) fn alignment(bytes: &[u8]) -> Option<AlignKind> {
         (false, true) => AlignKind::Right,
         (false, false) => AlignKind::None,
     })
+}
+
+fn escaped(bytes: &[u8], at: usize) -> bool {
+    let mut start = at;
+    while start > 0 && bytes[start - 1] == b'\\' {
+        start -= 1;
+    }
+    (at - start) % 2 == 1
 }

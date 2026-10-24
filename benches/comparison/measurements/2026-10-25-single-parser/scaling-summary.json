@@ -1,0 +1,26 @@
+{
+  "core-markdown/invalid-urls-1024": {
+    "candidate": {
+      "median_ms": 0.09910760096153845,
+      "process_medians_ms": [
+        0.09910760096153845
+      ]
+    }
+  },
+  "core-markdown/invalid-urls-4096": {
+    "candidate": {
+      "median_ms": 0.383543893129771,
+      "process_medians_ms": [
+        0.383543893129771
+      ]
+    }
+  },
+  "core-markdown/invalid-urls-16384": {
+    "candidate": {
+      "median_ms": 1.703275,
+      "process_medians_ms": [
+        1.703275
+      ]
+    }
+  }
+}

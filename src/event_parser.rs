@@ -3,22 +3,22 @@
 
 //! Pull semantic events from compact source-backed block records.
 use crate::block_parser::{Blocks, Body};
-use crate::grammar_parser::GrammarParser;
 use crate::inline_workspace::InlineWorkspace;
 use crate::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
 use crate::value_builder::ValueBuilder;
 use crate::{LineEnding, ParseOptions};
-use alloc::boxed::Box;
+use alloc::string::ToString;
 
 /// A pull producer of resolved semantic events. Preparation records block structure; inline syntax is scanned only when its containing block is consumed.
 pub struct EventParser<'a> {
-    producer: Producer<'a>,
-}
-// Keep the usual producer inline rather than allocating a box for every parse.
-#[allow(clippy::large_enum_variant)]
-enum Producer<'a> {
-    Compact(CompactParser<'a>),
-    Compatibility(Box<GrammarParser<'a>>),
+    blocks: Blocks,
+    inline: InlineWorkspace<'a>,
+    extensions: bool,
+    cursor: usize,
+    closing: bool,
+    inlines: bool,
+    phase: Phase,
+    separator: Option<usize>,
 }
 impl<'a> EventParser<'a> {
     /// Prepare Markdown for pull consumption.
@@ -31,21 +31,17 @@ impl<'a> EventParser<'a> {
 
     /// Built-in Markdown preparation has no syntax errors.
     pub(crate) fn prepare(source: &'a str, options: &'a ParseOptions) -> Self {
-        let producer = if let Some((blocks, definitions)) = Blocks::parse(source, options) {
-            Producer::Compact(CompactParser {
-                blocks,
-                inline: InlineWorkspace::new(source, options, definitions),
-                extensions: options.constructs != crate::Constructs::default(),
-                cursor: 0,
-                closing: false,
-                inlines: false,
-                phase: Phase::Start,
-                separator: None,
-            })
-        } else {
-            Producer::Compatibility(Box::new(GrammarParser::new(source, options)))
-        };
-        Self { producer }
+        let (blocks, definitions) = Blocks::parse(source, options);
+        Self {
+            blocks,
+            inline: InlineWorkspace::new(source, options, definitions),
+            extensions: options.constructs != crate::Constructs::default(),
+            cursor: 0,
+            closing: false,
+            inlines: false,
+            phase: Phase::Start,
+            separator: None,
+        }
     }
 }
 impl Iterator for EventParser<'_> {
@@ -54,10 +50,7 @@ impl Iterator for EventParser<'_> {
     #[allow(clippy::inline_always)]
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        match &mut self.producer {
-            Producer::Compact(parser) => parser.next(),
-            Producer::Compatibility(parser) => parser.next(),
-        }
+        self.next_event()
     }
 }
 enum Phase {
@@ -66,17 +59,7 @@ enum Phase {
     DocumentEnd,
     Done,
 }
-struct CompactParser<'a> {
-    blocks: Blocks,
-    inline: InlineWorkspace<'a>,
-    extensions: bool,
-    cursor: usize,
-    closing: bool,
-    inlines: bool,
-    phase: Phase,
-    separator: Option<usize>,
-}
-impl CompactParser<'_> {
+impl EventParser<'_> {
     fn advance(&mut self) {
         let node = self.blocks.nodes[self.cursor];
         if node.next != 0 {
@@ -148,7 +131,7 @@ impl CompactParser<'_> {
     // Paired mixed-document benchmarks justify inlining this event boundary.
     #[allow(clippy::inline_always)]
     #[inline(always)]
-    fn next(&mut self) -> Option<Result<Event<'static>, StreamError>> {
+    fn next_event(&mut self) -> Option<Result<Event<'static>, StreamError>> {
         if !matches!(self.phase, Phase::Body) {
             return self.document_boundary();
         }
@@ -240,6 +223,7 @@ impl CompactParser<'_> {
                 Body::Paragraph => TagKind::Paragraph,
                 Body::Heading(_) => TagKind::Heading,
                 Body::Quote => TagKind::BlockQuote,
+                Body::Footnote(_) => TagKind::FootnoteDefinition,
                 Body::List { .. } => TagKind::List,
                 Body::Item(_) => TagKind::Item,
                 Body::Table => TagKind::Table,
@@ -249,9 +233,12 @@ impl CompactParser<'_> {
                 Body::TableCell { .. } => TagKind::TableCell,
                 _ => unreachable!("only block containers yield closing events"),
             };
-            // Definitions are invisible. The grammar omits a list's boundary newline before them; a following visible block terminates the output itself.
+            // Definitions are invisible; a following visible block terminates the output itself.
             if !self.blocks.tight_paragraph(&node)
-                && !matches!(node.body, Body::Item(_) | Body::TableCell { .. })
+                && !matches!(
+                    node.body,
+                    Body::Item(_) | Body::Footnote(_) | Body::TableCell { .. }
+                )
                 && (node.next != 0
                     || node.body == Body::TableRow
                         && self.blocks.nodes[node.parent].body == Body::TableHead
@@ -300,9 +287,17 @@ impl CompactParser<'_> {
                     }
                 }
                 if self.extensions {
-                    self.inline.region::<true>(fragments(), task);
+                    self.inline.region::<true>(
+                        fragments(),
+                        task,
+                        matches!(node.body, Body::TableCell { .. }),
+                    );
                 } else {
-                    self.inline.region::<false>(fragments(), task);
+                    self.inline.region::<false>(
+                        fragments(),
+                        task,
+                        matches!(node.body, Body::TableCell { .. }),
+                    );
                 }
                 self.inlines = true;
                 match node.body {
@@ -317,6 +312,16 @@ impl CompactParser<'_> {
                 }
             }
             Body::Quote => EventKind::Start(Tag::BlockQuote),
+            Body::Footnote(index) => EventKind::Start(Tag::FootnoteDefinition(Text::from(
+                self.inline.definitions().footnote_key(index).to_string(),
+            ))),
+            Body::Opaque => {
+                self.advance();
+                EventKind::Opaque {
+                    value: Text::Source(node.start..node.end),
+                    block: true,
+                }
+            }
             Body::Table => EventKind::Start(Tag::Table),
             Body::TableHead => EventKind::Start(Tag::TableHead),
             Body::TableBody => EventKind::Start(Tag::TableBody),
@@ -333,7 +338,10 @@ impl CompactParser<'_> {
                 let mut child = node.child;
                 let mut last = 0;
                 while child != 0 {
-                    if !matches!(self.blocks.nodes[child].body, Body::Definition(_)) {
+                    if !matches!(
+                        self.blocks.nodes[child].body,
+                        Body::Definition(_) | Body::Footnote(_)
+                    ) {
                         last = child;
                     }
                     child = self.blocks.nodes[child].next;
@@ -373,7 +381,7 @@ impl CompactParser<'_> {
                     value: self.value(index),
                     block: true,
                 };
-                if node.next != 0 {
+                if node.next != 0 && end < node.end {
                     self.separator = Some(node.end);
                 }
                 self.advance();
@@ -390,13 +398,14 @@ impl CompactParser<'_> {
                     language: if code.info.is_empty() {
                         None
                     } else {
-                        Some(crate::value_builder::decode_string(
+                        Some(crate::value_builder::decode_string_with_options(
                             self.inline.source(),
                             code.info.clone(),
+                            self.inline.options(),
                         ))
                     },
                     fence: code.fence,
-                    math: false,
+                    math: code.math,
                     unclosed: code.unclosed,
                 };
                 if node.next != 0 {
@@ -413,6 +422,7 @@ impl CompactParser<'_> {
         if matches!(
             node.body,
             Body::Quote
+                | Body::Footnote(_)
                 | Body::List { .. }
                 | Body::Item(_)
                 | Body::Table

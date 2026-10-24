@@ -66,7 +66,7 @@ fn compact_inline_resolution_keeps_escaped_markers_and_unmatched_code() {
 }
 
 #[test]
-fn compact_resources_and_fallback_regions_agree_with_arena_rendering() {
+fn resources_and_multiline_regions_agree_with_arena_rendering() {
     use core_markdown::ParseOptions;
     for source in [
         "a [x]( b)",
@@ -174,7 +174,7 @@ fn semantic_endings_ignore_trailing_blanks_and_container_prefixes() {
 }
 
 #[test]
-fn compact_inlines_share_compatibility_document_structure() {
+fn inline_regions_preserve_document_structure() {
     for (source, expected) in [
         ("<div>\n</div>\n\n- a  \n\t``` ", "&lt;div&gt;\n&lt;/div&gt;\n<ul>\n<li>a\n<pre><code></code></pre>\n</li>\n</ul>"),
         ("<div>\n</div>\n\n- # a\n\n   b  ", "&lt;div&gt;\n&lt;/div&gt;\n<ul>\n<li>\n<h1>a</h1>\n<p>b</p>\n</li>\n</ul>"),
@@ -305,11 +305,11 @@ fn ordinary_regions_preserve_extension_boundaries() {
     ];
     for source in sources {
         let options = Options::gfm();
-        let mut grammar = Options::gfm();
-        // These sources contain no math; this forces the independent grammar path.
-        grammar.parse.constructs.math_flow = true;
+        let mut configured = Options::gfm();
+        // Enabling math must not change these sources without math delimiters.
+        configured.parse.constructs.math_flow = true;
         let direct = core_markdown::to_html_with_options(source, &options).unwrap();
-        let expected = core_markdown::to_html_with_options(source, &grammar).unwrap();
+        let expected = core_markdown::to_html_with_options(source, &configured).unwrap();
         assert_eq!(direct, expected, "source: {source:?}");
         let mut checked = String::new();
         render_events(
@@ -352,7 +352,7 @@ fn preserves_the_same_literal_line_endings_as_commonmark() {
 }
 
 #[test]
-fn grammar_fallback_preserves_virtual_spaces_in_code() {
+fn extensions_preserve_virtual_spaces_in_code() {
     let mut options = Options::default();
     options.parse.constructs.math_flow = true;
     for source in [
@@ -362,9 +362,8 @@ fn grammar_fallback_preserves_virtual_spaces_in_code() {
         "- ```\n\tcode\n  ```",
     ] {
         let direct = core_markdown::to_html_with_options(source, &options).unwrap();
-        // The compatibility producer retains its documented virtual-space interpretation;
-        // materializing the arena must preserve those constructed code values.
-        assert!(direct.contains("code"));
+        // Enabling an unrelated extension preserves container indentation and code values.
+        assert_eq!(direct, core_markdown::to_html(source));
         let document = Document::parse(source, &options.parse).unwrap();
         let mut output = String::new();
         render_events(source, document.events(), &options.compile, &mut output).unwrap();
@@ -382,7 +381,7 @@ fn arena_html(source: &str, options: &core_markdown::ParseOptions) -> String {
 }
 
 #[test]
-fn inline_angles_share_grammar_rules_and_preserve_authored_ranges() {
+fn inline_angles_preserve_syntax_and_authored_ranges() {
     use core_markdown::{stream::EventKind, to_html_with_options};
     let mut cases = vec![
         "plain < 3 and **bold**".to_string(),
@@ -409,10 +408,10 @@ fn inline_angles_share_grammar_rules_and_preserve_authored_ranges() {
     }
     for source in cases {
         let options = Options::default();
-        let mut grammar = Options::default();
-        // Force grammar inline tokenization without changing these inputs' semantics.
-        grammar.parse.inline_code_info = true;
-        let expected = to_html_with_options(&source, &grammar).unwrap();
+        let mut configured = Options::default();
+        // Code metadata does not change these inputs without language prefixes.
+        configured.parse.inline_code_info = true;
+        let expected = to_html_with_options(&source, &configured).unwrap();
         assert_eq!(
             to_html_with_options(&source, &options).unwrap(),
             expected,

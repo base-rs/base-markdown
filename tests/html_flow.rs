@@ -1335,11 +1335,11 @@ fn compact_html_preserves_values_spans_and_rendering_paths() {
 
     let mut options = Options::default();
     options.compile.allow_dangerous_html = true;
-    let mut grammar = Options::default();
-    grammar.compile.allow_dangerous_html = true;
-    // None of these sources contains math. This independently selects grammar
-    // preparation without changing HTML blank-line or namespace semantics.
-    grammar.parse.constructs.math_flow = true;
+    let mut configured = Options::default();
+    configured.compile.allow_dangerous_html = true;
+    // None of these sources contains math. Enabling it must preserve HTML
+    // blank-line and namespace semantics.
+    configured.parse.constructs.math_flow = true;
     let blocks = [
         "<!-- comment -->",
         "<!-->",
@@ -1389,7 +1389,7 @@ fn compact_html_preserves_values_spans_and_rendering_paths() {
                 format!("- {}{ending}", block.replace('\n', "\n\t")),
                 format!("- before\n\n  {}{ending}", block.replace('\n', "\n  ")),
             ] {
-                let expected = to_html_with_options(&source, &grammar).unwrap();
+                let expected = to_html_with_options(&source, &configured).unwrap();
                 let direct = to_html_with_options(&source, &options).unwrap();
                 // Ordinary paragraphs outside the HTML block use the existing compact
                 // container-tab normalization. HTML values and spans remain exact below.
@@ -1414,7 +1414,7 @@ fn compact_html_preserves_values_spans_and_rendering_paths() {
                 };
                 assert_eq!(
                     html(&options.parse),
-                    html(&grammar.parse),
+                    html(&configured.parse),
                     "HTML: {source:?}"
                 );
                 let mut checked = String::new();
@@ -1440,9 +1440,9 @@ fn unclosed_html_container_boundaries_preserve_terminal_source_endings() {
     use core_markdown::{stream::EventKind, EventParser};
     let mut options = Options::default();
     options.compile.allow_dangerous_html = true;
-    let mut grammar = Options::default();
-    grammar.compile.allow_dangerous_html = true;
-    grammar.parse.constructs.math_flow = true;
+    let mut configured = Options::default();
+    configured.compile.allow_dangerous_html = true;
+    configured.parse.constructs.math_flow = true;
     for opening in ["<script>", "<!--", "<?target", "<!DOCTYPE", "<![CDATA["] {
         for prefix in ["- ", "> "] {
             for between in ["", "  \n", "  \n  \n"] {
@@ -1452,7 +1452,7 @@ fn unclosed_html_container_boundaries_preserve_terminal_source_endings() {
                             .replace('\n', ending);
                         assert_eq!(
                             to_html_with_options(&source, &options).unwrap(),
-                            to_html_with_options(&source, &grammar).unwrap(),
+                            to_html_with_options(&source, &configured).unwrap(),
                             "{source:?}"
                         );
                         let values = |parse: &ParseOptions| {
@@ -1469,7 +1469,11 @@ fn unclosed_html_container_boundaries_preserve_terminal_source_endings() {
                                 })
                                 .collect::<Vec<_>>()
                         };
-                        assert_eq!(values(&options.parse), values(&grammar.parse), "{source:?}");
+                        assert_eq!(
+                            values(&options.parse),
+                            values(&configured.parse),
+                            "{source:?}"
+                        );
                     }
                 }
             }

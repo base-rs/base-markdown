@@ -394,7 +394,7 @@ fn task_checkbox_attributes_preserve_checkability_and_state() {
 }
 
 #[test]
-fn inline_workspace_switches_between_compact_and_grammar_regions() {
+fn inline_workspace_reuses_storage_across_mixed_regions() {
     let source = "before `a\nb` &amp; *first*.\n\n[compact][ref] **second**.\n\nraw <span>third</span>.\n\n| a | b |\n| - | - |\n| | |\n\n`x\ny` [last][ref].\n\n[ref]: /target \"title\"\n";
     for (mut options, table) in [
         (Options::default(), "<p>| a | b |\n| - | - |\n| | |</p>\n"),
@@ -433,9 +433,9 @@ fn javascript_like_input_is_ordinary_markdown() {
         ),
     ];
     for mut options in [Options::default(), Options::gfm()] {
-        for grammar in [false, true] {
-            // Disabling this unrelated construct selects grammar preparation.
-            options.parse.constructs.autolink = !grammar;
+        for configured in [false, true] {
+            // These inputs contain no angle autolinks; toggling them must preserve output.
+            options.parse.constructs.autolink = !configured;
             for (source, expected) in cases {
                 assert_eq!(
                     core_markdown::to_html_with_options(source, &options).unwrap(),

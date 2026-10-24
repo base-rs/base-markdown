@@ -470,9 +470,9 @@ fn list_children_must_be_items() {
 #[test]
 fn nul_language_normalization_preserves_code_metadata_for_both_producers() {
     let source = "```r\0ust extra &amp;\nx\n```\n";
-    for grammar in [false, true] {
+    for configured in [false, true] {
         let options = ParseOptions {
-            html_tag_namespaces: grammar,
+            html_tag_namespaces: configured,
             ..ParseOptions::default()
         };
         let document = Document::parse(source, &options).unwrap();

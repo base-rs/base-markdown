@@ -1,7 +1,6 @@
 # Markdown Parser Architecture
 
-This crate exposes a pull-based semantic event contract shared by direct HTML rendering and a source-backed arena AST. Ordinary CommonMark and GFM use compact block records and reusable inline candidates, including common raw HTML blocks, tables, tasks, strikethrough, and simple literal links. A grammar state machine supplies the compatibility path for extensions and unsupported compact constructs, while all AST construction uses the semantic event stream.
-
+This crate exposes one pull-based parser and a semantic event contract shared by direct HTML rendering and a source-backed arena AST. A block pass records containers, source fragments, and definitions. One reusable inline scanner resolves a block only when its events are requested. CommonMark, independently enabled extensions, and custom construct configurations use the same implementation.
 The [Pull Parser Architecture](pull-parser.md) specifies the source-backed semantic event contract and implementation of lazy inline parsing, shared HTML rendering, and incremental arena AST construction.
 
 Extensions use their syntax names throughout configuration and implementation: `table`, `strikethrough`, `autolink_literal`, `task_list_item`, and footnote constructs. Each can be enabled independently through `Constructs`; `Options::gfm()` remains a convenient preset. See [Extension configuration](extensions.md) for examples and the configuration-name migration.
@@ -15,20 +14,11 @@ MDX is no longer supported. JavaScript expressions and import/export statements 
 - `Document` is the only AST. Markdown serialization traverses its node IDs directly; HTML rendering traverses semantic events through `EventHtmlRenderer`. Custom renderers consume events or node IDs.
 - AST helpers include stack-free traversal, `text_content`, code-fence metadata, subtree detachment/attachment, and heading lookup and section replacement. Detached nodes remain in their document arena and retain stable IDs. See [Document AST and migration](document.md).
 
-The compact producer owns only its inline candidates and reference definitions.
-Inline HTML and angle autolinks share byte recognizers with the grammar tokenizer. Complete single-line constructs stay source-backed in the compact producer; rejected, multiline, or incomplete angles retain grammar handling for container prefixes and line endings.
+The parser owns its compact block arena, prepared definition indexes, and one reusable inline workspace. It does not produce a document-wide grammar token stream or select a compatibility backend. Block and inline syntax handlers consume source bytes directly, and HTML/autolink recognizers are small shared byte state machines.
 
-When a region needs grammar tokenization, it transfers those buffers into a
-reusable grammar workspace, allocating that workspace once. Both producers share
-source-backed value construction and decoding without depending on each other's
-representation.
+Ordinary inline regions scan physical source fragments without copying them. Constructs that span stripped container prefixes use a lazily constructed logical view and source-segment map with the same scanner. Semantic values map back to source ranges when contiguous, or materialize only the value that requires normalization. Logical-view offsets never escape in public events.
 
-Grammar block preparation retains reference tokens; the semantic definition index
-normalizes identifiers once before inline resolution. Inline tokenization borrows
-that index and footnote identifiers instead of cloning them into a retained parse
-context. Document and inline-region lifecycles have explicit phases; inline workspaces omit document
-boundaries and document line-ending detection. The common grammar event reader
-and reusable token buffers remain shared.
+Reference and footnote indexes normalize raw identifiers before inline resolution. They preserve authored definitions, including duplicates, while lookup selects the first normalized identifier. String decoding honors independently disabled escape and character-reference constructs. Frontmatter, math, tables, tasks, literal links, and inline-code metadata have direct handlers in the block or inline parser.
 
 The Markdown serializer writes recursively into one output string. Output ranges
 provide preceding context without copying parent strings; reusable scratch handles
@@ -64,4 +54,4 @@ HTML rendering omits frontmatter. All frontmatter uses one Markdown serializatio
 
 Integration tests are organized by Markdown construct in `tests/`; keep regressions close to the behavior they cover. `tests/commonmark.rs` exercises the CommonMark corpus, and `tests/html_renderer.rs`, `tests/markdown_renderer.rs`, and `tests/document.rs` cover document rendering and edits. `tests/markdown_serializer_*.rs` contains the Markdown serializer corpus. Its test-only declarative fixture builder converts constructor descriptions into real documents; it is not a second parser or renderer.
 
-Run formatting, linting, and tests from the workspace root. The standard test workflow requires 100% source-region coverage for the published `core-markdown` package across all targets and features, then runs the workspace test task. This runs the package's tests again with default features and covers the private Bake and generator packages, which are outside the coverage gate. The crate exposes optional `json`, `log`, and `serde` features. The `generate/` program refreshes generated CommonMark and Unicode data used by the tests.
+Run formatting, linting, and tests from the workspace root. The standard test workflow requires 100% source-region coverage for the published `core-markdown` package across all targets and features, then runs the workspace test task. This runs the package's tests again with default features and covers the private Bake and generator packages, which are outside the coverage gate. The crate exposes optional `json` and `serde` features. The former tokenizer tracing `log` feature remains accepted as a no-op for compatibility. The `generate/` program refreshes generated CommonMark and Unicode data used by the tests.

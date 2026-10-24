@@ -375,11 +375,11 @@ Text.</li>
 }
 
 #[test]
-fn compact_tasks_preserve_markers_whitespace_and_fallback() {
+fn tasks_preserve_markers_and_whitespace_across_options() {
     use core_markdown::{stream::EventKind, EventParser};
     let options = Options::gfm();
-    let mut grammar = Options::gfm();
-    grammar.parse.constructs.math_flow = true;
+    let mut configured = Options::gfm();
+    configured.parse.constructs.math_flow = true;
     for source in [
         "- [x] checked\n- [X] upper\n- [ ] unchecked",
         "- [x]   three spaces\n- [x] \t mixed spaces",
@@ -393,7 +393,7 @@ fn compact_tasks_preserve_markers_whitespace_and_fallback() {
     ] {
         assert_eq!(
             to_html_with_options(source, &options).unwrap(),
-            to_html_with_options(source, &grammar).unwrap(),
+            to_html_with_options(source, &configured).unwrap(),
             "{source:?}"
         );
         let markers = |parse: &ParseOptions| {
@@ -407,7 +407,7 @@ fn compact_tasks_preserve_markers_whitespace_and_fallback() {
         };
         assert_eq!(
             markers(&options.parse),
-            markers(&grammar.parse),
+            markers(&configured.parse),
             "{source:?}"
         );
     }
