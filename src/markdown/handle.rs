@@ -9,10 +9,6 @@ use super::{
     construct_name::ConstructName,
     state::{flow_children, unsupported_content, Info, State},
     util::{
-        check_bullet::check_bullet, check_bullet_ordered::check_bullet_ordered,
-        check_bullet_other::check_bullet_other, check_emphasis::check_emphasis,
-        check_fence::check_fence, check_quote::check_quote, check_rule::check_rule,
-        check_rule_repetition::check_rule_repetition, check_strong::check_strong,
         contains_control_or_whitespace::contains_control_or_whitespace,
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::format_heading_as_setext,
@@ -71,7 +67,7 @@ impl State<'_> {
         language: Option<&str>,
         metadata: Option<&str>,
     ) -> Result<(), Message> {
-        let marker = check_fence(self)?;
+        let marker = self.options.check_fence()?;
         let start = self.output.len();
         if format_code_as_indented(content, language.is_none(), self) {
             self.enter(ConstructName::CodeIndented);
@@ -131,7 +127,7 @@ impl State<'_> {
         destination: &str,
         title: Option<&str>,
     ) -> Result<(), Message> {
-        let quote = check_quote(self)?;
+        let quote = self.options.check_quote()?;
         let start = self.output.len();
         self.enter(ConstructName::Definition);
         self.enter(ConstructName::Label);
@@ -201,7 +197,7 @@ impl State<'_> {
         node: NodeId,
         info: &Info,
     ) -> Result<(), Message> {
-        let marker = check_emphasis(self)?;
+        let marker = self.options.check_emphasis()?;
         self.enter(ConstructName::Emphasis);
         self.output.push(marker);
         self.container_phrasing(document, node, info)?;
@@ -280,7 +276,7 @@ impl State<'_> {
         node: NodeId,
         info: &Info,
     ) -> Result<(), Message> {
-        let marker = check_strong(self)?;
+        let marker = self.options.check_strong()?;
         self.enter(ConstructName::Strong);
         self.output.push(marker);
         self.output.push(marker);
@@ -292,8 +288,8 @@ impl State<'_> {
     }
 
     pub(super) fn thematic_break(&mut self) -> Result<(), Message> {
-        let marker = check_rule(self)?;
-        for index in 0..check_rule_repetition(self)? {
+        let marker = self.options.check_rule()?;
+        for index in 0..self.options.check_rule_repetition()? {
             if index > 0 && self.options.rule_spaces {
                 self.output.push(' ');
             }
@@ -396,7 +392,7 @@ impl State<'_> {
         title: Option<&str>,
         image: bool,
     ) -> Result<(), Message> {
-        let quote = check_quote(self)?;
+        let quote = self.options.check_quote()?;
         let start = self.output.len();
         if !image {
             if let Some(text) = auto_link_text(document, node, destination, title.is_some(), self) {
@@ -496,9 +492,9 @@ impl State<'_> {
         self.enter(ConstructName::List);
         let bullet_current = self.bullet_current;
         let mut bullet = if ordered {
-            check_bullet_ordered(self)?
+            self.options.check_bullet_ordered()?
         } else {
-            check_bullet(self)?
+            self.options.check_bullet()?
         };
         let bullet_other = if ordered {
             if bullet == '.' {
@@ -507,7 +503,7 @@ impl State<'_> {
                 '.'
             }
         } else {
-            check_bullet_other(self)?
+            self.options.check_bullet_other()?
         };
         let mut first_empty = false;
         let mut has_rule = false;
@@ -543,7 +539,7 @@ impl State<'_> {
             {
                 different = true;
             }
-            if check_rule(self)? == bullet && has_rule {
+            if self.options.check_rule()? == bullet && has_rule {
                 different = true;
             }
         }
@@ -563,7 +559,7 @@ impl State<'_> {
         document: &Document<S>,
         node: NodeId,
     ) -> Result<(), Message> {
-        let mut bullet = self.bullet_current.unwrap_or(check_bullet(self)?);
+        let mut bullet = self.bullet_current.unwrap_or(self.options.check_bullet()?);
         let prefix_start = self.output.len();
         let parent = document.node(node).unwrap().parent();
         if let Some(parent) = parent {
@@ -572,7 +568,7 @@ impl State<'_> {
             }) = document.node(parent).unwrap().kind
             {
                 if self.bullet_current.is_none() {
-                    bullet = check_bullet_ordered(self)?;
+                    bullet = self.options.check_bullet_ordered()?;
                 }
                 let position = if self.options.increment_list_marker {
                     self.index_stack.last().copied().unwrap_or_else(|| {
