@@ -129,32 +129,29 @@ mod tests {
     use alloc::{borrow::Cow, string::String};
 
     #[test]
-    fn canonical_ascii_reference_keys_borrow_the_input() {
-        for value in ["", "key", "a b", "a\u{b}b\u{c}c"] {
-            let key = reference_key(value);
-            assert!(matches!(key, Cow::Borrowed(_)));
-            assert_eq!(key.as_ptr(), value.as_ptr());
-            assert_eq!(key, value);
-        }
-    }
-
-    #[test]
-    fn owned_reference_keys_preserve_whitespace_and_unicode_equality() {
-        for (value, expected) in [
-            (" A ", "a"),
-            ("a ", "a"),
-            (" \t\r\n ", ""),
-            ("a  b", "a b"),
-            ("\ta\r\nb\t", "a b"),
-            ("ẞ", "ss"),
-            ("SS", "ss"),
-            ("ϴ A", "Θ a"),
-            ("θ a", "Θ a"),
-            ("İ", "i\u{307}"),
-            ("a\u{a0}B", "a\u{a0}b"),
+    fn reference_keys_borrow_canonical_ascii_and_normalize_other_labels() {
+        for (value, expected, borrowed) in [
+            ("", "", true),
+            ("key", "key", true),
+            ("a b", "a b", true),
+            ("a\u{b}b\u{c}c", "a\u{b}b\u{c}c", true),
+            (" A ", "a", false),
+            ("a ", "a", false),
+            (" \t\r\n ", "", false),
+            ("a  b", "a b", false),
+            ("\ta\r\nb\t", "a b", false),
+            ("ẞ", "ss", false),
+            ("SS", "ss", false),
+            ("ϴ A", "Θ a", false),
+            ("θ a", "Θ a", false),
+            ("İ", "i\u{307}", false),
+            ("a\u{a0}B", "a\u{a0}b", false),
         ] {
             let key = reference_key(value);
-            assert!(matches!(key, Cow::Owned(_)), "{:?}", value);
+            assert_eq!(matches!(key, Cow::Borrowed(_)), borrowed);
+            if borrowed {
+                assert_eq!(key.as_ptr(), value.as_ptr());
+            }
             assert_eq!(key, expected);
             let mut scratch = String::from("old value");
             normalize_reference_identifier_into(value, &mut scratch);
