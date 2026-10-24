@@ -21,10 +21,10 @@ reusable grammar workspace, allocating that workspace once. Both producers share
 source-backed value construction and decoding without depending on each other's
 representation.
 
-Grammar block preparation temporarily owns normalized reference identifiers.
-Inline tokenization borrows the prepared semantic definition index and footnote
-identifiers instead of cloning them into a retained parse context. Document and
-inline-region lifecycles have explicit phases; inline workspaces omit document
+Grammar block preparation retains reference tokens; the semantic definition index
+normalizes identifiers once before inline resolution. Inline tokenization borrows
+that index and footnote identifiers instead of cloning them into a retained parse
+context. Document and inline-region lifecycles have explicit phases; inline workspaces omit document
 boundaries and document line-ending detection. The common grammar event reader
 and reusable token buffers remain shared.
 

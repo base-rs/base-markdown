@@ -281,7 +281,10 @@ pub fn after(tokenizer: &mut Tokenizer) -> State {
         id = new_id;
     }
 
-    let defined = tokenizer.parse_state.definitions.contains(&id);
+    let defined = tokenizer
+        .parse_state
+        .definitions
+        .is_some_and(|definitions| definitions.find(&id).is_some());
 
     match tokenizer.current {
         // Resource (`[asd](fgh)`)?
@@ -597,21 +600,25 @@ pub fn reference_full_after(tokenizer: &mut Tokenizer) -> State {
     if tokenizer
         .parse_state
         .definitions
-        // We don’t care about virtual spaces, so `as_str` is fine.
-        .contains(&normalize_identifier(
-            Slice::from_position(
-                tokenizer.parse_state.bytes,
-                &Position::from_exit_event(
-                    &tokenizer.events,
-                    skip::to_back(
-                        &tokenizer.events,
-                        tokenizer.events.len() - 1,
-                        &[Name::ReferenceString],
-                    ),
-                ),
-            )
-            .as_str(),
-        ))
+        .is_some_and(|definitions| {
+            // We don’t care about virtual spaces, so `as_str` is fine.
+            definitions
+                .find(&normalize_identifier(
+                    Slice::from_position(
+                        tokenizer.parse_state.bytes,
+                        &Position::from_exit_event(
+                            &tokenizer.events,
+                            skip::to_back(
+                                &tokenizer.events,
+                                tokenizer.events.len() - 1,
+                                &[Name::ReferenceString],
+                            ),
+                        ),
+                    )
+                    .as_str(),
+                ))
+                .is_some()
+        })
     {
         State::Ok
     } else {

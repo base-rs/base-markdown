@@ -69,16 +69,11 @@ impl<'a> GrammarParser<'a> {
 
     /// Prepare Markdown for pull consumption.
     pub fn new(source: &'a str, options: &'a ParseOptions) -> Self {
-        let (mut tokens, parse_state) = crate::parser::prepare(source, options);
+        let (mut tokens, footnote_definitions) = crate::parser::prepare(source, options);
+        let parse_state = ParseState::new(source.as_bytes(), options);
         // Definition destinations and code-info strings are small and needed before their opening semantic events.
         crate::subtokenize::subtokenize(&mut tokens, &parse_state, Some(&Content::String));
-        Self::from_tokens(
-            source,
-            options,
-            tokens,
-            parse_state.gfm_footnote_definitions.into_owned(),
-            Phase::Start,
-        )
+        Self::from_tokens(source, options, tokens, footnote_definitions, Phase::Start)
     }
 
     fn from_tokens(
