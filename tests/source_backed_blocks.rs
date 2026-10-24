@@ -155,12 +155,14 @@ fn frontmatter_and_math_are_independent_of_code_fences() {
 #[test]
 fn definition_titles_strip_continuation_padding_and_preserve_line_endings() {
     for ending in ["\r", "\n", "\r\n"] {
-        let source = format!("[a]: /d \"first{ending}  second\"{ending}{ending}[a]");
-        assert_html(
-            &source,
-            &Options::default(),
-            &format!("<p><a href=\"/d\" title=\"first{ending}second\">a</a></p>"),
-        );
+        for first in ["first", "first&amp;"] {
+            let source = format!("[a]: /d \"{first}{ending}  second\"{ending}{ending}[a]");
+            assert_html(
+                &source,
+                &Options::default(),
+                &format!("<p><a href=\"/d\" title=\"{first}{ending}second\">a</a></p>"),
+            );
+        }
     }
 }
 
