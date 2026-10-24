@@ -1,0 +1,9 @@
+{
+  "crate": "pulldown-cmark-escape",
+  "version": "0.11.0",
+  "archive_url": "https://static.crates.io/crates/pulldown-cmark-escape/pulldown-cmark-escape-0.11.0.crate",
+  "archive_sha256": "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae",
+  "matches_lockfile_checksum": true,
+  "source_sha256": "41cad4fdbc4613b600a5828002129bc6fc73dce4057aa8fe56dbcfe1e4f4b38f",
+  "same_as_checked_upstream_source": true
+}

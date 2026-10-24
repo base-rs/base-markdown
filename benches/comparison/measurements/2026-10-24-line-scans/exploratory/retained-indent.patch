@@ -1,0 +1,46 @@
+diff --git a/src/block_parser/mod.rs b/src/block_parser/mod.rs
+index 502e207..37568d6 100644
+--- a/src/block_parser/mod.rs
++++ b/src/block_parser/mod.rs
+@@ -286,12 +286,12 @@ impl Builder<'_> {
+         while self.open.len() > continued {
+             self.pop(start);
+         }
+-        loop {
+-            let save = line.clone();
++        let (definition_start, indent) = loop {
++            let definition_start =
++                start + line.bytes_scanned() - usize::from(line.remaining_space() > 0);
+             let indent = line.scan_space_upto(4);
+             if indent == 4 {
+-                line = save;
+-                break;
++                break (definition_start, indent);
+             }
+             let at = start + line.bytes_scanned();
+             if let Some((marker, number, width)) = line.scan_list_marker_with_indent(indent) {
+@@ -308,10 +308,10 @@ impl Builder<'_> {
+                 self.append(at, at, Body::Quote);
+                 self.push();
+             } else {
+-                line = save;
+-                break;
++                // Failed marker scans leave the cursor after indentation. Keep that work for the block classifiers below.
++                break (definition_start, indent);
+             }
+-        }
++        };
+         let at = start + line.bytes_scanned();
+         if let Some(length) = scan_blank_line(&bytes[at..]) {
+             let parent = *self.open.last().unwrap();
+@@ -325,10 +325,6 @@ impl Builder<'_> {
+             }
+             return at + length;
+         }
+-        let definition_start =
+-            start + line.bytes_scanned() - usize::from(line.remaining_space() > 0);
+-        let indent = line.scan_space_upto(4);
+-        let at = start + line.bytes_scanned();
+         if indent == 4 {
+             self.finish_list(start);
+             return self.indented(at, line.remaining_space());

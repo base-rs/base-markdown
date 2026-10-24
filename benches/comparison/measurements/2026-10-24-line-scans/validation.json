@@ -1,0 +1,28 @@
+{
+  "source_commit": "01d053f8c97cc39520ef94046855626d5382fd84",
+  "block_parser_sha256": "b34ff17e148ced73604d45b96e145c202457d5ca5438a014852934370a834342",
+  "format": "passed",
+  "clippy_workspace_all_targets_all_features": "passed",
+  "coverage": {
+    "target": "aarch64-apple-darwin",
+    "features": "all",
+    "all_targets": true,
+    "covered_regions": 26824,
+    "measured_regions": 26824,
+    "excluded_invariant_unreachable_regions": 68
+  },
+  "workspace_tests": "passed",
+  "portable_library_check": {
+    "target": "x86_64-unknown-linux-gnu",
+    "result": "passed with rustup stable"
+  },
+  "saved_outputs": 2117,
+  "rendering_paths": [
+    "direct",
+    "checked events",
+    "arena"
+  ],
+  "independent_source_review": "approved; see independent-review.json and independent-evidence-review.json",
+  "semantic_event_and_ast_events_unchanged": true,
+  "note": "No architecture-specific implementation changed. No allocations, event counts, AST node counts, source ranges, or output bytes change."
+}

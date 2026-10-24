@@ -1,0 +1,26 @@
+{
+  "baseline_commit": "ad90098",
+  "candidate_commit": "01d053f8c97cc39520ef94046855626d5382fd84",
+  "source_file_sha256": "b34ff17e148ced73604d45b96e145c202457d5ca5438a014852934370a834342",
+  "source_count": 101739,
+  "categories": {
+    "single": 32456,
+    "blank-eof": 3840,
+    "structured-provenance": 11408,
+    "continuation": 33306,
+    "blank-tightness": 7688,
+    "whitespace-boundary": 1536,
+    "random": 11421,
+    "deep": 84
+  },
+  "source_option_combinations": 305217,
+  "input_sha256": "fabab35181d8a3121981fdd625d27716b49418a3e6b616331a31f886daf1a108",
+  "baseline_output_sha256": "78c049f61ac6ece52449353ab8149a3b114c22e67d5c2a72fbb6a04a0f32e55d",
+  "candidate_output_sha256": "78c049f61ac6ece52449353ab8149a3b114c22e67d5c2a72fbb6a04a0f32e55d",
+  "full_debug_records_identical": true,
+  "changed_records": 0,
+  "panics": 0,
+  "rendering_path_disagreements": 0,
+  "error_records": 0,
+  "elapsed_seconds": 15.51
+}

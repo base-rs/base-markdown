@@ -1,0 +1,84 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
+use core_markdown::{
+    render_events,
+    stream::{EventKind, Text},
+    to_html_with_options, Document, EventParser, Options,
+};
+
+fn assert_rendering_paths(source: &str, options: &Options, expected: &str) {
+    assert_eq!(
+        to_html_with_options(source, options).unwrap(),
+        expected,
+        "{source:?}"
+    );
+    let mut output = String::new();
+    render_events(
+        source,
+        EventParser::new(source, &options.parse).unwrap(),
+        &options.compile,
+        &mut output,
+    )
+    .unwrap();
+    assert_eq!(output, expected, "checked events: {source:?}");
+    let document = Document::parse(source, &options.parse).unwrap();
+    output.clear();
+    render_events(source, document.events(), &options.compile, &mut output).unwrap();
+    assert_eq!(output, expected, "arena: {source:?}");
+}
+
+#[test]
+fn block_indentation_preserves_line_endings_and_quote_continuations() {
+    for options in [Options::default(), Options::gfm()] {
+        for indent in ["", " ", "  ", "   "] {
+            for ending in ["\n", "\r", "\r\n"] {
+                let source = format!("{indent}# heading{ending}{indent}{ending}{indent}paragraph{ending}{ending}{indent}> quote{ending}{indent}> next");
+                let expected = format!("<h1>heading</h1>{ending}<p>paragraph</p>{ending}<blockquote>{ending}<p>quote{ending}next</p>{ending}</blockquote>");
+                assert_rendering_paths(&source, &options, &expected);
+            }
+        }
+    }
+}
+
+#[test]
+fn partial_tabs_and_blank_lines_keep_block_boundaries() {
+    for mut options in [Options::default(), Options::gfm()] {
+        options.compile.allow_dangerous_html = true;
+        for (source, expected) in [
+            (" \t\n   # a\n \t\n   ---\n  \t", "<h1>a</h1>\n<hr />\n"),
+            (" - a\n \t\n - b", "<ul>\n<li>\n<p>a</p>\n</li>\n<li>\n<p>b</p>\n</li>\n</ul>"),
+            ("  > \t# inside\n  > \t\n  > next\noutside", "<blockquote>\n<pre><code># inside\n</code></pre>\n<p>next\noutside</p>\n</blockquote>"),
+            ("   <!-- x -->\n\ntext", "   <!-- x -->\n<p>text</p>"),
+            ("   ```\n\t<x>\n   ```\n\n\t", "<pre><code> &lt;x&gt;\n</code></pre>"),
+        ] {
+            assert_rendering_paths(source, &options, expected);
+        }
+    }
+}
+
+#[test]
+fn definition_offsets_include_the_authored_indentation() {
+    let source = "   [ref]: /target \"title\"\n\n   [ref]";
+    for options in [Options::default(), Options::gfm()] {
+        assert_rendering_paths(
+            source,
+            &options,
+            "<p><a href=\"/target\" title=\"title\">ref</a></p>",
+        );
+        let event = EventParser::new(source, &options.parse)
+            .unwrap()
+            .map(Result::unwrap)
+            .find(|event| matches!(event.kind, EventKind::Definition { .. }))
+            .unwrap();
+        assert_eq!(event.span, 0..25);
+        assert_eq!(
+            event.kind,
+            EventKind::Definition {
+                label: Text::Source(4..7),
+                destination: Text::Source(10..17),
+                title: Some(Text::Source(19..24)),
+            }
+        );
+    }
+}
