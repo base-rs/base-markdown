@@ -28,7 +28,6 @@ pub struct Node {
     pub span: Range<usize>,
     parent: Option<NodeId>,
     first_child: Option<NodeId>,
-    last_child: Option<NodeId>,
     next_sibling: Option<NodeId>,
 }
 
@@ -61,6 +60,8 @@ pub enum BuildProgress {
 pub struct AstBuilder {
     nodes: Vec<Node>,
     open: Vec<NodeId>,
+    // Only the active container needs a tail. Opening a child resets it; closing that child makes the child the parent's new tail.
+    last_child: Option<NodeId>,
     complete: bool,
     failed: bool,
 }
@@ -136,6 +137,7 @@ impl AstBuilder {
                 return Err(StreamError::InvalidRange);
             }
             node.span.end = event.span.end;
+            self.last_child = Some(id);
             return Ok(());
         }
         if self.open.is_empty() {
@@ -163,17 +165,16 @@ impl AstBuilder {
             span: event.span,
             parent,
             first_child: None,
-            last_child: None,
             next_sibling: None,
         });
         if let Some(parent) = parent {
-            if let Some(previous) = self.nodes[parent.index()].last_child {
+            if let Some(previous) = self.last_child {
                 self.nodes[previous.index()].next_sibling = Some(id);
             } else {
                 self.nodes[parent.index()].first_child = Some(id);
             }
-            self.nodes[parent.index()].last_child = Some(id);
         }
+        self.last_child = if start { None } else { Some(id) };
         if start {
             self.open.push(id);
         }
