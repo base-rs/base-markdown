@@ -125,7 +125,7 @@ mod tests {
     fn unicode_folding_matches_string_casing_for_every_scalar() {
         let mut value = String::new();
         let mut result = String::new();
-        for character in (0..=0x10ffff).filter_map(char::from_u32) {
+        for character in '\0'..=char::MAX {
             value.clear();
             value.push(character);
             let expected = if matches!(character, ' ' | '\t' | '\r' | '\n') {
@@ -134,7 +134,7 @@ mod tests {
                 value.to_lowercase().to_uppercase()
             };
             super::normalize_identifier_into(&value, &mut result);
-            assert_eq!(result, expected, "U+{:04X}", character as u32);
+            assert_eq!(result, expected, "{character:?}");
             super::normalize_reference_identifier_into(&value, &mut result);
             assert_eq!(result, expected.to_ascii_lowercase());
         }
