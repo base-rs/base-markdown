@@ -20,7 +20,7 @@ For tools that inspect code blocks and frontmatter, `Node::code_fence()` exposes
 
 Beyond parsing, the fork adds AST traversal, text extraction, heading and section editing, and `Fragment` nodes for working with detached content. `HtmlRenderer`, `MarkdownRenderer`, and the custom `Renderer` interface render edited trees; Markdown serialization preserves language metadata and can unwrap soft line breaks. Optional `CompileOptions::heading_ids` generates unique heading anchors for in-page links and tables of contents.
 
-The fork also includes fixes for stale MDX parser errors and parsing and serialization edge cases, including CRLF handling in inline code and math. See [releases.md](releases.md) for changes and the [API documentation](https://docs.rs/core-markdown/latest/core_markdown/) for configuration details.
+The fork also includes fixes for parsing and serialization edge cases, including CRLF handling in inline code and math. See [releases.md](releases.md) for changes and the [API documentation](https://docs.rs/core-markdown/latest/core_markdown/) for configuration details.
 
 ## Usage
 
@@ -110,7 +110,7 @@ Indentation is measured in columns relative to the containing block. Fence metad
 
 ### Extensions
 
-The parser inherits support for CommonMark, GFM, MDX, frontmatter, and math constructs from `markdown-rs`. The fork-specific parsing options are described under [Motivation](#motivation). HTML output escapes raw HTML and omits MDX expressions by default. See the [API documentation](https://docs.rs/core-markdown/latest/core_markdown/) for parser options, renderer configuration, and AST types.
+The parser inherits support for CommonMark, GFM, frontmatter, and math constructs from `markdown-rs`. The fork-specific parsing options are described under [Motivation](#motivation). HTML output escapes raw HTML by default. MDX, JSX, and JavaScript expression parsing have been removed to simplify the Markdown pipeline. See the [API documentation](https://docs.rs/core-markdown/latest/core_markdown/) for parser options, renderer configuration, and AST types.
 
 ### Language-agnostic frontmatter
 

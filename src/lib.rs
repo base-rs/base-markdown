@@ -14,7 +14,7 @@
 //! * [`to_html_with_options()`][]
 //!   — like `to_html` but lets you configure how markdown is turned into
 //!   HTML, such as allowing dangerous HTML or turning on/off different
-//!   constructs (GFM, MDX, and the like)
+//!   constructs (GFM, math, and the like)
 //! * [`to_mdast()`][]
 //!   — turn markdown into a syntax tree
 //! * [`Renderer`][]
@@ -75,20 +75,12 @@ pub mod unist; // To do: externalize.
 pub use util::character_reference::{decode_named, decode_numeric};
 
 #[doc(hidden)]
-pub use util::identifier::{id_cont, id_start};
-
-#[doc(hidden)]
 pub use util::sanitize_uri::sanitize;
 
 #[doc(hidden)]
 pub use util::location::Location;
 
 pub use util::line_ending::LineEnding;
-
-pub use util::mdx::{
-    EsmParse as MdxEsmParse, ExpressionKind as MdxExpressionKind,
-    ExpressionParse as MdxExpressionParse, Signal as MdxSignal,
-};
 
 pub use configuration::{CompileOptions, Constructs, Options, ParseOptions};
 pub use document::{
@@ -125,9 +117,6 @@ pub fn to_html(value: &str) -> String {
 ///
 /// `to_html_with_options()` never errors with normal markdown because markdown
 /// does not have syntax errors, so feel free to `unwrap()`.
-/// However, MDX does have syntax errors.
-/// When MDX is turned on, there are several errors that can occur with how
-/// expressions, ESM, and JSX are written.
 ///
 /// ## Examples
 ///
@@ -161,7 +150,6 @@ pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, me
         .render_markdown(&options.parse);
     match result {
         Ok(()) => Ok(output),
-        Err(stream::StreamError::Parse(error)) => Err(error),
         Err(_) => unreachable!(
             "parser events are balanced and source-valid; writing to String cannot fail"
         ),
@@ -174,9 +162,6 @@ pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, me
 ///
 /// `to_mdast()` never errors with normal markdown because markdown does not
 /// have syntax errors, so feel free to `unwrap()`.
-/// However, MDX does have syntax errors.
-/// When MDX is turned on, there are several errors that can occur with how
-/// JSX, expressions, or ESM are written.
 ///
 /// ## Examples
 ///
@@ -192,7 +177,10 @@ pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, me
 /// # }
 /// ```
 pub fn to_mdast(value: &str, options: &ParseOptions) -> Result<mdast::Node, message::Message> {
-    let (events, parse_state) = parser::parse(value, options)?;
-    let node = to_mdast::compile(&events, parse_state.bytes, options.inline_code_info)?;
-    Ok(node)
+    let (events, parse_state) = parser::parse(value, options);
+    Ok(to_mdast::compile(
+        &events,
+        parse_state.bytes,
+        options.inline_code_info,
+    ))
 }

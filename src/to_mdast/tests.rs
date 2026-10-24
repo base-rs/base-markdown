@@ -3,8 +3,8 @@
 
 use super::*;
 use crate::event::Kind;
-use crate::{MdxExpressionKind, MdxSignal, ParseOptions};
-use alloc::{string::String, vec};
+use crate::ParseOptions;
+use alloc::vec;
 
 fn point(index: usize) -> crate::event::Point {
     crate::event::Point {
@@ -42,21 +42,6 @@ fn positioned_paragraph() -> Node {
     })
 }
 
-fn positioned_text() -> Node {
-    Node::Text(Text {
-        value: String::new(),
-        position: Some(Position {
-            start: Point::new(1, 1, 0),
-            end: Point::new(1, 1, 0),
-        }),
-    })
-}
-
-fn with_position(mut node: Node) -> Node {
-    node.position_set(Some(Position::new(1, 1, 0, 1, 2, 1)));
-    node
-}
-
 fn context_with_tail<'a>(events: &'a [Event], bytes: &'a [u8], tail: Node) -> CompileContext<'a> {
     let mut context = CompileContext::new(events, bytes, false);
     let (tree, stack, event_stack) = context.trees.first_mut().unwrap();
@@ -69,7 +54,7 @@ fn context_with_tail<'a>(events: &'a [Event], bytes: &'a [u8], tail: Node) -> Co
 
 #[test]
 fn compiles_extension_document() {
-    let mut options = ParseOptions::mdx();
+    let mut options = ParseOptions::default();
     options.constructs.frontmatter = true;
     options.constructs.gfm_autolink_literal = true;
     options.constructs.gfm_footnote_definition = true;
@@ -79,16 +64,14 @@ fn compiles_extension_document() {
     options.constructs.gfm_task_list_item = true;
     options.constructs.math_flow = true;
     options.constructs.math_text = true;
-    options.mdx_esm_parse = Some(Box::new(|_| MdxSignal::Ok));
-    options.mdx_expression_parse = Some(Box::new(|_, _: &MdxExpressionKind| MdxSignal::Ok));
 
     let source = "---\ntitle: Example\n---\n\
-import Component from 'component'\n\n\
+Introductory text.\n\n\
 # Heading\n\
 Setext\n---\n\
-<Component.Button disabled title=\"title\" count={1} {...props} />\n\
-Text <Component.Item /> with {value}.\n\
-{flowExpression}\n\
+Ordinary paragraph.\n\
+Text with ordinary words.\n\
+Another paragraph.\n\
 ~~deleted~~ and $math$\n\
 ```rust meta\ncode\n```\n\
 | left | center | right |\n\
@@ -116,15 +99,7 @@ Unresolved footnote fallback [^missing](url).\n\
     assert!(root
         .children
         .iter()
-        .any(|node| matches!(node, Node::MdxjsEsm(_))));
-    assert!(root
-        .children
-        .iter()
         .any(|node| matches!(node, Node::Heading(_))));
-    assert!(root
-        .children
-        .iter()
-        .any(|node| matches!(node, Node::MdxJsxFlowElement(_))));
     assert!(root
         .children
         .iter()
@@ -223,44 +198,6 @@ fn parses_frontmatter_at_end_of_input() {
 }
 
 #[test]
-fn parses_unicode_jsx_name_continuations() {
-    crate::to_mdast(
-        "<Ångström 属性=\"value\" /><ui:组件 data:值=\"value\" /><Component.名称 />",
-        &ParseOptions::mdx(),
-    )
-    .expect("parses Unicode JSX element, member, and attribute names");
-}
-
-#[test]
-fn parses_exported_mdx_esm() {
-    let options = ParseOptions {
-        mdx_esm_parse: Some(Box::new(|_| MdxSignal::Ok)),
-        ..ParseOptions::mdx()
-    };
-
-    crate::to_mdast("export const value = 1", &options).expect("parses MDX export");
-    crate::to_mdast("import value from 'module'", &options).expect("parses MDX import");
-}
-
-#[test]
-fn reports_parse_errors_from_the_public_entry_point() {
-    let options = ParseOptions {
-        mdx_expression_parse: Some(Box::new(|_, _| {
-            MdxSignal::Error(
-                "invalid expression".into(),
-                0,
-                Box::new("test".into()),
-                Box::new("invalid-expression".into()),
-            )
-        })),
-        ..ParseOptions::mdx()
-    };
-
-    assert!(crate::to_mdast("{value}", &options).is_err());
-    assert!(crate::to_mdast("> {value}", &options).is_err());
-}
-
-#[test]
 fn updates_text_positions_when_removing_inline_code_info() {
     let events = [
         Event {
@@ -342,216 +279,6 @@ fn removes_inline_code_info_when_the_text_has_no_position() {
 }
 
 #[test]
-fn propagates_raw_text_exit_errors_across_jsx_parent_boundaries() {
-    let events = [
-        Event {
-            kind: Kind::Enter,
-            name: Name::MdxJsxFlowTag,
-            point: point(0),
-            link: None,
-        },
-        Event {
-            kind: Kind::Exit,
-            name: Name::CodeText,
-            point: point(1),
-            link: None,
-        },
-    ];
-    let inline_code = Node::InlineCode(InlineCode {
-        value: String::new(),
-        position: None,
-        lang: None,
-    });
-    let mut context = context_with_tail(&events, b"x", with_position(inline_code));
-    context.index = 1;
-    context.buffer();
-    let parent = JsxTag {
-        name: Some("parent".into()),
-        attributes: vec![],
-        close: false,
-        self_closing: false,
-        start: Point::new(1, 1, 0),
-        end: Point::new(1, 1, 0),
-    };
-    context.jsx_tag = Some(parent.clone());
-    context.jsx_tag_stack.push(parent);
-
-    let error = exit(&mut context).expect_err("the JSX boundary rejects the mismatched exit");
-    assert_eq!(*error.rule_id, "end-tag-mismatch");
-}
-
-#[test]
-fn reports_jsx_tag_mismatch_errors() {
-    let error = crate::to_mdast("<a><b></a>", &ParseOptions::mdx())
-        .expect_err("a closing tag cannot skip a nested open tag");
-    assert_eq!(*error.rule_id, "end-tag-mismatch");
-
-    let attribute_events = event_pair(Name::MdxJsxTagAttributeExpression, 0, 0);
-    let mut context = context_with_tail(&attribute_events, b"", positioned_paragraph());
-    context.jsx_tag = Some(JsxTag {
-        name: Some("tag".into()),
-        attributes: vec![],
-        close: true,
-        self_closing: false,
-        start: Point::new(1, 1, 0),
-        end: Point::new(1, 1, 0),
-    });
-    assert!(enter(&mut context).is_err());
-}
-
-#[test]
-fn propagates_exit_errors_across_jsx_parent_boundaries() {
-    let list_item = Node::ListItem(ListItem {
-        children: vec![],
-        position: None,
-        spread: false,
-        checked: None,
-    });
-    let code = Node::Code(Code {
-        fence: None,
-        value: String::new(),
-        position: None,
-        lang: None,
-        meta: None,
-    });
-    let math = Node::Math(Math {
-        value: String::new(),
-        position: None,
-        meta: None,
-    });
-    let inline_code = Node::InlineCode(InlineCode {
-        value: String::new(),
-        position: None,
-        lang: None,
-    });
-    let inline_math = Node::InlineMath(InlineMath {
-        value: String::new(),
-        position: None,
-    });
-    let html = Node::Html(Html {
-        value: String::new(),
-        position: None,
-    });
-    let yaml = Node::Frontmatter(Frontmatter {
-        info: String::new(),
-        fence: '-',
-        fence_length: 3,
-        closing_fence_length: 3,
-        value: String::new(),
-        position: None,
-    });
-
-    let cases = vec![
-        (Name::Data, positioned_text(), false, false),
-        (Name::AutolinkProtocol, positioned_text(), false, false),
-        (Name::AutolinkEmail, positioned_text(), false, false),
-        (Name::CodeFenced, with_position(code.clone()), true, false),
-        (Name::CodeIndented, with_position(code), true, false),
-        (Name::CodeText, with_position(inline_code), true, false),
-        (Name::MathFlow, with_position(math), true, false),
-        (Name::MathText, with_position(inline_math), true, false),
-        (Name::Frontmatter, with_position(yaml), true, false),
-        (Name::GfmAutolinkLiteralWww, positioned_text(), false, false),
-        (Name::GfmFootnoteCall, positioned_paragraph(), false, true),
-        (Name::Image, positioned_paragraph(), false, true),
-        (Name::Link, positioned_paragraph(), false, true),
-        (Name::GfmTable, positioned_paragraph(), false, false),
-        (Name::HardBreakEscape, positioned_paragraph(), false, false),
-        (Name::HeadingSetext, positioned_paragraph(), false, false),
-        (Name::HtmlFlow, with_position(html.clone()), true, false),
-        (Name::HtmlText, with_position(html), true, false),
-        (Name::ListItem, with_position(list_item), false, false),
-        (Name::MdxEsm, positioned_paragraph(), true, false),
-        (Name::MdxFlowExpression, positioned_paragraph(), true, false),
-        (Name::MdxTextExpression, positioned_paragraph(), true, false),
-    ];
-
-    for (name, tail, buffer, media_reference) in cases {
-        let events = [
-            Event {
-                kind: Kind::Enter,
-                name: Name::MdxJsxFlowTag,
-                point: point(0),
-                link: None,
-            },
-            Event {
-                kind: Kind::Enter,
-                name: name.clone(),
-                point: point(0),
-                link: None,
-            },
-            Event {
-                kind: Kind::Exit,
-                name: name.clone(),
-                point: point(1),
-                link: None,
-            },
-        ];
-        let mut context = context_with_tail(&events, b"x", tail);
-        let parent = JsxTag {
-            name: Some("parent".into()),
-            attributes: vec![],
-            close: false,
-            self_closing: false,
-            start: Point::new(1, 1, 0),
-            end: Point::new(1, 1, 0),
-        };
-        context.jsx_tag = Some(parent.clone());
-        context.jsx_tag_stack.push(parent);
-
-        if buffer {
-            context.buffer();
-        }
-        if media_reference {
-            context.media_reference_stack.push(Reference::new());
-        }
-
-        let error = exit(&mut context).expect_err("the JSX parent event is mismatched");
-        assert_eq!(*error.rule_id, "end-tag-mismatch", "{name:?}");
-    }
-
-    let events = [
-        Event {
-            kind: Kind::Enter,
-            name: Name::MdxJsxFlowTag,
-            point: point(0),
-            link: None,
-        },
-        Event {
-            kind: Kind::Enter,
-            name: Name::LineEnding,
-            point: point(0),
-            link: None,
-        },
-        Event {
-            kind: Kind::Enter,
-            name: Name::MdxJsxTextTag,
-            point: point(0),
-            link: None,
-        },
-        Event {
-            kind: Kind::Exit,
-            name: Name::LineEnding,
-            point: point(1),
-            link: None,
-        },
-    ];
-    let mut context = context_with_tail(&events, b"x", positioned_paragraph());
-    let parent = JsxTag {
-        name: Some("parent".into()),
-        attributes: vec![],
-        close: false,
-        self_closing: false,
-        start: Point::new(1, 1, 0),
-        end: Point::new(1, 1, 0),
-    };
-    context.jsx_tag = Some(parent.clone());
-    context.jsx_tag_stack.push(parent);
-    let error = exit(&mut context).expect_err("the line ending crosses a JSX boundary");
-    assert_eq!(*error.rule_id, "end-tag-mismatch");
-}
-
-#[test]
 fn preserves_preceding_content_when_inline_code_info_has_no_text_prefix_node() {
     let bytes = b"rust:`code`";
     let events = event_pair(Name::CodeText, 5, 9);
@@ -614,7 +341,7 @@ fn handles_checked_items_without_a_text_prefix() {
         checked: Some(true),
     });
     let mut context = context_with_tail(&events, b"content", item);
-    on_exit_list_item(&mut context).expect("exit checked list item");
+    on_exit_list_item(&mut context);
 
     let root_children = context.trees[0].0.children().unwrap();
     let item_children = root_children[0].children().unwrap();
@@ -642,7 +369,7 @@ fn skips_checkbox_prefix_adjustment_for_nontext_paragraph_content() {
         checked: Some(true),
     });
     let mut context = context_with_tail(&events, b"code!", item);
-    on_exit_list_item(&mut context).expect("exit checked list item");
+    on_exit_list_item(&mut context);
 }
 
 #[test]
@@ -661,7 +388,7 @@ fn skips_checkbox_prefix_adjustment_for_nonparagraph_task_content() {
         checked: Some(true),
     });
     let mut context = context_with_tail(&events, b"x", item);
-    on_exit_list_item(&mut context).expect("exit checked list item");
+    on_exit_list_item(&mut context);
 }
 
 #[test]
@@ -669,7 +396,7 @@ fn skips_checkbox_prefix_adjustment_for_unexpected_tail_nodes() {
     let events = event_pair(Name::ListItem, 0, 0);
     let mut context = context_with_tail(&events, b"", positioned_paragraph());
 
-    on_exit_list_item(&mut context).expect("exit list item event");
+    on_exit_list_item(&mut context);
 
     assert_eq!(context.trees[0].0.children().unwrap().len(), 1);
 }

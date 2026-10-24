@@ -36,9 +36,7 @@ fn include_literal_with_line_break(node: &Node, regex: &Regex) -> bool {
         Node::InlineCode(x) => regex.is_match(&x.value),
         Node::InlineMath(x) => regex.is_match(&x.value),
         Node::Math(x) => regex.is_match(&x.value),
-        Node::MdxFlowExpression(x) => regex.is_match(&x.value),
-        Node::MdxTextExpression(x) => regex.is_match(&x.value),
-        Node::MdxjsEsm(x) => regex.is_match(&x.value),
+
         Node::Text(x) => regex.is_match(&x.value),
         Node::Frontmatter(x) => regex.is_match(&x.value),
         // Anything else.
@@ -67,8 +65,8 @@ mod tests {
     use crate::{
         markdown::{state::State, Options},
         mdast::{
-            Break, Code, Frontmatter, Heading, Html, Image, InlineCode, InlineMath, Math,
-            MdxFlowExpression, MdxTextExpression, MdxjsEsm, Node, Text,
+            Break, Code, Frontmatter, Heading, Html, Image, InlineCode, InlineMath, Math, Node,
+            Text,
         },
     };
     use alloc::string::String;
@@ -125,21 +123,6 @@ mod tests {
                 value: literal("a\nb"),
                 position: None,
                 meta: None,
-            }),
-            Node::MdxFlowExpression(MdxFlowExpression {
-                value: literal("a\nb"),
-                position: None,
-                stops: vec![],
-            }),
-            Node::MdxTextExpression(MdxTextExpression {
-                value: literal("a\nb"),
-                position: None,
-                stops: vec![],
-            }),
-            Node::MdxjsEsm(MdxjsEsm {
-                value: literal("a\nb"),
-                position: None,
-                stops: vec![],
             }),
             Node::Text(Text {
                 value: literal("a\nb"),

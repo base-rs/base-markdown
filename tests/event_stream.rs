@@ -126,7 +126,7 @@ fn extended_metadata_and_rendering_options_roundtrip() {
         assert_eq!(output, expected, "{source:?}");
     }
     let options = Options {
-        parse: core_markdown::ParseOptions::mdx(),
+        parse: core_markdown::ParseOptions::default(),
         ..Options::default()
     };
     for source in [
@@ -222,13 +222,6 @@ fn consumers_reject_broken_streams_and_propagate_writer_errors() {
     .unwrap_err();
     assert!(matches!(error, StreamError::Write(_)));
     assert!(!error.to_string().is_empty());
-    let mut options = Options::default();
-    options.parse.constructs.mdx_expression_text = true;
-    let mut events = EventParser::new("{", &options.parse).unwrap();
-    let error = events.find_map(Result::err).unwrap();
-    assert!(events.next().is_none());
-    assert!(matches!(error, StreamError::Parse(_)));
-    assert!(error.to_string().contains("Unexpected end of file"));
 }
 
 #[test]
@@ -420,4 +413,78 @@ fn inline_workspace_switches_between_compact_and_grammar_regions() {
         render_events(source, document.events(), &options.compile, &mut rendered).unwrap();
         assert_eq!(rendered, expected);
     }
+}
+
+#[test]
+fn javascript_like_input_is_ordinary_markdown() {
+    let cases = [
+        ("{unclosed", "<p>{unclosed</p>"),
+        (
+            "import Component from 'component'\n\nexport {value}",
+            "<p>import Component from 'component'</p>\n<p>export {value}</p>",
+        ),
+        (
+            "text {value} *markdown*",
+            "<p>text {value} <em>markdown</em></p>",
+        ),
+        (
+            "text <Widget title=\"demo\" /> *tail*",
+            "<p>text &lt;Widget title=&quot;demo&quot; /&gt; <em>tail</em></p>",
+        ),
+    ];
+    for mut options in [Options::default(), Options::gfm()] {
+        for grammar in [false, true] {
+            // Disabling this unrelated construct selects grammar preparation.
+            options.parse.constructs.autolink = !grammar;
+            for (source, expected) in cases {
+                assert_eq!(
+                    core_markdown::to_html_with_options(source, &options).unwrap(),
+                    expected
+                );
+                let document = Document::parse(source, &options.parse).unwrap();
+                let mut output = String::new();
+                render_events(
+                    document.source(),
+                    document.events(),
+                    &options.compile,
+                    &mut output,
+                )
+                .unwrap();
+                assert_eq!(output, expected);
+                let tree = core_markdown::to_mdast(source, &options.parse).unwrap();
+                assert_eq!(
+                    tree.render_with(&mut core_markdown::HtmlRenderer::new()),
+                    expected
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn custom_producer_diagnostics_reach_both_consumers() {
+    use core_markdown::{message::Message, stream::StreamError};
+    let diagnostic = Message {
+        place: None,
+        reason: "custom input failed".into(),
+        rule_id: Box::new("example".into()),
+        source: Box::new("custom-producer".into()),
+    };
+    let mut output = String::new();
+    let error = render_events(
+        "",
+        [Err(StreamError::from(diagnostic.clone()))],
+        &Options::default().compile,
+        &mut output,
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "custom input failed (custom-producer:example)"
+    );
+    let mut builder = AstBuilder::new();
+    let mut events = core::iter::once(Err(StreamError::from(diagnostic.clone())));
+    let error = builder.consume(&mut events, 1).unwrap_err();
+    assert!(matches!(error, StreamError::Parse(message) if message == diagnostic));
+    assert!(builder.finish("").is_err());
 }

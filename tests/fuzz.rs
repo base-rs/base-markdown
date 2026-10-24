@@ -129,12 +129,12 @@ fn fuzz() -> Result<(), message::Message> {
         core_markdown::to_html_with_options(
             "<",
             &core_markdown::Options {
-                parse: core_markdown::ParseOptions::mdx(),
+                parse: core_markdown::ParseOptions::default(),
                 ..Default::default()
             }
         ),
         Ok("<p>&lt;</p>".to_string()),
-        "12: mdx: handle invalid mdx without panic (GH-26)"
+        "12: incomplete HTML without panic (GH-26)"
     );
 
     Ok(())

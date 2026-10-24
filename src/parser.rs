@@ -4,11 +4,9 @@
 
 //! Turn bytes of markdown into events.
 use crate::event::{Event, Point};
-use crate::message;
 use crate::state::{Name as StateName, State};
 use crate::subtokenize::subtokenize;
 use crate::tokenizer::Tokenizer;
-use crate::util::location::Location;
 use crate::ParseOptions;
 use alloc::{string::String, vec, vec::Vec};
 
@@ -18,8 +16,6 @@ use alloc::{string::String, vec, vec::Vec};
 /// It also references the input value as bytes (`u8`).
 #[derive(Debug)]
 pub struct ParseState<'a> {
-    /// Configuration.
-    pub location: Option<Location>,
     /// Configuration.
     pub options: &'a ParseOptions,
     /// List of chars.
@@ -33,20 +29,12 @@ pub struct ParseState<'a> {
 /// Turn a string of markdown into events.
 ///
 /// Passes the bytes back so the compiler can access the source.
-pub fn prepare<'a>(
-    value: &'a str,
-    options: &'a ParseOptions,
-) -> Result<(Vec<Event>, ParseState<'a>), message::Message> {
+pub fn prepare<'a>(value: &'a str, options: &'a ParseOptions) -> (Vec<Event>, ParseState<'a>) {
     let bytes = value.as_bytes();
 
     let mut parse_state = ParseState {
         options,
         bytes,
-        location: if options.mdx_esm_parse.is_some() || options.mdx_expression_parse.is_some() {
-            Some(Location::new(bytes))
-        } else {
-            None
-        },
         definitions: vec![],
         gfm_footnote_definitions: vec![],
     };
@@ -64,30 +52,27 @@ pub fn prepare<'a>(
         (parse_state.bytes.len(), 0),
         State::Next(StateName::DocumentStart),
     );
-    let mut result = tokenizer.flush(state, true)?;
+    let mut result = tokenizer.flush(state, true);
     let events = tokenizer.events;
 
     parse_state
         .gfm_footnote_definitions
         .append(&mut result.gfm_footnote_definitions);
     parse_state.definitions.append(&mut result.definitions);
-    Ok((events, parse_state))
+    (events, parse_state)
 }
 
 /// Resolve all inline tokens for the legacy mdast compiler.
-pub fn parse<'a>(
-    value: &'a str,
-    options: &'a ParseOptions,
-) -> Result<(Vec<Event>, ParseState<'a>), message::Message> {
-    let (mut events, mut parse_state) = prepare(value, options)?;
+pub fn parse<'a>(value: &'a str, options: &'a ParseOptions) -> (Vec<Event>, ParseState<'a>) {
+    let (mut events, mut parse_state) = prepare(value, options);
     loop {
-        let mut result = subtokenize(&mut events, &parse_state, None)?;
+        let mut result = subtokenize(&mut events, &parse_state, None);
         parse_state
             .gfm_footnote_definitions
             .append(&mut result.gfm_footnote_definitions);
         parse_state.definitions.append(&mut result.definitions);
         if result.done {
-            return Ok((events, parse_state));
+            return (events, parse_state);
         }
     }
 }

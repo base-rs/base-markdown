@@ -14,7 +14,6 @@
 //!
 //! [`attempt`]: Tokenizer::attempt
 use crate::event::{Content, Event, Kind, Link, Name, Point, VOID_EVENTS};
-use crate::message;
 use crate::parser::ParseState;
 use crate::resolve::{call as call_resolve, Name as ResolveName};
 use crate::state::{call, Name as StateName, State};
@@ -239,9 +238,6 @@ pub struct TokenizeState<'a> {
     /// List of defined GFM footnote definition identifiers.
     pub gfm_footnote_definitions: Vec<String>,
 
-    // Last error message provided at an EOF of an expression.
-    pub mdx_last_parse_error: Option<(String, String, String)>,
-
     /// Whether to connect events.
     pub connect: bool,
     /// Marker.
@@ -299,8 +295,6 @@ pub struct Tokenizer<'a> {
     consumed: bool,
     /// Stack of how to handle attempts.
     attempts: Vec<Attempt>,
-    /// Rare fatal diagnostic, kept out of the copyable state returned for every parser step.
-    error: Option<Box<message::Message>>,
     /// Current byte.
     pub current: Option<u8>,
     /// Previous byte.
@@ -384,7 +378,6 @@ impl<'a> Tokenizer<'a> {
             line_start: point.clone(),
             consumed: true,
             attempts: vec![],
-            error: None,
             point,
             stack: vec![],
             events: vec![],
@@ -401,7 +394,7 @@ impl<'a> Tokenizer<'a> {
                 document_at_first_paragraph_of_list_item: false,
                 definitions: vec![],
                 gfm_footnote_definitions: vec![],
-                mdx_last_parse_error: None,
+
                 end: 0,
                 html_flow_indent: 0,
                 html_flow_blank_lines: 0,
@@ -688,12 +681,6 @@ impl<'a> Tokenizer<'a> {
         self.events.push(event);
     }
 
-    /// Retain a fatal diagnostic while returning a small, copyable error state.
-    pub fn error(&mut self, message: message::Message) -> State {
-        self.error = Some(Box::new(message));
-        State::Error
-    }
-
     /// Capture the tokenizer progress.
     fn capture(&mut self) -> Progress {
         Progress {
@@ -776,11 +763,11 @@ impl<'a> Tokenizer<'a> {
     }
 
     /// Flush.
-    pub fn flush(&mut self, state: State, resolve: bool) -> Result<Subresult, message::Message> {
+    pub fn flush(&mut self, state: State, resolve: bool) -> Subresult {
         let to = (self.point.index, self.point.vs);
         let state = push_impl(self, to, to, state, true);
 
-        state.to_result(self.error.take())?;
+        state.assert_ok();
 
         let mut value = Subresult {
             done: false,
@@ -804,7 +791,7 @@ impl<'a> Tokenizer<'a> {
             self.map.consume(&mut self.events);
         }
 
-        Ok(value)
+        value
     }
 }
 
@@ -856,7 +843,6 @@ fn push_impl(
 
     loop {
         match state {
-            State::Error => break,
             State::Ok | State::Nok => {
                 if let Some(attempt) = tokenizer.attempts.pop() {
                     if attempt.kind == AttemptKind::Check || matches!(state, State::Nok) {
@@ -964,7 +950,7 @@ fn push_impl(
     if flush {
         debug_assert!(
             match state {
-                State::Ok | State::Error => true,
+                State::Ok => true,
                 _ => unreachable!("flushing a tokenizer must produce a terminal state"),
             },
             "must be ok"
@@ -972,7 +958,7 @@ fn push_impl(
     } else {
         debug_assert!(
             match state {
-                State::Next(_) | State::Error => true,
+                State::Next(_) => true,
                 _ => unreachable!("continuing a tokenizer must produce a next state"),
             },
             "must have a next state"
@@ -1050,7 +1036,7 @@ mod tests {
     #[test]
     fn scans_data_runs_within_chunk_and_virtual_space_boundaries() {
         let options = ParseOptions::default();
-        let (_events, parse_state) = parse("ab\tdef\r\nxyz", &options).unwrap();
+        let (_events, parse_state) = parse("ab\tdef\r\nxyz", &options);
         let mut tokenizer = make_tokenizer(&parse_state);
         tokenizer.tokenize_state.markers = 1 << b'*';
         tokenizer.enter(Name::Data);
@@ -1063,7 +1049,7 @@ mod tests {
         assert_eq!(tokenizer.point.vs, 1);
         assert_eq!(tokenizer.point.column, 4);
         let state = tokenizer.push((2, 1), (parse_state.bytes.len(), 0), state);
-        tokenizer.flush(state, true).unwrap();
+        tokenizer.flush(state, true);
         assert_eq!(tokenizer.point.line, 2);
         assert_eq!(tokenizer.point.column, 4);
         assert_eq!(tokenizer.previous, Some(b'z'));
@@ -1079,8 +1065,7 @@ mod tests {
             .expect("install test logger");
 
         let options = ParseOptions::default();
-        let (events, parse_state) = parse("first paragraph\nsecond line", &options)
-            .expect("parse Markdown with trace logging enabled");
+        let (events, parse_state) = parse("first paragraph\nsecond line", &options);
 
         assert!(!events.is_empty());
         assert_eq!(parse_state.bytes, b"first paragraph\nsecond line");
@@ -1093,7 +1078,7 @@ mod tests {
             ..ParseOptions::default()
         };
 
-        let (_events, parse_state) = parse(" \n", &options).expect("parse test input");
+        let (_events, parse_state) = parse(" \n", &options);
         let mut tokenizer = make_tokenizer(&parse_state);
         tokenizer.enter(Name::HtmlFlowData);
         tokenizer.current = Some(b' ');
@@ -1109,7 +1094,7 @@ mod tests {
         );
         assert_eq!(tokenizer.tokenize_state.html_flow_blank_lines, 0);
 
-        let (_events, parse_state) = parse(" x", &options).expect("parse test input");
+        let (_events, parse_state) = parse(" x", &options);
         let mut tokenizer = make_tokenizer(&parse_state);
         tokenizer.enter(Name::HtmlFlowData);
         tokenizer.current = Some(b' ');
@@ -1125,7 +1110,7 @@ mod tests {
         );
         assert_eq!(tokenizer.tokenize_state.html_flow_blank_lines, 0);
 
-        let (_events, parse_state) = parse("x", &options).expect("parse test input");
+        let (_events, parse_state) = parse("x", &options);
         let mut tokenizer = make_tokenizer(&parse_state);
         tokenizer.current = Some(b'x');
         tokenizer.tokenize_state.html_flow_blank_lines = 1;
@@ -1153,7 +1138,7 @@ mod tests {
             (COMPLETE, State::Next(StateName::HtmlFlowBlankLinesCheck)),
             (COMMENT, State::Next(StateName::BlankLineStart)),
         ] {
-            let (_events, parse_state) = parse("\n", &options).expect("parse test input");
+            let (_events, parse_state) = parse("\n", &options);
             let mut tokenizer = make_tokenizer(&parse_state);
             tokenizer.current = Some(b'\n');
             tokenizer.consumed = false;
@@ -1166,7 +1151,7 @@ mod tests {
     #[test]
     fn frontmatter_after_accepts_eof() {
         let options = ParseOptions::default();
-        let (_events, parse_state) = parse("\n", &options).expect("parse test input");
+        let (_events, parse_state) = parse("\n", &options);
         let mut tokenizer = make_tokenizer(&parse_state);
         tokenizer.current = Some(b'\n');
         tokenizer.expect(Some(b'\n'));

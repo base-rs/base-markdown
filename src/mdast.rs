@@ -27,10 +27,6 @@ pub use code_fence::CodeFence;
 mod frontmatter;
 pub use frontmatter::Frontmatter;
 
-/// MDX: relative byte index into a string, to an absolute byte index into the
-/// whole document.
-pub type Stop = (usize, usize);
-
 /// Explicitness of a reference.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(
@@ -197,16 +193,13 @@ pub enum Node {
     Blockquote(Blockquote),
     /// Footnote definition.
     FootnoteDefinition(FootnoteDefinition),
-    /// MDX: JSX element (container).
-    MdxJsxFlowElement(MdxJsxFlowElement),
+
     /// List.
     List(List),
 
     // Frontmatter:
     /// Language-agnostic frontmatter with an optional format hint.
     Frontmatter(Frontmatter),
-    /// MDX.js ESM.
-    MdxjsEsm(MdxjsEsm),
 
     // Phrasing:
     /// Break.
@@ -219,8 +212,7 @@ pub enum Node {
     Delete(Delete),
     /// Emphasis.
     Emphasis(Emphasis),
-    // MDX: expression (text).
-    MdxTextExpression(MdxTextExpression),
+
     /// Footnote reference.
     FootnoteReference(FootnoteReference),
     /// Html (phrasing).
@@ -229,8 +221,7 @@ pub enum Node {
     Image(Image),
     /// Image reference.
     ImageReference(ImageReference),
-    // MDX: JSX element (text).
-    MdxJsxTextElement(MdxJsxTextElement),
+
     /// Link.
     Link(Link),
     /// Link reference.
@@ -245,8 +236,7 @@ pub enum Node {
     Code(Code),
     /// Math (flow).
     Math(Math),
-    // MDX: expression (flow).
-    MdxFlowExpression(MdxFlowExpression),
+
     /// Heading.
     Heading(Heading),
     /// Html (flow).
@@ -283,28 +273,28 @@ impl fmt::Debug for Node {
             Node::Fragment(x) => x.fmt(f),
             Node::Blockquote(x) => x.fmt(f),
             Node::FootnoteDefinition(x) => x.fmt(f),
-            Node::MdxJsxFlowElement(x) => x.fmt(f),
+
             Node::List(x) => x.fmt(f),
-            Node::MdxjsEsm(x) => x.fmt(f),
+
             Node::Frontmatter(x) => x.fmt(f),
             Node::Break(x) => x.fmt(f),
             Node::InlineCode(x) => x.fmt(f),
             Node::InlineMath(x) => x.fmt(f),
             Node::Delete(x) => x.fmt(f),
             Node::Emphasis(x) => x.fmt(f),
-            Node::MdxTextExpression(x) => x.fmt(f),
+
             Node::FootnoteReference(x) => x.fmt(f),
             Node::Html(x) => x.fmt(f),
             Node::Image(x) => x.fmt(f),
             Node::ImageReference(x) => x.fmt(f),
-            Node::MdxJsxTextElement(x) => x.fmt(f),
+
             Node::Link(x) => x.fmt(f),
             Node::LinkReference(x) => x.fmt(f),
             Node::Strong(x) => x.fmt(f),
             Node::Text(x) => x.fmt(f),
             Node::Code(x) => x.fmt(f),
             Node::Math(x) => x.fmt(f),
-            Node::MdxFlowExpression(x) => x.fmt(f),
+
             Node::Heading(x) => x.fmt(f),
             Node::Table(x) => x.fmt(f),
             Node::ThematicBreak(x) => x.fmt(f),
@@ -331,11 +321,11 @@ impl ToString for Node {
             Node::Fragment(x) => children_to_string(&x.children),
             Node::Blockquote(x) => children_to_string(&x.children),
             Node::FootnoteDefinition(x) => children_to_string(&x.children),
-            Node::MdxJsxFlowElement(x) => children_to_string(&x.children),
+
             Node::List(x) => children_to_string(&x.children),
             Node::Delete(x) => children_to_string(&x.children),
             Node::Emphasis(x) => children_to_string(&x.children),
-            Node::MdxJsxTextElement(x) => children_to_string(&x.children),
+
             Node::Link(x) => children_to_string(&x.children),
             Node::LinkReference(x) => children_to_string(&x.children),
             Node::Strong(x) => children_to_string(&x.children),
@@ -347,16 +337,14 @@ impl ToString for Node {
             Node::Paragraph(x) => children_to_string(&x.children),
 
             // Literals.
-            Node::MdxjsEsm(x) => x.value.clone(),
             Node::Frontmatter(x) => x.value.clone(),
             Node::InlineCode(x) => x.value.clone(),
             Node::InlineMath(x) => x.value.clone(),
-            Node::MdxTextExpression(x) => x.value.clone(),
+
             Node::Html(x) => x.value.clone(),
             Node::Text(x) => x.value.clone(),
             Node::Code(x) => x.value.clone(),
             Node::Math(x) => x.value.clone(),
-            Node::MdxFlowExpression(x) => x.value.clone(),
 
             // Voids.
             Node::Break(_)
@@ -390,8 +378,7 @@ impl Node {
             Node::TableRow(x) => Some(&x.children),
             Node::TableCell(x) => Some(&x.children),
             Node::Delete(x) => Some(&x.children),
-            Node::MdxJsxFlowElement(x) => Some(&x.children),
-            Node::MdxJsxTextElement(x) => Some(&x.children),
+
             // Non-parent.
             _ => None,
         }
@@ -416,8 +403,7 @@ impl Node {
             Node::TableRow(x) => Some(&mut x.children),
             Node::TableCell(x) => Some(&mut x.children),
             Node::Delete(x) => Some(&mut x.children),
-            Node::MdxJsxFlowElement(x) => Some(&mut x.children),
-            Node::MdxJsxTextElement(x) => Some(&mut x.children),
+
             // Non-parent.
             _ => None,
         }
@@ -430,28 +416,28 @@ impl Node {
             Node::Fragment(_) => None,
             Node::Blockquote(x) => x.position.as_ref(),
             Node::FootnoteDefinition(x) => x.position.as_ref(),
-            Node::MdxJsxFlowElement(x) => x.position.as_ref(),
+
             Node::List(x) => x.position.as_ref(),
-            Node::MdxjsEsm(x) => x.position.as_ref(),
+
             Node::Frontmatter(x) => x.position.as_ref(),
             Node::Break(x) => x.position.as_ref(),
             Node::InlineCode(x) => x.position.as_ref(),
             Node::InlineMath(x) => x.position.as_ref(),
             Node::Delete(x) => x.position.as_ref(),
             Node::Emphasis(x) => x.position.as_ref(),
-            Node::MdxTextExpression(x) => x.position.as_ref(),
+
             Node::FootnoteReference(x) => x.position.as_ref(),
             Node::Html(x) => x.position.as_ref(),
             Node::Image(x) => x.position.as_ref(),
             Node::ImageReference(x) => x.position.as_ref(),
-            Node::MdxJsxTextElement(x) => x.position.as_ref(),
+
             Node::Link(x) => x.position.as_ref(),
             Node::LinkReference(x) => x.position.as_ref(),
             Node::Strong(x) => x.position.as_ref(),
             Node::Text(x) => x.position.as_ref(),
             Node::Code(x) => x.position.as_ref(),
             Node::Math(x) => x.position.as_ref(),
-            Node::MdxFlowExpression(x) => x.position.as_ref(),
+
             Node::Heading(x) => x.position.as_ref(),
             Node::Table(x) => x.position.as_ref(),
             Node::ThematicBreak(x) => x.position.as_ref(),
@@ -469,28 +455,28 @@ impl Node {
             Node::Fragment(_) => None,
             Node::Blockquote(x) => x.position.as_mut(),
             Node::FootnoteDefinition(x) => x.position.as_mut(),
-            Node::MdxJsxFlowElement(x) => x.position.as_mut(),
+
             Node::List(x) => x.position.as_mut(),
-            Node::MdxjsEsm(x) => x.position.as_mut(),
+
             Node::Frontmatter(x) => x.position.as_mut(),
             Node::Break(x) => x.position.as_mut(),
             Node::InlineCode(x) => x.position.as_mut(),
             Node::InlineMath(x) => x.position.as_mut(),
             Node::Delete(x) => x.position.as_mut(),
             Node::Emphasis(x) => x.position.as_mut(),
-            Node::MdxTextExpression(x) => x.position.as_mut(),
+
             Node::FootnoteReference(x) => x.position.as_mut(),
             Node::Html(x) => x.position.as_mut(),
             Node::Image(x) => x.position.as_mut(),
             Node::ImageReference(x) => x.position.as_mut(),
-            Node::MdxJsxTextElement(x) => x.position.as_mut(),
+
             Node::Link(x) => x.position.as_mut(),
             Node::LinkReference(x) => x.position.as_mut(),
             Node::Strong(x) => x.position.as_mut(),
             Node::Text(x) => x.position.as_mut(),
             Node::Code(x) => x.position.as_mut(),
             Node::Math(x) => x.position.as_mut(),
-            Node::MdxFlowExpression(x) => x.position.as_mut(),
+
             Node::Heading(x) => x.position.as_mut(),
             Node::Table(x) => x.position.as_mut(),
             Node::ThematicBreak(x) => x.position.as_mut(),
@@ -508,28 +494,28 @@ impl Node {
             Node::Fragment(_) => (),
             Node::Blockquote(x) => x.position = position,
             Node::FootnoteDefinition(x) => x.position = position,
-            Node::MdxJsxFlowElement(x) => x.position = position,
+
             Node::List(x) => x.position = position,
-            Node::MdxjsEsm(x) => x.position = position,
+
             Node::Frontmatter(x) => x.position = position,
             Node::Break(x) => x.position = position,
             Node::InlineCode(x) => x.position = position,
             Node::InlineMath(x) => x.position = position,
             Node::Delete(x) => x.position = position,
             Node::Emphasis(x) => x.position = position,
-            Node::MdxTextExpression(x) => x.position = position,
+
             Node::FootnoteReference(x) => x.position = position,
             Node::Html(x) => x.position = position,
             Node::Image(x) => x.position = position,
             Node::ImageReference(x) => x.position = position,
-            Node::MdxJsxTextElement(x) => x.position = position,
+
             Node::Link(x) => x.position = position,
             Node::LinkReference(x) => x.position = position,
             Node::Strong(x) => x.position = position,
             Node::Text(x) => x.position = position,
             Node::Code(x) => x.position = position,
             Node::Math(x) => x.position = position,
-            Node::MdxFlowExpression(x) => x.position = position,
+
             Node::Heading(x) => x.position = position,
             Node::Table(x) => x.position = position,
             Node::ThematicBreak(x) => x.position = position,
@@ -742,65 +728,7 @@ impl Node {
     }
 }
 
-/// MDX: attribute content.
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(untagged)
-)]
-pub enum AttributeContent {
-    /// JSX expression.
-    ///
-    /// ```markdown
-    /// > | <a {...b} />
-    ///        ^^^^^^
-    /// ```
-    Expression(MdxJsxExpressionAttribute),
-    /// JSX property.
-    ///
-    /// ```markdown
-    /// > | <a b />
-    ///        ^
-    /// ```
-    Property(MdxJsxAttribute),
-}
 //
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(tag = "type", rename = "mdxJsxAttributeValueExpression")
-)]
-pub struct AttributeValueExpression {
-    pub value: String,
-    #[cfg_attr(feature = "serde", serde(rename = "_markdownRsStops"))]
-    pub stops: Vec<Stop>,
-}
-
-/// MDX: attribute value.
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(untagged)
-)]
-pub enum AttributeValue {
-    /// Expression value.
-    ///
-    /// ```markdown
-    /// > | <a b={c} />
-    ///          ^^^
-    /// ```
-    Expression(AttributeValueExpression),
-    /// Static value.
-    ///
-    /// ```markdown
-    /// > | <a b="c" />
-    ///          ^^^
-    /// ```
-    Literal(String),
-}
 
 /// A transparent container for a sequence of AST nodes.
 ///
@@ -1391,170 +1319,6 @@ pub struct Delete {
     pub position: Option<Position>,
 }
 
-/// MDX: ESM.
-///
-/// ```markdown
-/// > | import a from 'b'
-///     ^^^^^^^^^^^^^^^^^
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct MdxjsEsm {
-    // Literal.
-    /// Content model.
-    pub value: String,
-    /// Positional info.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub position: Option<Position>,
-
-    // Custom data on where each slice of `value` came from.
-    #[cfg_attr(feature = "serde", serde(rename = "_markdownRsStops"))]
-    pub stops: Vec<Stop>,
-}
-
-/// MDX: expression (flow).
-///
-/// ```markdown
-/// > | {a}
-///     ^^^
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct MdxFlowExpression {
-    // Literal.
-    /// Content model.
-    pub value: String,
-    /// Positional info.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub position: Option<Position>,
-
-    // Custom data on where each slice of `value` came from.
-    #[cfg_attr(feature = "serde", serde(rename = "_markdownRsStops"))]
-    pub stops: Vec<Stop>,
-}
-
-/// MDX: expression (text).
-///
-/// ```markdown
-/// > | a {b}
-///       ^^^
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct MdxTextExpression {
-    // Literal.
-    /// Content model.
-    pub value: String,
-    /// Positional info.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub position: Option<Position>,
-
-    // Custom data on where each slice of `value` came from.
-    #[cfg_attr(feature = "serde", serde(rename = "_markdownRsStops"))]
-    pub stops: Vec<Stop>,
-}
-
-/// MDX: JSX element (container).
-///
-/// ```markdown
-/// > | <a />
-///     ^^^^^
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(rename_all = "camelCase")
-)]
-pub struct MdxJsxFlowElement {
-    // Parent.
-    /// Content model.
-    pub children: Vec<Node>,
-    /// Positional info.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub position: Option<Position>,
-    // JSX element.
-    /// Name.
-    ///
-    /// Fragments have no name.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub name: Option<String>,
-    /// Attributes.
-    pub attributes: Vec<AttributeContent>,
-}
-
-/// MDX: JSX element (text).
-///
-/// ```markdown
-/// > | <a />.
-///     ^^^^^
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(rename_all = "camelCase")
-)]
-pub struct MdxJsxTextElement {
-    // Parent.
-    /// Content model.
-    pub children: Vec<Node>,
-    /// Positional info.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub position: Option<Position>,
-    // JSX element.
-    /// Name.
-    ///
-    /// Fragments have no name.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub name: Option<String>,
-    /// Attributes.
-    pub attributes: Vec<AttributeContent>,
-}
-
-/// MDX: JSX attribute.
-///
-/// ```markdown
-/// > | <a b />
-///        ^
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(tag = "type", rename = "mdxJsxAttribute")
-)]
-pub struct MdxJsxAttribute {
-    // Void.
-    /// Positional info.
-    // pub position: Option<Position>,
-    /// Key.
-    pub name: String,
-    /// Value.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub value: Option<AttributeValue>,
-}
-
-/// MDX: JSX expression attribute.
-///
-/// ```markdown
-/// > | <a {...b} />
-///        ^
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(tag = "type", rename = "mdxJsxExpressionAttribute")
-)]
-pub struct MdxJsxExpressionAttribute {
-    /// Value.
-    pub value: String,
-    /// Stops
-    #[cfg_attr(feature = "serde", serde(rename = "_markdownRsStops"))]
-    pub stops: Vec<Stop>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1714,84 +1478,6 @@ mod tests {
         assert_eq!(
             format!("{node:?}"),
             "Html { value: \"a\", position: Some(1:1-1:2 (0-1)) }",
-            "should support `position_set`"
-        );
-    }
-
-    #[test]
-    fn mdx_text_expression() {
-        let mut node = Node::MdxTextExpression(MdxTextExpression {
-            value: "a".into(),
-            stops: vec![],
-            position: None,
-        });
-
-        assert_eq!(
-            format!("{node:?}"),
-            "MdxTextExpression { value: \"a\", position: None, stops: [] }",
-            "should support `Debug`"
-        );
-        assert_eq!(node.to_string(), "a", "should support `ToString`");
-        assert_eq!(node.children_mut(), None, "should support `children_mut`");
-        assert_eq!(node.children(), None, "should support `children`");
-        assert_eq!(node.position(), None, "should support `position`");
-        assert_eq!(node.position_mut(), None, "should support `position`");
-        node.position_set(Some(Position::new(1, 1, 0, 1, 2, 1)));
-        assert_eq!(
-            format!("{node:?}"),
-            "MdxTextExpression { value: \"a\", position: Some(1:1-1:2 (0-1)), stops: [] }",
-            "should support `position_set`"
-        );
-    }
-
-    #[test]
-    fn mdx_flow_expression() {
-        let mut node = Node::MdxFlowExpression(MdxFlowExpression {
-            value: "a".into(),
-            stops: vec![],
-            position: None,
-        });
-
-        assert_eq!(
-            format!("{node:?}"),
-            "MdxFlowExpression { value: \"a\", position: None, stops: [] }",
-            "should support `Debug`"
-        );
-        assert_eq!(node.to_string(), "a", "should support `ToString`");
-        assert_eq!(node.children_mut(), None, "should support `children_mut`");
-        assert_eq!(node.children(), None, "should support `children`");
-        assert_eq!(node.position(), None, "should support `position`");
-        assert_eq!(node.position_mut(), None, "should support `position`");
-        node.position_set(Some(Position::new(1, 1, 0, 1, 2, 1)));
-        assert_eq!(
-            format!("{node:?}"),
-            "MdxFlowExpression { value: \"a\", position: Some(1:1-1:2 (0-1)), stops: [] }",
-            "should support `position_set`"
-        );
-    }
-
-    #[test]
-    fn mdxjs_esm() {
-        let mut node = Node::MdxjsEsm(MdxjsEsm {
-            value: "a".into(),
-            stops: vec![],
-            position: None,
-        });
-
-        assert_eq!(
-            format!("{node:?}"),
-            "MdxjsEsm { value: \"a\", position: None, stops: [] }",
-            "should support `Debug`"
-        );
-        assert_eq!(node.to_string(), "a", "should support `ToString`");
-        assert_eq!(node.children_mut(), None, "should support `children_mut`");
-        assert_eq!(node.children(), None, "should support `children`");
-        assert_eq!(node.position(), None, "should support `position`");
-        assert_eq!(node.position_mut(), None, "should support `position`");
-        node.position_set(Some(Position::new(1, 1, 0, 1, 2, 1)));
-        assert_eq!(
-            format!("{node:?}"),
-            "MdxjsEsm { value: \"a\", position: Some(1:1-1:2 (0-1)), stops: [] }",
             "should support `position_set`"
         );
     }
@@ -2398,68 +2084,6 @@ mod tests {
         assert_eq!(
             format!("{node:?}"),
             "FootnoteDefinition { children: [], position: Some(1:1-1:2 (0-1)), identifier: \"a\", label: None }",
-            "should support `position_set`"
-        );
-    }
-
-    #[test]
-    fn mdx_jsx_flow_element() {
-        let mut node = Node::MdxJsxFlowElement(MdxJsxFlowElement {
-            position: None,
-            name: None,
-            attributes: vec![],
-            children: vec![],
-        });
-
-        assert_eq!(
-            format!("{node:?}"),
-            "MdxJsxFlowElement { children: [], position: None, name: None, attributes: [] }",
-            "should support `Debug`"
-        );
-        assert_eq!(node.to_string(), "", "should support `ToString`");
-        assert_eq!(
-            node.children_mut(),
-            Some(&mut vec![]),
-            "should support `children_mut`"
-        );
-        assert_eq!(node.children(), Some(&vec![]), "should support `children`");
-        assert_eq!(node.position(), None, "should support `position`");
-        assert_eq!(node.position_mut(), None, "should support `position`");
-        node.position_set(Some(Position::new(1, 1, 0, 1, 2, 1)));
-        assert_eq!(
-            format!("{node:?}"),
-            "MdxJsxFlowElement { children: [], position: Some(1:1-1:2 (0-1)), name: None, attributes: [] }",
-            "should support `position_set`"
-        );
-    }
-
-    #[test]
-    fn mdx_jsx_text_element() {
-        let mut node = Node::MdxJsxTextElement(MdxJsxTextElement {
-            position: None,
-            name: None,
-            attributes: vec![],
-            children: vec![],
-        });
-
-        assert_eq!(
-            format!("{node:?}"),
-            "MdxJsxTextElement { children: [], position: None, name: None, attributes: [] }",
-            "should support `Debug`"
-        );
-        assert_eq!(node.to_string(), "", "should support `ToString`");
-        assert_eq!(
-            node.children_mut(),
-            Some(&mut vec![]),
-            "should support `children_mut`"
-        );
-        assert_eq!(node.children(), Some(&vec![]), "should support `children`");
-        assert_eq!(node.position(), None, "should support `position`");
-        assert_eq!(node.position_mut(), None, "should support `position`");
-        node.position_set(Some(Position::new(1, 1, 0, 1, 2, 1)));
-        assert_eq!(
-            format!("{node:?}"),
-            "MdxJsxTextElement { children: [], position: Some(1:1-1:2 (0-1)), name: None, attributes: [] }",
             "should support `position_set`"
         );
     }

@@ -22,8 +22,13 @@ impl<'a> EventParser<'a> {
     /// Prepare Markdown for pull consumption.
     ///
     /// # Errors
-    /// Returns syntax errors from enabled Markdown extensions.
+    /// Markdown preparation is currently infallible; the result is retained for API compatibility.
     pub fn new(source: &'a str, options: &'a ParseOptions) -> Result<Self, StreamError> {
+        Ok(Self::prepare(source, options))
+    }
+
+    /// Built-in Markdown preparation has no syntax errors.
+    pub(crate) fn prepare(source: &'a str, options: &'a ParseOptions) -> Self {
         let producer = if let Some((blocks, definitions)) = Blocks::parse(source, options) {
             Producer::Compact(CompactParser {
                 blocks,
@@ -38,9 +43,9 @@ impl<'a> EventParser<'a> {
                 separator: None,
             })
         } else {
-            Producer::Compatibility(Box::new(GrammarParser::new(source, options)?))
+            Producer::Compatibility(Box::new(GrammarParser::new(source, options)))
         };
-        Ok(Self { producer })
+        Self { producer }
     }
 }
 impl Iterator for EventParser<'_> {

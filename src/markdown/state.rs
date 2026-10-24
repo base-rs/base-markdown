@@ -24,10 +24,7 @@ use crate::markdown::{
     },
     Options,
 };
-use crate::{
-    mdast::{AttributeContent, AttributeValue, Node},
-    message::Message,
-};
+use crate::{mdast::Node, message::Message};
 use alloc::{
     collections::BTreeMap,
     format,
@@ -358,15 +355,7 @@ impl<'a> State<'a> {
             Node::ThematicBreak(thematic_break) => thematic_break.handle(self, info, parent, node),
             Node::Math(math) => math.handle(self, info, parent, node),
             Node::InlineMath(inline_math) => inline_math.handle(self, info, parent, node),
-            Node::MdxFlowExpression(expression) => Ok(format!("{{{}}}", expression.value)),
-            Node::MdxTextExpression(expression) => Ok(format!("{{{}}}", expression.value)),
-            Node::MdxjsEsm(esm) => Ok(esm.value.clone()),
-            Node::MdxJsxFlowElement(element) => {
-                self.render_jsx(&element.name, &element.attributes, node, true)
-            }
-            Node::MdxJsxTextElement(element) => {
-                self.render_jsx(&element.name, &element.attributes, node, false)
-            }
+
             Node::Table(table) => self.render_table(table),
             Node::TableRow(row) => self.render_table_row(&row.children),
             Node::TableCell(_) => self.container_phrasing(node, info),
@@ -411,46 +400,6 @@ impl<'a> State<'a> {
             values.push(escape_table_pipes(&content));
         }
         Ok(format!("| {} |", values.join(" | ")))
-    }
-
-    fn render_jsx(
-        &mut self,
-        name: &Option<String>,
-        attributes: &[AttributeContent],
-        node: &Node,
-        flow: bool,
-    ) -> Result<String, Message> {
-        let mut opening = String::from("<");
-        if let Some(name) = name {
-            opening.push_str(name);
-        }
-        for attribute in attributes {
-            opening.push(' ');
-            opening.push_str(&render_jsx_attribute(attribute));
-        }
-
-        let children = node.children().map(Vec::as_slice).unwrap_or(&[]);
-        if children.is_empty() && name.is_some() {
-            opening.push_str(" />");
-            return Ok(opening);
-        }
-        opening.push('>');
-
-        if flow {
-            let content = self.container_flow(node)?;
-            if let Some(name) = name {
-                Ok(format!("{}{}\n</{}>", opening, content, name))
-            } else {
-                Ok(format!("{}{}\n</>", opening, content))
-            }
-        } else {
-            let content = self.container_phrasing(node, &Info::new("", ""))?;
-            if let Some(name) = name {
-                Ok(format!("{}{}</{}>", opening, content, name))
-            } else {
-                Ok(format!("{}{}</>", opening, content))
-            }
-        }
     }
 
     /// JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/main/lib/util/indent-lines.js>.
@@ -691,28 +640,9 @@ pub(crate) fn is_phrasing(node: &Node) -> bool {
             | Node::InlineMath(_)
             | Node::Link(_)
             | Node::LinkReference(_)
-            | Node::MdxJsxTextElement(_)
-            | Node::MdxTextExpression(_)
             | Node::Strong(_)
             | Node::Text(_)
     )
-}
-
-fn render_jsx_attribute(attribute: &AttributeContent) -> String {
-    match attribute {
-        AttributeContent::Expression(expression) => format!("{{{}}}", expression.value),
-        AttributeContent::Property(property) => match &property.value {
-            None => property.name.clone(),
-            Some(AttributeValue::Literal(value)) => format!(
-                "{}=\"{}\"",
-                property.name,
-                value.replace('&', "&amp;").replace('"', "&quot;")
-            ),
-            Some(AttributeValue::Expression(expression)) => {
-                format!("{}={{{}}}", property.name, expression.value)
-            }
-        },
-    }
 }
 
 fn escape_table_pipes(value: &str) -> String {

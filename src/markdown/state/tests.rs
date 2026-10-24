@@ -5,8 +5,8 @@ use super::{escape_table_pipes, has_matching_ticks, Info, Join, State};
 use crate::{
     markdown::{r#unsafe::Unsafe, util::safe::SafeConfig, Options},
     mdast::{
-        Code, FootnoteDefinition, Fragment, LinkReference, ListItem, MdxJsxFlowElement, Node,
-        Paragraph, ReferenceKind, Text,
+        Code, FootnoteDefinition, Fragment, LinkReference, ListItem, Node, Paragraph,
+        ReferenceKind, Text,
     },
 };
 use alloc::{string::String, vec};
@@ -26,7 +26,7 @@ fn paragraph(value: &str) -> Node {
 }
 
 #[test]
-fn serializes_fragment_footnote_and_empty_jsx_paths() {
+fn serializes_fragment_and_footnote() {
     let options = Options::default();
     let mut state = State::new(&options);
     let phrasing = Node::Fragment(Fragment {
@@ -45,17 +45,6 @@ fn serializes_fragment_footnote_and_empty_jsx_paths() {
     });
     let rendered = state.handle(&footnote, &Info::new("", ""), None).unwrap();
     assert!(rendered.contains("    second"), "{:?}", rendered);
-
-    let empty_jsx = Node::MdxJsxFlowElement(MdxJsxFlowElement {
-        children: vec![],
-        position: None,
-        name: Some("Empty".into()),
-        attributes: vec![],
-    });
-    assert_eq!(
-        state.handle(&empty_jsx, &Info::new("", ""), None).unwrap(),
-        "<Empty />"
-    );
 }
 
 #[test]

@@ -2443,9 +2443,7 @@ pub static CHARACTER_REFERENCES: [(&str, &str); 2125] = [
 
 /// List of names and values that form named character reference in HTML 4.
 ///
-/// This list is normally not used in markdown, but it is used in MDX, because
-/// in JSX attribute values, only the old HTML 4 character references are
-/// supported.
+/// Retained for the hidden `decode_named` compatibility helper; Markdown parsing uses the HTML 5 table.
 ///
 /// This list is sensitive to casing and sorted by name for binary search.
 ///

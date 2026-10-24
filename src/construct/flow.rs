@@ -19,9 +19,6 @@
 //! * [Heading (atx)][crate::construct::heading_atx]
 //! * [Heading (setext)][crate::construct::heading_setext]
 //! * [HTML (flow)][crate::construct::html_flow]
-//! * [MDX esm][crate::construct::mdx_esm]
-//! * [MDX expression (flow)][crate::construct::mdx_expression_flow]
-//! * [MDX JSX (flow)][crate::construct::mdx_jsx_flow]
 //! * [Raw (flow)][crate::construct::raw_flow] (code (fenced), math (flow))
 //! * [Thematic break][crate::construct::thematic_break]
 use crate::event::Name;
@@ -66,29 +63,16 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
         Some(b'<') => {
             tokenizer.attempt(
                 State::Next(StateName::FlowAfter),
-                State::Next(StateName::FlowBeforeMdxJsx),
+                State::Next(StateName::FlowBeforeContent),
             );
             State::Retry(StateName::HtmlFlowStart)
         }
-        Some(b'e' | b'i') => {
-            tokenizer.attempt(
-                State::Next(StateName::FlowAfter),
-                State::Next(StateName::FlowBeforeContent),
-            );
-            State::Retry(StateName::MdxEsmStart)
-        }
-        Some(b'{') => {
-            tokenizer.attempt(
-                State::Next(StateName::FlowAfter),
-                State::Next(StateName::FlowBeforeContent),
-            );
-            State::Retry(StateName::MdxExpressionFlowStart)
-        }
+        Some(b'e' | b'i' | b'{') => State::Retry(StateName::FlowBeforeContent),
         // Whitespace can precede any construct; `-` and `=` can be setext underlines. Keep their ordered, speculative recognition below.
         None | Some(b'\t' | b' ' | b'\n' | b'-' | b'=') => {
             State::Retry(StateName::FlowBlankLineBefore)
         }
-        // All other block markers were handled above. Ordinary unindented text cannot start those constructs, including MDX, so avoid their checkpoints. Tables still need a chance to consume a header row.
+        // Ordinary unindented text cannot start the remaining block constructs. Tables still need a chance to consume a header row.
         _ => State::Retry(if tokenizer.parse_state.options.constructs.gfm_table {
             StateName::FlowBeforeGfmTable
         } else {
@@ -148,23 +132,9 @@ pub fn before_raw(tokenizer: &mut Tokenizer) -> State {
 pub fn before_html(tokenizer: &mut Tokenizer) -> State {
     tokenizer.attempt(
         State::Next(StateName::FlowAfter),
-        State::Next(StateName::FlowBeforeMdxJsx),
-    );
-    State::Retry(StateName::HtmlFlowStart)
-}
-
-/// At mdx jsx (flow).
-///
-/// ```markdown
-/// > | <A />
-///     ^
-/// ```
-pub fn before_mdx_jsx(tokenizer: &mut Tokenizer) -> State {
-    tokenizer.attempt(
-        State::Next(StateName::FlowAfter),
         State::Next(StateName::FlowBeforeHeadingAtx),
     );
-    State::Retry(StateName::MdxJsxFlowStart)
+    State::Retry(StateName::HtmlFlowStart)
 }
 
 /// At heading (atx).
@@ -205,23 +175,9 @@ pub fn before_heading_setext(tokenizer: &mut Tokenizer) -> State {
 pub fn before_thematic_break(tokenizer: &mut Tokenizer) -> State {
     tokenizer.attempt(
         State::Next(StateName::FlowAfter),
-        State::Next(StateName::FlowBeforeMdxExpression),
-    );
-    State::Retry(StateName::ThematicBreakStart)
-}
-
-/// At MDX expression (flow).
-///
-/// ```markdown
-/// > | {Math.PI}
-///     ^
-/// ```
-pub fn before_mdx_expression(tokenizer: &mut Tokenizer) -> State {
-    tokenizer.attempt(
-        State::Next(StateName::FlowAfter),
         State::Next(StateName::FlowBeforeGfmTable),
     );
-    State::Retry(StateName::MdxExpressionFlowStart)
+    State::Retry(StateName::ThematicBreakStart)
 }
 
 /// At GFM table.

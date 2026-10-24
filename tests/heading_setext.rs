@@ -354,3 +354,19 @@ fn literal_underlines_join_the_following_setext_heading() {
         }
     }
 }
+
+#[test]
+fn setext_underlines_accept_trailing_spaces_and_tabs() {
+    for (underline, depth) in [("=== ", 1), ("===\t", 1), ("--- \t", 2)] {
+        let source = format!("heading\n{underline}\n");
+        let tree =
+            core_markdown::to_mdast(&source, &core_markdown::ParseOptions::default()).unwrap();
+        assert!(
+            matches!(&tree.children().unwrap()[0], core_markdown::mdast::Node::Heading(heading) if heading.depth == depth)
+        );
+        assert_eq!(
+            core_markdown::to_html(&source),
+            format!("<h{depth}>heading</h{depth}>\n")
+        );
+    }
+}

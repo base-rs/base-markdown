@@ -3,12 +3,10 @@
 
 use core_markdown::{
     mdast::{
-        AlignKind, AttributeContent, AttributeValue, AttributeValueExpression, Blockquote, Break,
-        Code, Definition, Delete, Emphasis, FootnoteDefinition, FootnoteReference, Frontmatter,
-        Heading, Html, Image, ImageReference, InlineCode, InlineMath, Link, LinkReference, List,
-        ListItem, Math, MdxFlowExpression, MdxJsxAttribute, MdxJsxExpressionAttribute,
-        MdxJsxFlowElement, MdxJsxTextElement, MdxTextExpression, MdxjsEsm, Node, Paragraph,
-        ReferenceKind, Root, Table, TableCell, TableRow, Text, ThematicBreak,
+        AlignKind, Blockquote, Break, Code, Definition, Delete, Emphasis, FootnoteDefinition,
+        FootnoteReference, Frontmatter, Heading, Html, Image, ImageReference, InlineCode,
+        InlineMath, Link, LinkReference, List, ListItem, Math, Node, Paragraph, ReferenceKind,
+        Root, Table, TableCell, TableRow, Text, ThematicBreak,
     },
     to_mdast, Constructs, MarkdownOptions, MarkdownRenderer, ParseOptions,
 };
@@ -74,15 +72,6 @@ fn serializes_gfm_constructs() -> Result<(), core_markdown::message::Message> {
         node.to_markdown(),
         "~~old~~\n\n| A | B |\n| :--- | ---: |\n| x | y |\n\nCall[^note].\n\n[^note]: Details.\n"
     );
-
-    Ok(())
-}
-
-#[test]
-fn serializes_mdx_constructs() -> Result<(), core_markdown::message::Message> {
-    let node = to_mdast("a <b>*c*</b> and {value}.", &ParseOptions::mdx())?;
-
-    assert_eq!(node.to_markdown(), "a <b>*c*</b> and {value}.\n");
 
     Ok(())
 }
@@ -358,65 +347,6 @@ fn serializes_ast_variants_and_custom_markdown_options() {
             position: None,
             meta: Some("latex".into()),
         }),
-        Node::MdxFlowExpression(MdxFlowExpression {
-            value: "value".into(),
-            position: None,
-            stops: vec![],
-        }),
-        Node::MdxTextExpression(MdxTextExpression {
-            value: "value".into(),
-            position: None,
-            stops: vec![],
-        }),
-        Node::MdxjsEsm(MdxjsEsm {
-            value: "export const value = 1".into(),
-            position: None,
-            stops: vec![],
-        }),
-        Node::MdxJsxFlowElement(MdxJsxFlowElement {
-            children: vec![paragraph(vec![text("body")])],
-            position: None,
-            name: Some("Panel".into()),
-            attributes: vec![
-                AttributeContent::Expression(MdxJsxExpressionAttribute {
-                    value: "...props".into(),
-                    stops: vec![],
-                }),
-                AttributeContent::Property(MdxJsxAttribute {
-                    name: "title".into(),
-                    value: Some(AttributeValue::Literal("a & \"b\"".into())),
-                }),
-                AttributeContent::Property(MdxJsxAttribute {
-                    name: "value".into(),
-                    value: Some(AttributeValue::Expression(AttributeValueExpression {
-                        value: "current".into(),
-                        stops: vec![],
-                    })),
-                }),
-                AttributeContent::Property(MdxJsxAttribute {
-                    name: "disabled".into(),
-                    value: None,
-                }),
-            ],
-        }),
-        Node::MdxJsxFlowElement(MdxJsxFlowElement {
-            children: vec![],
-            position: None,
-            name: None,
-            attributes: vec![],
-        }),
-        Node::MdxJsxTextElement(MdxJsxTextElement {
-            children: vec![text("inline")],
-            position: None,
-            name: Some("span".into()),
-            attributes: vec![],
-        }),
-        Node::MdxJsxTextElement(MdxJsxTextElement {
-            children: vec![text("fragment")],
-            position: None,
-            name: None,
-            attributes: vec![],
-        }),
         Node::Table(Table {
             children: vec![
                 Node::TableRow(TableRow {
@@ -629,18 +559,6 @@ fn propagates_errors_from_nested_markdown_nodes() {
         }),
         table_row,
         table_cell,
-        Node::MdxJsxFlowElement(MdxJsxFlowElement {
-            children: vec![invalid_emphasis.clone()],
-            position: None,
-            name: Some("Panel".into()),
-            attributes: vec![],
-        }),
-        Node::MdxJsxTextElement(MdxJsxTextElement {
-            children: vec![invalid_emphasis],
-            position: None,
-            name: Some("span".into()),
-            attributes: vec![],
-        }),
     ];
 
     let invalid_emphasis_options = MarkdownOptions {

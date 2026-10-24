@@ -22,8 +22,6 @@
 //! * [Label start (image)][crate::construct::label_start_image]
 //! * [Label start (link)][crate::construct::label_start_link]
 //! * [Label end][crate::construct::label_end]
-//! * [MDX: expression (text)][crate::construct::mdx_expression_text]
-//! * [MDX: JSX (text)][crate::construct::mdx_jsx_text]
 //!
 //! > 👉 **Note**: for performance reasons, hard break (trailing) is formed by
 //! > [whitespace][crate::construct::partial_whitespace].
@@ -35,12 +33,12 @@ use crate::subtokenize::Subresult;
 use crate::tokenizer::Tokenizer;
 
 /// Characters that can start something in text.
-const MARKERS: [u8; 16] = [
+const MARKERS: [u8; 15] = [
     b'!',  // `label_start_image`
     b'$',  // `raw_text` (math (text))
     b'&',  // `character_reference`
     b'*',  // `attention` (emphasis, strong)
-    b'<',  // `autolink`, `html_text`, `mdx_jsx_text`
+    b'<',  // `autolink`, `html_text`
     b'H',  // `gfm_autolink_literal` (`protocol` kind)
     b'W',  // `gfm_autolink_literal` (`www.` kind)
     b'[',  // `label_start_link`
@@ -50,7 +48,6 @@ const MARKERS: [u8; 16] = [
     b'`',  // `raw_text` (code (text))
     b'h',  // `gfm_autolink_literal` (`protocol` kind)
     b'w',  // `gfm_autolink_literal` (`www.` kind)
-    b'{',  // `mdx_expression_text`
     b'~',  // `attention` (gfm strikethrough)
 ];
 
@@ -73,13 +70,12 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
             b'$' => constructs.math_text,
             b'&' => constructs.character_reference,
             b'*' | b'_' => constructs.attention,
-            b'<' => constructs.autolink || constructs.html_text || constructs.mdx_jsx_text,
+            b'<' => constructs.autolink || constructs.html_text,
             b'H' | b'W' | b'h' | b'w' => constructs.gfm_autolink_literal,
             b'[' => constructs.label_start_link || constructs.gfm_label_start_footnote,
             b'\\' => constructs.character_escape || constructs.hard_break_escape,
             b']' => constructs.label_end,
             b'`' => constructs.code_text,
-            b'{' => constructs.mdx_expression_text,
             b'~' => constructs.gfm_strikethrough,
             _ => unreachable!("text markers must have a corresponding construct"),
         };
@@ -137,7 +133,7 @@ pub fn before(tokenizer: &mut Tokenizer) -> State {
             );
             State::Retry(StateName::AttentionStart)
         }
-        // `autolink`, `html_text` (order does not matter), `mdx_jsx_text` (order matters).
+        // Autolinks and inline HTML share the opening marker.
         Some(b'<') => {
             tokenizer.attempt(
                 State::Next(StateName::TextBefore),
@@ -180,13 +176,6 @@ pub fn before(tokenizer: &mut Tokenizer) -> State {
             );
             State::Retry(StateName::LabelEndStart)
         }
-        Some(b'{') => {
-            tokenizer.attempt(
-                State::Next(StateName::TextBefore),
-                State::Next(StateName::TextBeforeData),
-            );
-            State::Retry(StateName::MdxExpressionTextStart)
-        }
         _ => State::Retry(StateName::TextBeforeData),
     }
 }
@@ -202,25 +191,9 @@ pub fn before(tokenizer: &mut Tokenizer) -> State {
 pub fn before_html(tokenizer: &mut Tokenizer) -> State {
     tokenizer.attempt(
         State::Next(StateName::TextBefore),
-        State::Next(StateName::TextBeforeMdxJsx),
-    );
-    State::Retry(StateName::HtmlTextStart)
-}
-
-/// Before mdx jsx (text).
-///
-/// At `<`, which wasn’t an autolink or html.
-///
-/// ```markdown
-/// > | a <b>
-///       ^
-/// ```
-pub fn before_mdx_jsx(tokenizer: &mut Tokenizer) -> State {
-    tokenizer.attempt(
-        State::Next(StateName::TextBefore),
         State::Next(StateName::TextBeforeData),
     );
-    State::Retry(StateName::MdxJsxTextStart)
+    State::Retry(StateName::HtmlTextStart)
 }
 
 /// Before hard break escape.
