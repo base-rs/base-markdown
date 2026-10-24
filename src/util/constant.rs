@@ -79,12 +79,12 @@ pub const CODE_FENCED_SEQUENCE_SIZE_MIN: usize = 3;
 /// [frontmatter]: crate::construct::frontmatter
 pub const FRONTMATTER_SEQUENCE_SIZE: usize = 3;
 
-/// The number of the longest tag name in [`GFM_HTML_TAGFILTER_NAMES`][].
+/// The number of the longest tag name in [`HTML_TAGFILTER_NAMES`][].
 ///
 /// This is currently the size of `plaintext`.
-pub const GFM_HTML_TAGFILTER_SIZE_MAX: usize = 9;
+pub const HTML_TAGFILTER_SIZE_MAX: usize = 9;
 
-/// List of HTML tag names that are escaped by GFMs tag filter.
+/// List of HTML tag names that are escaped by the tagfilter extension.
 ///
 /// Tag name matching must be performed insensitive to case, and thus this list
 /// includes lowercase tag names.
@@ -92,7 +92,7 @@ pub const GFM_HTML_TAGFILTER_SIZE_MAX: usize = 9;
 /// ## References
 ///
 /// * [*§ 6.1 Disallowed Raw HTML (extension)* in GFM](https://github.github.com/gfm/#disallowed-raw-html-extension-)
-pub const GFM_HTML_TAGFILTER_NAMES: [&str; 9] = [
+pub const HTML_TAGFILTER_NAMES: [&str; 9] = [
     "iframe",
     "noembed",
     "noframes",
@@ -2731,9 +2731,9 @@ mod tests {
         );
 
         assert_eq!(
-            GFM_HTML_TAGFILTER_SIZE_MAX,
-            longest(&GFM_HTML_TAGFILTER_NAMES).unwrap().len(),
-            "`GFM_HTML_TAGFILTER_SIZE_MAX`"
+            HTML_TAGFILTER_SIZE_MAX,
+            longest(&HTML_TAGFILTER_NAMES).unwrap().len(),
+            "`HTML_TAGFILTER_SIZE_MAX`"
         );
 
         assert_eq!(

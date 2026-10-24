@@ -73,8 +73,8 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
             State::Retry(StateName::FlowBlankLineBefore)
         }
         // Ordinary unindented text cannot start the remaining block constructs. Tables still need a chance to consume a header row.
-        _ => State::Retry(if tokenizer.parse_state.options.constructs.gfm_table {
-            StateName::FlowBeforeGfmTable
+        _ => State::Retry(if tokenizer.parse_state.options.constructs.table {
+            StateName::FlowBeforeTable
         } else {
             StateName::FlowBeforeContent
         }),
@@ -175,23 +175,23 @@ pub fn before_heading_setext(tokenizer: &mut Tokenizer) -> State {
 pub fn before_thematic_break(tokenizer: &mut Tokenizer) -> State {
     tokenizer.attempt(
         State::Next(StateName::FlowAfter),
-        State::Next(StateName::FlowBeforeGfmTable),
+        State::Next(StateName::FlowBeforeTable),
     );
     State::Retry(StateName::ThematicBreakStart)
 }
 
-/// At GFM table.
+/// At table.
 ///
 /// ```markdown
 /// > | | a |
 ///     ^
 /// ```
-pub fn before_gfm_table(tokenizer: &mut Tokenizer) -> State {
+pub fn before_table(tokenizer: &mut Tokenizer) -> State {
     tokenizer.attempt(
         State::Next(StateName::FlowAfter),
         State::Next(StateName::FlowBeforeContent),
     );
-    State::Retry(StateName::GfmTableStart)
+    State::Retry(StateName::TableStart)
 }
 
 /// At content.

@@ -11,7 +11,7 @@ use core_markdown::{message, to_html_with_options, CompileOptions, Options};
 use pretty_assertions::assert_eq;
 
 #[test]
-fn gfm_tagfilter() -> Result<(), message::Message> {
+fn tagfilter() -> Result<(), message::Message> {
     assert_eq!(
         to_html_with_options(
             "<iframe>",
@@ -32,7 +32,7 @@ fn gfm_tagfilter() -> Result<(), message::Message> {
             "a <i>\n<script>",
             &Options {
                 compile: CompileOptions {
-                    gfm_tagfilter: true,
+                    tagfilter: true,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -48,7 +48,7 @@ fn gfm_tagfilter() -> Result<(), message::Message> {
             &Options {
                 compile: CompileOptions {
                     allow_dangerous_html: true,
-                    gfm_tagfilter: true,
+                    tagfilter: true,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -64,7 +64,7 @@ fn gfm_tagfilter() -> Result<(), message::Message> {
             &Options {
                 compile: CompileOptions {
                     allow_dangerous_html: true,
-                    gfm_tagfilter: true,
+                    tagfilter: true,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -80,7 +80,7 @@ fn gfm_tagfilter() -> Result<(), message::Message> {
             &Options {
                 compile: CompileOptions {
                     allow_dangerous_html: true,
-                    gfm_tagfilter: true,
+                    tagfilter: true,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -138,7 +138,7 @@ javascript:/*--></title></style></textarea></script></xmp><svg/onload='+/"/+/onm
             &Options {
                 compile: CompileOptions {
                     allow_dangerous_html: true,
-                    gfm_tagfilter: true,
+                    tagfilter: true,
                     ..Default::default()
                 },
                 ..Default::default()

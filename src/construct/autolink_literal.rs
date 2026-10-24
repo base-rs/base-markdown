@@ -3,7 +3,7 @@
 // Copyright, 2022-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-//! GFM: autolink literal occurs in the [text][] content type.
+//! autolink literal occurs in the [text][] content type.
 //!
 //! ## Grammar
 //!
@@ -11,7 +11,7 @@
 //! (<small>see [construct][crate::construct] for character groups</small>):
 //!
 //! ```bnf
-//! gfm_autolink_literal ::= gfm_protocol_autolink | gfm_www_autolink | gfm_email_autolink
+//! autolink_literal ::= protocol_autolink | www_autolink | email_autolink
 //!
 //! ; Restriction: the code before must be `www_autolink_before`.
 //! ; Restriction: the code after `.` must not be eof.
@@ -127,11 +127,11 @@
 //!
 //! ## Tokens
 //!
-//! * [`GfmAutolinkLiteralEmail`][Name::GfmAutolinkLiteralEmail]
-//! * [`GfmAutolinkLiteralMailto`][Name::GfmAutolinkLiteralMailto]
-//! * [`GfmAutolinkLiteralProtocol`][Name::GfmAutolinkLiteralProtocol]
-//! * [`GfmAutolinkLiteralWww`][Name::GfmAutolinkLiteralWww]
-//! * [`GfmAutolinkLiteralXmpp`][Name::GfmAutolinkLiteralXmpp]
+//! * [`AutolinkLiteralEmail`][Name::AutolinkLiteralEmail]
+//! * [`AutolinkLiteralMailto`][Name::AutolinkLiteralMailto]
+//! * [`AutolinkLiteralProtocol`][Name::AutolinkLiteralProtocol]
+//! * [`AutolinkLiteralWww`][Name::AutolinkLiteralWww]
+//! * [`AutolinkLiteralXmpp`][Name::AutolinkLiteralXmpp]
 //!
 //! ## References
 //!
@@ -168,22 +168,22 @@ pub fn protocol_start(tokenizer: &mut Tokenizer) -> State {
         .parse_state
         .options
         .constructs
-        .gfm_autolink_literal
+        .autolink_literal
         // `text::before` dispatches here only for `H` and `h`.
         // Source: <https://github.com/github/cmark-gfm/blob/ef1cfcb/extensions/autolink.c#L214>.
         && !matches!(tokenizer.previous, Some(b'A'..=b'Z' | b'a'..=b'z'))
     {
-        tokenizer.enter(Name::GfmAutolinkLiteralProtocol);
+        tokenizer.enter(Name::AutolinkLiteralProtocol);
         tokenizer.attempt(
-            State::Next(StateName::GfmAutolinkLiteralProtocolAfter),
+            State::Next(StateName::AutolinkLiteralProtocolAfter),
             State::Nok,
         );
         tokenizer.attempt(
-            State::Next(StateName::GfmAutolinkLiteralDomainInside),
+            State::Next(StateName::AutolinkLiteralDomainInside),
             State::Nok,
         );
         tokenizer.tokenize_state.start = tokenizer.point.index;
-        State::Retry(StateName::GfmAutolinkLiteralProtocolPrefixInside)
+        State::Retry(StateName::AutolinkLiteralProtocolPrefixInside)
     } else {
         State::Nok
     }
@@ -196,7 +196,7 @@ pub fn protocol_start(tokenizer: &mut Tokenizer) -> State {
 ///                              ^
 /// ```
 pub fn protocol_after(tokenizer: &mut Tokenizer) -> State {
-    tokenizer.exit(Name::GfmAutolinkLiteralProtocol);
+    tokenizer.exit(Name::AutolinkLiteralProtocol);
     State::Ok
 }
 
@@ -213,7 +213,7 @@ pub fn protocol_prefix_inside(tokenizer: &mut Tokenizer) -> State {
             if tokenizer.point.index - tokenizer.tokenize_state.start < 5 =>
         {
             tokenizer.consume();
-            State::Next(StateName::GfmAutolinkLiteralProtocolPrefixInside)
+            State::Next(StateName::AutolinkLiteralProtocolPrefixInside)
         }
         Some(b':') => {
             let slice = Slice::from_indices(
@@ -227,7 +227,7 @@ pub fn protocol_prefix_inside(tokenizer: &mut Tokenizer) -> State {
 
             if name == "http" || name == "https" {
                 tokenizer.consume();
-                State::Next(StateName::GfmAutolinkLiteralProtocolSlashesInside)
+                State::Next(StateName::AutolinkLiteralProtocolSlashesInside)
             } else {
                 State::Nok
             }
@@ -250,7 +250,7 @@ pub fn protocol_slashes_inside(tokenizer: &mut Tokenizer) -> State {
         tokenizer.consume();
         if tokenizer.tokenize_state.size == 0 {
             tokenizer.tokenize_state.size += 1;
-            State::Next(StateName::GfmAutolinkLiteralProtocolSlashesInside)
+            State::Next(StateName::AutolinkLiteralProtocolSlashesInside)
         } else {
             tokenizer.tokenize_state.size = 0;
             State::Ok
@@ -272,23 +272,20 @@ pub fn www_start(tokenizer: &mut Tokenizer) -> State {
         .parse_state
         .options
         .constructs
-        .gfm_autolink_literal
+        .autolink_literal
         // `text::before` dispatches here only for `W` and `w`.
         // Source: <https://github.com/github/cmark-gfm/blob/ef1cfcb/extensions/autolink.c#L156>.
         && matches!(tokenizer.previous, None | Some(b'\t' | b'\n' | b' ' | b'(' | b'*' | b'_' | b'[' | b']' | b'~'))
     {
-        tokenizer.enter(Name::GfmAutolinkLiteralWww);
-        tokenizer.attempt(
-            State::Next(StateName::GfmAutolinkLiteralWwwAfter),
-            State::Nok,
-        );
+        tokenizer.enter(Name::AutolinkLiteralWww);
+        tokenizer.attempt(State::Next(StateName::AutolinkLiteralWwwAfter), State::Nok);
         // Note: we *check*, so we can discard the `www.` we parsed.
         // If it worked, we consider it as a part of the domain.
         tokenizer.check(
-            State::Next(StateName::GfmAutolinkLiteralDomainInside),
+            State::Next(StateName::AutolinkLiteralDomainInside),
             State::Nok,
         );
-        State::Retry(StateName::GfmAutolinkLiteralWwwPrefixInside)
+        State::Retry(StateName::AutolinkLiteralWwwPrefixInside)
     } else {
         State::Nok
     }
@@ -301,7 +298,7 @@ pub fn www_start(tokenizer: &mut Tokenizer) -> State {
 ///                          ^
 /// ```
 pub fn www_after(tokenizer: &mut Tokenizer) -> State {
-    tokenizer.exit(Name::GfmAutolinkLiteralWww);
+    tokenizer.exit(Name::AutolinkLiteralWww);
     State::Ok
 }
 
@@ -316,12 +313,12 @@ pub fn www_prefix_inside(tokenizer: &mut Tokenizer) -> State {
         Some(b'.') if tokenizer.tokenize_state.size == 3 => {
             tokenizer.tokenize_state.size = 0;
             tokenizer.consume();
-            State::Next(StateName::GfmAutolinkLiteralWwwPrefixAfter)
+            State::Next(StateName::AutolinkLiteralWwwPrefixAfter)
         }
         Some(b'W' | b'w') if tokenizer.tokenize_state.size < 3 => {
             tokenizer.tokenize_state.size += 1;
             tokenizer.consume();
-            State::Next(StateName::GfmAutolinkLiteralWwwPrefixInside)
+            State::Next(StateName::AutolinkLiteralWwwPrefixInside)
         }
         _ => {
             tokenizer.tokenize_state.size = 0;
@@ -358,15 +355,15 @@ pub fn domain_inside(tokenizer: &mut Tokenizer) -> State {
         // followed by an end.
         Some(b'.' | b'_') => {
             tokenizer.check(
-                State::Next(StateName::GfmAutolinkLiteralDomainAfter),
-                State::Next(StateName::GfmAutolinkLiteralDomainAtPunctuation),
+                State::Next(StateName::AutolinkLiteralDomainAfter),
+                State::Next(StateName::AutolinkLiteralDomainAtPunctuation),
             );
-            State::Retry(StateName::GfmAutolinkLiteralTrail)
+            State::Retry(StateName::AutolinkLiteralTrail)
         }
         // Dashes and continuation bytes are fine.
         Some(b'-' | 0x80..=0xBF) => {
             tokenizer.consume();
-            State::Next(StateName::GfmAutolinkLiteralDomainInside)
+            State::Next(StateName::AutolinkLiteralDomainInside)
         }
         _ => {
             // Source: <https://github.com/github/cmark-gfm/blob/ef1cfcb/extensions/autolink.c#L12>.
@@ -375,9 +372,9 @@ pub fn domain_inside(tokenizer: &mut Tokenizer) -> State {
             {
                 tokenizer.tokenize_state.seen = true;
                 tokenizer.consume();
-                State::Next(StateName::GfmAutolinkLiteralDomainInside)
+                State::Next(StateName::AutolinkLiteralDomainInside)
             } else {
-                State::Retry(StateName::GfmAutolinkLiteralDomainAfter)
+                State::Retry(StateName::AutolinkLiteralDomainAfter)
             }
         }
     }
@@ -402,7 +399,7 @@ pub fn domain_at_punctuation(tokenizer: &mut Tokenizer) -> State {
     }
 
     tokenizer.consume();
-    State::Next(StateName::GfmAutolinkLiteralDomainInside)
+    State::Next(StateName::AutolinkLiteralDomainInside)
 }
 
 /// After domain
@@ -422,7 +419,7 @@ pub fn domain_after(tokenizer: &mut Tokenizer) -> State {
     {
         State::Nok
     } else {
-        State::Retry(StateName::GfmAutolinkLiteralPathInside)
+        State::Retry(StateName::AutolinkLiteralPathInside)
     };
 
     tokenizer.tokenize_state.seen = false;
@@ -442,13 +439,13 @@ pub fn path_inside(tokenizer: &mut Tokenizer) -> State {
         // Continuation bytes are fine, we’ve already checked the first one.
         Some(0x80..=0xBF) => {
             tokenizer.consume();
-            State::Next(StateName::GfmAutolinkLiteralPathInside)
+            State::Next(StateName::AutolinkLiteralPathInside)
         }
         // Count opening parens.
         Some(b'(') => {
             tokenizer.tokenize_state.size += 1;
             tokenizer.consume();
-            State::Next(StateName::GfmAutolinkLiteralPathInside)
+            State::Next(StateName::AutolinkLiteralPathInside)
         }
         // Check whether this trailing punctuation marker is optionally
         // followed by more trailing markers, and then followed
@@ -462,15 +459,15 @@ pub fn path_inside(tokenizer: &mut Tokenizer) -> State {
             let next = if tokenizer.current == Some(b')')
                 && tokenizer.tokenize_state.size_b < tokenizer.tokenize_state.size
             {
-                StateName::GfmAutolinkLiteralPathAtPunctuation
+                StateName::AutolinkLiteralPathAtPunctuation
             } else {
-                StateName::GfmAutolinkLiteralPathAfter
+                StateName::AutolinkLiteralPathAfter
             };
             tokenizer.check(
                 State::Next(next),
-                State::Next(StateName::GfmAutolinkLiteralPathAtPunctuation),
+                State::Next(StateName::AutolinkLiteralPathAtPunctuation),
             );
-            State::Retry(StateName::GfmAutolinkLiteralTrail)
+            State::Retry(StateName::AutolinkLiteralTrail)
         }
         _ => {
             // Source: <https://github.com/github/cmark-gfm/blob/ef1cfcb/extensions/autolink.c#L12>.
@@ -478,10 +475,10 @@ pub fn path_inside(tokenizer: &mut Tokenizer) -> State {
                 || kind_after_index(tokenizer.parse_state.bytes, tokenizer.point.index)
                     == CharacterKind::Whitespace
             {
-                State::Retry(StateName::GfmAutolinkLiteralPathAfter)
+                State::Retry(StateName::AutolinkLiteralPathAfter)
             } else {
                 tokenizer.consume();
-                State::Next(StateName::GfmAutolinkLiteralPathInside)
+                State::Next(StateName::AutolinkLiteralPathInside)
             }
         }
     }
@@ -500,7 +497,7 @@ pub fn path_at_punctuation(tokenizer: &mut Tokenizer) -> State {
     }
 
     tokenizer.consume();
-    State::Next(StateName::GfmAutolinkLiteralPathInside)
+    State::Next(StateName::AutolinkLiteralPathInside)
 }
 
 /// At end of path, reset parens.
@@ -528,14 +525,14 @@ pub fn trail(tokenizer: &mut Tokenizer) -> State {
             b'!' | b'"' | b'\'' | b')' | b'*' | b',' | b'.' | b':' | b';' | b'?' | b'_' | b'~',
         ) => {
             tokenizer.consume();
-            State::Next(StateName::GfmAutolinkLiteralTrail)
+            State::Next(StateName::AutolinkLiteralTrail)
         }
         // `&` followed by one or more alphabeticals and then a `;`, is
         // as a whole considered as trailing punctuation.
         // In all other cases, it is considered as continuation of the URL.
         Some(b'&') => {
             tokenizer.consume();
-            State::Next(StateName::GfmAutolinkLiteralTrailCharRefStart)
+            State::Next(StateName::AutolinkLiteralTrailCharRefStart)
         }
         // `<` is an end.
         Some(b'<') => State::Ok,
@@ -544,7 +541,7 @@ pub fn trail(tokenizer: &mut Tokenizer) -> State {
         // Check that it is not followed by `(` or `[`.
         Some(b']') => {
             tokenizer.consume();
-            State::Next(StateName::GfmAutolinkLiteralTrailBracketAfter)
+            State::Next(StateName::AutolinkLiteralTrailBracketAfter)
         }
         _ => {
             // Whitespace is the end of the URL, anything else is continuation.
@@ -577,7 +574,7 @@ pub fn trail_bracket_after(tokenizer: &mut Tokenizer) -> State {
     ) {
         State::Ok
     } else {
-        State::Retry(StateName::GfmAutolinkLiteralTrail)
+        State::Retry(StateName::AutolinkLiteralTrail)
     }
 }
 
@@ -589,7 +586,7 @@ pub fn trail_bracket_after(tokenizer: &mut Tokenizer) -> State {
 /// ```
 pub fn trail_char_ref_start(tokenizer: &mut Tokenizer) -> State {
     if matches!(tokenizer.current, Some(b'A'..=b'Z' | b'a'..=b'z')) {
-        State::Retry(StateName::GfmAutolinkLiteralTrailCharRefInside)
+        State::Retry(StateName::AutolinkLiteralTrailCharRefInside)
     } else {
         State::Nok
     }
@@ -605,12 +602,12 @@ pub fn trail_char_ref_inside(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         Some(b'A'..=b'Z' | b'a'..=b'z') => {
             tokenizer.consume();
-            State::Next(StateName::GfmAutolinkLiteralTrailCharRefInside)
+            State::Next(StateName::AutolinkLiteralTrailCharRefInside)
         }
         // Switch back to trail if this is well-formed.
         Some(b';') => {
             tokenizer.consume();
-            State::Next(StateName::GfmAutolinkLiteralTrail)
+            State::Next(StateName::AutolinkLiteralTrail)
         }
         _ => State::Nok,
     }
@@ -645,7 +642,7 @@ pub fn resolve(tokenizer: &mut Tokenizer) {
 
                 while byte_index < bytes.len() {
                     if bytes[byte_index] == b'@' {
-                        let mut range = (0, 0, Name::GfmAutolinkLiteralEmail);
+                        let mut range = (0, 0, Name::AutolinkLiteralEmail);
 
                         if let Some(start) = peek_bytes_atext(bytes, min, byte_index) {
                             let (start, kind) = peek_protocol(bytes, min, start);
@@ -653,7 +650,7 @@ pub fn resolve(tokenizer: &mut Tokenizer) {
                             if let Some(end) = peek_bytes_email_domain(
                                 bytes,
                                 byte_index + 1,
-                                kind == Name::GfmAutolinkLiteralXmpp,
+                                kind == Name::AutolinkLiteralXmpp,
                             ) {
                                 // Note: normally we’d truncate trailing
                                 // punctuation from the link.
@@ -800,13 +797,13 @@ fn peek_protocol(bytes: &[u8], min: usize, end: usize) -> (usize, Name) {
         let name = slice.as_str().to_ascii_lowercase();
 
         if name == "xmpp" {
-            return (index, Name::GfmAutolinkLiteralXmpp);
+            return (index, Name::AutolinkLiteralXmpp);
         } else if name == "mailto" {
-            return (index, Name::GfmAutolinkLiteralMailto);
+            return (index, Name::AutolinkLiteralMailto);
         }
     }
 
-    (end, Name::GfmAutolinkLiteralEmail)
+    (end, Name::AutolinkLiteralEmail)
 }
 
 /// Move past email domain.

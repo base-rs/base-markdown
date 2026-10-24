@@ -53,7 +53,7 @@ impl<'a> InlineWorkspace<'a> {
         }
     }
 
-    pub fn region<const GFM: bool>(
+    pub fn region<const EXTENSIONS: bool>(
         &mut self,
         fragments: impl Iterator<Item = Range<usize>> + Clone,
         task: bool,
@@ -66,15 +66,27 @@ impl<'a> InlineWorkspace<'a> {
                 parser,
             } => (source, options, definitions, parser),
             Self::Grammar(parser) => {
-                parser.region::<GFM>(fragments, task);
+                parser.region::<EXTENSIONS>(fragments, task);
                 return;
             }
         };
         if !options.inline_code_info
             && if definitions.is_empty() {
-                parser.prepare::<false, GFM>(source, fragments.clone(), definitions, options, task)
+                parser.prepare::<false, EXTENSIONS>(
+                    source,
+                    fragments.clone(),
+                    definitions,
+                    options,
+                    task,
+                )
             } else {
-                parser.prepare::<true, GFM>(source, fragments.clone(), definitions, options, task)
+                parser.prepare::<true, EXTENSIONS>(
+                    source,
+                    fragments.clone(),
+                    definitions,
+                    options,
+                    task,
+                )
             }
         {
             return;

@@ -79,7 +79,7 @@ fn renders_with_custom_markdown_options() -> Result<(), core_markdown::message::
 }
 
 #[test]
-fn serializes_gfm_constructs() -> Result<(), core_markdown::message::Message> {
+fn serializes_constructs() -> Result<(), core_markdown::message::Message> {
     let node = parse(
         "~~old~~\n\n| A | B |\n| :- | -: |\n| x | y |\n\nCall[^note].\n\n[^note]: Details.",
         &ParseOptions::gfm(),

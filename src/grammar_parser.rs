@@ -145,14 +145,14 @@ impl<'a> GrammarParser<'a> {
         &self.definitions
     }
 
-    pub(crate) fn region<const GFM: bool>(
+    pub(crate) fn region<const EXTENSIONS: bool>(
         &mut self,
         fragments: impl Iterator<Item = Range<usize>> + Clone,
         task: bool,
     ) {
         self.direct_inline = !self.options.inline_code_info
             && if self.definitions.is_empty() {
-                self.compact_inline.prepare::<false, GFM>(
+                self.compact_inline.prepare::<false, EXTENSIONS>(
                     self.source,
                     fragments.clone(),
                     &self.definitions,
@@ -160,7 +160,7 @@ impl<'a> GrammarParser<'a> {
                     task,
                 )
             } else {
-                self.compact_inline.prepare::<true, GFM>(
+                self.compact_inline.prepare::<true, EXTENSIONS>(
                     self.source,
                     fragments.clone(),
                     &self.definitions,
@@ -253,7 +253,7 @@ impl<'a> GrammarParser<'a> {
 
     fn inline(&mut self, index: usize) {
         let mut task = false;
-        if self.options.constructs.gfm_task_list_item
+        if self.options.constructs.task_list_item
             && index > 2
             && self.tokens[index - 1].kind == Kind::Enter
             && self.tokens[index - 1].name == Name::Paragraph
@@ -681,7 +681,7 @@ impl<'a> GrammarParser<'a> {
                             | Name::LineEnding
                             | Name::SpaceOrTab
                             | Name::Definition
-                            | Name::GfmFootnoteDefinition
+                            | Name::FootnoteDefinition
                     )
                 {
                     debug_assert_eq!(
@@ -699,7 +699,7 @@ impl<'a> GrammarParser<'a> {
             }
             Name::Emphasis => Some(Tag::Emphasis),
             Name::Strong => Some(Tag::Strong),
-            Name::GfmStrikethrough => Some(Tag::Delete),
+            Name::Strikethrough => Some(Tag::Delete),
             Name::Link => {
                 let (destination, title) = self.media(index);
                 Some(Tag::Link { destination, title })
@@ -708,23 +708,23 @@ impl<'a> GrammarParser<'a> {
                 let (destination, title) = self.media(index);
                 Some(Tag::Image { destination, title })
             }
-            Name::GfmTable => {
-                self.align = infer::gfm_table_align(&self.tokens, index);
+            Name::Table => {
+                self.align = infer::table_align(&self.tokens, index);
                 Some(Tag::Table)
             }
-            Name::GfmTableHead => {
+            Name::TableHead => {
                 self.header = true;
                 Some(Tag::TableHead)
             }
-            Name::GfmTableBody => {
+            Name::TableBody => {
                 self.header = false;
                 Some(Tag::TableBody)
             }
-            Name::GfmTableRow => {
+            Name::TableRow => {
                 self.column = 0;
                 Some(Tag::TableRow)
             }
-            Name::GfmTableCell => {
+            Name::TableCell => {
                 let alignment = self.align.get(self.column).copied();
                 self.column += 1;
                 if let Some(alignment) = alignment {
@@ -737,10 +737,10 @@ impl<'a> GrammarParser<'a> {
                     None
                 }
             }
-            Name::GfmFootnoteDefinition => {
+            Name::FootnoteDefinition => {
                 self.tight.push(false);
                 let label = self
-                    .named(index, &Name::GfmFootnoteDefinitionLabelString)
+                    .named(index, &Name::FootnoteDefinitionLabelString)
                     .expect("footnote has a label");
                 Some(Tag::FootnoteDefinition(Text::from(normalize_identifier(
                     &self.source[self.span(label)],
@@ -772,18 +772,18 @@ impl<'a> GrammarParser<'a> {
             }
             Name::Emphasis => TagKind::Emphasis,
             Name::Strong => TagKind::Strong,
-            Name::GfmStrikethrough => TagKind::Delete,
+            Name::Strikethrough => TagKind::Delete,
             Name::Link => TagKind::Link,
             Name::Image => TagKind::Image,
-            Name::GfmTable => {
+            Name::Table => {
                 self.align.clear();
                 TagKind::Table
             }
-            Name::GfmTableHead => TagKind::TableHead,
-            Name::GfmTableBody => TagKind::TableBody,
-            Name::GfmTableRow => TagKind::TableRow,
-            Name::GfmTableCell => TagKind::TableCell,
-            Name::GfmFootnoteDefinition => {
+            Name::TableHead => TagKind::TableHead,
+            Name::TableBody => TagKind::TableBody,
+            Name::TableRow => TagKind::TableRow,
+            Name::TableCell => TagKind::TableCell,
+            Name::FootnoteDefinition => {
                 self.tight.pop();
                 TagKind::FootnoteDefinition
             }
@@ -856,7 +856,7 @@ impl<'a> GrammarParser<'a> {
                 } else if index > 0
                     && matches!(
                         self.tokens[index - 1].name,
-                        Name::Definition | Name::GfmFootnoteDefinition | Name::HeadingSetextText
+                        Name::Definition | Name::FootnoteDefinition | Name::HeadingSetextText
                     )
                 {
                     None
@@ -894,8 +894,8 @@ impl<'a> GrammarParser<'a> {
             }
             Name::Resource
             | Name::Reference
-            | Name::GfmFootnoteDefinitionLabelString
-            | Name::GfmFootnoteDefinitionPrefix => {
+            | Name::FootnoteDefinitionLabelString
+            | Name::FootnoteDefinitionPrefix => {
                 self.index = self.matching[index] + 1;
                 None
             }
@@ -915,14 +915,12 @@ impl<'a> GrammarParser<'a> {
                 self.slurp = true;
                 Some(EventKind::Opaque { value, block: true })
             }
-            Name::GfmTaskListItemCheck => {
-                let checked = self
-                    .named(index, &Name::GfmTaskListItemValueChecked)
-                    .is_some();
+            Name::TaskListItemCheck => {
+                let checked = self.named(index, &Name::TaskListItemValueChecked).is_some();
                 self.index = self.matching[index] + 1;
                 Some(EventKind::TaskMarker(checked))
             }
-            Name::GfmFootnoteCall => {
+            Name::FootnoteCall => {
                 let value = self
                     .named(index, &Name::LabelText)
                     .expect("footnote call has a label");
@@ -932,11 +930,11 @@ impl<'a> GrammarParser<'a> {
                 )))
             }
             Name::Autolink
-            | Name::GfmAutolinkLiteralEmail
-            | Name::GfmAutolinkLiteralMailto
-            | Name::GfmAutolinkLiteralProtocol
-            | Name::GfmAutolinkLiteralWww
-            | Name::GfmAutolinkLiteralXmpp => {
+            | Name::AutolinkLiteralEmail
+            | Name::AutolinkLiteralMailto
+            | Name::AutolinkLiteralProtocol
+            | Name::AutolinkLiteralWww
+            | Name::AutolinkLiteralXmpp => {
                 let inner = if name == Name::Autolink {
                     self.named(index, &Name::AutolinkProtocol)
                         .or_else(|| self.named(index, &Name::AutolinkEmail))
@@ -949,9 +947,9 @@ impl<'a> GrammarParser<'a> {
                     self.index = self.matching[index] + 1;
                     return Some(EventKind::Text(Text::Source(label)));
                 }
-                let prefix = if name == Name::GfmAutolinkLiteralWww {
+                let prefix = if name == Name::AutolinkLiteralWww {
                     "http://"
-                } else if name == Name::GfmAutolinkLiteralEmail
+                } else if name == Name::AutolinkLiteralEmail
                     || self.tokens[inner].name == Name::AutolinkEmail
                 {
                     "mailto:"
@@ -1025,7 +1023,7 @@ impl Iterator for GrammarParser<'_> {
                 break;
             }
             if self.tokens[self.index].kind == Kind::Exit
-                && self.tokens[self.index].name == Name::GfmTableRow
+                && self.tokens[self.index].name == Name::TableRow
                 && self.column < self.align.len()
             {
                 let end = self.tokens[self.index].point.index;

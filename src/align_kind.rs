@@ -5,7 +5,7 @@
 #[cfg(feature = "serde")]
 use core::fmt;
 
-/// GFM: alignment of phrasing content.
+/// Alignment of phrasing content.
 ///
 /// Used to align the contents of table cells within a table.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

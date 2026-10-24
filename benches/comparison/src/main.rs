@@ -18,8 +18,8 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                 options.compile.allow_dangerous_protocol = true;
             }
             if profile == "gfm" {
-                options.parse.constructs.gfm_footnote_definition = false;
-                options.parse.constructs.gfm_label_start_footnote = false;
+                options.parse.constructs.footnote_definition = false;
+                options.parse.constructs.label_start_footnote = false;
             }
             Box::new(move |s| {
                 let events = core_markdown::EventParser::new(s, &options.parse).unwrap();
@@ -43,8 +43,8 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                 options.compile.allow_dangerous_protocol = true;
             }
             if profile == "gfm" {
-                options.parse.constructs.gfm_footnote_definition = false;
-                options.parse.constructs.gfm_label_start_footnote = false;
+                options.parse.constructs.footnote_definition = false;
+                options.parse.constructs.label_start_footnote = false;
             }
             Box::new(move |s| {
                 if prepare || events {

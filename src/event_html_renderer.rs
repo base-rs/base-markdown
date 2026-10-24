@@ -645,8 +645,8 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         let value = value
                             .resolve(self.source)
                             .expect("event values are source-valid");
-                        if self.options.allow_dangerous_html && self.options.gfm_tagfilter {
-                            crate::util::gfm_tagfilter::write_filtered(value, |part| {
+                        if self.options.allow_dangerous_html && self.options.tagfilter {
+                            crate::util::tagfilter::write_filtered(value, |part| {
                                 self.escaped(part, false)
                             })
                         } else {
@@ -655,16 +655,14 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     }
                     EventKind::TaskMarker(checked) => {
                         if self.images == 0 {
-                            self.write(
-                                match (self.options.gfm_task_list_item_checkable, checked) {
-                                    (false, false) => "<input type=\"checkbox\" disabled=\"\" />",
-                                    (false, true) => {
-                                        "<input type=\"checkbox\" disabled=\"\" checked=\"\" />"
-                                    }
-                                    (true, false) => "<input type=\"checkbox\" />",
-                                    (true, true) => "<input type=\"checkbox\" checked=\"\" />",
-                                },
-                            )?;
+                            self.write(match (self.options.task_list_item_checkable, checked) {
+                                (false, false) => "<input type=\"checkbox\" disabled=\"\" />",
+                                (false, true) => {
+                                    "<input type=\"checkbox\" disabled=\"\" checked=\"\" />"
+                                }
+                                (true, false) => "<input type=\"checkbox\" />",
+                                (true, true) => "<input type=\"checkbox\" checked=\"\" />",
+                            })?;
                         }
                         Ok(())
                     }
@@ -685,7 +683,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     fn prefix(&mut self) -> Result<(), StreamError> {
         self.escaped(
             self.options
-                .gfm_footnote_clobber_prefix
+                .footnote_clobber_prefix
                 .as_deref()
                 .unwrap_or("user-content-"),
             true,
@@ -732,21 +730,21 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         self.write("<section data-footnotes=\"\" class=\"footnotes\"><")?;
         let tag = self
             .options
-            .gfm_footnote_label_tag_name
+            .footnote_label_tag_name
             .as_deref()
             .unwrap_or("h2");
         self.escaped(tag, true)?;
         self.write(" id=\"footnote-label\" ")?;
         self.write(
             self.options
-                .gfm_footnote_label_attributes
+                .footnote_label_attributes
                 .as_deref()
                 .unwrap_or("class=\"sr-only\""),
         )?;
         self.write(">")?;
         self.escaped(
             self.options
-                .gfm_footnote_label
+                .footnote_label
                 .as_deref()
                 .unwrap_or("Footnotes"),
             true,
@@ -773,14 +771,14 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 }
                 let prefix = crate::util::encode::encode(
                     self.options
-                        .gfm_footnote_clobber_prefix
+                        .footnote_clobber_prefix
                         .as_deref()
                         .unwrap_or("user-content-"),
                     true,
                 );
                 let back = crate::util::encode::encode(
                     self.options
-                        .gfm_footnote_back_label
+                        .footnote_back_label
                         .as_deref()
                         .unwrap_or("Back to content"),
                     true,
@@ -865,7 +863,7 @@ mod tests {
         }
         let options = CompileOptions {
             allow_dangerous_html: true,
-            gfm_tagfilter: true,
+            tagfilter: true,
             ..CompileOptions::default()
         };
         for (remaining, expected) in [

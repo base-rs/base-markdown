@@ -6,13 +6,13 @@
 //! The document content type.
 //!
 //! **Document** represents the containers, such as block quotes, list items,
-//! or GFM footnotes, which structure the document and contain other sections.
+//! or footnotes, which structure the document and contain other sections.
 //!
 //! The constructs found in flow are:
 //!
 //! * [Block quote][crate::construct::block_quote]
 //! * [List item][crate::construct::list_item]
-//! * [GFM: Footnote definition][crate::construct::gfm_footnote_definition]
+//! * [Footnote definition][crate::construct::footnote_definition]
 use crate::event::{Content, Event, Kind, Link, Name};
 use crate::state::{Name as StateName, State};
 use crate::subtokenize::merge_events;
@@ -104,7 +104,7 @@ pub fn container_existing_before(tokenizer: &mut Tokenizer) -> State {
 
         let name = match container.kind {
             Container::BlockQuote => StateName::BlockQuoteContStart,
-            Container::GfmFootnoteDefinition => StateName::GfmFootnoteDefinitionContStart,
+            Container::FootnoteDefinition => StateName::FootnoteDefinitionContStart,
             Container::ListItem => StateName::ListItemContStart,
         };
 
@@ -218,16 +218,16 @@ pub fn container_new_before_not_list(tokenizer: &mut Tokenizer) -> State {
     // definition one.
     tokenizer.tokenize_state.document_container_stack
         [tokenizer.tokenize_state.document_continued] = ContainerState {
-        kind: Container::GfmFootnoteDefinition,
+        kind: Container::FootnoteDefinition,
         blank_initial: false,
         size: 0,
     };
 
     tokenizer.attempt(
         State::Next(StateName::DocumentContainerNewAfter),
-        State::Next(StateName::DocumentContainerNewBeforeNotGfmFootnoteDefinition),
+        State::Next(StateName::DocumentContainerNewBeforeNotFootnoteDefinition),
     );
-    State::Retry(StateName::GfmFootnoteDefinitionStart)
+    State::Retry(StateName::FootnoteDefinitionStart)
 }
 
 /// At new container, but not a block quote, list item, or footnote definition.
@@ -410,7 +410,7 @@ pub fn flow_end(tokenizer: &mut Tokenizer) -> State {
     while !document_lazy_continuation_current && stack_index > 0 {
         stack_index -= 1;
         let name = &child.stack[stack_index];
-        if name == &Name::Content || name == &Name::GfmTableHead {
+        if name == &Name::Content || name == &Name::TableHead {
             document_lazy_continuation_current = true;
         }
     }
@@ -485,7 +485,7 @@ fn exit_containers(tokenizer: &mut Tokenizer, phase: &Phase) {
         while let Some(container) = stack_close.pop() {
             let name = match container.kind {
                 Container::BlockQuote => Name::BlockQuote,
-                Container::GfmFootnoteDefinition => Name::GfmFootnoteDefinition,
+                Container::FootnoteDefinition => Name::FootnoteDefinition,
                 Container::ListItem => Name::ListItem,
             };
 

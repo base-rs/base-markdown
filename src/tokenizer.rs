@@ -38,8 +38,8 @@ pub enum Container {
     BlockQuote,
     /// [List item][crate::construct::list_item].
     ListItem,
-    /// [GFM: Footnote definition][crate::construct::gfm_footnote_definition].
-    GfmFootnoteDefinition,
+    /// [Footnote definition][crate::construct::footnote_definition].
+    FootnoteDefinition,
 }
 
 /// Info used to tokenize a container.
@@ -89,16 +89,16 @@ pub enum LabelKind {
     ///
     /// Construct: [Label start (link)][crate::construct::label_start_link].
     Link,
-    /// GFM: Label (footnote) link.
+    /// Label (footnote) link.
     ///
     /// ```markdown
     /// > | a [^b] c
     ///       ^^
     /// ```
     ///
-    /// Construct: [GFM: Label start (footnote)][crate::construct::gfm_label_start_footnote].
-    GfmFootnote,
-    /// GFM: Label (footnote) link, not matching a footnote definition, so
+    /// Construct: [Label start (footnote)][crate::construct::label_start_footnote].
+    Footnote,
+    /// Label (footnote) link, not matching a footnote definition, so
     /// handled as a label (link) start.
     ///
     /// ```markdown
@@ -107,7 +107,7 @@ pub enum LabelKind {
     /// ```
     ///
     /// Construct: [Label end][crate::construct::label_end].
-    GfmUndefinedFootnote,
+    UndefinedFootnote,
 }
 
 /// Label start, looking for an end.
@@ -205,7 +205,7 @@ pub struct TokenizeState<'a> {
     pub document_lazy_accepting_before: bool,
     /// Whether this is the first paragraph (potentially after definitions) in
     /// a list item.
-    /// Used for GFM task list items.
+    /// Used for task list items.
     pub document_at_first_paragraph_of_list_item: bool,
 
     // Couple of very frequent settings for parsing whitespace.
@@ -233,8 +233,8 @@ pub struct TokenizeState<'a> {
     /// Used when tokenizing [text content][crate::construct::text].
     pub labels: Vec<Label>,
 
-    /// List of defined GFM footnote definition identifiers.
-    pub gfm_footnote_definitions: Vec<String>,
+    /// List of defined footnote definition identifiers.
+    pub footnote_definitions: Vec<String>,
 
     /// Whether to connect events.
     pub connect: bool,
@@ -390,7 +390,7 @@ impl<'a> Tokenizer<'a> {
                 document_child_state: None,
                 document_child: None,
                 document_at_first_paragraph_of_list_item: false,
-                gfm_footnote_definitions: vec![],
+                footnote_definitions: vec![],
 
                 end: 0,
                 autolink: crate::util::autolink::Autolink::default(),
@@ -455,7 +455,7 @@ impl<'a> Tokenizer<'a> {
         restore!(label_starts, tokenize_state.label_starts);
         restore!(label_starts_loose, tokenize_state.label_starts_loose);
         restore!(labels, tokenize_state.labels);
-        restore!(footnotes, tokenize_state.gfm_footnote_definitions);
+        restore!(footnotes, tokenize_state.footnote_definitions);
         tokenizer.map = buffers.map;
         tokenizer
     }
@@ -471,7 +471,7 @@ impl<'a> Tokenizer<'a> {
             label_starts: self.tokenize_state.label_starts,
             label_starts_loose: self.tokenize_state.label_starts_loose,
             labels: self.tokenize_state.labels,
-            footnotes: self.tokenize_state.gfm_footnote_definitions,
+            footnotes: self.tokenize_state.footnote_definitions,
             map: self.map,
         }
     }
@@ -493,7 +493,7 @@ impl<'a> Tokenizer<'a> {
         reuse!(tokenize_state.label_starts);
         reuse!(tokenize_state.label_starts_loose);
         reuse!(tokenize_state.labels);
-        reuse!(tokenize_state.gfm_footnote_definitions);
+        reuse!(tokenize_state.footnote_definitions);
         // A flushed tokenizer has consumed all pending edits.
         core::mem::swap(&mut self.map, &mut next.map);
         *self = next;
@@ -766,16 +766,16 @@ impl<'a> Tokenizer<'a> {
         state.assert_ok();
 
         let mut value = Subresult {
-            gfm_footnote_definitions: self.tokenize_state.gfm_footnote_definitions.split_off(0),
+            footnote_definitions: self.tokenize_state.footnote_definitions.split_off(0),
         };
 
         if resolve {
             let resolvers = self.resolvers.split_off(0);
             let mut index = 0;
-            let fn_defs = &mut value.gfm_footnote_definitions;
+            let fn_defs = &mut value.footnote_definitions;
             while index < resolvers.len() {
                 if let Some(mut result) = call_resolve(self, resolvers[index]) {
-                    fn_defs.append(&mut result.gfm_footnote_definitions);
+                    fn_defs.append(&mut result.footnote_definitions);
                 }
                 index += 1;
             }

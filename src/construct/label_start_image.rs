@@ -85,7 +85,7 @@ pub fn open(tokenizer: &mut Tokenizer) -> State {
 ///         ^
 /// ```
 ///
-/// This is needed in because, when GFM footnotes are enabled, images never
+/// This is needed in because, when footnotes are enabled, images never
 /// form when started with a `^`.
 /// Instead, links form:
 ///
@@ -106,7 +106,7 @@ pub fn after(tokenizer: &mut Tokenizer) -> State {
         .parse_state
         .options
         .constructs
-        .gfm_label_start_footnote
+        .label_start_footnote
         && tokenizer.current == Some(b'^')
     {
         State::Nok

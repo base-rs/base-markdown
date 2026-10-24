@@ -15,7 +15,7 @@ use support::fixture::Position;
 use support::fixture::{Delete, Node, Paragraph, Root, Text};
 
 #[test]
-fn gfm_strikethrough() -> Result<(), message::Message> {
+fn strikethrough() -> Result<(), message::Message> {
     assert_eq!(
         to_html("a ~b~ c"),
         "<p>a ~b~ c</p>",
@@ -383,7 +383,7 @@ u ~**xxx**~ zzz
             "a ~b~ ~~c~~ d",
             &Options {
                 parse: ParseOptions {
-                    gfm_strikethrough_single_tilde: false,
+                    strikethrough_single_tilde: false,
                     ..ParseOptions::gfm()
                 },
                 ..Options::gfm()
@@ -398,7 +398,7 @@ u ~**xxx**~ zzz
             "a ~b~ ~~c~~ d",
             &Options {
                 parse: ParseOptions {
-                    gfm_strikethrough_single_tilde: true,
+                    strikethrough_single_tilde: true,
                     ..ParseOptions::gfm()
                 },
                 ..Options::gfm()
@@ -444,9 +444,9 @@ fn compact_strikethrough_matches_grammar_across_delimiter_boundaries() {
     use core_markdown::{render_events, Document, EventParser};
     for single in [false, true] {
         let mut options = Options::gfm();
-        options.parse.gfm_strikethrough_single_tilde = single;
+        options.parse.strikethrough_single_tilde = single;
         let mut grammar = Options::gfm();
-        grammar.parse.gfm_strikethrough_single_tilde = single;
+        grammar.parse.strikethrough_single_tilde = single;
         grammar.parse.constructs.math_flow = true;
         for open in ["~", "~~", "~~~", "~~~~"] {
             for close in ["~", "~~", "~~~", "~~~~"] {

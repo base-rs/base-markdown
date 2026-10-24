@@ -146,11 +146,11 @@ pub fn list_item_loose(events: &[Event], mut index: usize) -> bool {
     false
 }
 
-/// Figure out the alignment of a GFM table.
-pub fn gfm_table_align(events: &[Event], mut index: usize) -> Vec<AlignKind> {
+/// Figure out the alignment of a table.
+pub fn table_align(events: &[Event], mut index: usize) -> Vec<AlignKind> {
     debug_assert!(
         match events[index].name {
-            Name::GfmTable => true,
+            Name::Table => true,
             _ => unreachable!("table alignment inference starts at a table event"),
         },
         "expected table"
@@ -164,8 +164,8 @@ pub fn gfm_table_align(events: &[Event], mut index: usize) -> Vec<AlignKind> {
         if in_delimiter_row {
             if event.kind == Kind::Enter {
                 // Start of alignment value: set a new column.
-                if event.name == Name::GfmTableDelimiterCellValue {
-                    align.push(if events[index + 1].name == Name::GfmTableDelimiterMarker {
+                if event.name == Name::TableDelimiterCellValue {
+                    align.push(if events[index + 1].name == Name::TableDelimiterMarker {
                         AlignKind::Left
                     } else {
                         AlignKind::None
@@ -173,8 +173,8 @@ pub fn gfm_table_align(events: &[Event], mut index: usize) -> Vec<AlignKind> {
                 }
             } else {
                 // End of alignment value: change the column.
-                if event.name == Name::GfmTableDelimiterCellValue {
-                    if events[index - 1].name == Name::GfmTableDelimiterMarker {
+                if event.name == Name::TableDelimiterCellValue {
+                    if events[index - 1].name == Name::TableDelimiterMarker {
                         let align_index = align.len() - 1;
                         align[align_index] = if align[align_index] == AlignKind::Left {
                             AlignKind::Center
@@ -184,11 +184,11 @@ pub fn gfm_table_align(events: &[Event], mut index: usize) -> Vec<AlignKind> {
                     }
                 }
                 // Done!
-                else if event.name == Name::GfmTableDelimiterRow {
+                else if event.name == Name::TableDelimiterRow {
                     break;
                 }
             }
-        } else if event.kind == Kind::Enter && event.name == Name::GfmTableDelimiterRow {
+        } else if event.kind == Kind::Enter && event.name == Name::TableDelimiterRow {
             in_delimiter_row = true;
         }
 

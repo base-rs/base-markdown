@@ -3,7 +3,7 @@
 // Copyright, 2022-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-//! GFM: Task list item check occurs in the [text][] content type.
+//! Task list item check occurs in the [text][] content type.
 //!
 //! ## Grammar
 //!
@@ -11,7 +11,7 @@
 //! (<small>see [construct][crate::construct] for character groups</small>):
 //!
 //! ```bnf
-//! gfm_task_list_item_check ::= '[' (0x09 | ' ' | 'X' | 'x') ']'
+//! task_list_item_check ::= '[' (0x09 | ' ' | 'X' | 'x') ']'
 //! ```
 //!
 //! The check is only allowed at the start of the first paragraph, optionally
@@ -36,10 +36,10 @@
 //!
 //! ## Tokens
 //!
-//! * [`GfmTaskListItemCheck`][Name::GfmTaskListItemCheck]
-//! * [`GfmTaskListItemMarker`][Name::GfmTaskListItemMarker]
-//! * [`GfmTaskListItemValueChecked`][Name::GfmTaskListItemValueChecked]
-//! * [`GfmTaskListItemValueUnchecked`][Name::GfmTaskListItemValueUnchecked]
+//! * [`TaskListItemCheck`][Name::TaskListItemCheck]
+//! * [`TaskListItemMarker`][Name::TaskListItemMarker]
+//! * [`TaskListItemValueChecked`][Name::TaskListItemValueChecked]
+//! * [`TaskListItemValueUnchecked`][Name::TaskListItemValueUnchecked]
 //!
 //! ## References
 //!
@@ -60,18 +60,18 @@ use crate::tokenizer::Tokenizer;
 ///       ^
 /// ```
 pub fn start(tokenizer: &mut Tokenizer) -> State {
-    if tokenizer.parse_state.options.constructs.gfm_task_list_item
+    if tokenizer.parse_state.options.constructs.task_list_item
         && tokenizer
             .tokenize_state
             .document_at_first_paragraph_of_list_item
         && tokenizer.current == Some(b'[')
         && tokenizer.previous.is_none()
     {
-        tokenizer.enter(Name::GfmTaskListItemCheck);
-        tokenizer.enter(Name::GfmTaskListItemMarker);
+        tokenizer.enter(Name::TaskListItemCheck);
+        tokenizer.enter(Name::TaskListItemMarker);
         tokenizer.consume();
-        tokenizer.exit(Name::GfmTaskListItemMarker);
-        State::Next(StateName::GfmTaskListItemCheckInside)
+        tokenizer.exit(Name::TaskListItemMarker);
+        State::Next(StateName::TaskListItemCheckInside)
     } else {
         State::Nok
     }
@@ -86,16 +86,16 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
 pub fn inside(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         Some(b'\t' | b'\n' | b' ') => {
-            tokenizer.enter(Name::GfmTaskListItemValueUnchecked);
+            tokenizer.enter(Name::TaskListItemValueUnchecked);
             tokenizer.consume();
-            tokenizer.exit(Name::GfmTaskListItemValueUnchecked);
-            State::Next(StateName::GfmTaskListItemCheckClose)
+            tokenizer.exit(Name::TaskListItemValueUnchecked);
+            State::Next(StateName::TaskListItemCheckClose)
         }
         Some(b'X' | b'x') => {
-            tokenizer.enter(Name::GfmTaskListItemValueChecked);
+            tokenizer.enter(Name::TaskListItemValueChecked);
             tokenizer.consume();
-            tokenizer.exit(Name::GfmTaskListItemValueChecked);
-            State::Next(StateName::GfmTaskListItemCheckClose)
+            tokenizer.exit(Name::TaskListItemValueChecked);
+            State::Next(StateName::TaskListItemCheckClose)
         }
         _ => State::Nok,
     }
@@ -110,11 +110,11 @@ pub fn inside(tokenizer: &mut Tokenizer) -> State {
 pub fn close(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         Some(b']') => {
-            tokenizer.enter(Name::GfmTaskListItemMarker);
+            tokenizer.enter(Name::TaskListItemMarker);
             tokenizer.consume();
-            tokenizer.exit(Name::GfmTaskListItemMarker);
-            tokenizer.exit(Name::GfmTaskListItemCheck);
-            State::Next(StateName::GfmTaskListItemCheckAfter)
+            tokenizer.exit(Name::TaskListItemMarker);
+            tokenizer.exit(Name::TaskListItemCheck);
+            State::Next(StateName::TaskListItemCheckAfter)
         }
         _ => State::Nok,
     }
@@ -135,7 +135,7 @@ pub fn after(tokenizer: &mut Tokenizer) -> State {
         Some(b'\t' | b' ') => {
             tokenizer.check(State::Ok, State::Nok);
             tokenizer.attempt(
-                State::Next(StateName::GfmTaskListItemCheckAfterSpaceOrTab),
+                State::Next(StateName::TaskListItemCheckAfterSpaceOrTab),
                 State::Nok,
             );
             State::Retry(space_or_tab(tokenizer))

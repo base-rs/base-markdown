@@ -781,7 +781,7 @@ pub enum Name {
     ///
     /// * **Context**:
     ///   [`Definition`][Name::Definition],
-    ///   [`GfmFootnoteDefinition`][Name::GfmFootnoteDefinition]
+    ///   [`FootnoteDefinition`][Name::FootnoteDefinition]
     /// * **Content model**:
     ///   void
     /// * **Construct**:
@@ -958,7 +958,7 @@ pub enum Name {
     ///     ^^^
     /// ```
     FrontmatterSequence,
-    /// GFM extension: email autolink.
+    /// Email autolink.
     ///
     /// ## Info
     ///
@@ -967,7 +967,7 @@ pub enum Name {
     /// * **Content model**:
     ///   void.
     /// * **Construct**:
-    ///   [`gfm_autolink_literal`][crate::construct::gfm_autolink_literal]
+    ///   [`autolink_literal`][crate::construct::autolink_literal]
     ///
     /// ## Example
     ///
@@ -975,8 +975,8 @@ pub enum Name {
     /// > | context@example.com
     ///     ^^^^^^^^^^^^^^^^^^^
     /// ```
-    GfmAutolinkLiteralEmail,
-    /// GFM extension: email autolink w/ explicit `mailto`.
+    AutolinkLiteralEmail,
+    /// Email autolink w/ explicit `mailto`.
     ///
     /// ## Info
     ///
@@ -985,7 +985,7 @@ pub enum Name {
     /// * **Content model**:
     ///   void.
     /// * **Construct**:
-    ///   [`gfm_autolink_literal`][crate::construct::gfm_autolink_literal]
+    ///   [`autolink_literal`][crate::construct::autolink_literal]
     ///
     /// ## Example
     ///
@@ -993,8 +993,8 @@ pub enum Name {
     /// > | mailto:context@example.com
     ///     ^^^^^^^^^^^^^^^^^^^^^^^^^^
     /// ```
-    GfmAutolinkLiteralMailto,
-    /// GFM extension: autolink w/ protocol.
+    AutolinkLiteralMailto,
+    /// Autolink w/ protocol.
     ///
     /// ## Info
     ///
@@ -1003,7 +1003,7 @@ pub enum Name {
     /// * **Content model**:
     ///   void.
     /// * **Construct**:
-    ///   [`gfm_autolink_literal`][crate::construct::gfm_autolink_literal]
+    ///   [`autolink_literal`][crate::construct::autolink_literal]
     ///
     /// ## Example
     ///
@@ -1011,8 +1011,8 @@ pub enum Name {
     /// > | https://example.com
     ///     ^^^^^^^^^^^^^^^^^^^
     /// ```
-    GfmAutolinkLiteralProtocol,
-    /// GFM extension: autolink w/ www.
+    AutolinkLiteralProtocol,
+    /// Autolink w/ www.
     ///
     /// ## Info
     ///
@@ -1021,7 +1021,7 @@ pub enum Name {
     /// * **Content model**:
     ///   void.
     /// * **Construct**:
-    ///   [`gfm_autolink_literal`][crate::construct::gfm_autolink_literal]
+    ///   [`autolink_literal`][crate::construct::autolink_literal]
     ///
     /// ## Example
     ///
@@ -1029,8 +1029,8 @@ pub enum Name {
     /// > | www.example.com
     ///     ^^^^^^^^^^^^^^^
     /// ```
-    GfmAutolinkLiteralWww,
-    /// GFM extension: email autolink w/ explicit `xmpp`.
+    AutolinkLiteralWww,
+    /// Email autolink w/ explicit `xmpp`.
     ///
     /// ## Info
     ///
@@ -1039,7 +1039,7 @@ pub enum Name {
     /// * **Content model**:
     ///   void.
     /// * **Construct**:
-    ///   [`gfm_autolink_literal`][crate::construct::gfm_autolink_literal]
+    ///   [`autolink_literal`][crate::construct::autolink_literal]
     ///
     /// ## Example
     ///
@@ -1047,8 +1047,8 @@ pub enum Name {
     /// > | mailto:a@b.c/d
     ///     ^^^^^^^^^^^^^^
     /// ```
-    GfmAutolinkLiteralXmpp,
-    /// GFM extension: whole footnote call.
+    AutolinkLiteralXmpp,
+    /// Whole footnote call.
     ///
     /// ## Info
     ///
@@ -1065,18 +1065,18 @@ pub enum Name {
     /// > | a [^b] c
     ///       ^^^^
     /// ```
-    GfmFootnoteCall,
-    /// GFM extension: label start (footnote).
+    FootnoteCall,
+    /// Label start (footnote).
     ///
     /// ## Info
     ///
     /// * **Context**:
     ///   [`Label`][Name::Label]
     /// * **Content model**:
-    ///   [`GfmFootnoteCallMarker`][Name::GfmFootnoteCallMarker],
+    ///   [`FootnoteCallMarker`][Name::FootnoteCallMarker],
     ///   [`LabelMarker`][Name::LabelMarker]
     /// * **Construct**:
-    ///   [`gfm_label_start_footnote`][crate::construct::gfm_label_start_footnote]
+    ///   [`label_start_footnote`][crate::construct::label_start_footnote]
     ///
     /// ## Example
     ///
@@ -1084,17 +1084,17 @@ pub enum Name {
     /// > | a [^b] c
     ///       ^^
     /// ```
-    GfmFootnoteCallLabel,
-    /// GFM extension: label start (footnote) marker.
+    FootnoteCallLabel,
+    /// Label start (footnote) marker.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmFootnoteCallLabel`][Name::GfmFootnoteCallLabel]
+    ///   [`FootnoteCallLabel`][Name::FootnoteCallLabel]
     /// * **Content model**:
     ///   void
     /// * **Construct**:
-    ///   [`gfm_label_start_footnote`][crate::construct::gfm_label_start_footnote]
+    ///   [`label_start_footnote`][crate::construct::label_start_footnote]
     ///
     /// ## Example
     ///
@@ -1102,18 +1102,18 @@ pub enum Name {
     /// > | a [^b] c
     ///        ^
     /// ```
-    GfmFootnoteCallMarker,
-    /// GFM extension: whole footnote definition.
+    FootnoteCallMarker,
+    /// Whole footnote definition.
     ///
     /// ## Info
     ///
     /// * **Context**:
     ///   [document content][crate::construct::document]
     /// * **Content model**:
-    ///   [`GfmFootnoteDefinitionPrefix`][Name::GfmFootnoteDefinitionPrefix],
+    ///   [`FootnoteDefinitionPrefix`][Name::FootnoteDefinitionPrefix],
     ///   [document content][crate::construct::flow]
     /// * **Construct**:
-    ///   [`gfm_footnote_definition`][crate::construct::gfm_footnote_definition]
+    ///   [`footnote_definition`][crate::construct::footnote_definition]
     ///
     /// ## Example
     ///
@@ -1121,19 +1121,19 @@ pub enum Name {
     /// > | [^a]: b
     ///     ^^^^^^^
     /// ```
-    GfmFootnoteDefinition,
-    /// GFM extension: footnote definition prefix.
+    FootnoteDefinition,
+    /// Footnote definition prefix.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmFootnoteDefinition`][Name::GfmFootnoteDefinition]
+    ///   [`FootnoteDefinition`][Name::FootnoteDefinition]
     /// * **Content model**:
     ///   [`DefinitionMarker`][Name::DefinitionMarker],
-    ///   [`GfmFootnoteDefinitionLabel`][Name::GfmFootnoteDefinitionLabel],
+    ///   [`FootnoteDefinitionLabel`][Name::FootnoteDefinitionLabel],
     ///   [`SpaceOrTab`][Name::SpaceOrTab]
     /// * **Construct**:
-    ///   [`gfm_footnote_definition`][crate::construct::gfm_footnote_definition]
+    ///   [`footnote_definition`][crate::construct::footnote_definition]
     ///
     /// ## Example
     ///
@@ -1141,19 +1141,19 @@ pub enum Name {
     /// > | [^a]: b
     ///     ^^^^^^
     /// ```
-    GfmFootnoteDefinitionPrefix,
-    /// GFM extension: footnote definition label.
+    FootnoteDefinitionPrefix,
+    /// Footnote definition label.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmFootnoteDefinitionPrefix`][Name::GfmFootnoteDefinitionPrefix]
+    ///   [`FootnoteDefinitionPrefix`][Name::FootnoteDefinitionPrefix]
     /// * **Content model**:
-    ///   [`GfmFootnoteDefinitionLabelMarker`][Name::GfmFootnoteDefinitionLabelMarker],
-    ///   [`GfmFootnoteDefinitionLabelString`][Name::GfmFootnoteDefinitionLabelString],
-    ///   [`GfmFootnoteDefinitionMarker`][Name::GfmFootnoteDefinitionMarker]
+    ///   [`FootnoteDefinitionLabelMarker`][Name::FootnoteDefinitionLabelMarker],
+    ///   [`FootnoteDefinitionLabelString`][Name::FootnoteDefinitionLabelString],
+    ///   [`FootnoteDefinitionMarker`][Name::FootnoteDefinitionMarker]
     /// * **Construct**:
-    ///   [`gfm_footnote_definition`][crate::construct::gfm_footnote_definition]
+    ///   [`footnote_definition`][crate::construct::footnote_definition]
     ///
     /// ## Example
     ///
@@ -1161,59 +1161,59 @@ pub enum Name {
     /// > | [^a]: b
     ///     ^^^^
     /// ```
-    GfmFootnoteDefinitionLabel,
-    /// GFM extension: footnote definition label marker.
+    FootnoteDefinitionLabel,
+    /// Footnote definition label marker.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmFootnoteDefinitionLabel`][Name::GfmFootnoteDefinitionLabel]
+    ///   [`FootnoteDefinitionLabel`][Name::FootnoteDefinitionLabel]
     /// * **Content model**:
     ///   void
     /// * **Construct**:
-    ///   [`gfm_footnote_definition`][crate::construct::gfm_footnote_definition]
+    ///   [`footnote_definition`][crate::construct::footnote_definition]
     ///
     /// ## Example
     ///
     /// ```markdown
     /// > | [^a]: b
     ///     ^  ^
-    GfmFootnoteDefinitionLabelMarker,
-    /// GFM extension: footnote definition label string.
+    FootnoteDefinitionLabelMarker,
+    /// Footnote definition label string.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmFootnoteDefinitionLabel`][Name::GfmFootnoteDefinitionLabel]
+    ///   [`FootnoteDefinitionLabel`][Name::FootnoteDefinitionLabel]
     /// * **Content model**:
     ///   [string content][crate::construct::string]
     /// * **Construct**:
-    ///   [`gfm_footnote_definition`][crate::construct::gfm_footnote_definition]
+    ///   [`footnote_definition`][crate::construct::footnote_definition]
     ///
     /// ## Example
     ///
     /// ```markdown
     /// > | [^a]: b
     ///       ^
-    GfmFootnoteDefinitionLabelString,
-    /// GFM extension: footnote definition marker.
+    FootnoteDefinitionLabelString,
+    /// Footnote definition marker.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmFootnoteDefinitionLabel`][Name::GfmFootnoteDefinitionLabel]
+    ///   [`FootnoteDefinitionLabel`][Name::FootnoteDefinitionLabel]
     /// * **Content model**:
     ///   void
     /// * **Construct**:
-    ///   [`gfm_footnote_definition`][crate::construct::gfm_footnote_definition]
+    ///   [`footnote_definition`][crate::construct::footnote_definition]
     ///
     /// ## Example
     ///
     /// ```markdown
     /// > | [^a]: b
     ///      ^
-    GfmFootnoteDefinitionMarker,
-    /// GFM extension: Strikethrough.
+    FootnoteDefinitionMarker,
+    /// Strikethrough.
     ///
     /// ## Info
     ///
@@ -1230,19 +1230,19 @@ pub enum Name {
     /// > | ~a~
     ///     ^^^
     /// ```
-    GfmStrikethrough,
-    /// GFM extension: Table.
+    Strikethrough,
+    /// Table.
     ///
     /// ## Info
     ///
     /// * **Context**:
     ///   [flow content][crate::construct::flow]
     /// * **Content model**:
-    ///   [`GfmTableBody`][Name::GfmTableBody],
-    ///   [`GfmTableHead`][Name::GfmTableHead],
+    ///   [`TableBody`][Name::TableBody],
+    ///   [`TableHead`][Name::TableHead],
     ///   [`LineEnding`][Name::LineEnding]
     /// * **Construct**:
-    ///   [`gfm_table`][crate::construct::gfm_table]
+    ///   [`table`][crate::construct::table]
     ///
     /// ## Example
     ///
@@ -1254,18 +1254,18 @@ pub enum Name {
     /// > | | b |
     ///     ^^^^^
     /// ```
-    GfmTable,
-    /// GFM extension: Table body.
+    Table,
+    /// Table body.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTable`][Name::GfmTable]
+    ///   [`Table`][Name::Table]
     /// * **Content model**:
-    ///   [`GfmTableRow`][Name::GfmTableRow],
+    ///   [`TableRow`][Name::TableRow],
     ///   [`LineEnding`][Name::LineEnding]
     /// * **Construct**:
-    ///   [`gfm_table`][crate::construct::gfm_table]
+    ///   [`table`][crate::construct::table]
     ///
     /// ## Example
     ///
@@ -1275,19 +1275,19 @@ pub enum Name {
     /// > | | b |
     ///     ^^^^^
     /// ```
-    GfmTableBody,
-    /// GFM extension: Table cell.
+    TableBody,
+    /// Table cell.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTableRow`][Name::GfmTableRow]
+    ///   [`TableRow`][Name::TableRow]
     /// * **Content model**:
-    ///   [`GfmTableCellDivider`][Name::GfmTableCellDivider],
-    ///   [`GfmTableCellText`][Name::GfmTableCellText],
+    ///   [`TableCellDivider`][Name::TableCellDivider],
+    ///   [`TableCellText`][Name::TableCellText],
     ///   [`SpaceOrTab`][Name::SpaceOrTab]
     /// * **Construct**:
-    ///   [`gfm_table`][crate::construct::gfm_table]
+    ///   [`table`][crate::construct::table]
     ///
     /// ## Example
     ///
@@ -1298,17 +1298,17 @@ pub enum Name {
     /// > | | b |
     ///     ^^^^^
     /// ```
-    GfmTableCell,
-    /// GFM extension: Table cell text.
+    TableCell,
+    /// Table cell text.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTableCell`][Name::GfmTableCell]
+    ///   [`TableCell`][Name::TableCell]
     /// * **Content model**:
     ///   [text content][crate::construct::text]
     /// * **Construct**:
-    ///   [`gfm_table`][crate::construct::gfm_table]
+    ///   [`table`][crate::construct::table]
     ///
     /// ## Example
     ///
@@ -1319,17 +1319,17 @@ pub enum Name {
     /// > | | b |
     ///       ^
     /// ```
-    GfmTableCellText,
-    /// GFM extension: Table cell divider.
+    TableCellText,
+    /// Table cell divider.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTableCell`][Name::GfmTableCell]
+    ///   [`TableCell`][Name::TableCell]
     /// * **Content model**:
     ///   void
     /// * **Construct**:
-    ///   [`gfm_table`][crate::construct::gfm_table]
+    ///   [`table`][crate::construct::table]
     ///
     /// ## Example
     ///
@@ -1341,17 +1341,17 @@ pub enum Name {
     /// > | | b |
     ///     ^   ^
     /// ```
-    GfmTableCellDivider,
-    /// GFM extension: Table delimiter row.
+    TableCellDivider,
+    /// Table delimiter row.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTableHead`][Name::GfmTableHead]
+    ///   [`TableHead`][Name::TableHead]
     /// * **Content model**:
-    ///   [`GfmTableDelimiterCell`][Name::GfmTableDelimiterCell]
+    ///   [`TableDelimiterCell`][Name::TableDelimiterCell]
     /// * **Construct**:
-    ///   [`gfm_table`][crate::construct::gfm_table]
+    ///   [`table`][crate::construct::table]
     ///
     /// ## Example
     ///
@@ -1361,17 +1361,17 @@ pub enum Name {
     ///     ^^^^^
     ///   | | b |
     /// ```
-    GfmTableDelimiterRow,
-    /// GFM extension: Table delimiter alignment marker.
+    TableDelimiterRow,
+    /// Table delimiter alignment marker.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTableDelimiterCellValue`][Name::GfmTableDelimiterCellValue]
+    ///   [`TableDelimiterCellValue`][Name::TableDelimiterCellValue]
     /// * **Content model**:
     ///   void
     /// * **Construct**:
-    ///   [`gfm_table`][crate::construct::gfm_table]
+    ///   [`table`][crate::construct::table]
     ///
     /// ## Example
     ///
@@ -1381,19 +1381,19 @@ pub enum Name {
     ///       ^
     ///   | | b  |
     /// ```
-    GfmTableDelimiterMarker,
-    /// GFM extension: Table delimiter cell.
+    TableDelimiterMarker,
+    /// Table delimiter cell.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTableDelimiterRow`][Name::GfmTableDelimiterRow]
+    ///   [`TableDelimiterRow`][Name::TableDelimiterRow]
     /// * **Content model**:
-    ///   [`GfmTableCellDivider`][Name::GfmTableCellDivider],
-    ///   [`GfmTableDelimiterCellValue`][Name::GfmTableDelimiterCellValue],
+    ///   [`TableCellDivider`][Name::TableCellDivider],
+    ///   [`TableDelimiterCellValue`][Name::TableDelimiterCellValue],
     ///   [`SpaceOrTab`][Name::SpaceOrTab]
     /// * **Construct**:
-    ///   [`gfm_table`][crate::construct::gfm_table]
+    ///   [`table`][crate::construct::table]
     ///
     /// ## Example
     ///
@@ -1403,18 +1403,18 @@ pub enum Name {
     ///     ^^^^^
     ///   | | b |
     /// ```
-    GfmTableDelimiterCell,
-    /// GFM extension: Table delimiter cell alignment.
+    TableDelimiterCell,
+    /// Table delimiter cell alignment.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTableDelimiterCell`][Name::GfmTableDelimiterCell]
+    ///   [`TableDelimiterCell`][Name::TableDelimiterCell]
     /// * **Content model**:
-    ///   [`GfmTableDelimiterMarker`][Name::GfmTableDelimiterMarker],
-    ///   [`GfmTableDelimiterFiller`][Name::GfmTableDelimiterFiller]
+    ///   [`TableDelimiterMarker`][Name::TableDelimiterMarker],
+    ///   [`TableDelimiterFiller`][Name::TableDelimiterFiller]
     /// * **Construct**:
-    ///   [`gfm_table`][crate::construct::gfm_table]
+    ///   [`table`][crate::construct::table]
     ///
     /// ## Example
     ///
@@ -1424,17 +1424,17 @@ pub enum Name {
     ///       ^
     ///   | | b |
     /// ```
-    GfmTableDelimiterCellValue,
-    /// GFM extension: Table delimiter filler.
+    TableDelimiterCellValue,
+    /// Table delimiter filler.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTableDelimiterCellValue`][Name::GfmTableDelimiterCellValue]
+    ///   [`TableDelimiterCellValue`][Name::TableDelimiterCellValue]
     /// * **Content model**:
     ///   void
     /// * **Construct**:
-    ///   [`gfm_table`][crate::construct::gfm_table]
+    ///   [`table`][crate::construct::table]
     ///
     /// ## Example
     ///
@@ -1444,19 +1444,19 @@ pub enum Name {
     ///       ^
     ///   | | b |
     /// ```
-    GfmTableDelimiterFiller,
-    /// GFM extension: Table head.
+    TableDelimiterFiller,
+    /// Table head.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTable`][Name::GfmTable]
+    ///   [`Table`][Name::Table]
     /// * **Content model**:
-    ///   [`GfmTableRow`][Name::GfmTableRow],
-    ///   [`GfmTableDelimiterRow`][Name::GfmTableDelimiterRow],
+    ///   [`TableRow`][Name::TableRow],
+    ///   [`TableDelimiterRow`][Name::TableDelimiterRow],
     ///   [`LineEnding`][Name::LineEnding]
     /// * **Construct**:
-    ///   [`gfm_table`][crate::construct::gfm_table]
+    ///   [`table`][crate::construct::table]
     ///
     /// ## Example
     ///
@@ -1467,18 +1467,18 @@ pub enum Name {
     ///     ^^^^^
     ///   | | b |
     /// ```
-    GfmTableHead,
-    /// GFM extension: Table row.
+    TableHead,
+    /// Table row.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTableBody`][Name::GfmTableBody],
-    ///   [`GfmTableHead`][Name::GfmTableHead]
+    ///   [`TableBody`][Name::TableBody],
+    ///   [`TableHead`][Name::TableHead]
     /// * **Content model**:
-    ///   [`GfmTableCell`][Name::GfmTableCell]
+    ///   [`TableCell`][Name::TableCell]
     /// * **Construct**:
-    ///   [`gfm_table`][crate::construct::gfm_table]
+    ///   [`table`][crate::construct::table]
     ///
     /// ## Example
     ///
@@ -1489,19 +1489,19 @@ pub enum Name {
     /// > | | b |
     ///     ^^^^^
     /// ```
-    GfmTableRow,
-    /// GFM extension: task list item check.
+    TableRow,
+    /// Task list item check.
     ///
     /// ## Info
     ///
     /// * **Context**:
     ///   [text content][crate::construct::text]
     /// * **Content model**:
-    ///   [`GfmTaskListItemMarker`][Name::GfmTaskListItemMarker],
-    ///   [`GfmTaskListItemValueChecked`][Name::GfmTaskListItemValueChecked],
-    ///   [`GfmTaskListItemValueUnchecked`][Name::GfmTaskListItemValueUnchecked]
+    ///   [`TaskListItemMarker`][Name::TaskListItemMarker],
+    ///   [`TaskListItemValueChecked`][Name::TaskListItemValueChecked],
+    ///   [`TaskListItemValueUnchecked`][Name::TaskListItemValueUnchecked]
     /// * **Construct**:
-    ///   [`gfm_task_list_item_check`][crate::construct::gfm_task_list_item_check]
+    ///   [`task_list_item_check`][crate::construct::task_list_item_check]
     ///
     /// ## Example
     ///
@@ -1509,17 +1509,17 @@ pub enum Name {
     /// > | * [x] y.
     ///       ^^^
     /// ```
-    GfmTaskListItemCheck,
-    /// GFM extension: task list item check marker.
+    TaskListItemCheck,
+    /// Task list item check marker.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTaskListItemCheck`][Name::GfmTaskListItemCheck]
+    ///   [`TaskListItemCheck`][Name::TaskListItemCheck]
     /// * **Content model**:
     ///   void
     /// * **Construct**:
-    ///   [`gfm_task_list_item_check`][crate::construct::gfm_task_list_item_check]
+    ///   [`task_list_item_check`][crate::construct::task_list_item_check]
     ///
     /// ## Example
     ///
@@ -1527,17 +1527,17 @@ pub enum Name {
     /// > | * [x] y.
     ///       ^ ^
     /// ```
-    GfmTaskListItemMarker,
-    /// GFM extension: task list item value: checked.
+    TaskListItemMarker,
+    /// Task list item value: checked.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTaskListItemCheck`][Name::GfmTaskListItemCheck]
+    ///   [`TaskListItemCheck`][Name::TaskListItemCheck]
     /// * **Content model**:
     ///   void
     /// * **Construct**:
-    ///   [`gfm_task_list_item_check`][crate::construct::gfm_task_list_item_check]
+    ///   [`task_list_item_check`][crate::construct::task_list_item_check]
     ///
     /// ## Example
     ///
@@ -1545,17 +1545,17 @@ pub enum Name {
     /// > | * [x] y.
     ///        ^
     /// ```
-    GfmTaskListItemValueChecked,
-    /// GFM extension: task list item value: unchecked.
+    TaskListItemValueChecked,
+    /// Task list item value: unchecked.
     ///
     /// ## Info
     ///
     /// * **Context**:
-    ///   [`GfmTaskListItemCheck`][Name::GfmTaskListItemCheck]
+    ///   [`TaskListItemCheck`][Name::TaskListItemCheck]
     /// * **Content model**:
     ///   void
     /// * **Construct**:
-    ///   [`gfm_task_list_item_check`][crate::construct::gfm_task_list_item_check]
+    ///   [`task_list_item_check`][crate::construct::task_list_item_check]
     ///
     /// ## Example
     ///
@@ -1563,7 +1563,7 @@ pub enum Name {
     /// > | * [ ] z.
     ///        ^
     /// ```
-    GfmTaskListItemValueUnchecked,
+    TaskListItemValueUnchecked,
     /// Whole hard break (escape).
     ///
     /// ## Info
@@ -2696,18 +2696,18 @@ pub const VOID_EVENTS: [Name; 58] = [
     Name::DefinitionTitleMarker,
     Name::FrontmatterChunk,
     Name::FrontmatterFenceInfo,
-    Name::GfmAutolinkLiteralEmail,
-    Name::GfmAutolinkLiteralProtocol,
-    Name::GfmAutolinkLiteralWww,
-    Name::GfmFootnoteCallMarker,
-    Name::GfmFootnoteDefinitionLabelMarker,
-    Name::GfmFootnoteDefinitionMarker,
-    Name::GfmTableCellDivider,
-    Name::GfmTableDelimiterMarker,
-    Name::GfmTableDelimiterFiller,
-    Name::GfmTaskListItemMarker,
-    Name::GfmTaskListItemValueChecked,
-    Name::GfmTaskListItemValueUnchecked,
+    Name::AutolinkLiteralEmail,
+    Name::AutolinkLiteralProtocol,
+    Name::AutolinkLiteralWww,
+    Name::FootnoteCallMarker,
+    Name::FootnoteDefinitionLabelMarker,
+    Name::FootnoteDefinitionMarker,
+    Name::TableCellDivider,
+    Name::TableDelimiterMarker,
+    Name::TableDelimiterFiller,
+    Name::TaskListItemMarker,
+    Name::TaskListItemValueChecked,
+    Name::TaskListItemValueUnchecked,
     Name::FrontmatterSequence,
     Name::HardBreakEscape,
     Name::HardBreakTrailing,

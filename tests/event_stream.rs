@@ -103,12 +103,12 @@ fn extended_metadata_and_rendering_options_roundtrip() {
     options.parse.constructs.math_text = true;
     options.compile.heading_ids = true;
     options.compile.default_line_ending = core_markdown::LineEnding::CarriageReturnLineFeed;
-    options.compile.gfm_task_list_item_checkable = true;
-    options.compile.gfm_footnote_clobber_prefix = Some("prefix-".into());
-    options.compile.gfm_footnote_back_label = Some("Back & return".into());
-    options.compile.gfm_footnote_label = Some("Notes & more".into());
-    options.compile.gfm_footnote_label_attributes = Some("class=\"notes\"".into());
-    options.compile.gfm_footnote_label_tag_name = Some("h3".into());
+    options.compile.task_list_item_checkable = true;
+    options.compile.footnote_clobber_prefix = Some("prefix-".into());
+    options.compile.footnote_back_label = Some("Back & return".into());
+    options.compile.footnote_label = Some("Notes & more".into());
+    options.compile.footnote_label_attributes = Some("class=\"notes\"".into());
+    options.compile.footnote_label_tag_name = Some("h3".into());
     for source in [
         "---yaml\nx: y\n---\n# Same\n\n# Same\n\nUse ruby:`puts 1`, $x$ and [note][a].\n\n[a]: /path \"title\"\n\n$$\nx^2\n$$",
         "# Image ![a *b*](url \"title\") and <b>c</b>\n",
@@ -381,7 +381,7 @@ fn task_checkbox_attributes_preserve_checkability_and_state() {
         (true, "<ul>\n<li><input type=\"checkbox\" /> open</li>\n<li><input type=\"checkbox\" checked=\"\" /> done</li>\n</ul>"),
     ] {
         let mut options = Options::gfm();
-        options.compile.gfm_task_list_item_checkable = checkable;
+        options.compile.task_list_item_checkable = checkable;
         assert_eq!(core_markdown::to_html_with_options(source, &options).unwrap(), expected);
         let mut checked = String::new();
         render_events(source, EventParser::new(source, &options.parse).unwrap(), &options.compile, &mut checked).unwrap();

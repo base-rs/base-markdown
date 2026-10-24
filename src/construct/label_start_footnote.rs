@@ -10,7 +10,7 @@
 //! (<small>see [construct][crate::construct] for character groups</small>):
 //!
 //! ```bnf
-//! gfm_label_start_footnote ::= '[' '^'
+//! label_start_footnote ::= '[' '^'
 //! ```
 //!
 //! ## HTML
@@ -24,8 +24,8 @@
 //!
 //! ## Tokens
 //!
-//! * [`GfmFootnoteCallLabel`][Name::GfmFootnoteCallLabel]
-//! * [`GfmFootnoteCallMarker`][Name::GfmFootnoteCallMarker]
+//! * [`FootnoteCallLabel`][Name::FootnoteCallLabel]
+//! * [`FootnoteCallMarker`][Name::FootnoteCallMarker]
 //! * [`LabelMarker`][Name::LabelMarker]
 //!
 //! ## References
@@ -56,14 +56,14 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
         .parse_state
         .options
         .constructs
-        .gfm_label_start_footnote
+        .label_start_footnote
         && tokenizer.current == Some(b'[')
     {
-        tokenizer.enter(Name::GfmFootnoteCallLabel);
+        tokenizer.enter(Name::FootnoteCallLabel);
         tokenizer.enter(Name::LabelMarker);
         tokenizer.consume();
         tokenizer.exit(Name::LabelMarker);
-        State::Next(StateName::GfmLabelStartFootnoteOpen)
+        State::Next(StateName::LabelStartFootnoteOpen)
     } else {
         State::Nok
     }
@@ -78,12 +78,12 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
 pub fn open(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         Some(b'^') => {
-            tokenizer.enter(Name::GfmFootnoteCallMarker);
+            tokenizer.enter(Name::FootnoteCallMarker);
             tokenizer.consume();
-            tokenizer.exit(Name::GfmFootnoteCallMarker);
-            tokenizer.exit(Name::GfmFootnoteCallLabel);
+            tokenizer.exit(Name::FootnoteCallMarker);
+            tokenizer.exit(Name::FootnoteCallLabel);
             tokenizer.tokenize_state.label_starts.push(LabelStart {
-                kind: LabelKind::GfmFootnote,
+                kind: LabelKind::Footnote,
                 start: (tokenizer.events.len() - 6, tokenizer.events.len() - 1),
                 inactive: false,
             });
