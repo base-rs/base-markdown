@@ -378,7 +378,7 @@ impl State<'_> {
     pub(super) fn text(&mut self, content: &str, info: &Info) -> Result<(), Message> {
         let value = match self.options.line_wrapping {
             crate::markdown::LineWrapping::Preserve => Cow::Borrowed(content),
-            crate::markdown::LineWrapping::Unwrap => Cow::Owned(unwrap_soft_line_breaks(content)),
+            crate::markdown::LineWrapping::Unwrap => unwrap_soft_line_breaks(content),
         };
         self.write_safe(&value, info, None);
         Ok(())
@@ -742,33 +742,47 @@ fn image_alt<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> Cow<'_, str
     Cow::Owned(document.text_content(node))
 }
 
-fn unwrap_soft_line_breaks(value: &str) -> String {
+fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
+    let mut endings = super::util::scan::line_endings(value);
+    let Some(first) = endings.next() else {
+        return Cow::Borrowed(value);
+    };
     let mut result = String::with_capacity(value.len());
-    let mut characters = value.chars().peekable();
-
-    while let Some(character) = characters.next() {
-        match character {
-            '\r' | '\n' => {
-                if character == '\r' && characters.peek() == Some(&'\n') {
-                    characters.next();
-                }
-
-                while matches!(result.chars().next_back(), Some(' ' | '\t')) {
-                    result.pop();
-                }
-
-                while characters
-                    .peek()
-                    .is_some_and(|next| matches!(*next, ' ' | '\t'))
-                {
-                    characters.next();
-                }
-
-                result.push(' ');
-            }
-            _ => result.push(character),
+    let mut start = 0;
+    for ending in core::iter::once(first).chain(endings) {
+        result.push_str(&value[start..ending.start]);
+        result.truncate(result.trim_end_matches([' ', '\t']).len());
+        result.push(' ');
+        start = ending.end;
+        while matches!(value.as_bytes().get(start), Some(b' ' | b'\t')) {
+            start += 1;
         }
     }
+    result.push_str(&value[start..]);
+    Cow::Owned(result)
+}
 
-    result
+#[cfg(test)]
+mod tests {
+    use super::unwrap_soft_line_breaks;
+    use alloc::borrow::Cow;
+
+    #[test]
+    fn unwrapping_borrows_unchanged_text_and_keeps_non_line_whitespace() {
+        for value in ["", "plain", " é\tα \u{a0}\0"] {
+            assert!(
+                matches!(unwrap_soft_line_breaks(value), Cow::Borrowed(actual) if actual == value)
+            );
+        }
+        for (value, expected) in [
+            ("a \t\r\n \tb", "a b"),
+            ("\r\n\r\n", " "),
+            ("\t\n \t\r\nb\t ", " b\t "),
+            ("é\u{a0} \r\n \tα", "é\u{a0} α"),
+            ("a\n\r\nb", "a b"),
+            ("a\0\rb\0", "a\0 b\0"),
+        ] {
+            assert_eq!(unwrap_soft_line_breaks(value), expected);
+        }
+    }
 }
