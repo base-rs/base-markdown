@@ -33,17 +33,6 @@ enum Before<'a> {
     Output(core::ops::Range<usize>),
 }
 
-#[derive(Debug)]
-/// Different ways to join two (container, flow) nodes.
-enum Join {
-    /// Join the two nodes with `1` blank line.
-    Break,
-    /// Join the two nodes with an HTML comment.
-    HtmlComment,
-    /// Join the two nodes with `d` blank lines.
-    Lines(usize),
-}
-
 pub struct State<'a> {
     pub output: String,
     pub(super) scratch: String,
@@ -88,12 +77,12 @@ impl<'a> State<'a> {
         right: NodeId,
         parent: NodeId,
     ) {
-        let join = if self.options.tight_definitions {
-            self.tight_definition(document, left, right)
+        let separator = if self.options.tight_definitions {
+            self.definition_separator(document, left, right)
         } else {
-            self.join_defaults(document, left, right, parent)
+            self.default_separator(document, left, right, parent)
         };
-        Self::set_between(&join, &mut self.output);
+        self.output.push_str(separator);
     }
 
     pub fn container_flow<S: AsRef<str>>(
@@ -506,20 +495,20 @@ impl<'a> State<'a> {
         });
     }
 
-    fn join_defaults<S: AsRef<str>>(
+    fn default_separator<S: AsRef<str>>(
         &self,
         document: &Document<S>,
         left: NodeId,
         right: NodeId,
         parent: NodeId,
-    ) -> Join {
+    ) -> &'static str {
         let left_kind = &document.node(left).unwrap().kind;
         let right_kind = &document.node(right).unwrap().kind;
         if self.indented_code(document, right)
             && (matches!(left_kind, EventKind::Start(Tag::List { .. }))
                 || self.indented_code(document, left))
         {
-            return Join::HtmlComment;
+            return "\n\n<!---->\n\n";
         }
         if matches!(
             document.node(parent).unwrap().kind,
@@ -530,21 +519,21 @@ impl<'a> State<'a> {
                     right_kind,
                     EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. }
                 ) {
-                    return Join::Break;
+                    return "\n\n";
                 }
                 if matches!(right_kind, EventKind::Start(Tag::Heading(_)))
                     && format_heading_as_setext(document, right, self)
                 {
-                    return Join::Break;
+                    return "\n\n";
                 }
             }
             let spread = match document.node(parent).unwrap().kind {
                 EventKind::Start(Tag::List { tight, .. }) => !tight,
                 _ => self.item_spread(document, parent),
             };
-            return Join::Lines(usize::from(spread));
+            return if spread { "\n\n" } else { "\n" };
         }
-        Join::Break
+        "\n\n"
     }
 
     fn indented_code<S: AsRef<str>>(&self, document: &Document<S>, id: NodeId) -> bool {
@@ -723,23 +712,12 @@ impl<'a> State<'a> {
         super::util::safe::write_backslashes(&value[cursor..end], info.after, &mut self.output);
     }
 
-    /// No real JS equivalent, but see:
-    /// <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/util/container-flow.js#L66>.
-    fn set_between(join: &Join, results: &mut String) {
-        match join {
-            Join::Break => results.push_str("\n\n"),
-            Join::Lines(1) => results.push_str("\n\n"),
-            Join::Lines(n) => results.push_str("\n".repeat(1 + n).as_ref()),
-            Join::HtmlComment => results.push_str("\n\n<!---->\n\n"),
-        }
-    }
-
-    fn tight_definition<S: AsRef<str>>(
+    fn definition_separator<S: AsRef<str>>(
         &self,
         document: &Document<S>,
         left: NodeId,
         right: NodeId,
-    ) -> Join {
+    ) -> &'static str {
         if matches!(
             document.node(left).unwrap().kind,
             EventKind::Definition { .. }
@@ -747,9 +725,9 @@ impl<'a> State<'a> {
             document.node(right).unwrap().kind,
             EventKind::Definition { .. }
         ) {
-            Join::Lines(0)
+            "\n"
         } else {
-            Join::Break
+            "\n\n"
         }
     }
 }

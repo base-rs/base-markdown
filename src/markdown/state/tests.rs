@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use super::{escape_table_pipes, has_matching_ticks, Info, Join, State};
+use super::{escape_table_pipes, has_matching_ticks, Info, State};
 use crate::{
     markdown::Options,
     stream::{EventKind, Tag, Text},
@@ -99,8 +99,8 @@ fn joins_code_and_spread_items_consistently() {
         )
         .unwrap();
     assert!(matches!(
-        state.join_defaults(&document, code, code, root),
-        Join::HtmlComment
+        state.default_separator(&document, code, code, root),
+        "\n\n<!---->\n\n"
     ));
     let item = document
         .append_child(root, EventKind::Start(Tag::Item { block_end: false }))
@@ -110,20 +110,20 @@ fn joins_code_and_spread_items_consistently() {
         .append_child(item, EventKind::Text(Text::Literal("other")))
         .unwrap();
     assert!(matches!(
-        state.join_defaults(&document, left, right, item),
-        Join::Lines(0)
+        state.default_separator(&document, left, right, item),
+        "\n"
     ));
     document
         .set_syntax(item, Some(NodeSyntax::ListItem { spread: true }))
         .unwrap();
     assert!(matches!(
-        state.join_defaults(&document, left, right, item),
-        Join::Lines(1)
+        state.default_separator(&document, left, right, item),
+        "\n\n"
     ));
     let right = paragraph(&mut document, item, "two");
     assert!(matches!(
-        state.join_defaults(&document, left, right, item),
-        Join::Break
+        state.default_separator(&document, left, right, item),
+        "\n\n"
     ));
 }
 
@@ -144,23 +144,6 @@ fn detects_matching_and_nonmatching_code_fences() {
     assert!(has_matching_ticks(b"`code`", 1, 1));
     assert!(!has_matching_ticks(b"plain", 0, 1));
     assert!(!has_matching_ticks(b"``", 0, 1));
-}
-
-#[test]
-fn joins_flow_nodes_with_each_supported_separator() {
-    let cases = [
-        (Join::Break, "\n\n"),
-        (Join::Lines(0), "\n"),
-        (Join::Lines(1), "\n\n"),
-        (Join::Lines(2), "\n\n\n"),
-        (Join::HtmlComment, "\n\n<!---->\n\n"),
-    ];
-
-    for (join, expected) in cases {
-        let mut output = String::new();
-        State::set_between(&join, &mut output);
-        assert_eq!(output, expected);
-    }
 }
 
 #[test]
