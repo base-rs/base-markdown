@@ -56,6 +56,27 @@ pub fn normalize_identifier(value: &str) -> String {
 
 /// Normalize into reusable storage. ASCII labels need no allocation after capacity is established.
 pub(crate) fn normalize_identifier_into(value: &str, result: &mut String) {
+    collapse_whitespace_into(value, result);
+    if result.is_ascii() {
+        result.make_ascii_uppercase();
+    } else {
+        *result = result.to_lowercase().to_uppercase();
+    }
+}
+
+/// Reference matching uses lowercase ASCII so canonical source labels can be borrowed.
+/// Footnote identifiers retain the original uppercase form because it is visible in HTML.
+pub(crate) fn normalize_reference_identifier_into(value: &str, result: &mut String) {
+    collapse_whitespace_into(value, result);
+    if result.is_ascii() {
+        result.make_ascii_lowercase();
+    } else {
+        *result = result.to_lowercase().to_uppercase();
+        result.make_ascii_lowercase();
+    }
+}
+
+fn collapse_whitespace_into(value: &str, result: &mut String) {
     result.clear();
     let mut remaining = value;
     while !remaining.is_empty() {
@@ -72,12 +93,6 @@ pub(crate) fn normalize_identifier_into(value: &str, result: &mut String) {
             .take_while(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
             .count();
         remaining = &remaining[padding..];
-    }
-
-    if result.is_ascii() {
-        result.make_ascii_uppercase();
-    } else {
-        *result = result.to_lowercase().to_uppercase();
     }
 }
 

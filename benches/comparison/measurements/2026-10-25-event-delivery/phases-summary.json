@@ -1,0 +1,162 @@
+{
+  "core-prepare/readme": {
+    "baseline": {
+      "median_ms": 0.003137276397911094,
+      "process_medians_ms": [
+        0.0031351147707333574,
+        0.003137276397911094,
+        0.003188303183852715
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.003059849774736484,
+      "process_medians_ms": [
+        0.003052215709333994,
+        0.003074963778970582,
+        0.003059849774736484
+      ],
+      "time_change_percent": -2.4679567036606342
+    }
+  },
+  "core-prepare/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.08141715967741936,
+      "process_medians_ms": [
+        0.08141715967741936,
+        0.07944682393252503,
+        0.08279539443535189
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.07992461416893733,
+      "process_medians_ms": [
+        0.07931470441254652,
+        0.08171345444743935,
+        0.07992461416893733
+      ],
+      "time_change_percent": -1.8332075380615098
+    }
+  },
+  "core-prepare/mixed-1m": {
+    "baseline": {
+      "median_ms": 0.8281556324324325,
+      "process_medians_ms": [
+        0.8042863444444445,
+        0.8281556324324325,
+        0.829871779005525
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.8311698010752689,
+      "process_medians_ms": [
+        0.8365785760869565,
+        0.8136554916201116,
+        0.8311698010752689
+      ],
+      "time_change_percent": 0.3639616184198724
+    }
+  },
+  "core-prepare/gfm-100k": {
+    "baseline": {
+      "median_ms": 0.13658000091911765,
+      "process_medians_ms": [
+        0.135217815049864,
+        0.13658000091911765,
+        0.13875638348623853
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.13693698671726756,
+      "process_medians_ms": [
+        0.13836484593837536,
+        0.13551236510791367,
+        0.13693698671726756
+      ],
+      "time_change_percent": 0.26137486875645877
+    }
+  },
+  "core-events/readme": {
+    "baseline": {
+      "median_ms": 0.010389032246583144,
+      "process_medians_ms": [
+        0.010337325615352524,
+        0.010420727425923326,
+        0.010389032246583144
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.010297411479273533,
+      "process_medians_ms": [
+        0.010338715131670614,
+        0.010297411479273533,
+        0.010203257229724953
+      ],
+      "time_change_percent": -0.8818989597394244
+    }
+  },
+  "core-events/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.32426916846652265,
+      "process_medians_ms": [
+        0.3205527718550107,
+        0.32426916846652265,
+        0.32537175324675327
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.32329858189655175,
+      "process_medians_ms": [
+        0.32329858189655175,
+        0.3241204594017094,
+        0.3200535468085106
+      ],
+      "time_change_percent": -0.29931509509856236
+    }
+  },
+  "core-events/mixed-1m": {
+    "baseline": {
+      "median_ms": 3.2562269574468083,
+      "process_medians_ms": [
+        3.230122340425532,
+        3.2562269574468083,
+        3.2771914893617025
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 3.255578914893617,
+      "process_medians_ms": [
+        3.2801285531914894,
+        3.255578914893617,
+        3.1921081702127663
+      ],
+      "time_change_percent": -0.019901639586550335
+    }
+  },
+  "core-events/gfm-100k": {
+    "baseline": {
+      "median_ms": 0.5053905723905724,
+      "process_medians_ms": [
+        0.5047424496644295,
+        0.5053905723905724,
+        0.5118357263513513
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.5013031202749141,
+      "process_medians_ms": [
+        0.503085432885906,
+        0.4993053720930233,
+        0.5013031202749141
+      ],
+      "time_change_percent": -0.8087709464630555
+    }
+  }
+}

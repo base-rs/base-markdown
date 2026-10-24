@@ -17,7 +17,6 @@ pub struct EventParser<'a> {
     cursor: usize,
     closing: bool,
     phase: Phase,
-    separator: Option<usize>,
 }
 impl<'a> EventParser<'a> {
     /// Prepare Markdown for pull consumption.
@@ -38,7 +37,6 @@ impl<'a> EventParser<'a> {
             cursor: 0,
             closing: false,
             phase: Phase::Start,
-            separator: None,
         }
     }
 }
@@ -51,10 +49,12 @@ impl Iterator for EventParser<'_> {
         self.next_event()
     }
 }
+// Pending separators are delivery states, mutually exclusive with inline consumption.
 enum Phase {
     Start,
     Body,
     Inline,
+    Separator(usize),
     DocumentEnd,
     Done,
 }
@@ -124,7 +124,7 @@ impl EventParser<'_> {
             }
             Phase::DocumentEnd => Some(Ok(self.end_document())),
             Phase::Done => None,
-            Phase::Body | Phase::Inline => {
+            Phase::Body | Phase::Inline | Phase::Separator(_) => {
                 unreachable!("body delivery bypasses document boundary handling")
             }
         }
@@ -133,9 +133,6 @@ impl EventParser<'_> {
     #[allow(clippy::inline_always)]
     #[inline(always)]
     fn next_event(&mut self) -> Option<Result<Event<'static>, StreamError>> {
-        if let Some(end) = self.separator.take() {
-            return Some(Ok(self.separator(end)));
-        }
         match self.phase {
             Phase::Inline => {
                 if let Some(event) = self.inline.next_region() {
@@ -145,6 +142,10 @@ impl EventParser<'_> {
                 self.closing = true;
             }
             Phase::Body => {}
+            Phase::Separator(end) => {
+                self.phase = Phase::Body;
+                return Some(Ok(self.separator(end)));
+            }
             _ => return self.document_boundary(),
         }
         if self.cursor == 0 {
@@ -250,7 +251,7 @@ impl EventParser<'_> {
                 && !(matches!(node.body, Body::List { .. })
                     && matches!(self.blocks.nodes[node.next].body, Body::Definition(_)))
             {
-                self.separator = Some(node.end);
+                self.phase = Phase::Separator(node.end);
             }
             self.advance();
             let end = node.span_end(self.inline.source());
@@ -353,7 +354,7 @@ impl EventParser<'_> {
             }
             Body::Rule => {
                 if node.next != 0 {
-                    self.separator = Some(node.end);
+                    self.phase = Phase::Separator(node.end);
                 }
                 self.advance();
                 EventKind::Rule
@@ -384,7 +385,7 @@ impl EventParser<'_> {
                     block: true,
                 };
                 if node.next != 0 && end < node.end {
-                    self.separator = Some(node.end);
+                    self.phase = Phase::Separator(node.end);
                 }
                 self.advance();
                 return Some(Ok(Event {
@@ -410,11 +411,8 @@ impl EventParser<'_> {
                     math: code.math,
                     unclosed: code.unclosed,
                 };
-                if node.next != 0 {
-                    self.separator = Some(node.end);
-                }
-                if code.unclosed {
-                    self.separator = None;
+                if node.next != 0 && !code.unclosed {
+                    self.phase = Phase::Separator(node.end);
                 }
                 self.advance();
                 kind

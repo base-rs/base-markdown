@@ -13,12 +13,12 @@ use core::ops::Range;
 pub(crate) struct InlineWorkspace<'a> {
     source: &'a str,
     options: &'a ParseOptions,
-    definitions: Definitions,
+    definitions: Definitions<'a>,
     parser: InlineParser,
 }
 
 impl<'a> InlineWorkspace<'a> {
-    pub fn new(source: &'a str, options: &'a ParseOptions, definitions: Definitions) -> Self {
+    pub fn new(source: &'a str, options: &'a ParseOptions, definitions: Definitions<'a>) -> Self {
         Self {
             source,
             options,
@@ -32,7 +32,7 @@ impl<'a> InlineWorkspace<'a> {
     pub fn options(&self) -> &'a ParseOptions {
         self.options
     }
-    pub fn definitions(&self) -> &Definitions {
+    pub fn definitions(&self) -> &Definitions<'a> {
         &self.definitions
     }
 

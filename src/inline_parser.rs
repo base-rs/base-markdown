@@ -6,7 +6,9 @@ use crate::definitions::Definitions;
 use crate::stream::{Event, EventKind, Tag, TagKind, Text};
 use crate::util::char::{classify_opt, Kind as CharacterKind};
 use crate::util::character_reference::{scan as scan_character_reference, Reference};
-use crate::util::normalize_identifier::normalize_identifier_into;
+use crate::util::normalize_identifier::{
+    normalize_identifier_into, normalize_reference_identifier_into,
+};
 use crate::value_builder::decode_string_with_options;
 use alloc::{
     string::{String, ToString},
@@ -296,7 +298,7 @@ impl InlineParser {
         &mut self,
         source: &str,
         fragments: impl Iterator<Item = Range<usize>> + Clone,
-        definitions: &Definitions,
+        definitions: &Definitions<'_>,
         options: &crate::ParseOptions,
         task: bool,
         table: bool,
@@ -364,7 +366,7 @@ impl InlineParser {
         original_source: &str,
         source: &str,
         fragments: impl Iterator<Item = Range<usize>>,
-        definitions: &Definitions,
+        definitions: &Definitions<'_>,
         options: &crate::ParseOptions,
         task: bool,
     ) -> bool {
@@ -739,7 +741,10 @@ impl InlineParser {
                                 if label.start < range.start {
                                     return false;
                                 }
-                                normalize_identifier_into(&source[label], &mut self.reference_key);
+                                normalize_reference_identifier_into(
+                                    &source[label],
+                                    &mut self.reference_key,
+                                );
                                 resolved = definitions
                                     .find(&self.reference_key)
                                     .map(|index| (end, Kind::Reference(tag, index)));
@@ -1074,7 +1079,7 @@ impl InlineParser {
     pub(crate) fn next(
         &mut self,
         source: &str,
-        definitions: &Definitions,
+        definitions: &Definitions<'_>,
         options: &crate::ParseOptions,
     ) -> Option<Event<'static>> {
         let source = if self.normalized {

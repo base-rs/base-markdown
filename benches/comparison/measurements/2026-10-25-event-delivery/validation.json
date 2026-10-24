@@ -1,0 +1,24 @@
+{
+  "production_commit": "62b32ef5807029b84bcedc48c2f3605daade919a",
+  "independent_review_commit": "62b32ef5807029b84bcedc48c2f3605daade919a",
+  "source_src_tree": "35098334cf2caa3cc3bd70408c1d55e369d0b60d",
+  "coverage": {
+    "covered_regions": 13454,
+    "measured_regions": 13454,
+    "excluded_invariant_unreachable_regions": 22,
+    "target": "aarch64-apple-darwin",
+    "features": "all"
+  },
+  "default_workspace_bake_tests": "pass",
+  "default_and_all_feature_all_target_clippy": "pass",
+  "formatting": "pass",
+  "linux_all_feature_library_check": {
+    "target": "x86_64-unknown-linux-gnu",
+    "result": "pass",
+    "kind": "compile-only"
+  },
+  "saved_corpus_outputs_unchanged": 8468,
+  "diagnostic_results_unchanged": 24276,
+  "paired_event_and_node_records_unchanged": 12,
+  "github_ci": "See PR checks; separate from local validation."
+}

@@ -1,0 +1,26 @@
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -133,9 +133,6 @@
+     #[allow(clippy::inline_always)]
+     #[inline(always)]
+     fn next_event(&mut self) -> Option<Result<Event<'static>, StreamError>> {
+-        if let Some(end) = self.separator.take() {
+-            return Some(Ok(self.separator(end)));
+-        }
+         match self.phase {
+             Phase::Inline => {
+                 if let Some(event) = self.inline.next_region() {
+@@ -144,7 +141,12 @@
+                 self.phase = Phase::Body;
+                 self.closing = true;
+             }
+-            Phase::Body => {}
++            Phase::Body => {
++                // Only block delivery schedules separators; inline events bypass this check.
++                if let Some(end) = self.separator.take() {
++                    return Some(Ok(self.separator(end)));
++                }
++            }
+             _ => return self.document_boundary(),
+         }
+         if self.cursor == 0 {
