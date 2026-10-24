@@ -66,7 +66,7 @@ The four examples gain **3.55–6.96× throughput**. The separate counting execu
 | Reallocations | 1,435 | 26 | 98.19% |
 | Cumulative requested bytes | 75,100,893 | 2,706,145 | 96.40% |
 
-Requested bytes measure cumulative allocation/growth traffic, not peak memory. [Allocation records](allocations.json) show identical direct-HTML and Document allocation traffic, event/node counts, and allocation-free arena traversal on all thirteen original diagnostics. Serialization still allocates; the figures above do not claim a zero-allocation serializer. The comparison executable shrinks from 5,133,216 to 3,389,472 bytes, but that artifact is not a general library-size guarantee.
+Requested bytes measure cumulative allocation/growth traffic, not peak memory. [Allocation records](allocations.json) show identical direct-HTML and Document allocation traffic, event/node counts, and allocation-free arena traversal on all thirteen original diagnostics. Serialization still allocates; the figures above do not claim a zero-allocation serializer. The comparison executable shrinks from 5,133,216 to 3,389,360 bytes, but that artifact is not a general library-size guarantee.
 
 ## AST to HTML
 
