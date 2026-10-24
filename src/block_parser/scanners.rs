@@ -21,7 +21,9 @@
 //! Block syntax scanners adapted from pulldown-cmark 0.13.4, revision 38e4d08f14ec4bd9783270e9623db7681ebed968.
 use core::convert::TryFrom;
 use memchr::memchr2;
+// Keep the line state together on the stack. Arm64 preparation benchmarks showed large layout-dependent stalls with the natural eight-byte alignment.
 #[derive(Clone)]
+#[repr(align(64))]
 pub(super) struct LineStart<'a> {
     bytes: &'a [u8],
     ix: usize,
