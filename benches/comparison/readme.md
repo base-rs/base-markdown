@@ -49,7 +49,7 @@ The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,
 
 ## Source-backed text coalescing follow-up
 
-The compact scanner combines escaped punctuation with following ordinary source text, preserving source ranges and existing structured link/code details. On mixed 1 MB this removes 5,134 semantic events (3.0%) and AST text nodes (4.1%), with unchanged allocation measurements and output bytes. Three alternating runs compare merged main `3f633ab` with `7d853c7`:
+The compact scanner combines escaped punctuation with following ordinary source text, preserving source ranges and existing structured link/code details. On mixed 1 MB this removes 5,134 semantic events (3.0%) and AST nodes (4.1%), with unchanged allocation measurements and output bytes. Three alternating runs compare merged main `3f633ab` with `7d853c7`:
 
 | Workload | Merged main (ms) | Candidate (ms) | Inkmark 0.2.1 (ms) |
 | --- | ---: | ---: | ---: |
