@@ -830,3 +830,79 @@ fn section_copy_preserves_nested_siblings_empty_containers_and_insertion_boundar
             .all(|id| document.node(*id).unwrap().span.is_empty()));
     }
 }
+
+#[test]
+fn section_removal_splices_item_children_and_retains_detached_subtrees() {
+    for keep_suffix in [false, true] {
+        let mut document = empty();
+        let list = document
+            .append_child(
+                document.root(),
+                EventKind::Start(Tag::List {
+                    start: None,
+                    tight: true,
+                }),
+            )
+            .unwrap();
+        let item = document
+            .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+            .unwrap();
+        let paragraph = document
+            .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
+            .unwrap();
+        document
+            .append_child(paragraph, EventKind::Text(Text::Literal("prefix")))
+            .unwrap();
+        let heading = document
+            .append_child(item, EventKind::Start(Tag::Heading(2)))
+            .unwrap();
+        let quote = document
+            .append_child(item, EventKind::Start(Tag::BlockQuote))
+            .unwrap();
+        let body = document
+            .append_child(quote, EventKind::Start(Tag::Paragraph { tight: false }))
+            .unwrap();
+        document
+            .append_child(body, EventKind::Text(Text::Literal("detached")))
+            .unwrap();
+        let suffix = keep_suffix.then(|| {
+            document
+                .append_child(item, EventKind::Start(Tag::Heading(2)))
+                .unwrap()
+        });
+        let original_subtree: Vec<_> = document.descendants(quote).collect();
+        document
+            .replace_heading_section(item, 1, &empty(), true, true)
+            .unwrap();
+        assert_eq!(
+            document.children(item).collect::<Vec<_>>(),
+            core::iter::once(paragraph)
+                .chain(suffix)
+                .collect::<Vec<_>>()
+        );
+        for id in [heading, quote] {
+            assert_eq!(document.node(id).unwrap().parent(), None);
+            assert_eq!(document.node(id).unwrap().next_sibling(), None);
+        }
+        assert_eq!(
+            document.descendants(quote).collect::<Vec<_>>(),
+            original_subtree
+        );
+        assert_eq!(document.text_content(quote), "detached");
+        assert!(
+            matches!(document.node(item).unwrap().kind, EventKind::Start(Tag::Item {block_end}) if block_end == keep_suffix)
+        );
+        assert!(matches!(
+            document.node(paragraph).unwrap().kind,
+            EventKind::Start(Tag::Paragraph { tight: true })
+        ));
+        document.attach(item, quote, suffix).unwrap();
+        assert_eq!(document.text_content(item), "prefixdetached");
+        #[cfg(feature = "serde")]
+        {
+            let restored: Document =
+                serde_json::from_value(serde_json::to_value(&document).unwrap()).unwrap();
+            assert_eq!(html(&restored), html(&document));
+        }
+    }
+}

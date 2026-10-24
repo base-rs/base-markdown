@@ -972,7 +972,9 @@ impl<S: AsRef<str>> Document<S> {
         remove_subsections: bool,
     ) -> Result<bool, StreamError> {
         self.node(parent).ok_or(StreamError::InvalidRange)?;
-        let Some(heading) = self.children(parent).nth(heading_index) else {
+        let mut children = self.children(parent);
+        let mut previous = children.by_ref().take(heading_index).last();
+        let Some(heading) = children.next() else {
             return Ok(false);
         };
         let EventKind::Start(Tag::Heading(level)) = self.nodes[heading.index()].kind else {
@@ -992,17 +994,26 @@ impl<S: AsRef<str>> Document<S> {
             end = self.nodes[id.index()].next_sibling;
         }
         // Selecting an existing heading proves this parent and all its ancestors accept heading/footnote captures. Every copied subtree is already validated in its source document.
-        let mut at = first;
-        while at != end {
-            let id = at.expect("the section ends in the selected sibling chain");
-            at = self.nodes[id.index()].next_sibling;
-            self.detach(id)
-                .expect("a selected section contains existing non-root siblings");
+        if !replace_heading {
+            previous = Some(heading);
         }
-        let mut previous = self
-            .children(parent)
-            .take_while(|child| Some(*child) != end)
-            .last();
+        // A section is one contiguous sibling range: splice it out once, retaining stable IDs and independent detached subtrees.
+        if first != end {
+            if let Some(previous) = previous {
+                self.nodes[previous.index()].next_sibling = end;
+            } else {
+                self.nodes[parent.index()].first_child = end;
+            }
+            let mut at = first;
+            while at != end {
+                let id = at.expect("the section ends in the selected sibling chain");
+                at = self.nodes[id.index()].next_sibling;
+                self.nodes[id.index()].parent = None;
+                self.nodes[id.index()].next_sibling = None;
+                self.refresh_context(id);
+            }
+            self.refresh_item(Some(parent));
+        }
         for child in replacement.children(replacement.root()) {
             previous = Some(self.copy_subtree(replacement, child, parent, previous, end));
         }
