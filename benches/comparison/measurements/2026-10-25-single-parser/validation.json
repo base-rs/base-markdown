@@ -1,0 +1,20 @@
+{
+  "source_commit": "17c5f2d7c2861784afe06c54cb338c4aa8b14962",
+  "coverage": {
+    "measured_regions": 13325,
+    "covered_regions": 13325,
+    "invariant_unreachable_regions": 22,
+    "target": "aarch64-apple-darwin",
+    "features": "all",
+    "all_targets": true,
+    "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake test:coverage --package core-markdown --all-targets true --all-features true"
+  },
+  "passed": [
+    "default workspace Bake tests",
+    "all-feature workspace/all-target Clippy",
+    "default workspace/all-target Clippy",
+    "rustfmt",
+    "x86_64-unknown-linux-gnu all-feature library compile (compile-only)"
+  ],
+  "independent_review_commit": "17c5f2d7c2861784afe06c54cb338c4aa8b14962"
+}
