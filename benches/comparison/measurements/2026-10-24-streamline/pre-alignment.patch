@@ -1,0 +1,534 @@
+diff --git a/src/block_parser/mod.rs b/src/block_parser/mod.rs
+index c620f6e..4f1a078 100644
+--- a/src/block_parser/mod.rs
++++ b/src/block_parser/mod.rs
+@@ -25,7 +25,7 @@ use scanners::{
+ #[derive(Clone, Copy, Debug, PartialEq)]
+ pub(super) enum Body {
+     Root,
+-    Paragraph(bool),
++    Paragraph,
+     Heading(u8),
+     Quote,
+     List {
+@@ -99,6 +99,19 @@ struct Builder<'a> {
+ }
+ 
+ impl Blocks {
++    /// Only paragraphs directly inside a tight list item omit their own tags.
++    #[inline]
++    pub fn tight_paragraph(&self, node: &Node) -> bool {
++        if node.body != Body::Paragraph {
++            return false;
++        }
++        let parent = &self.nodes[node.parent];
++        matches!(parent.body, Body::Item(_))
++            && matches!(
++                self.nodes[parent.parent].body,
++                Body::List { tight: true, .. }
++            )
++    }
+     pub fn parse(source: &str, options: &ParseOptions) -> Option<(Self, Definitions)> {
+         // The compatibility producer handles extension grammars and individually disabled CommonMark constructs during migration.
+         if !crate::inline_parser::supported_options(options)
+@@ -177,17 +190,6 @@ impl Builder<'_> {
+             self.blocks.nodes[index].body,
+             Body::List { tight: true, .. }
+         ) {
+-            let mut item = self.blocks.nodes[index].child;
+-            while item != 0 {
+-                let mut child = self.blocks.nodes[item].child;
+-                while child != 0 {
+-                    if let Body::Paragraph(ref mut tight) = self.blocks.nodes[child].body {
+-                        *tight = true;
+-                    }
+-                    child = self.blocks.nodes[child].next;
+-                }
+-                item = self.blocks.nodes[item].next;
+-            }
+             self.empty_item = None;
+         }
+     }
+@@ -441,7 +443,7 @@ impl Builder<'_> {
+     }
+     fn paragraph(&mut self, start: usize, line_start: usize) -> usize {
+         self.finish_list(line_start);
+-        let paragraph = self.append(start, start, Body::Paragraph(false));
++        let paragraph = self.append(start, start, Body::Paragraph);
+         self.push();
+         let bytes = self.source.as_bytes();
+         let mut at = start;
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index 2d621db..0adbe08 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -5,6 +5,7 @@
+ use crate::stream::{Event, EventKind, StreamError, Tag, TagKind};
+ use crate::util::{
+     constant::{SAFE_PROTOCOL_HREF, SAFE_PROTOCOL_SRC},
++    encode::{find_escape, write_escaped},
+     sanitize_uri::{sanitize, write_sanitized},
+ };
+ use crate::{CompileOptions, LineEnding};
+@@ -823,53 +824,6 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+     }
+ }
+ 
+-#[inline]
+-fn find_escape(bytes: &[u8], encode: bool) -> usize {
+-    static ESCAPES: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0&\"<>");
+-    if encode {
+-        ESCAPES.find(bytes)
+-    } else {
+-        memchr::memchr(0, bytes).unwrap_or(bytes.len())
+-    }
+-}
+-
+-// Select the destination once per source span. Keep the last successfully written byte even when a caller's writer fails partway through an escape.
+-fn write_escaped(
+-    output: &mut impl Write,
+-    last: &mut Option<u8>,
+-    value: &str,
+-    encode: bool,
+-    mut index: usize,
+-) -> fmt::Result {
+-    let mut start = 0;
+-    loop {
+-        let replacement = match value.as_bytes()[index] {
+-            0 => "�",
+-            b'&' => "&amp;",
+-            b'"' => "&quot;",
+-            b'<' => "&lt;",
+-            b'>' => "&gt;",
+-            _ => unreachable!("the candidate scanner returns only HTML escapes"),
+-        };
+-        if start != index {
+-            output.write_str(&value[start..index])?;
+-            *last = Some(value.as_bytes()[index - 1]);
+-        }
+-        output.write_str(replacement)?;
+-        *last = replacement.as_bytes().last().copied();
+-        start = index + 1;
+-        index = start + find_escape(&value.as_bytes()[start..], encode);
+-        if index == value.len() {
+-            break;
+-        }
+-    }
+-    if start < value.len() {
+-        output.write_str(&value[start..])?;
+-        *last = value.as_bytes().last().copied();
+-    }
+-    Ok(())
+-}
+-
+ /// Render events with the shared HTML writer.
+ ///
+ /// # Errors
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index 5b664ea..f65ca42 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -29,8 +29,6 @@ impl<'a> EventParser<'a> {
+                 blocks,
+                 source,
+                 inline: GrammarParser::empty(source, options, definitions),
+-                compact_inline: crate::inline_parser::InlineParser::default(),
+-                direct_inline: false,
+                 gfm: options.constructs != crate::Constructs::default(),
+                 options,
+                 cursor: 0,
+@@ -65,8 +63,6 @@ struct CompactParser<'a> {
+     blocks: Blocks,
+     source: &'a str,
+     inline: GrammarParser<'a>,
+-    compact_inline: crate::inline_parser::InlineParser,
+-    direct_inline: bool,
+     gfm: bool,
+     options: &'a ParseOptions,
+     cursor: usize,
+@@ -132,13 +128,7 @@ impl CompactParser<'_> {
+             return Some(Ok(self.separator(end)));
+         }
+         if self.inlines {
+-            if let Some(event) = if self.direct_inline {
+-                self.compact_inline
+-                    .next(self.source, self.inline.definitions())
+-                    .map(Ok)
+-            } else {
+-                self.inline.next()
+-            } {
++            if let Some(event) = self.inline.next_region() {
+                 return Some(event);
+             }
+             self.inlines = false;
+@@ -180,7 +170,7 @@ impl CompactParser<'_> {
+             }
+             let populated = matches!(
+                 leaf.body,
+-                Body::Paragraph(_)
++                Body::Paragraph
+                     | Body::Heading(_)
+                     | Body::Rule
+                     | Body::Code(_)
+@@ -194,7 +184,7 @@ impl CompactParser<'_> {
+                 && (self.source.ends_with(['\r', '\n'])
+                     || (matches!(
+                         last.body,
+-                        Body::Paragraph(_) | Body::Heading(_) | Body::Rule | Body::Table
++                        Body::Paragraph | Body::Heading(_) | Body::Rule | Body::Table
+                     ) || last.body == Body::Quote && populated)
+                         && self.source[..last.end]
+                             .trim_end_matches([' ', '\t'])
+@@ -229,7 +219,7 @@ impl CompactParser<'_> {
+         let node = self.blocks.nodes[index];
+         if self.closing {
+             let tag = match node.body {
+-                Body::Paragraph(_) => TagKind::Paragraph,
++                Body::Paragraph => TagKind::Paragraph,
+                 Body::Heading(_) => TagKind::Heading,
+                 Body::Quote => TagKind::BlockQuote,
+                 Body::List { .. } => TagKind::List,
+@@ -242,15 +232,14 @@ impl CompactParser<'_> {
+                 _ => unreachable!("only block containers yield closing events"),
+             };
+             // Definitions are invisible. The grammar omits a list's boundary newline before them; a following visible block terminates the output itself.
+-            if !matches!(
+-                node.body,
+-                Body::Paragraph(true) | Body::Item(_) | Body::TableCell { .. }
+-            ) && (node.next != 0
+-                || node.body == Body::TableRow
+-                    && self.blocks.nodes[node.parent].body == Body::TableHead
+-                || node.body == Body::Table
+-                    && node.parent != 0
+-                    && self.blocks.nodes[node.parent].end > node.end)
++            if !self.blocks.tight_paragraph(&node)
++                && !matches!(node.body, Body::Item(_) | Body::TableCell { .. })
++                && (node.next != 0
++                    || node.body == Body::TableRow
++                        && self.blocks.nodes[node.parent].body == Body::TableHead
++                    || node.body == Body::Table
++                        && node.parent != 0
++                        && self.blocks.nodes[node.parent].end > node.end)
+                 && !(matches!(node.body, Body::List { .. })
+                     && matches!(self.blocks.nodes[node.next].body, Body::Definition(_)))
+             {
+@@ -264,7 +253,7 @@ impl CompactParser<'_> {
+             }));
+         }
+         let kind = match node.body {
+-            Body::Paragraph(_) | Body::Heading(_) | Body::TableCell { .. } => {
++            Body::Paragraph | Body::Heading(_) | Body::TableCell { .. } => {
+                 let nodes = &self.blocks.nodes;
+                 let fragments = || {
+                     let mut child = node.child;
+@@ -279,7 +268,7 @@ impl CompactParser<'_> {
+                     })
+                 };
+                 let mut task = self.options.constructs.gfm_task_list_item
+-                    && matches!(node.body, Body::Paragraph(_))
++                    && matches!(node.body, Body::Paragraph)
+                     && matches!(nodes[node.parent].body, Body::Item(_))
+                     && self.source[node.start..node.end].starts_with('[');
+                 if task {
+@@ -292,49 +281,17 @@ impl CompactParser<'_> {
+                         before = nodes[before].next;
+                     }
+                 }
+-                self.direct_inline = !self.options.inline_code_info
+-                    && if self.gfm {
+-                        if self.inline.definitions().is_empty() {
+-                            self.compact_inline.prepare::<false, true>(
+-                                self.source,
+-                                fragments(),
+-                                self.inline.definitions(),
+-                                self.options,
+-                                task,
+-                            )
+-                        } else {
+-                            self.compact_inline.prepare::<true, true>(
+-                                self.source,
+-                                fragments(),
+-                                self.inline.definitions(),
+-                                self.options,
+-                                task,
+-                            )
+-                        }
+-                    } else if self.inline.definitions().is_empty() {
+-                        self.compact_inline.prepare::<false, false>(
+-                            self.source,
+-                            fragments(),
+-                            self.inline.definitions(),
+-                            self.options,
+-                            task,
+-                        )
+-                    } else {
+-                        self.compact_inline.prepare::<true, false>(
+-                            self.source,
+-                            fragments(),
+-                            self.inline.definitions(),
+-                            self.options,
+-                            task,
+-                        )
+-                    };
+-                if !self.direct_inline {
+-                    self.inline.region(fragments(), task);
++                if self.gfm {
++                    self.inline.region::<true>(fragments(), task);
++                } else {
++                    self.inline.region::<false>(fragments(), task);
+                 }
+                 self.inlines = true;
+                 match node.body {
+                     Body::Heading(level) => EventKind::Start(Tag::Heading(level)),
+-                    Body::Paragraph(tight) => EventKind::Start(Tag::Paragraph { tight }),
++                    Body::Paragraph => EventKind::Start(Tag::Paragraph {
++                        tight: self.blocks.tight_paragraph(&node),
++                    }),
+                     Body::TableCell { alignment, header } => {
+                         EventKind::Start(Tag::TableCell { alignment, header })
+                     }
+@@ -363,7 +320,7 @@ impl CompactParser<'_> {
+                     }
+                     child = self.blocks.nodes[child].next;
+                 }
+-                let block_end = last != 0 && self.blocks.nodes[last].body != Body::Paragraph(true);
++                let block_end = last != 0 && !self.blocks.tight_paragraph(&self.blocks.nodes[last]);
+                 EventKind::Start(Tag::Item { block_end })
+             }
+             Body::Rule => {
+diff --git a/src/grammar_parser.rs b/src/grammar_parser.rs
+index 2876157..a1fb9e6 100644
+--- a/src/grammar_parser.rs
++++ b/src/grammar_parser.rs
+@@ -151,7 +151,48 @@ impl<'a> GrammarParser<'a> {
+         &self.definitions
+     }
+ 
+-    pub(crate) fn region(&mut self, fragments: impl Iterator<Item = Range<usize>>, task: bool) {
++    pub(crate) fn region<const GFM: bool>(
++        &mut self,
++        fragments: impl Iterator<Item = Range<usize>> + Clone,
++        task: bool,
++    ) {
++        self.direct_inline = !self.options.inline_code_info
++            && if self.definitions.is_empty() {
++                self.compact_inline.prepare::<false, GFM>(
++                    self.source,
++                    fragments.clone(),
++                    &self.definitions,
++                    self.options,
++                    task,
++                )
++            } else {
++                self.compact_inline.prepare::<true, GFM>(
++                    self.source,
++                    fragments.clone(),
++                    &self.definitions,
++                    self.options,
++                    task,
++                )
++            };
++        if !self.direct_inline {
++            self.grammar_region(fragments, task);
++        }
++    }
++
++    // Compact block preparation shares the compatibility producer's reusable inline workspace.
++    #[allow(clippy::inline_always)]
++    #[inline(always)]
++    pub(crate) fn next_region(&mut self) -> Option<Result<Event<'static>, StreamError>> {
++        if self.direct_inline {
++            self.compact_inline
++                .next(self.source, &self.definitions)
++                .map(Ok)
++        } else {
++            self.next()
++        }
++    }
++
++    fn grammar_region(&mut self, fragments: impl Iterator<Item = Range<usize>>, task: bool) {
+         // Only compatibility inline tokenization needs an owning list of normalized keys. Ordinary compact events share the prepared definition table directly.
+         if self.parse_state.definitions.is_empty() {
+             self.parse_state
+diff --git a/src/util/encode.rs b/src/util/encode.rs
+index 58b2525..725df68 100644
+--- a/src/util/encode.rs
++++ b/src/util/encode.rs
+@@ -4,6 +4,7 @@
+ 
+ //! Encode HTML.
+ use alloc::string::String;
++use core::fmt::{self, Write};
+ 
+ /// Encode dangerous html characters.
+ ///
+@@ -35,34 +36,83 @@ pub fn encode(value: &str, encode_html: bool) -> String {
+ 
+ /// Encode directly into the caller's output buffer.
+ pub fn encode_into(value: &str, encode_html: bool, result: &mut String) {
+-    let bytes = value.as_bytes();
+-    let mut index = 0;
+-    let mut start = 0;
+-
+-    while index < bytes.len() {
+-        let byte = bytes[index];
+-        if matches!(byte, b'\0') || (encode_html && matches!(byte, b'&' | b'"' | b'<' | b'>')) {
+-            result.push_str(&value[start..index]);
+-            result.push_str(match byte {
+-                b'\0' => "�",
+-                b'&' => "&amp;",
+-                b'"' => "&quot;",
+-                b'<' => "&lt;",
+-                // `b'>'`
+-                _ => "&gt;",
+-            });
+-
+-            start = index + 1;
+-        }
+-
+-        index += 1;
++    let index = find_escape(value.as_bytes(), encode_html);
++    if index == value.len() {
++        result.push_str(value);
++    } else {
++        write_escaped(result, &mut None, value, encode_html, index)
++            .expect("writing into a String cannot fail");
+     }
++}
+ 
+-    result.push_str(&value[start..]);
++#[inline]
++pub(crate) fn find_escape(bytes: &[u8], encode: bool) -> usize {
++    static ESCAPES: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0&\"<>");
++    if encode {
++        ESCAPES.find(bytes)
++    } else {
++        memchr::memchr(0, bytes).unwrap_or(bytes.len())
++    }
++}
++
++// `index` must be the first candidate returned by `find_escape`, strictly before the end of `value`. Keep the last successfully written byte even when a caller's writer fails partway through an escape.
++pub(crate) fn write_escaped(
++    output: &mut impl Write,
++    last: &mut Option<u8>,
++    value: &str,
++    encode: bool,
++    mut index: usize,
++) -> fmt::Result {
++    let mut start = 0;
++    loop {
++        let replacement = match value.as_bytes()[index] {
++            0 => "�",
++            b'&' => "&amp;",
++            b'"' => "&quot;",
++            b'<' => "&lt;",
++            b'>' => "&gt;",
++            _ => unreachable!("the candidate scanner returns only HTML escapes"),
++        };
++        if start != index {
++            output.write_str(&value[start..index])?;
++            *last = Some(value.as_bytes()[index - 1]);
++        }
++        output.write_str(replacement)?;
++        *last = replacement.as_bytes().last().copied();
++        start = index + 1;
++        index = start + find_escape(&value.as_bytes()[start..], encode);
++        if index == value.len() {
++            break;
++        }
++    }
++    if start < value.len() {
++        output.write_str(&value[start..])?;
++        *last = value.as_bytes().last().copied();
++    }
++    Ok(())
+ }
+ 
+ #[cfg(test)]
+ mod tests {
++    #[test]
++    fn encoding_appends_runs_without_reencoding_the_existing_output() {
++        for length in [0, 1, 15, 16, 17, 31, 32, 33, 64] {
++            let prefix = "a".repeat(length);
++            let value = alloc::format!("{prefix}é😀<&\"\0>tail\0");
++            for encode in [false, true] {
++                let mut output = alloc::string::String::from("existing<&");
++                super::encode_into("", encode, &mut output);
++                super::encode_into(&value, encode, &mut output);
++                let suffix = if encode {
++                    "é😀&lt;&amp;&quot;�&gt;tail�"
++                } else {
++                    "é😀<&\"�>tail�"
++                };
++                assert_eq!(output, alloc::format!("existing<&{prefix}{suffix}"));
++            }
++        }
++    }
++
+     #[test]
+     fn raw_html_still_replaces_null_bytes() {
+         assert_eq!(super::encode("<&>\"\0", false), "<&>\"�");
+diff --git a/tests/event_contract.rs b/tests/event_contract.rs
+index 9ff178a..e8c263c 100644
+--- a/tests/event_contract.rs
++++ b/tests/event_contract.rs
+@@ -305,6 +305,29 @@ fn heading_ids_use_normalized_semantic_code_text() {
+     }
+ }
+ 
++#[test]
++fn paragraph_tightness_follows_its_own_list() {
++    let options = Options::default();
++    for (source, expected) in [
++        ("text", vec![false]),
++        ("- a\n  > b\n  - c\n- d", vec![true, false, true, true]),
++        (
++            "- a\n\n  > b\n\n  - c\n- d",
++            vec![false, false, true, false],
++        ),
++        ("- a\n\n  b\n- c", vec![false, false, false]),
++    ] {
++        let actual: Vec<_> = core_markdown::EventParser::new(source, &options.parse)
++            .unwrap()
++            .filter_map(|event| match event.unwrap().kind {
++                EventKind::Start(Tag::Paragraph { tight }) => Some(tight),
++                _ => None,
++            })
++            .collect();
++        assert_eq!(actual, expected, "{source:?}");
++    }
++}
++
+ #[test]
+ fn mixed_list_kinds_after_unclosed_fences_are_siblings() {
+     let output = core_markdown::to_html("1. ~~~\n-");
+diff --git a/tests/event_stream.rs b/tests/event_stream.rs
+index b479d8b..a720417 100644
+--- a/tests/event_stream.rs
++++ b/tests/event_stream.rs
+@@ -399,3 +399,25 @@ fn task_checkbox_attributes_preserve_checkability_and_state() {
+         assert_eq!(traversed, expected);
+     }
+ }
++
++#[test]
++fn inline_workspace_switches_between_compact_and_grammar_regions() {
++    let source = "before `a\nb` &amp; *first*.\n\n[compact][ref] **second**.\n\nraw <span>third</span>.\n\n| a | b |\n| - | - |\n| | |\n\n`x\ny` [last][ref].\n\n[ref]: /target \"title\"\n";
++    for (mut options, table) in [
++        (Options::default(), "<p>| a | b |\n| - | - |\n| | |</p>\n"),
++        (Options::gfm(), "<table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td></td>\n<td></td>\n</tr>\n</tbody>\n</table>\n"),
++    ] {
++        options.compile.allow_dangerous_html = true;
++        let expected = format!(
++            "<p>before <code>a b</code> &amp; <em>first</em>.</p>\n<p><a href=\"/target\" title=\"title\">compact</a> <strong>second</strong>.</p>\n<p>raw <span>third</span>.</p>\n{table}<p><code>x y</code> <a href=\"/target\" title=\"title\">last</a>.</p>\n"
++        );
++        assert_eq!(core_markdown::to_html_with_options(source, &options).unwrap(), expected);
++        let mut rendered = String::new();
++        render_events(source, EventParser::new(source, &options.parse).unwrap(), &options.compile, &mut rendered).unwrap();
++        assert_eq!(rendered, expected);
++        let document = Document::parse(source, &options.parse).unwrap();
++        rendered.clear();
++        render_events(source, document.events(), &options.compile, &mut rendered).unwrap();
++        assert_eq!(rendered, expected);
++    }
++}

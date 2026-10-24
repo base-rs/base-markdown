@@ -1,0 +1,212 @@
+[
+  {
+    "file": "None-baseline.jsonl",
+    "engine": "baseline",
+    "padding_bytes": null,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 1.5173397909966297,
+    "process_cpu_seconds": 1.116428
+  },
+  {
+    "file": "None-candidate.jsonl",
+    "engine": "candidate",
+    "padding_bytes": null,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "a5600cac492b703d04172eb802e37317067ece8ba213942a84eb94aba7c81533",
+    "process_wall_seconds": 1.4568301659892313,
+    "process_cpu_seconds": 1.1315939999999998
+  },
+  {
+    "file": "0-baseline.jsonl",
+    "engine": "baseline",
+    "padding_bytes": 0,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 1.3331042909994721,
+    "process_cpu_seconds": 1.2099250000000004
+  },
+  {
+    "file": "0-candidate.jsonl",
+    "engine": "candidate",
+    "padding_bytes": 0,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "a5600cac492b703d04172eb802e37317067ece8ba213942a84eb94aba7c81533",
+    "process_wall_seconds": 1.3537070000020321,
+    "process_cpu_seconds": 1.2320340000000003
+  },
+  {
+    "file": "1-baseline.jsonl",
+    "engine": "baseline",
+    "padding_bytes": 1,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 1.3479890830058139,
+    "process_cpu_seconds": 1.2231519999999991
+  },
+  {
+    "file": "1-candidate.jsonl",
+    "engine": "candidate",
+    "padding_bytes": 1,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "a5600cac492b703d04172eb802e37317067ece8ba213942a84eb94aba7c81533",
+    "process_wall_seconds": 1.2931236249860376,
+    "process_cpu_seconds": 1.1666969999999997
+  },
+  {
+    "file": "15-baseline.jsonl",
+    "engine": "baseline",
+    "padding_bytes": 15,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 1.36180549999699,
+    "process_cpu_seconds": 1.2391600000000016
+  },
+  {
+    "file": "15-candidate.jsonl",
+    "engine": "candidate",
+    "padding_bytes": 15,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "a5600cac492b703d04172eb802e37317067ece8ba213942a84eb94aba7c81533",
+    "process_wall_seconds": 1.3392491250124294,
+    "process_cpu_seconds": 1.2151179999999995
+  },
+  {
+    "file": "31-baseline.jsonl",
+    "engine": "baseline",
+    "padding_bytes": 31,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 1.3367809590126853,
+    "process_cpu_seconds": 1.216696999999999
+  },
+  {
+    "file": "31-candidate.jsonl",
+    "engine": "candidate",
+    "padding_bytes": 31,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "a5600cac492b703d04172eb802e37317067ece8ba213942a84eb94aba7c81533",
+    "process_wall_seconds": 1.352365375001682,
+    "process_cpu_seconds": 1.2301829999999994
+  },
+  {
+    "file": "63-baseline.jsonl",
+    "engine": "baseline",
+    "padding_bytes": 63,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 1.352185666008154,
+    "process_cpu_seconds": 1.2314290000000008
+  },
+  {
+    "file": "63-candidate.jsonl",
+    "engine": "candidate",
+    "padding_bytes": 63,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "a5600cac492b703d04172eb802e37317067ece8ba213942a84eb94aba7c81533",
+    "process_wall_seconds": 1.3211842500022613,
+    "process_cpu_seconds": 1.202792000000001
+  },
+  {
+    "file": "127-baseline.jsonl",
+    "engine": "baseline",
+    "padding_bytes": 127,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 1.3195981250028126,
+    "process_cpu_seconds": 1.1974399999999987
+  },
+  {
+    "file": "127-candidate.jsonl",
+    "engine": "candidate",
+    "padding_bytes": 127,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-24-streamline/screening/aligned-layout-stress/input.json"
+    ],
+    "binary_sha256": "a5600cac492b703d04172eb802e37317067ece8ba213942a84eb94aba7c81533",
+    "process_wall_seconds": 1.3463466659886762,
+    "process_cpu_seconds": 1.2208580000000016
+  }
+]

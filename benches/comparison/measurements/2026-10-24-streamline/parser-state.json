@@ -1,0 +1,19 @@
+{
+  "target": "aarch64-apple-darwin",
+  "type": "core_markdown::EventParser",
+  "baseline_commit": "50a4300a9aea81e8d72dcd189e128b995a7d8b36",
+  "workspace_candidate_commit": "b7734c5620ccae5b2c89c59e55cbab1858c87c29",
+  "baseline_bytes": 1416,
+  "workspace_candidate_bytes": 1176,
+  "bytes_removed": 240,
+  "measurement": "size_of::<EventParser>() in rustc-linked executables against release libraries. Stack/object storage; not a heap allocation or total parser memory measurement.",
+  "pre_alignment_candidate_commit": "272d4bfcd7279711c9da313200d3d5e10874b9de",
+  "pre_alignment_candidate_bytes": 1176,
+  "final_candidate_commit": "4b53179fb94e43e469d56ed4ad5917042c5ef019",
+  "final_candidate_bytes": 1176,
+  "line_scanner_original_bytes": 48,
+  "line_scanner_final_bytes": 64,
+  "line_scanner_final_alignment": 64,
+  "pre_alignment_rlib_sha256": "d67861fa39c5efee150c65868d10236cbb6da26f635c4210a6a88f776c303611",
+  "final_rlib_sha256": "6a3c196ad0df13829f9ffcb7fbb2dd4c10976b2d803833661c919425134f9b5c"
+}

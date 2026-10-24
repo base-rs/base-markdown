@@ -1,0 +1,15 @@
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index 2d621db..476dbc1 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -485,9 +485,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+         self.event_ref::<true>(&event)
+     }
+ 
+-    // Paired mixed-document benchmarks justify inlining this event boundary.
+-    #[allow(clippy::inline_always)]
+-    #[inline(always)]
++    #[inline]
+     fn event_ref<const CHECK: bool>(&mut self, event: &Event<'_>) -> Result<(), StreamError> {
+         if self.ended {
+             return Err(StreamError::Unbalanced);

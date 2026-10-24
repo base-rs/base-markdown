@@ -1,0 +1,378 @@
+Analysis of sampling run (pid 7161) every 1 millisecond
+Process:         run [7161]
+Path:            /private/tmp/*/run
+Load Address:    0x1047a0000
+Identifier:      run
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  python3.13 [7154]
+Target Type:     live task
+
+Date/Time:       2026-10-24 16:05:41.669 +1300
+Launch Time:     2026-10-24 16:05:41.430 +1300
+OS Version:      macOS 27.0.1 (26A434)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         6208K
+Physical footprint (peak):  6208K
+Idle exit:                  untracked
+----
+
+Call graph:
+    1672 Thread_40254636   DispatchQueue_1: com.apple.main-thread  (serial)
+      1672 start  (in dyld) + 6688  [0x1842f7e80]
+        1672 main  (in run) + 52  [0x1047bafd0]
+          1672 _RNvNtCs1coMeGJvsuS_3std2rt19lang_start_internal  (in run) + 936  [0x1048ceff0]
+            1672 _RNCINvNtCs1coMeGJvsuS_3std2rt10lang_startuE0Cs6pJnOeXPT0X_19markdown_comparison  (in run) + 16  [0x1047c3ecc]
+              1672 _RINvNtNtCs1coMeGJvsuS_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs6pJnOeXPT0X_19markdown_comparison  (in run) + 12  [0x1047c1ebc]
+                1502 _RNvCs6pJnOeXPT0X_19markdown_comparison4main  (in run) + 2548  [0x1047b9634]
+                + 1487 _RNCNvCs6pJnOeXPT0X_19markdown_comparison8renderers_0B3_  (in run) + 324  [0x1047b6d48]
+                + ! 1477 _RNvMNtCs382umqBb0t4_13core_markdown12event_parserNtB2_11EventParser3new  (in run) + 56  [0x104888cc4]
+                + ! : 874 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 668,644,...  [0x10486483c,0x104864824,...]
+                + ! : 72 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 824  [0x1048648d8]
+                + ! : | 65 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in run) + 16,300,...  [0x104859d94,0x104859eb0,...]
+                + ! : | 7 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in run) + 256  [0x104859e84]
+                + ! : |   7 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker  (in run) + 40,80,...  [0x104859c40,0x104859c68,...]
+                + ! : 59 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6184  [0x104865dc8]
+                + ! : | 59 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in run) + 420,272,...  [0x10485abec,0x10485ab58,...]
+                + ! : 57 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 7308  [0x10486622c]
+                + ! : | 55 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser10definition4scan  (in run) + 644,664,...  [0x10485a6a4,0x10485a6b8,...]
+                + ! : | 2 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser10definition4scan  (in run) + 336  [0x10485a570]
+                + ! : |   2 _RNvNtNtCs9nEiEE0E2Vj_4core5slice6memchr14memchr_aligned  (in run) + 184  [0x1048e87e4]
+                + ! : 43 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6096  [0x104865d70]
+                + ! : | 24 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 76  [0x1048641dc]
+                + ! : | + 24 _RNvMs4_NtCs3vUkWdPtNor_5alloc7raw_vecINtB5_6RawVecNtNtCs382umqBb0t4_13core_markdown12block_parser4NodeE8grow_oneBQ_  (in run) + 60  [0x1048f1e4c]
+                + ! : | +   23 _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs382umqBb0t4_13core_markdown  (in run) + 92  [0x1048f231c]
+                + ! : | +   ! 23 _realloc  (in libsystem_malloc.dylib) + 456  [0x1844f5358]
+                + ! : | +   !   23 _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x1844f4b2c]
+                + ! : | +   !     14 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 996  [0x1844e53f4]
+                + ! : | +   !     : 14 _platform_memmove  (in libsystem_platform.dylib) + 180,204,...  [0x1846d7e14,0x1846d7e2c,...]
+                + ! : | +   !     9 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 1028  [0x1844e5414]
+                + ! : | +   !       7 _xzm_xzone_free_freelist  (in libsystem_malloc.dylib) + 720  [0x1844edef8]
+                + ! : | +   !       | 7 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x1846890f8]
+                + ! : | +   !       1 _xzm_free  (in libsystem_malloc.dylib) + 200  [0x1844ec7c8]
+                + ! : | +   !       1 _xzm_free_outlined  (in libsystem_malloc.dylib) + 8  [0x1844eceb4]
+                + ! : | +   1 _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs382umqBb0t4_13core_markdown  (in run) + 36  [0x1048f22e4]
+                + ! : | 19 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 20,116,...  [0x1048641a4,0x104864204,...]
+                + ! : 41 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 512  [0x1048647a0]
+                + ! : | 41 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in run) + 20,132,...  [0x1048630e0,0x104863150,...]
+                + ! : 35 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6584  [0x104865f58]
+                + ! : | 17 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in run) + 28,84,...  [0x10486339c,0x1048633d4,...]
+                + ! : | 9 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in run) + 472  [0x104863558]
+                + ! : | + 5 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in run) + 16,72,...  [0x104859d94,0x104859dcc,...]
+                + ! : | + 4 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in run) + 256  [0x104859e84]
+                + ! : | +   4 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker  (in run) + 8,40,...  [0x104859c20,0x104859c40,...]
+                + ! : | 5 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in run) + 512  [0x104863580]
+                + ! : | + 5 _RNCNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB7_7Builder10interrupts0B9_  (in run) + 0,20,...  [0x104862fe4,0x104862ff8,...]
+                + ! : | 3 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in run) + 672  [0x10485a024]
+                + ! : | 1 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in run) + 416  [0x104863520]
+                + ! : |   1 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in run) + 36  [0x10485ad18]
+                + ! : 28 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 8936  [0x104866888]
+                + ! : | 23 _RNvMNtCs382umqBb0t4_13core_markdown11definitionsNtB2_11Definitions4push  (in run) + 220  [0x1048a12d4]
+                + ! : | + 20 _RNvNtNtCs382umqBb0t4_13core_markdown4util20normalize_identifier25normalize_identifier_into  (in run) + 288,80,...  [0x10485b63c,0x10485b56c,...]
+                + ! : | + 3 _RNvNtNtCs382umqBb0t4_13core_markdown4util20normalize_identifier25normalize_identifier_into  (in run) + 524  [0x10485b728]
+                + ! : | +   3 _platform_memmove  (in libsystem_platform.dylib) + 428,444  [0x1846d7f0c,0x1846d7f1c]
+                + ! : | 3 _RNvMNtCs382umqBb0t4_13core_markdown11definitionsNtB2_11Definitions4push  (in run) + 64,132  [0x1048a1238,0x1048a127c]
+                + ! : | 2 _RNvMNtCs382umqBb0t4_13core_markdown11definitionsNtB2_11Definitions4push  (in run) + 156  [0x1048a1294]
+                + ! : |   2 _malloc_zone_malloc  (in libsystem_malloc.dylib) + 12  [0x1844f44fc]
+                + ! : 27 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 192,184  [0x104864250,0x104864248]
+                + ! : 26 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6276  [0x104865e24]
+                + ! : | 26 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in run) + 132,12,...  [0x104863150,0x1048630d8,...]
+                + ! : 23 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in run) + 640,644  [0x10486334c,0x104863350]
+                + ! : 20 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5132  [0x1048659ac]
+                + ! : | 14 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in run) + 12,232,...  [0x10485ad00,0x10485addc,...]
+                + ! : | 6 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in run) + 200  [0x10485adbc]
+                + ! : |   6 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in run) + 88,180,...  [0x10485aaa0,0x10485aafc,...]
+                + ! : 17 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 7632  [0x104866370]
+                + ! : | 16 _RNvNtCs382umqBb0t4_13core_markdown14grammar_parser13decode_string  (in run) + 168,132,...  [0x10484a924,0x10484a900,...]
+                + ! : | 1 _RNvMs0_NtCs382umqBb0t4_13core_markdown14grammar_parserNtB5_12ValueBuilder6append  (in run) + 828  [0x10484a518]
+                + ! : 15 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5904  [0x104865cb0]
+                + ! : | 15 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in run) + 272,88,...  [0x10485ab58,0x10485aaa0,...]
+                + ! : 14 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6068  [0x104865d54]
+                + ! : | 14 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in run) + 32,148,...  [0x104863b74,0x104863be8,...]
+                + ! : 13 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5876  [0x104865c94]
+                + ! : | 13 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners23scan_closing_code_fence  (in run) + 48,0,...  [0x10485b050,0x10485b020,...]
+                + ! : 13 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6548  [0x104865f34]
+                + ! : | 13 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners19scan_setext_heading  (in run) + 296,0,...  [0x10485afbc,0x10485ae94,...]
+                + ! : 12 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5352  [0x104865a88]
+                + ! : | 12 _RNvMs4_NtCs3vUkWdPtNor_5alloc7raw_vecINtB5_6RawVecNtNtCs382umqBb0t4_13core_markdown12block_parser4CodeE8grow_oneBQ_  (in run) + 60  [0x1048f1de8]
+                + ! : |   11 _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs382umqBb0t4_13core_markdown  (in run) + 92  [0x1048f231c]
+                + ! : |   + 9 _realloc  (in libsystem_malloc.dylib) + 456  [0x1844f5358]
+                + ! : |   + ! 9 _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x1844f4b2c]
+                + ! : |   + !   5 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 996  [0x1844e53f4]
+                + ! : |   + !   : 5 _platform_memmove  (in libsystem_platform.dylib) + 180,196  [0x1846d7e14,0x1846d7e24]
+                + ! : |   + !   3 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 896  [0x1844e5390]
+                + ! : |   + !   : 2 _xzm_xzone_malloc_tiny  (in libsystem_malloc.dylib) + 764,832  [0x1844e8d48,0x1844e8d8c]
+                + ! : |   + !   : 1 _xzm_malloc  (in libsystem_malloc.dylib) + 208  [0x1844e7ec4]
+                + ! : |   + !   1 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 1028  [0x1844e5414]
+                + ! : |   + !     1 __xzm_xzone_free_to_freelist_chunk  (in libsystem_malloc.dylib) + 424  [0x1844ed82c]
+                + ! : |   + !       1 mach_absolute_time  (in libsystem_kernel.dylib) + 112  [0x1846890fc]
+                + ! : |   + 1 _realloc  (in libsystem_malloc.dylib) + 252  [0x1844f528c]
+                + ! : |   + ! 1 xzm_malloc_zone_size  (in libsystem_malloc.dylib) + 532  [0x1844e4518]
+                + ! : |   + 1 _realloc  (in libsystem_malloc.dylib) + 208  [0x1844f5260]
+                + ! : |   1 _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs382umqBb0t4_13core_markdown  (in run) + 120  [0x1048f2338]
+                + ! : |     1 _malloc_zone_malloc  (in libsystem_malloc.dylib) + 12  [0x1844f44fc]
+                + ! : 11 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in run) + 672  [0x10485a024]
+                + ! : 11 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5592  [0x104865b78]
+                + ! : | 11 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in run) + 132,72,...  [0x104863150,0x104863114,...]
+                + ! : 9 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6228  [0x104865df4]
+                + ! : | 9 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 116,60,...  [0x104864204,0x1048641cc,...]
+                + ! : 8 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5952  [0x104865ce0]
+                + ! : | 8 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 20,12,...  [0x1048641a4,0x10486419c,...]
+                + ! : 6 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 4796  [0x10486585c]
+                + ! : | 6 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in run) + 272,120,...  [0x10485ab58,0x10485aac0,...]
+                + ! : 5 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 4032  [0x104865560]
+                + ! : | 4 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser4htmlNtB2_4Html6closed  (in run) + 1476  [0x104859904]
+                + ! : | + 3 _RNvNtCsglYb6d7nGNF_6memchr6memmem4find  (in run) + 184,252  [0x10485a138,0x10485a17c]
+                + ! : | + 1 _RNvNtCsglYb6d7nGNF_6memchr6memmem4find  (in run) + 232  [0x10485a168]
+                + ! : | +   1 _RNvNtNtNtCsglYb6d7nGNF_6memchr4arch3all9rabinkarp12is_equal_raw  (in run) + 36  [0x1048f3530]
+                + ! : | 1 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser4htmlNtB2_4Html6closed  (in run) + 0  [0x104859340]
+                + ! : 4 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5432  [0x104865ad8]
+                + ! : | 4 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 116,12,...  [0x104864204,0x10486419c,...]
+                + ! : 4 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6820  [0x104866044]
+                + ! : | 4 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 8,20,...  [0x104864198,0x1048641a4,...]
+                + ! : 4 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 9220  [0x1048669a4]
+                + ! : | 2 _RNvMNtCs382umqBb0t4_13core_markdown11definitionsNtB2_11Definitions6finish  (in run) + 284  [0x1048a1548]
+                + ! : | + 2 _RINvMs_NtCs3vUkWdPtNor_5alloc3vecINtB5_3VecjE8dedup_byNCNvMNtCs382umqBb0t4_13core_markdown11definitionsNtBV_11Definitions6finishs_0EBX_  (in run) + 36,116  [0x1048abe70,0x1048abec0]
+                + ! : | 2 _RNvMNtCs382umqBb0t4_13core_markdown11definitionsNtB2_11Definitions6finish  (in run) + 332  [0x1048a1578]
+                + ! : |   2 _RINvNtNtNtNtCs9nEiEE0E2Vj_4core5slice4sort6shared9smallsort25insertion_sort_shift_leftjNCINvMB8_Sj16sort_unstable_byNCNvMNtCs382umqBb0t4_13core_markdown11definitionsNtB1V_11Definitions6finish0E0EB1X_  (in run) + 228  [0x1048553ac]
+                + ! : |     1 DYLD-STUB$$memcmp  (in run) + 4  [0x1048f8220]
+                + ! : |     1 _platform_memcmp  (in libsystem_platform.dylib) + 236  [0x1846d525c]
+                + ! : 4 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in run) + 300  [0x10485ae20]
+                + ! : 3 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5164  [0x1048659cc]
+                + ! : | 3 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in run) + 0,24,...  [0x104863b54,0x104863b6c,...]
+                + ! : 3 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6760  [0x104866008]
+                + ! : | 3 _RNvMs4_NtCs3vUkWdPtNor_5alloc7raw_vecINtB5_6RawVecINtNtCs9nEiEE0E2Vj_4core6option6OptionINtNtNtBR_3num7nonzero7NonZerojEEE8grow_oneCsgo7EB0DESl9_12regex_syntax  (in run) + 60  [0x1048f24f0]
+                + ! : |   3 _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCsgo7EB0DESl9_12regex_syntax  (in run) + 92  [0x1048f2574]
+                + ! : |     2 _realloc  (in libsystem_malloc.dylib) + 456  [0x1844f5358]
+                + ! : |     + 2 _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x1844f4b2c]
+                + ! : |     +   1 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 896  [0x1844e5390]
+                + ! : |     +   ! 1 _xzm_malloc  (in libsystem_malloc.dylib) + 344  [0x1844e7f4c]
+                + ! : |     +   1 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 848  [0x1844e5360]
+                + ! : |     1 _realloc  (in libsystem_malloc.dylib) + 252  [0x1844f528c]
+                + ! : |       1 xzm_malloc_zone_size  (in libsystem_malloc.dylib) + 188  [0x1844e43c0]
+                + ! : 2 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5256  [0x104865a28]
+                + ! : | 2 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in run) + 88,156  [0x10485aaa0,0x10485aae4]
+                + ! : 2 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6728  [0x104865fe8]
+                + ! : | 2 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 116  [0x104864204]
+                + ! : 1 _RNvMNtCs382umqBb0t4_13core_markdown11definitionsNtB2_11Definitions4push  (in run) + 396  [0x1048a1384]
+                + ! : 1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 232  [0x104864688]
+                + ! : | 1 _xzm_malloc_tc  (in libsystem_malloc.dylib) + 260  [0x1844efa94]
+                + ! : 1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 1360  [0x104864af0]
+                + ! : | 1 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 116  [0x104864204]
+                + ! : 1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 3744  [0x104865440]
+                + ! : | 1 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 20  [0x1048641a4]
+                + ! : 1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 3840  [0x1048654a0]
+                + ! : | 1 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in run) + 216  [0x10485ab20]
+                + ! : 1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 3920  [0x1048654f0]
+                + ! : | 1 _RNvNtNtCs9nEiEE0E2Vj_4core5slice6memchr14memchr_aligned  (in run) + 208  [0x1048e87fc]
+                + ! : 1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 3968  [0x104865520]
+                + ! : | 1 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 60  [0x1048641cc]
+                + ! : 1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 4004  [0x104865544]
+                + ! : | 1 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in run) + 132  [0x104863150]
+                + ! : 1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 4772  [0x104865844]
+                + ! : | 1 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in run) + 188  [0x104863c10]
+                + ! : 1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 7280  [0x104866210]
+                + ! : | 1 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in run) + 272  [0x10485ab58]
+                + ! : 1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 7412  [0x104866294]
+                + ! : | 1 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart15scan_space_upto  (in run) + 148  [0x104859c10]
+                + ! : 1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 7588  [0x104866344]
+                + ! :   1 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in run) + 24  [0x104863b6c]
+                + ! 9 _RNvMNtCs382umqBb0t4_13core_markdown12event_parserNtB2_11EventParser3new  (in run) + 108  [0x104888cf8]
+                + ! : 9 _RNvMNtCs382umqBb0t4_13core_markdown14grammar_parserNtB2_13GrammarParser5empty  (in run) + 104  [0x104848f80]
+                + ! :   4 _RNvMNtCs382umqBb0t4_13core_markdown14grammar_parserNtB2_13GrammarParser11from_tokens  (in run) + 924  [0x104848b24]
+                + ! :   | 4 _RNvMNtCs382umqBb0t4_13core_markdown11definitionsNtB2_11Definitions6finish  (in run) + 32,24,...  [0x1048a144c,0x1048a1444,...]
+                + ! :   3 _RNvMNtCs382umqBb0t4_13core_markdown14grammar_parserNtB2_13GrammarParser11from_tokens  (in run) + 152,168,...  [0x104848820,0x104848830,...]
+                + ! :   1 _RNvMNtCs382umqBb0t4_13core_markdown14grammar_parserNtB2_13GrammarParser11from_tokens  (in run) + 96  [0x1048487e8]
+                + ! :   | 1 _RNvNtCs382umqBb0t4_13core_markdown14grammar_parser11pair_tokens  (in run) + 28  [0x10484a6b4]
+                + ! :   1 _RNvMNtCs382umqBb0t4_13core_markdown14grammar_parserNtB2_13GrammarParser11from_tokens  (in run) + 940  [0x104848b34]
+                + ! :     1 _platform_memmove  (in libsystem_platform.dylib) + 204  [0x1846d7e2c]
+                + ! 1 _RNvMNtCs382umqBb0t4_13core_markdown12event_parserNtB2_11EventParser3new  (in run) + 444  [0x104888e48]
+                + !   1 _platform_memmove  (in libsystem_platform.dylib) + 180  [0x1846d7e14]
+                + 11 _RNCNvCs6pJnOeXPT0X_19markdown_comparison8renderers_0B3_  (in run) + 5776  [0x1047b8294]
+                + ! 7 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown14grammar_parser13GrammarParserECs6pJnOeXPT0X_19markdown_comparison  (in run) + 388  [0x1047b5258]
+                + ! : 4 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown11definitions11DefinitionsECs6pJnOeXPT0X_19markdown_comparison  (in run) + 52  [0x1047b4c14]
+                + ! : | 4 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown11definitions10DefinitionECs6pJnOeXPT0X_19markdown_comparison  (in run) + 64  [0x1047bfd18]
+                + ! : |   3 _xzm_free_tc  (in libsystem_malloc.dylib) + 0,132,...  [0x1844f1878,0x1844f18fc,...]
+                + ! : |   1 _free  (in libsystem_malloc.dylib) + 0  [0x1844f5110]
+                + ! : 2 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown11definitions11DefinitionsECs6pJnOeXPT0X_19markdown_comparison  (in run) + 96  [0x1047b4c40]
+                + ! : | 1 __xzm_xzone_free_to_freelist_chunk  (in libsystem_malloc.dylib) + 424  [0x1844ed82c]
+                + ! : | + 1 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x1846890f8]
+                + ! : | 1 _xzm_free_tc  (in libsystem_malloc.dylib) + 260  [0x1844f197c]
+                + ! : 1 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown11definitions11DefinitionsECs6pJnOeXPT0X_19markdown_comparison  (in run) + 68  [0x1047b4c24]
+                + ! 3 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown12event_parser11EventParserECs6pJnOeXPT0X_19markdown_comparison  (in run) + 92  [0x1047b4d50]
+                + ! : 2 _xzm_xzone_free_freelist  (in libsystem_malloc.dylib) + 720  [0x1844edef8]
+                + ! : | 2 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x1846890f8]
+                + ! : 1 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown12event_parser11EventParserECs6pJnOeXPT0X_19markdown_comparison  (in run) + 120  [0x1047b4d6c]
+                + ! :   1 _xzm_free_tc  (in libsystem_malloc.dylib) + 132  [0x1844f18fc]
+                + ! 1 _xzm_free_outlined  (in libsystem_malloc.dylib) + 716  [0x1844ed178]
+                + 2 _RNCNvCs6pJnOeXPT0X_19markdown_comparison8renderers_0B3_  (in run) + 352  [0x1047b6d64]
+                + ! 2 _platform_memmove  (in libsystem_platform.dylib) + 180  [0x1846d7e14]
+                + 1 _RNCNvCs6pJnOeXPT0X_19markdown_comparison8renderers_0B3_  (in run) + 5768  [0x1047b828c]
+                + ! 1 _platform_memmove  (in libsystem_platform.dylib) + 180  [0x1846d7e14]
+                + 1 _RNCNvCs6pJnOeXPT0X_19markdown_comparison8renderers_0B3_  (in run) + 352  [0x1047b6d64]
+                169 _RNvCs6pJnOeXPT0X_19markdown_comparison4main  (in run) + 2316  [0x1047b954c]
+                + 169 _RNCNvCs6pJnOeXPT0X_19markdown_comparison8renderers_0B3_  (in run) + 324  [0x1047b6d48]
+                +   169 _RNvMNtCs382umqBb0t4_13core_markdown12event_parserNtB2_11EventParser3new  (in run) + 56  [0x104888cc4]
+                +     101 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 668,644,...  [0x10486483c,0x104864824,...]
+                +     13 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 824  [0x1048648d8]
+                +     ! 12 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in run) + 40,300,...  [0x104859dac,0x104859eb0,...]
+                +     ! 1 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in run) + 256  [0x104859e84]
+                +     !   1 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker  (in run) + 8  [0x104859c20]
+                +     11 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 512  [0x1048647a0]
+                +     ! 11 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in run) + 12,132,...  [0x1048630d8,0x104863150,...]
+                +     6 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6184  [0x104865dc8]
+                +     ! 6 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in run) + 272,88,...  [0x10485ab58,0x10485aaa0,...]
+                +     6 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6276  [0x104865e24]
+                +     ! 6 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in run) + 104,296,...  [0x104863134,0x1048631f4,...]
+                +     5 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in run) + 640  [0x10486334c]
+                +     4 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 192  [0x104864250]
+                +     3 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in run) + 672  [0x10485a024]
+                +     3 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5352  [0x104865a88]
+                +     ! 3 _RNvMs4_NtCs3vUkWdPtNor_5alloc7raw_vecINtB5_6RawVecNtNtCs382umqBb0t4_13core_markdown12block_parser4CodeE8grow_oneBQ_  (in run) + 60  [0x1048f1de8]
+                +     !   3 _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs382umqBb0t4_13core_markdown  (in run) + 92  [0x1048f231c]
+                +     !     3 _realloc  (in libsystem_malloc.dylib) + 456  [0x1844f5358]
+                +     !       3 _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x1844f4b2c]
+                +     !         2 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 996  [0x1844e53f4]
+                +     !         : 2 _platform_memmove  (in libsystem_platform.dylib) + 180  [0x1846d7e14]
+                +     !         1 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 1028  [0x1844e5414]
+                +     !           1 __xzm_xzone_free_to_freelist_chunk  (in libsystem_malloc.dylib) + 424  [0x1844ed82c]
+                +     !             1 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x1846890f8]
+                +     3 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5592  [0x104865b78]
+                +     ! 3 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in run) + 12,72,...  [0x1048630d8,0x104863114,...]
+                +     2 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5132  [0x1048659ac]
+                +     ! 2 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in run) + 12,36  [0x10485ad00,0x10485ad18]
+                +     2 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5904  [0x104865cb0]
+                +     ! 2 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in run) + 0,216  [0x10485aa48,0x10485ab20]
+                +     2 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6068  [0x104865d54]
+                +     ! 2 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in run) + 32  [0x104863b74]
+                +     2 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6096  [0x104865d70]
+                +     ! 2 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 20,116  [0x1048641a4,0x104864204]
+                +     2 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6584  [0x104865f58]
+                +     ! 1 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in run) + 472  [0x104863558]
+                +     ! : 1 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in run) + 628  [0x104859ff8]
+                +     ! 1 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in run) + 212  [0x104863454]
+                +     1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5164  [0x1048659cc]
+                +     ! 1 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in run) + 24  [0x104863b6c]
+                +     1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 5256  [0x104865a28]
+                +     ! 1 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in run) + 156  [0x10485aae4]
+                +     1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run) + 6548  [0x104865f34]
+                +     ! 1 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners19scan_setext_heading  (in run) + 24  [0x10485aeac]
+                +     1 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in run) + 300  [0x10485ae20]
+                1 _RNCNvCs6pJnOeXPT0X_19markdown_comparison8renderers_0B3_  (in run) + 6140  [0x1047b8400]
+
+Total number in stack (recursive counted multiple, when >=5):
+        12       _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run) + 0  [0x104864190]
+        10       _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in run) + 0  [0x10485aa48]
+        9       _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in run) + 0  [0x1048630cc]
+        8       _platform_memmove  (in libsystem_platform.dylib) + 0  [0x1846d7d60]
+        7       _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in run) + 0  [0x104859d84]
+        6       _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in run) + 0  [0x104863b54]
+        5       _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in run) + 0  [0x10485acf4]
+        5       mach_absolute_time  (in libsystem_kernel.dylib) + 0  [0x18468908c]
+
+Sort by top of stack, same collapsed (when >= 5):
+        _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in run)        975
+        _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in run)        127
+        _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in run)        100
+        _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in run)        99
+        _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in run)        82
+        _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser10definition4scan  (in run)        55
+        _platform_memmove  (in libsystem_platform.dylib)        29
+        _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in run)        22
+        _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in run)        22
+        _RNvNtNtCs382umqBb0t4_13core_markdown4util20normalize_identifier25normalize_identifier_into  (in run)        20
+        _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in run)        18
+        _RNvNtCs382umqBb0t4_13core_markdown14grammar_parser13decode_string  (in run)        16
+        _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners19scan_setext_heading  (in run)        14
+        _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners23scan_closing_code_fence  (in run)        13
+        _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker  (in run)        12
+        mach_absolute_time  (in libsystem_kernel.dylib)        12
+        _RNCNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB7_7Builder10interrupts0B9_  (in run)        5
+        _xzm_free_tc  (in libsystem_malloc.dylib)        5
+
+Binary Images:
+       0x1047a0000 -        0x104991f8f +run (0) <5486FAE2-BAD5-3100-A673-93528DD98586> /tmp/*/run
+       0x184244000 -        0x1842935f7  libobjc.A.dylib (973.1) <C0680DF6-9900-3C29-A071-95A031686EF8> /usr/lib/libobjc.A.dylib
+       0x184294000 -        0x18429e23f  libsharedcache.dylib (0) <BBF95357-BEBF-3D89-8900-2BBB14A667C5> /usr/lib/libsharedcache.dylib
+       0x18429f000 -        0x1842c5d3b  libdyld.dylib (27062) <62863BCA-DD60-3D32-A9DB-89099BA6F3D7> /usr/lib/system/libdyld.dylib
+       0x1842c6000 -        0x1843856e3  dyld (1.0.0 - 27062) <D341DDCB-7969-3A9C-8E03-0CF4751398A9> /usr/lib/dyld
+       0x184386000 -        0x18438901f  libsystem_blocks.dylib (98.1) <6F304731-D95D-3501-B4AD-F2934F7F2446> /usr/lib/system/libsystem_blocks.dylib
+       0x18438a000 -        0x1843df0df  libxpc.dylib (3298.1.1) <0791121F-B5FC-3F84-BF04-115E86D2D882> /usr/lib/system/libxpc.dylib
+       0x1843e0000 -        0x1843ffc13  libsystem_trace.dylib (1966.1.1) <B48A8E3E-A12A-3342-8321-428B555E965E> /usr/lib/system/libsystem_trace.dylib
+       0x184400000 -        0x1844b4f27  libcorecrypto.dylib (2109.0.22) <807AA6C9-5D8A-3CA5-B4CE-FACE5296EF6A> /usr/lib/system/libcorecrypto.dylib
+       0x1844b5000 -        0x18450ac5f  libsystem_malloc.dylib (886.0.8) <2339CB57-FE5A-3154-A206-A76059C749EB> /usr/lib/system/libsystem_malloc.dylib
+       0x18450b000 -        0x18455119f  libdispatch.dylib (1605.0.2) <022BF08F-0B3A-3225-9E65-16D1553CE90D> /usr/lib/system/libdispatch.dylib
+       0x184552000 -        0x184554d2b  libsystem_featureflags.dylib (108) <20C1CAB2-1F13-3426-8146-9CAE9FF2A33D> /usr/lib/system/libsystem_featureflags.dylib
+       0x184555000 -        0x1845d7ca3  libsystem_c.dylib (1786.0.3) <FBA7B23E-AA60-3A90-9AA4-A7A2E0AD63EE> /usr/lib/system/libsystem_c.dylib
+       0x1845d8000 -        0x18466d033  libc++.1.dylib (2200.27) <1E9BA4AA-B5DA-3CF3-80AC-4B880049573F> /usr/lib/libc++.1.dylib
+       0x18466e000 -        0x184687eff  libc++abi.dylib (2200.27) <A21743EE-6E1C-3E74-97EA-7AF793DE4BDF> /usr/lib/libc++abi.dylib
+       0x184688000 -        0x1846c69ab  libsystem_kernel.dylib (13432.1.9) <F63BF418-8F75-34A4-AAF1-8CAF2B9B6A05> /usr/lib/system/libsystem_kernel.dylib
+       0x1846c7000 -        0x1846d391b  libsystem_pthread.dylib (553.0.1) <5A1828C3-CBC2-3B85-BD07-C8ED10021A41> /usr/lib/system/libsystem_pthread.dylib
+       0x1846d4000 -        0x1846dd4f3  libsystem_platform.dylib (402.0.1.0.1) <080E4444-A0FB-3913-9756-4E470015F32F> /usr/lib/system/libsystem_platform.dylib
+       0x1846de000 -        0x18470c903  libsystem_info.dylib (603) <BC387AEB-1CEF-3513-92D7-D7F913596711> /usr/lib/system/libsystem_info.dylib
+       0x188836000 -        0x18883fb13  libsystem_darwin.dylib (1786.0.3) <4E66C888-993C-3E6A-A8DA-A949C01C5B67> /usr/lib/system/libsystem_darwin.dylib
+       0x188c90000 -        0x188ca1b8b  libsystem_notify.dylib (368) <58FD36D8-37A7-311C-80F2-8E64DD8710CF> /usr/lib/system/libsystem_notify.dylib
+       0x18aded000 -        0x18ae07d93  libsystem_networkextension.dylib (2340.1.2) <22E1D190-486F-324F-ABA4-F36AB841BFE9> /usr/lib/system/libsystem_networkextension.dylib
+       0x18ae95000 -        0x18aeac247  libsystem_asl.dylib (409) <B4D449B7-A821-3A9A-8019-E917B291F10A> /usr/lib/system/libsystem_asl.dylib
+       0x18be40000 -        0x18be40f2f  libobjcMsgSend.dylib (973.1) <41179EDE-DC97-3BBE-8848-6400D12C1436> /usr/lib/objc/libobjcMsgSend.dylib
+       0x18cf8c000 -        0x18cf93edf  libsystem_symptoms.dylib (2394.0.4) <60EE7884-9F4E-3184-A6AC-FA40A7A0297D> /usr/lib/system/libsystem_symptoms.dylib
+       0x191324000 -        0x19135eaeb  libsystem_containermanager.dylib (833.0.8.0.1) <08A57205-555D-3792-8931-9D5B585AF326> /usr/lib/system/libsystem_containermanager.dylib
+       0x192977000 -        0x19297b317  libsystem_configuration.dylib (1446) <F3EB66A7-7A24-3AE5-B6E8-9A37BB00F119> /usr/lib/system/libsystem_configuration.dylib
+       0x19297c000 -        0x192982e03  libsystem_sandbox.dylib (3051.0.52) <1E892B56-092E-3832-BDE3-DCE356D7A4FA> /usr/lib/system/libsystem_sandbox.dylib
+       0x193e40000 -        0x193e40f2f  libobjcMsgSend1.dylib (973.1) <B40D9B2A-E1EE-37ED-8004-711A1F263DE1> /usr/lib/objc/libobjcMsgSend1.dylib
+       0x194560000 -        0x194562f93  libquarantine.dylib (217.0.4) <7FD4AE22-86EF-382B-83F5-ADF9336C1160> /usr/lib/system/libquarantine.dylib
+       0x194c72000 -        0x194c781e7  libsystem_coreservices.dylib (203) <57248E07-11A5-3857-918E-4A3A63B69FE8> /usr/lib/system/libsystem_coreservices.dylib
+       0x19523a000 -        0x195277b27  libsystem_m.dylib (3326.0.1) <A3FB340F-3ED5-30F4-8B64-9D5860F64D35> /usr/lib/system/libsystem_m.dylib
+       0x195279000 -        0x19527c4f7  libmacho.dylib (27062) <50DEADEC-3E99-3519-AFC3-4A3FEB3F14C3> /usr/lib/system/libmacho.dylib
+       0x195296000 -        0x1952a2707  libcommonCrypto.dylib (600041) <41C99F45-C5E6-39DB-B1F2-A1BEA9D242A4> /usr/lib/system/libcommonCrypto.dylib
+       0x1952a3000 -        0x1952acc87  libunwind.dylib (2200.5) <3070AB81-B082-39E8-8A00-EF88DDE9AC47> /usr/lib/system/libunwind.dylib
+       0x1952b4000 -        0x1952be7eb  libcopyfile.dylib (260.0.3) <72D95AF9-BF5E-3A84-81A6-BCC5BDB99857> /usr/lib/system/libcopyfile.dylib
+       0x1952bf000 -        0x1952c28bf  libcompiler_rt.dylib (103.4) <DFB5CE7F-A36E-36AA-BECE-1392D3D43607> /usr/lib/system/libcompiler_rt.dylib
+       0x1952c3000 -        0x1952c8077  libsystem_collections.dylib (1786.0.3) <1E8022D4-5A37-3A7A-8936-603E6FA88358> /usr/lib/system/libsystem_collections.dylib
+       0x1952c9000 -        0x1952cbf1f  libsystem_secinit.dylib (182) <DE037464-4C5D-3E96-A33F-2A4557CC6A20> /usr/lib/system/libsystem_secinit.dylib
+       0x1952cc000 -        0x1952ce97f  libremovefile.dylib (96) <E6E6DFCF-6B2C-3F30-A59D-816CAB1190CE> /usr/lib/system/libremovefile.dylib
+       0x1952cf000 -        0x1952cfe27  libkeymgr.dylib (31) <5EC997EF-3ADA-360B-9FCD-5F940C83FA4E> /usr/lib/system/libkeymgr.dylib
+       0x1952d0000 -        0x1952d8af7  libsystem_dnssd.dylib (3111.0.5.0.1) <DE22096F-1E5B-3D6E-8164-771582DD6391> /usr/lib/system/libsystem_dnssd.dylib
+       0x1952d9000 -        0x1952ddf1b  libcache.dylib (95) <80BAE197-E285-3F6E-A1EE-B77FE37D7E5D> /usr/lib/system/libcache.dylib
+       0x1952de000 -        0x1952df8f3  libSystem.B.dylib (1359) <4FDC9AA6-B344-37FE-B8C6-A4C94A038F57> /usr/lib/libSystem.B.dylib
+       0x19be40000 -        0x19be40f2f  libobjcMsgSend2.dylib (973.1) <BD27A84B-C9AE-3282-BBEA-3B6119837B5A> /usr/lib/objc/libobjcMsgSend2.dylib
+       0x1a3e40000 -        0x1a3e40f2f  libobjcMsgSend3.dylib (973.1) <C0860D68-DDFC-3BD7-8B06-DB0645CBBED4> /usr/lib/objc/libobjcMsgSend3.dylib
+       0x1abe40000 -        0x1abe40f2f  libobjcMsgSend4.dylib (973.1) <A6153BF5-622B-3B01-81B6-F64A365EF613> /usr/lib/objc/libobjcMsgSend4.dylib
+       0x1b3e40000 -        0x1b3e40f2f  libobjcMsgSend5.dylib (973.1) <3913A71C-B29A-3AEA-820B-BEC40AC1861A> /usr/lib/objc/libobjcMsgSend5.dylib
+       0x1bbe40000 -        0x1bbe40f2f  libobjcMsgSend6.dylib (973.1) <9BC523A3-E167-3F6C-8CAE-0F3EBA671791> /usr/lib/objc/libobjcMsgSend6.dylib
+       0x1c3e40000 -        0x1c3e40f2f  libobjcMsgSend7.dylib (973.1) <248B7BCE-5B4C-34C7-A340-43D5228628C5> /usr/lib/objc/libobjcMsgSend7.dylib
+       0x1cbe40000 -        0x1cbe40f2f  libobjcMsgSend8.dylib (973.1) <3E041BAD-A8E8-3069-B741-78CD1A45B176> /usr/lib/objc/libobjcMsgSend8.dylib
+       0x1d3e40000 -        0x1d3e40f2f  libobjcMsgSend9.dylib (973.1) <34A67969-21A0-39D6-BB81-8FDA5A2409DB> /usr/lib/objc/libobjcMsgSend9.dylib
+       0x1dbe40000 -        0x1dbe40f2f  libobjcMsgSend10.dylib (973.1) <678186C0-8EAD-3B35-8CBB-00285B41E4A0> /usr/lib/objc/libobjcMsgSend10.dylib
+       0x1e3e40000 -        0x1e3e40f2f  libobjcMsgSend11.dylib (973.1) <E05CB08C-E956-36FA-8967-AE8E346A8D2C> /usr/lib/objc/libobjcMsgSend11.dylib
+       0x20be40000 -        0x20be40f2f  libobjcMsgSend12.dylib (973.1) <10AB03AA-FF1F-3FDC-9DFB-BFC40042C501> /usr/lib/objc/libobjcMsgSend12.dylib
+       0x213e40000 -        0x213e40f2f  libobjcMsgSend13.dylib (973.1) <ABF53427-FA6F-3D0D-8F9D-7AD795CA5C92> /usr/lib/objc/libobjcMsgSend13.dylib
+       0x21be40000 -        0x21be40f2f  libobjcMsgSend14.dylib (973.1) <9A844C46-A6DA-34D4-8EBF-2AD775C30684> /usr/lib/objc/libobjcMsgSend14.dylib
+       0x223e40000 -        0x223e40f2f  libobjcMsgSend15.dylib (973.1) <7C995666-2B2D-3284-AA0A-EBF7C922838E> /usr/lib/objc/libobjcMsgSend15.dylib
+       0x22be40000 -        0x22be40f2f  libobjcMsgSend16.dylib (973.1) <B6C0E14B-53AE-3E22-9ED5-1729C49F46F2> /usr/lib/objc/libobjcMsgSend16.dylib
+       0x233e40000 -        0x233e40f2f  libobjcMsgSend17.dylib (973.1) <07B4CF85-251B-301B-832B-20B315A59E19> /usr/lib/objc/libobjcMsgSend17.dylib
+       0x23be40000 -        0x23be40f2f  libobjcMsgSend18.dylib (973.1) <43E575B7-04DB-3999-A633-1A3B638BA6E3> /usr/lib/objc/libobjcMsgSend18.dylib
+       0x243e40000 -        0x243e40f2f  libobjcMsgSend19.dylib (973.1) <736F4D85-76F7-3B28-8D87-C07E8F7A0EF4> /usr/lib/objc/libobjcMsgSend19.dylib
+       0x24be40000 -        0x24be40f2f  libobjcMsgSend20.dylib (973.1) <74E67C8B-6BCA-3184-A18E-A97F370052C6> /usr/lib/objc/libobjcMsgSend20.dylib
+       0x253e40000 -        0x253e40f2f  libobjcMsgSend21.dylib (973.1) <CC0D732F-98E7-3888-9E15-70984DA2FB04> /usr/lib/objc/libobjcMsgSend21.dylib
+       0x25be40000 -        0x25be40f2f  libobjcMsgSend22.dylib (973.1) <85A60286-5DE3-32BA-B18C-2A498B065C88> /usr/lib/objc/libobjcMsgSend22.dylib
+       0x263e40000 -        0x263e40f2f  libobjcMsgSend23.dylib (973.1) <5452A0D2-6B19-39BE-ADDD-80B7BCDE3A98> /usr/lib/objc/libobjcMsgSend23.dylib
+       0x26be40000 -        0x26be40f2f  libobjcMsgSend24.dylib (973.1) <94BBF2D6-722B-350D-8557-4D25A8E8D53A> /usr/lib/objc/libobjcMsgSend24.dylib
+       0x273e40000 -        0x273e40f2f  libobjcMsgSend25.dylib (973.1) <35481387-5A8E-3AE4-86A6-94CEB3CC8726> /usr/lib/objc/libobjcMsgSend25.dylib
+       0x28be40000 -        0x28be40f2f  libobjcMsgSend26.dylib (973.1) <9E0C8664-E7F4-39D1-AAFC-BD92B255E4E8> /usr/lib/objc/libobjcMsgSend26.dylib
+       0x293e40000 -        0x293e40f2f  libobjcMsgSend27.dylib (973.1) <FD424935-55A9-3650-955A-EED3441A1D19> /usr/lib/objc/libobjcMsgSend27.dylib
+       0x29be40000 -        0x29be40f2f  libobjcMsgSend28.dylib (973.1) <09BA7B97-7DF7-3C7F-932A-B6847662FC49> /usr/lib/objc/libobjcMsgSend28.dylib
+       0x2a3e40000 -        0x2a3e40f2f  libobjcMsgSend29.dylib (973.1) <36D5BA3F-2139-30B0-8558-556764BE9813> /usr/lib/objc/libobjcMsgSend29.dylib
+       0x2abe40000 -        0x2abe40f2f  libobjcMsgSend30.dylib (973.1) <9F05564A-9D12-372C-98FC-E9F0E6BE4F04> /usr/lib/objc/libobjcMsgSend30.dylib
+       0x2b0b5a000 -        0x2b0b60fe5  libRosetta.dylib (385) <E359944B-D230-33F9-A04E-0C3B17C3326E> /usr/lib/libRosetta.dylib
+       0x2b1549000 -        0x2b154c75b  libsystem_darwindirectory.dylib (129.0.1) <61264923-2AA5-3658-B8C4-550C71E9D4B3> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x2b154d000 -        0x2b1557d9b  libsystem_eligibility.dylib (446.1.3) <EDDE8E9C-A2CF-3931-BBB3-321CB852EB30> /usr/lib/system/libsystem_eligibility.dylib
+       0x2b1558000 -        0x2b156142b  libsystem_sanitizers.dylib (32) <7138ED99-7AA0-34EA-B35B-20EF6ADB1EED> /usr/lib/system/libsystem_sanitizers.dylib
+       0x2b1562000 -        0x2b1562a13  libsystem_trial.dylib (511) <6AE48824-EC44-3A8C-B501-BE57DBE892E7> /usr/lib/system/libsystem_trial.dylib
+       0x2b3e40000 -        0x2b3e40f2f  libobjcMsgSend31.dylib (973.1) <0985E20F-78C3-3466-A2B2-DBB95F7104A3> /usr/lib/objc/libobjcMsgSend31.dylib
+       0x2bbe40000 -        0x2bbe40f2f  libobjcMsgSend32.dylib (973.1) <0D309D58-D576-3E5D-AD4B-6D55AB491702> /usr/lib/objc/libobjcMsgSend32.dylib
+       0x2c3e40000 -        0x2c3e40f2f  libobjcMsgSend33.dylib (973.1) <346E0484-48FA-369B-8A64-93B5F5341CFE> /usr/lib/objc/libobjcMsgSend33.dylib
+       0x2cbe40000 -        0x2cbe40f2f  libobjcMsgSend34.dylib (973.1) <6A31F809-BCBE-3E01-A367-E91FDACCE324> /usr/lib/objc/libobjcMsgSend34.dylib

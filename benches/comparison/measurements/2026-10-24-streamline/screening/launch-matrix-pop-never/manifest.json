@@ -1,0 +1,122 @@
+[
+  {
+    "file": "screen-run-gems-False-baseline.jsonl",
+    "engine": "baseline",
+    "gem_environment": false,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/screen-run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 3.835758499975782,
+    "process_cpu_seconds": 3.6258049999999997
+  },
+  {
+    "file": "screen-run-gems-False-candidate.jsonl",
+    "engine": "candidate",
+    "gem_environment": false,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/screen-run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "aefbb461bfea4af9bbfe81f03f455b8edfce3bfa35ccdf5fa034506847b883dd",
+    "process_wall_seconds": 4.007373041997198,
+    "process_cpu_seconds": 3.6664779999999997
+  },
+  {
+    "file": "screen-run-gems-True-baseline.jsonl",
+    "engine": "baseline",
+    "gem_environment": true,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/screen-run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 3.8467167500057258,
+    "process_cpu_seconds": 3.700191999999999
+  },
+  {
+    "file": "screen-run-gems-True-candidate.jsonl",
+    "engine": "candidate",
+    "gem_environment": true,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/screen-run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "aefbb461bfea4af9bbfe81f03f455b8edfce3bfa35ccdf5fa034506847b883dd",
+    "process_wall_seconds": 3.851969832991017,
+    "process_cpu_seconds": 3.723286000000001
+  },
+  {
+    "file": "final-runs-run-gems-True-baseline.jsonl",
+    "engine": "baseline",
+    "gem_environment": true,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 3.9009000830119476,
+    "process_cpu_seconds": 3.7704900000000023
+  },
+  {
+    "file": "final-runs-run-gems-True-candidate.jsonl",
+    "engine": "candidate",
+    "gem_environment": true,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "aefbb461bfea4af9bbfe81f03f455b8edfce3bfa35ccdf5fa034506847b883dd",
+    "process_wall_seconds": 3.8647865419916343,
+    "process_cpu_seconds": 3.730046999999997
+  },
+  {
+    "file": "final-runs-run-gems-False-baseline.jsonl",
+    "engine": "baseline",
+    "gem_environment": false,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 3.841111333022127,
+    "process_cpu_seconds": 3.7150320000000003
+  },
+  {
+    "file": "final-runs-run-gems-False-candidate.jsonl",
+    "engine": "candidate",
+    "gem_environment": false,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "aefbb461bfea4af9bbfe81f03f455b8edfce3bfa35ccdf5fa034506847b883dd",
+    "process_wall_seconds": 3.8512999169761315,
+    "process_cpu_seconds": 3.7249860000000017
+  }
+]

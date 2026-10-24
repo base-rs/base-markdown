@@ -1,0 +1,62 @@
+[
+  {
+    "file": "final-runs-run-gems-True-baseline.jsonl",
+    "engine": "baseline",
+    "gem_environment": true,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 3.8543992080085445,
+    "process_cpu_seconds": 3.748926
+  },
+  {
+    "file": "final-runs-run-gems-True-candidate.jsonl",
+    "engine": "candidate",
+    "gem_environment": true,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "eceade738c8b7bd49f3da5d31c72b37c8b30b216e2a7c5e43c360c47d6a7e6ef",
+    "process_wall_seconds": 4.025378207996255,
+    "process_cpu_seconds": 3.7125120000000003
+  },
+  {
+    "file": "final-runs-run-gems-False-baseline.jsonl",
+    "engine": "baseline",
+    "gem_environment": false,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "process_wall_seconds": 3.854623458988499,
+    "process_cpu_seconds": 3.749382999999999
+  },
+  {
+    "file": "final-runs-run-gems-False-candidate.jsonl",
+    "engine": "candidate",
+    "gem_environment": false,
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "binary_sha256": "eceade738c8b7bd49f3da5d31c72b37c8b30b216e2a7c5e43c360c47d6a7e6ef",
+    "process_wall_seconds": 3.862457292008912,
+    "process_cpu_seconds": 3.757479000000002
+  }
+]

@@ -1,0 +1,67 @@
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index 2d621db..6ea6116 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -74,9 +74,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+         }
+     }
+ 
+-    // Paired mixed-document benchmarks justify inlining these small writes.
+-    #[allow(clippy::inline_always)]
+-    #[inline(always)]
++    #[inline]
+     fn write(&mut self, value: &str) -> Result<(), StreamError> {
+         if let Some(heading) = self.heading.as_mut() {
+             heading.output.push_str(value);
+@@ -485,9 +483,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+         self.event_ref::<true>(&event)
+     }
+ 
+-    // Paired mixed-document benchmarks justify inlining this event boundary.
+-    #[allow(clippy::inline_always)]
+-    #[inline(always)]
++    #[inline]
+     fn event_ref<const CHECK: bool>(&mut self, event: &Event<'_>) -> Result<(), StreamError> {
+         if self.ended {
+             return Err(StreamError::Unbalanced);
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index 5b664ea..6123d07 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -50,9 +50,7 @@ impl<'a> EventParser<'a> {
+ }
+ impl Iterator for EventParser<'_> {
+     type Item = Result<Event<'static>, StreamError>;
+-    // Paired mixed-document benchmarks justify inlining this event boundary.
+-    #[allow(clippy::inline_always)]
+-    #[inline(always)]
++    #[inline]
+     fn next(&mut self) -> Option<Self::Item> {
+         match &mut self.producer {
+             Producer::Compact(parser) => parser.next(),
+@@ -121,9 +119,7 @@ impl CompactParser<'_> {
+             span: end..end,
+         }
+     }
+-    // Paired mixed-document benchmarks justify inlining this event boundary.
+-    #[allow(clippy::inline_always)]
+-    #[inline(always)]
++    #[inline]
+     fn next(&mut self) -> Option<Result<Event<'static>, StreamError>> {
+         if self.ended {
+             return None;
+diff --git a/src/inline_parser.rs b/src/inline_parser.rs
+index f4fdb26..1296862 100644
+--- a/src/inline_parser.rs
++++ b/src/inline_parser.rs
+@@ -549,9 +549,7 @@ impl InlineParser {
+         self.cursor = self.nodes[0].next;
+         true
+     }
+-    // Paired mixed-document benchmarks justify inlining this event boundary.
+-    #[allow(clippy::inline_always)]
+-    #[inline(always)]
++    #[inline]
+     pub(crate) fn next(
+         &mut self,
+         source: &str,

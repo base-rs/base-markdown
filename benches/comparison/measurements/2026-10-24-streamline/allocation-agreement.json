@@ -1,0 +1,18 @@
+{
+  "documents": [
+    "readme",
+    "mixed-100k",
+    "mixed-1m",
+    "gfm-100k",
+    "references"
+  ],
+  "all_records_identical": true,
+  "includes": [
+    "allocation calls",
+    "reallocations",
+    "cumulative requested bytes",
+    "event counts",
+    "AST node counts",
+    "AST node size"
+  ]
+}

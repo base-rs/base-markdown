@@ -1,0 +1,12 @@
+diff --git a/src/block_parser/mod.rs b/src/block_parser/mod.rs
+index 4f1a078..2cd5199 100644
+--- a/src/block_parser/mod.rs
++++ b/src/block_parser/mod.rs
+@@ -182,6 +182,7 @@ impl Builder<'_> {
+         self.open.push(self.current);
+         self.current = 0;
+     }
++    #[inline(never)]
+     fn pop(&mut self, end: usize) {
+         let index = self.open.pop().unwrap();
+         self.blocks.nodes[index].end = end;
