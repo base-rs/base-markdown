@@ -139,7 +139,26 @@ impl State<'_> {
         self.write_safe(label, &Info::at(start, self.output.len(), "]"), None);
         self.output.push_str("]: ");
         self.exit();
-        if destination.is_empty() || contains_control_or_whitespace(destination) {
+        self.destination_title(
+            start,
+            destination,
+            title,
+            quote,
+            destination.is_empty() || contains_control_or_whitespace(destination),
+        );
+        self.exit();
+        Ok(())
+    }
+
+    fn destination_title(
+        &mut self,
+        start: usize,
+        destination: &str,
+        title: Option<&str>,
+        quote: char,
+        literal: bool,
+    ) {
+        if literal {
             self.enter(ConstructName::DestinationLiteral);
             self.output.push('<');
             self.write_safe(destination, &Info::at(start, self.output.len(), ">"), None);
@@ -174,8 +193,6 @@ impl State<'_> {
             self.output.push(quote);
             self.exit();
         }
-        self.exit();
-        Ok(())
     }
 
     pub(super) fn emphasis<S: AsRef<str>>(
@@ -408,42 +425,14 @@ impl State<'_> {
         }
         self.output.push_str("](");
         self.exit();
-        if destination.is_empty() && title.is_some() || contains_control_or_whitespace(destination)
-        {
-            self.enter(ConstructName::DestinationLiteral);
-            self.output.push('<');
-            self.write_safe(destination, &Info::at(start, self.output.len(), ">"), None);
-            self.output.push('>');
-        } else {
-            self.enter(ConstructName::DestinationRaw);
-            self.write_safe(
-                destination,
-                &Info::at(
-                    start,
-                    self.output.len(),
-                    if title.is_some() { " " } else { ")" },
-                ),
-                None,
-            );
-        }
-        self.exit();
-        if let Some(title) = title {
-            self.enter(if quote == '"' {
-                ConstructName::TitleQuote
-            } else {
-                ConstructName::TitleApostrophe
-            });
-            self.output.push(' ');
-            self.output.push(quote);
-            let mut buffer = [0u8; 4];
-            self.write_safe(
-                title,
-                &Info::new(destination, quote.encode_utf8(&mut buffer)),
-                None,
-            );
-            self.output.push(quote);
-            self.exit();
-        }
+        self.destination_title(
+            start,
+            destination,
+            title,
+            quote,
+            destination.is_empty() && title.is_some()
+                || contains_control_or_whitespace(destination),
+        );
         self.output.push(')');
         self.exit();
         Ok(())
