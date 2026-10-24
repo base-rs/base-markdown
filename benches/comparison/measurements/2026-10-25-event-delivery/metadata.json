@@ -1,0 +1,27 @@
+{
+  "baseline_commit": "f0198ff1518062819d4ccec49e37cb831444cb45",
+  "source_commit": "62b32ef5807029b84bcedc48c2f3605daade919a",
+  "source_src_tree": "35098334cf2caa3cc3bd70408c1d55e369d0b60d",
+  "baseline_src_tree": "f2e1ec1449d4ab5d6177d9a2312e7aab86ff4e34",
+  "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.3",
+  "build_command": "cargo build --release --locked --manifest-path benches/comparison/Cargo.toml",
+  "machine": "Apple M4 Pro",
+  "system": "Darwin 27.0.0 arm64",
+  "ruby": "ruby 4.0.9 (2026-10-23 revision 3e93b23afc) +PRISM [arm64-darwin25]",
+  "python": "Python 3.13.12",
+  "inkmark_version": "0.2.1",
+  "binaries": {
+    "baseline": {
+      "sha256": "7a095b72cc14116cc2d7b3b39cc01fc88170776aed1bf88017f3bdbf9cd046a9",
+      "bytes": 3218112
+    },
+    "candidate": {
+      "sha256": "a59d3021b6fc98590b96107ae410e3c150c11160e2b141cb325eda90f8349ed6",
+      "bytes": 3218128
+    }
+  },
+  "comparison_lock_sha256": "f5e800843ee0953d706b17e637b17645604493bc2f331190518fd12989b169a2",
+  "gem_lock_sha256": "b65055f3d64957fe2f81f5bfc3e7ffe00a3695b0ad5dbc7924657e25c207c94c",
+  "baseline_binary_provenance": "Frozen PR #51 production adapter from f237acad0fa55ccd14477c0710244c3fcc443226, whose src tree equals squash-merged f0198ff1518062819d4ccec49e37cb831444cb45. Same pinned adapter, locks and compiler as candidate.",
+  "sampling": "Three sequential alternating rounds, seven calibrated samples per process after 200 ms warmup. Shared machine, no CPU affinity. No local builds, tests, independent review, profiling or allocation diagnostics overlap the final cohort. Initial candidate and interrupted launch are retained separately; no samples excluded from the final cohort."
+}

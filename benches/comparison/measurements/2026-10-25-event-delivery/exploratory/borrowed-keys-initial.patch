@@ -1,0 +1,184 @@
+--- a/src/definitions.rs
++++ b/src/definitions.rs
+@@ -4,41 +4,41 @@
+ //! Authored definitions with a sorted, first-definition-wins lookup index.
+ use crate::stream::Text;
+ use crate::util::normalize_identifier::normalize_identifier;
+-use alloc::{string::String, vec::Vec};
++use alloc::{borrow::Cow, string::String, vec::Vec};
+ 
+ #[derive(Debug)]
+-pub(crate) struct Definition {
++pub(crate) struct Definition<'a> {
+     pub label: Text<'static>,
+-    pub key: String,
++    pub key: Cow<'a, str>,
+     pub destination: Text<'static>,
+     pub title: Option<Text<'static>>,
+ }
+ 
+ #[derive(Debug, Default)]
+-pub(crate) struct Definitions {
+-    pub entries: Vec<Definition>,
++pub(crate) struct Definitions<'a> {
++    pub entries: Vec<Definition<'a>>,
+     ordered: Vec<usize>,
+     footnotes: Vec<String>,
+     footnote_order: Vec<usize>,
+ }
+ 
+-impl Definitions {
++impl<'a> Definitions<'a> {
+     pub fn is_empty(&self) -> bool {
+         self.entries.is_empty()
+     }
+ 
+     pub fn push(
+         &mut self,
+-        source: &str,
++        source: &'a str,
+         label: Text<'static>,
+         destination: Text<'static>,
+         title: Option<Text<'static>>,
+     ) -> usize {
+-        let key = normalize_identifier(
+-            label
+-                .resolve(source)
+-                .expect("definition labels are source-valid"),
+-        );
++        let key = match &label {
++            Text::Source(range) => reference_key(&source[range.clone()]),
++            Text::Literal(value) => reference_key(value),
++            Text::Value(value) => Cow::Owned(owned_reference_key(value)),
++        };
+         let index = self.entries.len();
+         self.entries.push(Definition {
+             label,
+@@ -68,7 +68,7 @@
+ 
+     pub fn find(&self, key: &str) -> Option<usize> {
+         self.ordered
+-            .binary_search_by(|&index| self.entries[index].key.as_str().cmp(key))
++            .binary_search_by(|&index| self.entries[index].key.as_ref().cmp(key))
+             .ok()
+             .map(|index| self.ordered[index])
+     }
+@@ -94,3 +94,31 @@
+             .map(|index| self.footnote_order[index])
+     }
+ }
++
++// Reference keys fold ASCII letters to lowercase after the shared Unicode fold.
++// This preserves equality while allowing ordinary lowercase source labels to be borrowed.
++// Footnote keys retain their existing uppercase spelling because they appear in HTML IDs.
++fn owned_reference_key(value: &str) -> String {
++    let mut key = normalize_identifier(value);
++    key.make_ascii_lowercase();
++    key
++}
++
++fn reference_key(value: &str) -> Cow<'_, str> {
++    if !value.starts_with(' ')
++        && !value.ends_with(' ')
++        && value.bytes().all(|byte| {
++            byte.is_ascii() && !byte.is_ascii_uppercase() && !matches!(byte, b'\t' | b'\r' | b'\n')
++        })
++        && !value.contains("  ")
++    {
++        Cow::Borrowed(value)
++    } else {
++        Cow::Owned(owned_reference_key(value))
++    }
++}
++
++pub(crate) fn normalize_reference_key_into(value: &str, result: &mut String) {
++    crate::util::normalize_identifier::normalize_identifier_into(value, result);
++    result.make_ascii_lowercase();
++}
+--- a/src/inline_parser.rs
++++ b/src/inline_parser.rs
+@@ -296,7 +296,7 @@
+         &mut self,
+         source: &str,
+         fragments: impl Iterator<Item = Range<usize>> + Clone,
+-        definitions: &Definitions,
++        definitions: &Definitions<'_>,
+         options: &crate::ParseOptions,
+         task: bool,
+         table: bool,
+@@ -364,7 +364,7 @@
+         original_source: &str,
+         source: &str,
+         fragments: impl Iterator<Item = Range<usize>>,
+-        definitions: &Definitions,
++        definitions: &Definitions<'_>,
+         options: &crate::ParseOptions,
+         task: bool,
+     ) -> bool {
+@@ -739,7 +739,10 @@
+                                 if label.start < range.start {
+                                     return false;
+                                 }
+-                                normalize_identifier_into(&source[label], &mut self.reference_key);
++                                crate::definitions::normalize_reference_key_into(
++                                    &source[label],
++                                    &mut self.reference_key,
++                                );
+                                 resolved = definitions
+                                     .find(&self.reference_key)
+                                     .map(|index| (end, Kind::Reference(tag, index)));
+@@ -1074,7 +1077,7 @@
+     pub(crate) fn next(
+         &mut self,
+         source: &str,
+-        definitions: &Definitions,
++        definitions: &Definitions<'_>,
+         options: &crate::ParseOptions,
+     ) -> Option<Event<'static>> {
+         let source = if self.normalized {
+--- a/src/inline_workspace.rs
++++ b/src/inline_workspace.rs
+@@ -13,12 +13,12 @@
+ pub(crate) struct InlineWorkspace<'a> {
+     source: &'a str,
+     options: &'a ParseOptions,
+-    definitions: Definitions,
++    definitions: Definitions<'a>,
+     parser: InlineParser,
+ }
+ 
+ impl<'a> InlineWorkspace<'a> {
+-    pub fn new(source: &'a str, options: &'a ParseOptions, definitions: Definitions) -> Self {
++    pub fn new(source: &'a str, options: &'a ParseOptions, definitions: Definitions<'a>) -> Self {
+         Self {
+             source,
+             options,
+@@ -32,7 +32,7 @@
+     pub fn options(&self) -> &'a ParseOptions {
+         self.options
+     }
+-    pub fn definitions(&self) -> &Definitions {
++    pub fn definitions(&self) -> &Definitions<'a> {
+         &self.definitions
+     }
+ 
+--- a/src/block_parser/mod.rs
++++ b/src/block_parser/mod.rs
+@@ -96,7 +96,7 @@
+     current: usize,
+     blank: bool,
+     empty_item: Option<usize>,
+-    definitions: Definitions,
++    definitions: Definitions<'a>,
+     alignments: Vec<AlignKind>,
+     definition_context: bool,
+ }
+@@ -115,7 +115,7 @@
+                 Body::List { tight: true, .. }
+             )
+     }
+-    pub fn parse(source: &str, options: &ParseOptions) -> (Self, Definitions) {
++    pub fn parse<'a>(source: &'a str, options: &'a ParseOptions) -> (Self, Definitions<'a>) {
+         let mut builder = Builder {
+             source,
+             options,

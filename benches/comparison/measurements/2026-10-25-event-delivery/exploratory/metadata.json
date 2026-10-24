@@ -1,0 +1,81 @@
+{
+  "baseline_commit": "f0198ff1518062819d4ccec49e37cb831444cb45",
+  "final_source_commit": "62b32ef5807029b84bcedc48c2f3605daade919a",
+  "binaries": {
+    "before": {
+      "sha256": "6e4f91c00bae10319ff82665b4d94dcd81060c346bfdd495c6eccc822753c403",
+      "bytes": 3217936
+    },
+    "labels-only": {
+      "sha256": "558eeafa427dbee57a52cfa0f35ca69047cfe53f33cf76c20cf38fe80ccd88d9",
+      "bytes": 3218112
+    },
+    "phase-only": {
+      "sha256": "23b6574563063b9d378f78d458adab83b9d7e8e80787a1b009eb828dc9b915ab",
+      "bytes": 3217936
+    },
+    "baseline": {
+      "sha256": "7a095b72cc14116cc2d7b3b39cc01fc88170776aed1bf88017f3bdbf9cd046a9",
+      "bytes": 3218112
+    },
+    "separators": {
+      "sha256": "83e4b9571a69d4192e2c66db1b15afe8621e4ecc3940343a36508c4a762cea89",
+      "bytes": 3218096
+    },
+    "cold-completion": {
+      "sha256": "f8708afa5b98f0fe10d7c75e4577d3d9b131828abcc692c795ccf8cad86be366",
+      "bytes": 3219520
+    },
+    "block-delivery": {
+      "sha256": "aa6a41b0fcfe9f03e93396edfdff9f068e22da8e779171b00412206e7b1de3fd",
+      "bytes": 3149824
+    },
+    "tuple-index": {
+      "sha256": "3ad7276437dd37e5c0fef93382e8cf0cec334cc31d3e5775176b6a5f749385f3",
+      "bytes": 3218928
+    },
+    "separator-phase": {
+      "sha256": "34d4d081da4ad92944ec54b19a62a3338115b8a4c8f8f59696ee0a7ad4adadfb",
+      "bytes": 3218096
+    },
+    "borrowed-keys": {
+      "sha256": "d33dc608ad43b3f579d754414bffdd6fe50e3d98406914b668e171659280d353",
+      "bytes": 3236016
+    },
+    "borrowed-keys-direct": {
+      "sha256": "b32908347e1a40a724d6ac2344137fec717386f6f369631f0ade0db063ca8f2d",
+      "bytes": 3218240
+    },
+    "candidate-7735": {
+      "sha256": "7b6fca471418dcf4deb8ca6de85477fb564cab281de8ae2c292716bac63fe420",
+      "bytes": 3218224
+    },
+    "single-check": {
+      "sha256": "a59d3021b6fc98590b96107ae410e3c150c11160e2b141cb325eda90f8349ed6",
+      "bytes": 3218128
+    },
+    "candidate": {
+      "sha256": "a59d3021b6fc98590b96107ae410e3c150c11160e2b141cb325eda90f8349ed6",
+      "bytes": 3218128
+    }
+  },
+  "factorial": {
+    "before_source": "2e98603951e19b929738d1d0da95ca2259c36208",
+    "labels_only_source": "aec0fa9",
+    "phase_only_source": "Merged #51 event source with #50 identifier normalization restored; release adapter only.",
+    "baseline_source": "f0198ff1518062819d4ccec49e37cb831444cb45",
+    "rounds": 3,
+    "inputs": [
+      "mixed-1m.json"
+    ]
+  },
+  "initial_full_cohort": {
+    "source_commit": "7735e78cf3bfd191be9114fcd14ac4dbdb7cdbf9",
+    "binary": "candidate-7735",
+    "rounds": 3,
+    "records": "initial-7735-{html,phases}.jsonl.gz",
+    "note": "Initial source before single-pass eligibility; all samples and summaries retained."
+  },
+  "screening": "Two rounds per variant, immutable binaries, alternating engine order. These are separate cohorts from final timings. Source patches describe release-relevant changes; cfg(test) additions are not necessary to reproduce release behavior. benchmark controls are copied from comparison/data and study key-shapes.json.",
+  "interrupted_launch": "interrupted-overlap.json"
+}

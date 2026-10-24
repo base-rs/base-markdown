@@ -1,0 +1,4 @@
+{
+  "reason": "Timing launch began before workspace-test process completion was confirmed. Agent immediately interrupted it, waited for successful completion, and restarted the entire final timing cohort. Partial records and log retained separately; none included in final summaries.",
+  "source_commit": "62b32ef5807029b84bcedc48c2f3605daade919a"
+}

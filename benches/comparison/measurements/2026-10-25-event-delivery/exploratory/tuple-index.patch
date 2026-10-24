@@ -1,0 +1,19 @@
+--- a/src/definitions.rs
++++ b/src/definitions.rs
+@@ -54,14 +54,14 @@
+         self.ordered.extend(0..self.entries.len());
+         let entries = &self.entries;
+         self.ordered
+-            .sort_unstable_by(|&a, &b| entries[a].key.cmp(&entries[b].key).then(a.cmp(&b)));
++            .sort_unstable_by_key(|&index| (&entries[index].key, index));
+         self.ordered
+             .dedup_by(|a, b| entries[*a].key == entries[*b].key);
+         self.footnote_order.clear();
+         self.footnote_order.extend(0..self.footnotes.len());
+         let footnotes = &self.footnotes;
+         self.footnote_order
+-            .sort_unstable_by(|&a, &b| footnotes[a].cmp(&footnotes[b]).then(a.cmp(&b)));
++            .sort_unstable_by_key(|&index| (&footnotes[index], index));
+         self.footnote_order
+             .dedup_by(|a, b| footnotes[*a] == footnotes[*b]);
+     }

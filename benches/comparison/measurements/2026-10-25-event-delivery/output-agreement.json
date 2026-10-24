@@ -1,0 +1,194 @@
+[
+  {
+    "document": "readme",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": false,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "e4a600f81e790248aa401d761383e577ae2b59fb23cb32ce7216c7d640076e25",
+      "candidate": "e4a600f81e790248aa401d761383e577ae2b59fb23cb32ce7216c7d640076e25",
+      "inkmark": "aae38fe68f839a93e0e28405020ec831343dfb2603615dfde6faddd433003cdc"
+    }
+  },
+  {
+    "document": "mixed-100k",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": false,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "2906a9c276936b616283e21049523f53da43d1aa82c22f6c442a34444dfa4c45",
+      "candidate": "2906a9c276936b616283e21049523f53da43d1aa82c22f6c442a34444dfa4c45",
+      "inkmark": "39f1cef1f002794304ea4af8d5cc70131c8d1f983452027c23a2a9d4b10f6222"
+    }
+  },
+  {
+    "document": "mixed-1m",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": false,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "2fa9d192e5e9db657ed474b47927cc05579b0b3b871910bb1858a15c47cfa5bd",
+      "candidate": "2fa9d192e5e9db657ed474b47927cc05579b0b3b871910bb1858a15c47cfa5bd",
+      "inkmark": "a02e3513d9f2b35a3c57dfa43145bc29813e455ba3be28cdad16a69a68b67d9c"
+    }
+  },
+  {
+    "document": "references",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": true,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "3aaeee76d28590427d122cf7a392cb917e66b503e8bfeb5ca90731bfcaded9fc",
+      "candidate": "3aaeee76d28590427d122cf7a392cb917e66b503e8bfeb5ca90731bfcaded9fc",
+      "inkmark": "3aaeee76d28590427d122cf7a392cb917e66b503e8bfeb5ca90731bfcaded9fc"
+    }
+  },
+  {
+    "document": "long-lines-1m",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": true,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "1311a2c92057704d7eed452d1ff24954df7b8bf98ef8865b7b4bb09435ebddaa",
+      "candidate": "1311a2c92057704d7eed452d1ff24954df7b8bf98ef8865b7b4bb09435ebddaa",
+      "inkmark": "1311a2c92057704d7eed452d1ff24954df7b8bf98ef8865b7b4bb09435ebddaa"
+    }
+  },
+  {
+    "document": "code-1m",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": true,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "3ae1737728401d83dc0157c1c997916a83fd59ea0f0c8a6ba4ff3bcc89152833",
+      "candidate": "3ae1737728401d83dc0157c1c997916a83fd59ea0f0c8a6ba4ff3bcc89152833",
+      "inkmark": "3ae1737728401d83dc0157c1c997916a83fd59ea0f0c8a6ba4ff3bcc89152833"
+    }
+  },
+  {
+    "document": "definitions-256",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": true,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "6399f2acc88b8d9b9bd78ebcec30d5341c25b7d79a9d638f307138fe8b15135f",
+      "candidate": "6399f2acc88b8d9b9bd78ebcec30d5341c25b7d79a9d638f307138fe8b15135f",
+      "inkmark": "6399f2acc88b8d9b9bd78ebcec30d5341c25b7d79a9d638f307138fe8b15135f"
+    }
+  },
+  {
+    "document": "definitions-1024",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": true,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "d9b586fe86b999ae14e0c7a514526a484e970dee525977faa761ec42b50c2810",
+      "candidate": "d9b586fe86b999ae14e0c7a514526a484e970dee525977faa761ec42b50c2810",
+      "inkmark": "d9b586fe86b999ae14e0c7a514526a484e970dee525977faa761ec42b50c2810"
+    }
+  },
+  {
+    "document": "definitions-4096",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": true,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "5d322f4fe09051c29f5c8f70dd42dd826aec20e676e9c9b4ff588e456ab2f589",
+      "candidate": "5d322f4fe09051c29f5c8f70dd42dd826aec20e676e9c9b4ff588e456ab2f589",
+      "inkmark": "5d322f4fe09051c29f5c8f70dd42dd826aec20e676e9c9b4ff588e456ab2f589"
+    }
+  },
+  {
+    "document": "gfm-100k",
+    "profile": "gfm",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": false,
+    "candidate_inkmark_entity_decoded_equal": false,
+    "output_sha256": {
+      "baseline": "4926cff0b336eef7546732fe634f78b0d3484acb9a6fb5da09c2ecce52c12ba7",
+      "candidate": "4926cff0b336eef7546732fe634f78b0d3484acb9a6fb5da09c2ecce52c12ba7",
+      "inkmark": "00052b8a000cc9a9b627863a427f93630a86331f72b81db2b5ff1d3795977897"
+    }
+  },
+  {
+    "document": "multiline-small",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": true,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "edc2789960ac19b71b49784f2cc0ddf21f5e6cbd6bde88d13a683ac51c996f46",
+      "candidate": "edc2789960ac19b71b49784f2cc0ddf21f5e6cbd6bde88d13a683ac51c996f46",
+      "inkmark": "edc2789960ac19b71b49784f2cc0ddf21f5e6cbd6bde88d13a683ac51c996f46"
+    }
+  },
+  {
+    "document": "multiline-100k",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": true,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "b48f8f2215fcd6d36ae723d9fa47cb9a0462678b64e7aa9d99c8940b53abcb12",
+      "candidate": "b48f8f2215fcd6d36ae723d9fa47cb9a0462678b64e7aa9d99c8940b53abcb12",
+      "inkmark": "b48f8f2215fcd6d36ae723d9fa47cb9a0462678b64e7aa9d99c8940b53abcb12"
+    }
+  },
+  {
+    "document": "keys-uppercase-1024",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": true,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "b6a742169806c9f649834aa940a552896955da0b819bfd0c529909d540fbdd8e",
+      "candidate": "b6a742169806c9f649834aa940a552896955da0b819bfd0c529909d540fbdd8e",
+      "inkmark": "b6a742169806c9f649834aa940a552896955da0b819bfd0c529909d540fbdd8e"
+    }
+  },
+  {
+    "document": "keys-unicode-1024",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": true,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "bffb30ea0ce570425a98f1b6dab93eb527494f8494d127ba993d71fda7629408",
+      "candidate": "bffb30ea0ce570425a98f1b6dab93eb527494f8494d127ba993d71fda7629408",
+      "inkmark": "bffb30ea0ce570425a98f1b6dab93eb527494f8494d127ba993d71fda7629408"
+    }
+  },
+  {
+    "document": "keys-spaced-1024",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": true,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "8f1b8db0dc579b096879ec29a69ef326a9d9db50508377d6707cb71d1b4e496a",
+      "candidate": "8f1b8db0dc579b096879ec29a69ef326a9d9db50508377d6707cb71d1b4e496a",
+      "inkmark": "8f1b8db0dc579b096879ec29a69ef326a9d9db50508377d6707cb71d1b4e496a"
+    }
+  },
+  {
+    "document": "keys-random-1024",
+    "profile": "commonmark",
+    "baseline_candidate_byte_equal": true,
+    "candidate_inkmark_byte_equal": true,
+    "candidate_inkmark_entity_decoded_equal": true,
+    "output_sha256": {
+      "baseline": "37301a124556db0ee9cbc0e7510634cf55c41c89af4c9589e63104228e6f6c5b",
+      "candidate": "37301a124556db0ee9cbc0e7510634cf55c41c89af4c9589e63104228e6f6c5b",
+      "inkmark": "37301a124556db0ee9cbc0e7510634cf55c41c89af4c9589e63104228e6f6c5b"
+    }
+  }
+]
