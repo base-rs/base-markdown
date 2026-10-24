@@ -182,7 +182,7 @@ impl InlineParser {
                                 || self.nodes[candidate.node].end
                                     - self.nodes[candidate.node].start
                                     == size)
-                            && (marker == b'~'
+                            && ((EXTENSIONS && marker == b'~')
                                 || !((candidate.close || self.delimiters[close].open)
                                     && (candidate.run_modulo + closer_modulo) % 3 == 0
                                     && (candidate.run_modulo != 0 || closer_modulo != 0)))
@@ -212,12 +212,12 @@ impl InlineParser {
                     self.nodes[closer].start += take;
                     // Mixed strike/emphasis resolution retries the remaining
                     // run, so its modulo changes after a partial match.
-                    if self.delimiters[open].mixed {
+                    if EXTENSIONS && self.delimiters[open].mixed {
                         self.delimiters[open].run_modulo =
                             u8::try_from((self.nodes[opener].end - self.nodes[opener].start) % 3)
                                 .unwrap();
                     }
-                    if self.delimiters[close].mixed {
+                    if EXTENSIONS && self.delimiters[close].mixed {
                         self.delimiters[close].run_modulo =
                             u8::try_from((self.nodes[closer].end - self.nodes[closer].start) % 3)
                                 .unwrap();
