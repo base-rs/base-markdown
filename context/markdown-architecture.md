@@ -20,6 +20,8 @@ Ordinary inline regions scan physical source fragments without copying them. Con
 
 Reference and footnote indexes normalize raw identifiers before inline resolution. They preserve authored definitions, including duplicates, while lookup selects the first normalized identifier. String decoding honors independently disabled escape and character-reference constructs. Frontmatter, math, tables, tasks, literal links, and inline-code metadata have direct handlers in the block or inline parser.
 
+Reference keys borrow contiguous canonical ASCII labels from source; other forms use owned normalized storage. Their ASCII letters use lowercase internally after Unicode folding; footnote keys retain uppercase because they appear in rendered IDs. Pending block separators are explicit delivery phases rather than independent parser state.
+
 The Markdown serializer writes recursively into one output string. Output ranges
 provide preceding context without copying parent strings; reusable scratch handles
 indentation and table escaping. Formatting and escaping use byte scanners and static scope rules; regex is a test-only dependency. The escape matcher retains non-overlapping neighbor consumption and uses ASCII digits for ordered-list markers.
