@@ -12,7 +12,7 @@
 //!
 //! ```bnf
 //! attention_sequence ::= 1*'*' | 1*'_'
-//! attention_sequence ::= 1*'~'
+//! strikethrough_sequence ::= 1*'~'
 //! ```
 //!
 //! Sequences are matched together to form attention based on which character
