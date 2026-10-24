@@ -206,7 +206,7 @@ impl<'a> State<'a> {
                 if let Some(first) = self.peek_node(document, next) {
                     first.encode_utf8(&mut buffer) as &str
                 } else {
-                    // Only unsupported custom shapes need the full lookahead handler.
+                    // Render nodes without a fixed prefix to determine the next character.
                     let checkpoint = self.output.len();
                     self.write_node(document, next, &Info::new("", ""))?;
                     let first = self.output[checkpoint..].chars().next().unwrap_or_default();
