@@ -7,7 +7,7 @@
 use super::{
     configure::IndentOptions,
     construct_name::ConstructName,
-    state::{flow_children, Info, State},
+    state::{flow_children, unsupported_content, Info, State},
     util::{
         check_bullet::check_bullet, check_bullet_ordered::check_bullet_ordered,
         check_bullet_other::check_bullet_other, check_emphasis::check_emphasis,
@@ -625,11 +625,24 @@ impl State<'_> {
         } else {
             check_bullet_other(self)?
         };
+        let mut first_empty = false;
+        let mut has_rule = false;
+        for (index, child) in flow_children(document, node).enumerate() {
+            if !matches!(
+                document.node(child).unwrap().kind,
+                EventKind::Start(Tag::Item { .. })
+            ) {
+                return Err(unsupported_content());
+            }
+            let first = flow_children(document, child).next();
+            if index == 0 {
+                first_empty = first.is_none();
+            }
+            has_rule |= first
+                .is_some_and(|first| matches!(document.node(first).unwrap().kind, EventKind::Rule));
+        }
         let mut different = self.bullet_last_used == Some(bullet);
         if !ordered {
-            let first_empty = flow_children(document, node)
-                .next()
-                .is_some_and(|first| flow_children(document, first).next().is_none());
             let depth = self.stack.len();
             let positions = self.index_stack.len();
             if matches!(bullet, '*' | '-')
@@ -646,18 +659,8 @@ impl State<'_> {
             {
                 different = true;
             }
-            if check_rule(self)? == bullet {
-                for child in flow_children(document, node) {
-                    if matches!(
-                        document.node(child).unwrap().kind,
-                        EventKind::Start(Tag::Item { .. })
-                    ) && flow_children(document, child).next().is_some_and(|first| {
-                        matches!(document.node(first).unwrap().kind, EventKind::Rule)
-                    }) {
-                        different = true;
-                        break;
-                    }
-                }
+            if check_rule(self)? == bullet && has_rule {
+                different = true;
             }
         }
         if different {
@@ -760,8 +763,7 @@ impl State<'_> {
         closing_fence_length: usize,
     ) -> Result<String, Message> {
         let mut info = authored_info.trim_matches([' ', '\t']);
-        if !matches!(fence.character, '`' | '~' | '-' | '+')
-            || (matches!(fence.character, '`' | '~') && info.is_empty())
+        if (matches!(fence.character, '`' | '~') && info.is_empty())
             || authored_info.contains(['\r', '\n'])
             || (fence.character == '`' && authored_info.contains('`'))
         {
@@ -819,7 +821,7 @@ impl State<'_> {
 
 fn item_task<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> Option<(NodeId, bool)> {
     if !matches!(
-        document.node(item)?.kind,
+        document.node(item).expect("task item node exists").kind,
         EventKind::Start(Tag::Item { .. })
     ) {
         return None;
@@ -831,13 +833,16 @@ fn item_task<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> Option<(Nod
         )
     })?;
     if !matches!(
-        document.node(paragraph)?.kind,
+        document
+            .node(paragraph)
+            .expect("task paragraph node exists")
+            .kind,
         EventKind::Start(Tag::Paragraph { .. })
     ) {
         return None;
     }
     let marker = document.children(paragraph).next()?;
-    match document.node(marker)?.kind {
+    match document.node(marker).expect("task marker node exists").kind {
         EventKind::TaskMarker(checked) => Some((marker, checked)),
         _ => None,
     }

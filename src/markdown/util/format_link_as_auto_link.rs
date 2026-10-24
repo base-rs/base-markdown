@@ -22,7 +22,7 @@ pub fn auto_link_text<'a, S: AsRef<str>>(
     if children.next().is_some() {
         return None;
     }
-    let EventKind::Text(text) = &document.node(child)?.kind else {
+    let EventKind::Text(text) = &document.node(child).expect("link child exists").kind else {
         return None;
     };
     let text = text.resolve(document.source()).unwrap();

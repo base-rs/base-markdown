@@ -82,7 +82,7 @@ document.text_mut(text).unwrap().push_str(" updated");
 assert!(to_markdown(&document).unwrap().starts_with("# Introduction updated"));
 ```
 
-`append_child`, `detach`, and `attach` edit structure without rebuilding the tree. `extract_children` returns detached IDs in the same document. `replace_heading_section` copies replacement content from another document, materializing its source references before that source can be dropped. Detached arena slots remain available until the document is dropped. `render_node` and `to_markdown_node` render individual subtrees.
+`append_child`, `detach`, and `attach` edit structure without rebuilding the tree. `extract_children` returns detached IDs in the same document. `replace_heading_section` copies replacement content from another document, materializing its source references before that source can be dropped and converting reference links to inline resources to preserve their resolved targets. Detached arena slots remain available until the document is dropped. `render_node` and `to_markdown_node` render individual subtrees.
 
 `NodeSyntax` provides optional authored formatting outside the hot event/node layout. Source metadata is inferred on demand; `set_syntax` stores an explicit override, and `None` disconnects that relationship. `set_kind` replaces semantic content and clears inferred syntax for that node; `text_mut` preserves it. `MarkdownOptions::line_wrapping` preserves soft breaks by default or unwraps them into spaces.
 

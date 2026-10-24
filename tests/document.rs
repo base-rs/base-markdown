@@ -330,7 +330,7 @@ fn section_replacement_copies_values_without_retaining_another_source_buffer() {
         .unwrap();
     assert!(core_markdown::to_markdown(&document)
         .unwrap()
-        .contains("[link][Ref]"));
+        .contains("[link](/u)"));
     assert!(core_markdown::to_markdown(&document)
         .unwrap()
         .contains("rust meta"));
@@ -486,7 +486,7 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
         let id = document.children(document.root()).next().unwrap();
         assert!(document.syntax(id).is_none(), "{:?}", raw);
     }
-    for raw in ["plain", "[^missing"] {
+    for raw in ["plain", "[^missing", "[^a\\]"] {
         let document = custom(raw, EventKind::FootnoteReference(Text::Literal("x")));
         assert!(document
             .syntax(document.children(document.root()).next().unwrap())
@@ -517,6 +517,7 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
         "--\nx\n--",
         "----\nx\n----",
         "---",
+        "---\n",
         "---\nno close",
         "---\nx\n--",
         "---\nx\n----",
@@ -535,4 +536,243 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
         assert!(document.syntax(id).is_none(), "{:?}", raw);
         assert!(document.frontmatter_value(id).is_none());
     }
+    // A custom producer can supply a body range and explicit fences without storing fenced source.
+    let mut document = custom(
+        "body",
+        EventKind::Opaque {
+            value: Text::Source(0..4),
+            block: true,
+        },
+    );
+    let id = document.children(document.root()).next().unwrap();
+    document
+        .set_syntax(
+            id,
+            Some(NodeSyntax::Frontmatter {
+                info: Text::Literal(""),
+                fence: core_markdown::CodeFence {
+                    character: '-',
+                    length: 3,
+                    indent: 0,
+                },
+                closing_fence_length: 3,
+            }),
+        )
+        .unwrap();
+    assert_eq!(document.frontmatter_value(id), Some("body"));
+}
+
+#[test]
+fn heading_anchors_collapse_adjacent_unicode_whitespace() {
+    let document = Document::parse("# A \t\u{2003} B", &ParseOptions::default()).unwrap();
+    let headings = document.headings(&HeadingOptions::default());
+    assert_eq!(headings[0].anchor, "a-b");
+    let mut options = CompileOptions::default();
+    options.heading_ids = true;
+    let mut output = String::new();
+    document.render_html(&options, &mut output).unwrap();
+    assert!(output.contains("id=\"a-b\""));
+}
+
+#[test]
+fn escaped_footnote_labels_and_nul_code_info_roundtrip() {
+    let options = Options::gfm();
+    let source = "Call.[^a\\]b].\n\n[^a\\]b]: y\n";
+    let document = Document::parse(source, &options.parse).unwrap();
+    let markdown = core_markdown::to_markdown(&document).unwrap();
+    assert!(markdown.contains("[^a\\]b]"));
+    assert_eq!(
+        html(&document),
+        core_markdown::to_html_with_options(&markdown, &options).unwrap()
+    );
+    let source = "```r\0ust extra &amp;\nx\n```\n";
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    let id = document.children(document.root()).next().unwrap();
+    let Some(NodeSyntax::Code { info }) = document.syntax(id) else {
+        panic!()
+    };
+    assert_eq!(info.resolve(source).unwrap(), "r\0ust extra &");
+    let markdown = core_markdown::to_markdown(&document).unwrap();
+    assert!(
+        markdown.contains("extra &"),
+        "{:?}; {:?}",
+        markdown,
+        document.node(id).unwrap().kind
+    );
+    assert_eq!(html(&document), core_markdown::to_html(&markdown));
+}
+
+#[test]
+fn copied_references_preserve_targets_with_conflicting_or_missing_definitions() {
+    for missing in [false, true] {
+        let mut document = Document::parse(
+            "# Keep\n\n[ref]: /old\n\n# Replace\n\nold\n",
+            &ParseOptions::default(),
+        )
+        .unwrap();
+        let mut replacement = Document::parse(
+            "[x][ref]\n\n[ref]: /new \"title\"\n",
+            &ParseOptions::default(),
+        )
+        .unwrap();
+        if missing {
+            let definitions: Vec<_> = replacement
+                .children(replacement.root())
+                .filter(|id| {
+                    matches!(
+                        replacement.node(*id).unwrap().kind,
+                        EventKind::Definition { .. }
+                    )
+                })
+                .collect();
+            for id in definitions {
+                replacement.detach(id).unwrap();
+            }
+        }
+        let root = document.root();
+        let index = document
+            .children(root)
+            .position(|id| document.text_content(id) == "Replace")
+            .unwrap();
+        document
+            .replace_heading_section(root, index, &replacement, true, true)
+            .unwrap();
+        drop(replacement);
+        let markdown = core_markdown::to_markdown(&document).unwrap();
+        assert!(markdown.contains("[x](/new \"title\")"));
+        assert_eq!(
+            html(&document).trim_end(),
+            core_markdown::to_html(&markdown).trim_end()
+        );
+    }
+}
+
+#[test]
+fn copied_sections_materialize_frontmatter_footnotes_and_edited_values() {
+    let mut options = Options::gfm();
+    options.parse.constructs.frontmatter = true;
+    let mut replacement=Document::parse("--- custom\nbody\n---\n\n- a\n\n  b\n\nNote[^Mixed] &amp;.\n\n[^Mixed]: Body.\n\n```rust meta\nx\n```\n".to_owned(),&options.parse).unwrap();
+    let opaque = replacement.children(replacement.root()).next().unwrap();
+    replacement.text_mut(opaque).unwrap().push_str("edited\n");
+    let text = replacement
+        .descendants(replacement.root())
+        .find(|id| matches!(replacement.node(*id).unwrap().kind, EventKind::Text(_)))
+        .unwrap();
+    replacement.text_mut(text).unwrap().push('!');
+    let mut document = Document::parse("# Old".to_owned(), &options.parse).unwrap();
+    document
+        .replace_heading_section(document.root(), 0, &replacement, true, true)
+        .unwrap();
+    let markdown = core_markdown::to_markdown(&document).unwrap();
+    drop(replacement);
+    assert!(markdown.contains("custom\nbody\nedited\n---"));
+    assert!(markdown.contains("[^Mixed]"));
+    assert!(markdown.contains("rust meta"));
+    assert_eq!(
+        document.frontmatter_value(document.children(document.root()).next().unwrap()),
+        Some("body\nedited\n")
+    );
+    assert_eq!(
+        html(&document).trim_end(),
+        core_markdown::to_html_with_options(&markdown, &options)
+            .unwrap()
+            .trim_end()
+    );
+}
+
+#[test]
+fn custom_heading_helpers_capture_the_same_leaf_set_and_line_endings_as_html() {
+    let mut document = empty();
+    let root = document.root();
+    let title = document
+        .append_child(root, EventKind::Start(Tag::Heading(1)))
+        .unwrap();
+    document
+        .append_child(title, EventKind::Text(Text::Literal("Title")))
+        .unwrap();
+    document
+        .append_child(
+            title,
+            EventKind::CodeBlock {
+                value: Text::Literal("body\n"),
+                language: None,
+                fence: None,
+                math: false,
+                unclosed: false,
+            },
+        )
+        .unwrap();
+    for ending in ["Crème\r\n", "Other\r", "Final\n"] {
+        let heading = document
+            .append_child(root, EventKind::Start(Tag::Heading(2)))
+            .unwrap();
+        document
+            .append_child(heading, EventKind::Text(Text::Literal(ending)))
+            .unwrap();
+    }
+    let heading = document
+        .append_child(root, EventKind::Start(Tag::Heading(3)))
+        .unwrap();
+    document
+        .append_child(heading, EventKind::Math(Text::Literal("x")))
+        .unwrap();
+    document
+        .append_child(heading, EventKind::HardBreak)
+        .unwrap();
+    assert_eq!(document.text_content(title), "Titlebody\n");
+    let headings = document.headings(&HeadingOptions::default());
+    assert_eq!(
+        headings
+            .iter()
+            .map(|entry| entry.anchor.as_str())
+            .collect::<Vec<_>>(),
+        ["title", "crème", "other", "final", "x"]
+    );
+    let mut options = CompileOptions::default();
+    options.heading_ids = true;
+    let mut output = String::new();
+    document.render_node(root, &options, &mut output).unwrap();
+    for entry in headings {
+        assert!(output.contains(&format!("id=\"{}\"", entry.anchor)));
+    }
+}
+
+#[test]
+fn item_source_spacing_handles_all_line_endings_and_reordered_provenance() {
+    for ending in ["\n", "\r", "\r\n"] {
+        let source = format!("- a{ending}{ending}  b{ending}");
+        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+        let list = document.children(document.root()).next().unwrap();
+        let item = document.children(list).next().unwrap();
+        assert!(matches!(
+            document.syntax(item),
+            Some(NodeSyntax::ListItem { spread: true })
+        ));
+        let blocks: Vec<_> = document
+            .children(item)
+            .filter(|id| {
+                matches!(
+                    document.node(*id).unwrap().kind,
+                    EventKind::Start(Tag::Paragraph { .. })
+                )
+            })
+            .collect();
+        document.attach(item, blocks[1], Some(blocks[0])).unwrap();
+        assert!(matches!(
+            document.syntax(item),
+            Some(NodeSyntax::ListItem { spread: false })
+        ));
+    }
+    let mut document = empty();
+    let root = document.root();
+    let paragraph = document
+        .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
+    assert!(!document
+        .replace_heading_section(root, 0, &empty(), true, true)
+        .unwrap());
+    assert!(document.frontmatter_value(paragraph).is_none());
+    let larger = Document::parse("a *b* c **d** e", &ParseOptions::default()).unwrap();
+    let foreign = larger.descendants(larger.root()).last().unwrap();
+    assert!(document.frontmatter_value(foreign).is_none());
 }

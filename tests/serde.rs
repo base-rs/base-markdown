@@ -227,3 +227,61 @@ fn alignment_and_configuration_serialization_remain_compatible() {
     let restored: Options = serde_json::from_str(&wire).unwrap();
     assert_eq!(serde_json::to_string(&restored).unwrap(), wire);
 }
+
+#[test]
+fn alignment_deserialization_accepts_byte_labels_and_optional_none() {
+    use core_markdown::AlignKind;
+    use serde::{
+        de::value::{BytesDeserializer, Error, UnitDeserializer},
+        Deserialize,
+    };
+
+    for (bytes, expected) in [
+        (b"left".as_slice(), AlignKind::Left),
+        (b"right".as_slice(), AlignKind::Right),
+        (b"center".as_slice(), AlignKind::Center),
+    ] {
+        assert_eq!(
+            AlignKind::deserialize(BytesDeserializer::<Error>::new(bytes)).unwrap(),
+            expected
+        );
+    }
+    let error = AlignKind::deserialize(BytesDeserializer::<Error>::new(b"invalid")).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("'left', 'right', 'center' or null"));
+    assert_eq!(
+        AlignKind::deserialize(UnitDeserializer::<Error>::new()).unwrap(),
+        AlignKind::None
+    );
+    // An optional representation signals visit_none rather than JSON's visit_unit.
+    struct NoneDeserializer;
+    impl<'de> serde::Deserializer<'de> for NoneDeserializer {
+        type Error = Error;
+        fn deserialize_any<V: serde::de::Visitor<'de>>(
+            self,
+            visitor: V,
+        ) -> Result<V::Value, Self::Error> {
+            visitor.visit_none()
+        }
+        serde::forward_to_deserialize_any! {
+            bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes byte_buf
+            option unit unit_struct newtype_struct seq tuple tuple_struct map struct enum identifier ignored_any
+        }
+    }
+    assert_eq!(
+        AlignKind::deserialize(NoneDeserializer).unwrap(),
+        AlignKind::None
+    );
+}
+
+#[test]
+fn text_deserialization_rejects_unknown_variants_and_invalid_ranges() {
+    for wire in [
+        json!({"Unknown":"x"}),
+        json!({"Source":{"start":"invalid","end":2}}),
+        json!({"Value":null}),
+    ] {
+        assert!(serde_json::from_value::<Text<'static>>(wire).is_err());
+    }
+}

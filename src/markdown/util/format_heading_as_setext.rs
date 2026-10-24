@@ -27,9 +27,7 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
             .any(|child| match &document.node(child).unwrap().kind {
                 EventKind::HardBreak | EventKind::SoftBreak(_) => true,
                 EventKind::Code { value, .. }
-                | EventKind::CodeBlock { value, .. }
                 | EventKind::Html { value, .. }
-                | EventKind::Opaque { value, .. }
                 | EventKind::Math(value)
                 | EventKind::Text(value) => value
                     .resolve(document.source())

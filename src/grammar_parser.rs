@@ -655,7 +655,7 @@ impl<'a> GrammarParser<'a> {
                 Some(Tag::BlockQuote)
             }
             Name::ListOrdered | Name::ListUnordered => {
-                let tight = !infer::list_loose(&self.tokens, index, true);
+                let tight = !infer::list_loose(&self.tokens, index);
                 self.tight.push(tight);
                 let start = if self.tokens[index].name == Name::ListOrdered {
                     Some(

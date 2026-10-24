@@ -345,7 +345,8 @@ pub fn info(tokenizer: &mut Tokenizer) -> State {
             // This looks like code (text) / math (text).
             // Note: no reason to check for `~`, because 3 of them can‘t be
             // used as strikethrough in text.
-            if tokenizer.tokenize_state.marker == byte && matches!(byte, b'$' | b'`') {
+            // Math starts directly in `meta`, so only backtick code fences reach this check.
+            if tokenizer.tokenize_state.marker == byte && byte == b'`' {
                 tokenizer.concrete = false;
                 tokenizer.tokenize_state.marker = 0;
                 tokenizer.tokenize_state.size_c = 0;

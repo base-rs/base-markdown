@@ -58,13 +58,11 @@ impl NodeSyntax<'_> {
         }
     }
 
-    pub(crate) fn owned(self, source: &str) -> NodeSyntax<'static> {
+    // References cross documents as resolved resources: the destination buffer may have a conflicting or missing definition with the same label.
+    pub(crate) fn copied(self, source: &str) -> Option<NodeSyntax<'static>> {
         let own = |text: Text<'_>| text.materialized(source);
-        match self {
-            Self::Reference { kind, label } => NodeSyntax::Reference {
-                kind,
-                label: own(label),
-            },
+        Some(match self {
+            Self::Reference { .. } => return None,
             Self::Footnote { label } => NodeSyntax::Footnote { label: own(label) },
             Self::Code { info } => NodeSyntax::Code { info: own(info) },
             Self::Frontmatter {
@@ -77,7 +75,7 @@ impl NodeSyntax<'_> {
                 closing_fence_length,
             },
             Self::ListItem { spread } => NodeSyntax::ListItem { spread },
-        }
+        })
     }
 
     pub(crate) fn valid_for(&self, kind: &EventKind<'_>, source: &str) -> bool {
@@ -115,7 +113,9 @@ pub(crate) fn infer(
     span: core::ops::Range<usize>,
     kind: &EventKind<'_>,
 ) -> Option<NodeSyntax<'static>> {
-    let raw = source.get(span.clone())?;
+    let raw = source
+        .get(span.clone())
+        .expect("document source extents are validated before syntax inference");
     match kind {
         EventKind::Start(Tag::Link { .. } | Tag::Image { .. }) => {
             let prefix = if raw.starts_with("![") {
@@ -170,7 +170,17 @@ pub(crate) fn infer(
         }
         EventKind::Start(Tag::FootnoteDefinition(_)) | EventKind::FootnoteReference(_) => {
             let start = raw.find("[^")? + 2;
-            let end = raw[start..].find(']')? + start;
+            let mut end = start;
+            while end < raw.len() {
+                match raw.as_bytes()[end] {
+                    b'\\' => end += 2,
+                    b']' => break,
+                    _ => end += 1,
+                }
+            }
+            if end >= raw.len() {
+                return None;
+            }
             Some(NodeSyntax::Footnote {
                 label: Text::Source(span.start + start..span.start + end),
             })
@@ -179,17 +189,16 @@ pub(crate) fn infer(
             fence: Some(fence), ..
         } => {
             let first = &raw[..raw.find(['\r', '\n']).unwrap_or(raw.len())];
-            let marker = first.find(fence.character)?;
-            let start = marker.checked_add(fence.length)?;
-            if !first
-                .get(marker..start)?
+            let sequence = &first[first.find(fence.character)?..];
+            let info = sequence.get(fence.length..)?;
+            if !sequence[..fence.length]
                 .chars()
                 .all(|character| character == fence.character)
             {
                 return None;
             }
-            let info = first.get(start..)?.trim_matches([' ', '\t']);
-            let start = span.start + info.as_ptr() as usize - first.as_ptr() as usize;
+            let info = info.trim_matches([' ', '\t']);
+            let start = span.start + (info.as_ptr() as usize - first.as_ptr() as usize);
             let text = crate::grammar_parser::decode_string(source, start..start + info.len());
             Some(NodeSyntax::Code { info: text })
         }

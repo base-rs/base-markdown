@@ -25,7 +25,7 @@ use crate::event::{Content, Event, Kind, Name, VOID_EVENTS};
 use crate::parser::ParseState;
 use crate::state::{Name as StateName, State};
 use crate::tokenizer::Tokenizer;
-use crate::util::{edit_map::EditMap, skip};
+use crate::util::edit_map::EditMap;
 use alloc::{string::String, vec, vec::Vec};
 
 #[derive(Debug)]
@@ -168,33 +168,7 @@ pub fn subtokenize(
                     _ => StateName::TextStart,
                 });
 
-                // Check if this is the first paragraph, after zero or more
-                // definitions (or a blank line), in a list item.
-                // Used for GFM task list items.
-                if tokenizer.parse_state.options.constructs.gfm_task_list_item
-                    && index > 2
-                    && events[index - 1].kind == Kind::Enter
-                    && events[index - 1].name == Name::Paragraph
-                {
-                    let before = skip::opt_back(
-                        events,
-                        index - 2,
-                        &[
-                            Name::BlankLineEnding,
-                            Name::Definition,
-                            Name::LineEnding,
-                            Name::SpaceOrTab,
-                        ],
-                    );
-
-                    if events[before].kind == Kind::Exit
-                        && events[before].name == Name::ListItemPrefix
-                    {
-                        tokenizer
-                            .tokenize_state
-                            .document_at_first_paragraph_of_list_item = true;
-                    }
-                }
+                // The semantic producer sets task eligibility before tokenizing an inline region; linked subcontent has no surrounding list context.
 
                 // Loop through links to pass them in order to the subtokenizer.
                 while let Some(index) = link_index {

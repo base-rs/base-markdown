@@ -27,7 +27,7 @@ mod util;
 /// Serialize an arena document to Markdown.
 ///
 /// # Errors
-/// Returns invalid formatting options or unsupported syntax metadata.
+/// Returns invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
 pub fn to_markdown<S: AsRef<str>>(document: &Document<S>) -> Result<String, Message> {
     to_markdown_with_options(document, &Options::default())
 }
@@ -35,7 +35,7 @@ pub fn to_markdown<S: AsRef<str>>(document: &Document<S>) -> Result<String, Mess
 /// Serialize an arena document with formatting options.
 ///
 /// # Errors
-/// Returns invalid formatting options or unsupported syntax metadata.
+/// Returns invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
 pub fn to_markdown_with_options<S: AsRef<str>>(
     document: &Document<S>,
     options: &Options,
@@ -46,7 +46,7 @@ pub fn to_markdown_with_options<S: AsRef<str>>(
 /// Serialize a document subtree with formatting options.
 ///
 /// # Errors
-/// Returns an invalid node index, invalid formatting options, or unsupported syntax metadata.
+/// Returns an invalid node index, invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
 pub fn to_markdown_node<S: AsRef<str>>(
     document: &Document<S>,
     node: NodeId,

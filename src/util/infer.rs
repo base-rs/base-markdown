@@ -11,9 +11,8 @@ use alloc::{vec, vec::Vec};
 
 /// Figure out if a list is spread or not.
 ///
-/// When `include_items: true` is passed, infers whether the list as a whole
-/// is “loose”.
-pub fn list_loose(events: &[Event], mut index: usize, include_items: bool) -> bool {
+/// Includes blank lines within items when deciding whether the whole list is loose.
+pub fn list_loose(events: &[Event], mut index: usize) -> bool {
     let mut balance = 0;
     let name = &events[index].name;
     debug_assert!(
@@ -30,11 +29,7 @@ pub fn list_loose(events: &[Event], mut index: usize, include_items: bool) -> bo
         if event.kind == Kind::Enter {
             balance += 1;
 
-            if include_items
-                && balance == 2
-                && event.name == Name::ListItem
-                && list_item_loose(events, index)
-            {
+            if balance == 2 && event.name == Name::ListItem && list_item_loose(events, index) {
                 return true;
             }
         } else {

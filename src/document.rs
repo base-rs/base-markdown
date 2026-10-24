@@ -543,6 +543,9 @@ impl<S: AsRef<str>> Document<S> {
     }
     /// Plain semantic text, including image alternative text, code and raw HTML.
     pub fn text_content(&self, id: NodeId) -> String {
+        self.collect_text::<false>(id)
+    }
+    fn collect_text<const HEADING: bool>(&self, id: NodeId) -> String {
         let mut text = String::new();
         for child in self.descendants(id) {
             match &self.nodes[child.index()].kind {
@@ -550,8 +553,12 @@ impl<S: AsRef<str>> Document<S> {
                 | EventKind::SoftBreak(value)
                 | EventKind::Math(value)
                 | EventKind::Code { value, .. }
-                | EventKind::CodeBlock { value, .. }
                 | EventKind::Html { value, .. } => text.push_str(
+                    value
+                        .resolve(self.source())
+                        .expect("document text is validated"),
+                ),
+                EventKind::CodeBlock { value, .. } if !HEADING => text.push_str(
                     value
                         .resolve(self.source())
                         .expect("document text is validated"),
@@ -568,7 +575,7 @@ impl<S: AsRef<str>> Document<S> {
         let mut entries = Vec::new();
         for id in self.descendants(self.root()) {
             if let EventKind::Start(Tag::Heading(level)) = self.nodes[id.index()].kind {
-                let mut text = self.text_content(id);
+                let mut text = self.collect_text::<true>(id);
                 if text.ends_with("\r\n") {
                     text.truncate(text.len() - 2);
                 } else if text.ends_with(['\r', '\n']) {
@@ -898,7 +905,8 @@ impl<S: AsRef<str>> Document<S> {
         if before == Some(id) {
             return Ok(());
         }
-        self.detach(id)?;
+        self.detach(id)
+            .expect("the moved node was checked and is not the root");
         let previous = self
             .children(parent)
             .take_while(|child| Some(*child) != before)
@@ -964,20 +972,16 @@ impl<S: AsRef<str>> Document<S> {
             }
             end = self.nodes[id.index()].next_sibling;
         }
-        // Validate capture compatibility before detaching anything.
-        for id in replacement.descendants(replacement.root()).skip(1) {
-            if let EventKind::Start(tag) = &replacement.nodes[id.index()].kind {
-                self.check_capture(Some(parent), tag.kind())?;
-            }
-        }
+        // Selecting an existing heading proves this parent and all its ancestors accept heading/footnote captures. Every copied subtree is already validated in its source document.
         let mut at = first;
         while at != end {
             let id = at.expect("the section ends in the selected sibling chain");
             at = self.nodes[id.index()].next_sibling;
-            self.detach(id)?;
+            self.detach(id)
+                .expect("a selected section contains existing non-root siblings");
         }
         for child in replacement.children(replacement.root()) {
-            self.copy_subtree(replacement, child, parent, end)?;
+            self.copy_subtree(replacement, child, parent, end);
         }
         Ok(true)
     }
@@ -987,7 +991,7 @@ impl<S: AsRef<str>> Document<S> {
         root: NodeId,
         parent: NodeId,
         before: Option<NodeId>,
-    ) -> Result<(), StreamError> {
+    ) {
         let mut path: Vec<(NodeId, NodeId)> = Vec::new();
         for original in source.descendants(root) {
             let node = &source.nodes[original.index()];
@@ -998,23 +1002,29 @@ impl<S: AsRef<str>> Document<S> {
                 path.pop();
             }
             let destination = path.last().map_or(parent, |(_, id)| *id);
-            let mut kind =
-                borrow_kind(&node.kind).map_text(|value| value.materialized(source.source()));
-            if let EventKind::Opaque { value, .. } = &mut kind {
-                if let Some(body) = source.frontmatter_value(original) {
-                    *value = Text::from(String::from(body));
-                }
-            }
-            let id = self.append_child(destination, kind)?;
+            let body = source.frontmatter_value(original);
+            let kind = borrow_kind(&node.kind).map_text(|value| {
+                body.map_or_else(
+                    || value.materialized(source.source()),
+                    |body| Text::from(String::from(body)),
+                )
+            });
+            let id = self
+                .append_child(destination, kind)
+                .expect("materialized source nodes remain valid below a heading's parent");
             if original == root {
-                self.attach(parent, id, before)?;
+                self.attach(parent, id, before)
+                    .expect("a copied root is new and its insertion boundary remains attached");
             }
-            if let Some(syntax) = source.syntax(original) {
-                self.set_syntax(id, Some(syntax.owned(source.source())))?;
+            if let Some(syntax) = source
+                .syntax(original)
+                .and_then(|syntax| syntax.copied(source.source()))
+            {
+                self.set_syntax(id, Some(syntax))
+                    .expect("materialized syntax describes the copied node kind");
             }
             path.push((original, id));
         }
-        Ok(())
     }
 }
 

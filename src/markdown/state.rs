@@ -25,6 +25,7 @@ use crate::{
     AlignKind, Document, NodeId, NodeSyntax,
 };
 use alloc::{
+    borrow::Cow,
     collections::BTreeMap,
     format,
     string::{String, ToString},
@@ -177,6 +178,9 @@ impl<'a> State<'a> {
         let mut after_hard_break = false;
         while let Some(child) = children.next() {
             let kind = &document.node(child).unwrap().kind;
+            if !is_phrasing(kind) {
+                return Err(unsupported_content());
+            }
             if after_hard_break && matches!(kind, EventKind::SoftBreak(_)) {
                 after_hard_break = false;
                 continue;
@@ -248,7 +252,7 @@ impl<'a> State<'a> {
             EventKind::Start(tag) => match tag {
                 Tag::Document(_) => {
                     if flow_children(document, id)
-                        .any(|child| is_phrasing(&document.node(child).unwrap().kind))
+                        .all(|child| is_phrasing(&document.node(child).unwrap().kind))
                     {
                         self.container_phrasing(document, id, info)
                     } else {
@@ -281,7 +285,9 @@ impl<'a> State<'a> {
                 Tag::Table => self.render_table(document, id),
                 Tag::TableRow => self.render_table_row(document, id),
                 Tag::TableCell { .. } => self.container_phrasing(document, id, info),
-                Tag::TableHead | Tag::TableBody => self.container_flow(document, id),
+                Tag::TableHead | Tag::TableBody => {
+                    self.render_table_rows(document, flow_children(document, id), false)
+                }
                 Tag::FootnoteDefinition(label) => {
                     let syntax = document.syntax(id);
                     let label = match &syntax {
@@ -306,12 +312,15 @@ impl<'a> State<'a> {
             EventKind::Text(text) => {
                 let mut value = text.resolve(source).unwrap();
                 if let Some(parent) = node.parent() {
-                    if let Some(marker) = document.node(parent).unwrap().first_child() {
-                        if document.node(marker).unwrap().next_sibling() == Some(id)
-                            && self.is_item_task(document, marker)
-                        {
-                            value = value.trim_start_matches([' ', '\t']);
-                        }
+                    let marker = document
+                        .node(parent)
+                        .unwrap()
+                        .first_child()
+                        .expect("an attached node belongs to a nonempty parent");
+                    if document.node(marker).unwrap().next_sibling() == Some(id)
+                        && self.is_item_task(document, marker)
+                    {
+                        value = value.trim_start_matches([' ', '\t']);
                     }
                 }
                 self.text(value, info)
@@ -332,44 +341,33 @@ impl<'a> State<'a> {
                 ..
             } => {
                 let value = trim_terminal_ending(value.resolve(source).unwrap());
+                let language = language
+                    .as_ref()
+                    .map(|value| normalize_nul(value.resolve(source).unwrap()));
+                let language = language.as_deref();
                 let syntax = document.syntax(id);
                 let authored_info = match &syntax {
-                    Some(NodeSyntax::Code { info }) => Some(info.resolve(source).unwrap()),
+                    Some(NodeSyntax::Code { info }) => {
+                        Some(normalize_nul(info.resolve(source).unwrap()))
+                    }
                     _ => None,
                 };
+                let authored_info = authored_info.as_deref();
                 if *math {
                     self.math(
                         value,
-                        authored_info
-                            .or_else(|| {
-                                language
-                                    .as_ref()
-                                    .map(|value| value.resolve(source).unwrap())
-                            })
-                            .filter(|value| !value.is_empty()),
+                        authored_info.or(language).filter(|value| !value.is_empty()),
                     )
                 } else {
-                    let (language, meta) = match authored_info {
-                        Some(info) => {
-                            let language = language
-                                .as_ref()
-                                .map(|value| value.resolve(source).unwrap());
-                            if let Some(language) = language {
-                                let metadata = info
-                                    .strip_prefix(language)
-                                    .unwrap_or("")
-                                    .trim_matches([' ', '\t']);
-                                (Some(language), (!metadata.is_empty()).then_some(metadata))
-                            } else {
-                                split_info(info)
-                            }
+                    let (language, meta) = match (authored_info, language) {
+                        (Some(info), Some(language)) => {
+                            let metadata = info
+                                .strip_prefix(language)
+                                .unwrap_or("")
+                                .trim_matches([' ', '\t']);
+                            (Some(language), (!metadata.is_empty()).then_some(metadata))
                         }
-                        None => (
-                            language
-                                .as_ref()
-                                .map(|value| value.resolve(source).unwrap()),
-                            None,
-                        ),
+                        _ => (language, None),
                     };
                     self.code(value, language, meta)
                 }
@@ -402,7 +400,7 @@ impl<'a> State<'a> {
                     self.frontmatter(
                         document
                             .frontmatter_value(id)
-                            .unwrap_or_else(|| value.resolve(source).unwrap()),
+                            .expect("frontmatter syntax identifies a frontmatter body"),
                         info.resolve(source).unwrap(),
                         fence,
                         closing_fence_length,
@@ -429,30 +427,46 @@ impl<'a> State<'a> {
         document: &Document<S>,
         id: NodeId,
     ) -> Result<String, Message> {
+        let rows = flow_children(document, id).flat_map(|child| {
+            let group = matches!(
+                document.node(child).unwrap().kind,
+                EventKind::Start(Tag::TableHead | Tag::TableBody)
+            );
+            (!group)
+                .then_some(child)
+                .into_iter()
+                .chain(flow_children(document, child).take(if group { usize::MAX } else { 0 }))
+        });
+        self.render_table_rows(document, rows, true)
+    }
+
+    fn render_table_rows<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        rows: impl Iterator<Item = NodeId>,
+        header: bool,
+    ) -> Result<String, Message> {
         let mut output = String::new();
-        let rows = document
-            .children(id)
-            .flat_map(|child| core::iter::once(child).chain(document.children(child)))
-            .filter(|row| {
-                matches!(
-                    document.node(*row).unwrap().kind,
-                    EventKind::Start(Tag::TableRow)
-                )
-            });
         for (index, row) in rows.enumerate() {
+            if !matches!(
+                document.node(row).unwrap().kind,
+                EventKind::Start(Tag::TableRow)
+            ) {
+                return Err(unsupported_content());
+            }
             if index > 0 {
                 output.push('\n');
             }
             output.push_str(&self.render_table_row(document, row)?);
-            if index == 0 {
+            if header && index == 0 {
                 output.push_str("\n| ");
-                for (index, cell) in document.children(row).enumerate() {
+                for (index, cell) in flow_children(document, row).enumerate() {
                     if index > 0 {
                         output.push_str(" | ");
                     }
                     let alignment = match document.node(cell).unwrap().kind {
                         EventKind::Start(Tag::TableCell { alignment, .. }) => alignment,
-                        _ => AlignKind::None,
+                        _ => unreachable!("rendered table rows contain only cells"),
                     };
                     output.push_str(match alignment {
                         AlignKind::Left => ":---",
@@ -473,7 +487,13 @@ impl<'a> State<'a> {
         row: NodeId,
     ) -> Result<String, Message> {
         let mut value = String::from("| ");
-        for (index, cell) in document.children(row).enumerate() {
+        for (index, cell) in flow_children(document, row).enumerate() {
+            if !matches!(
+                document.node(cell).unwrap().kind,
+                EventKind::Start(Tag::TableCell { .. })
+            ) {
+                return Err(unsupported_content());
+            }
             if index > 0 {
                 value.push_str(" | ");
             }
@@ -589,9 +609,7 @@ impl<'a> State<'a> {
         destination: &str,
         title: Option<&str>,
     ) -> bool {
-        if document.node(id).unwrap().span.is_empty() {
-            return true;
-        }
+        let standalone = document.node(id).unwrap().span.is_empty();
         let source = document.source();
         let root = self.serialization_root.unwrap_or(document.root());
         let definitions = self.definitions.get_or_insert_with(|| {
@@ -607,7 +625,7 @@ impl<'a> State<'a> {
         });
         normalize_identifier_into(label, &mut self.reference_key);
         let Some(definition) = definitions.get(&self.reference_key) else {
-            return false;
+            return standalone;
         };
         let EventKind::Definition {
             destination: target,
@@ -812,6 +830,7 @@ pub(crate) fn is_phrasing(kind: &EventKind<'_>) -> bool {
             | EventKind::Math(_)
             | EventKind::TaskMarker(_)
             | EventKind::Text(_)
+            | EventKind::Html { block: false, .. }
     )
 }
 
@@ -827,6 +846,14 @@ pub(super) fn flow_children<S: AsRef<str>>(
     })
 }
 
+fn normalize_nul(value: &str) -> Cow<'_, str> {
+    if value.contains('\0') {
+        Cow::Owned(value.replace('\0', "�"))
+    } else {
+        Cow::Borrowed(value)
+    }
+}
+
 pub(super) fn trim_terminal_ending(value: &str) -> &str {
     value
         .strip_suffix("\r\n")
@@ -834,17 +861,13 @@ pub(super) fn trim_terminal_ending(value: &str) -> &str {
         .unwrap_or(value)
 }
 
-fn split_info(value: &str) -> (Option<&str>, Option<&str>) {
-    let value = value.trim_matches([' ', '\t']);
-    if value.is_empty() {
-        return (None, None);
+pub(super) fn unsupported_content() -> Message {
+    Message {
+        place: None,
+        reason: "This content shape cannot be represented in Markdown".into(),
+        rule_id: alloc::boxed::Box::new("unsupported-node".into()),
+        source: alloc::boxed::Box::new("markdown".into()),
     }
-    let end = value.find([' ', '\t']).unwrap_or(value.len());
-    let metadata = value[end..].trim_matches([' ', '\t']);
-    (
-        Some(&value[..end]),
-        (!metadata.is_empty()).then_some(metadata),
-    )
 }
 
 pub(super) fn invalid_node() -> Message {
