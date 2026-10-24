@@ -24,7 +24,7 @@ target/release/markdown-comparison profile core-markdown commonmark data/bench-c
 bundle exec ruby adapter.rb inkmark render commonmark data/commonmark.json
 ```
 
-The JSON input is an array of objects containing `markdown` and, for timings, `name`. `core-prepare` times parser construction and disposal; `core-events` additionally drains resolved events into `black_box`, without rendering. `core-arena` measures parsing into the source-backed document and rendering its event traversal. `core-ast` is now an alias for the sole arena AST path; historical binaries used that mode for the removed mdast/HTML-renderer path. These diagnostic modes are separate from the direct-HTML path in the six-engine table. `prepare.py` also generates `bench-scanners.json` (long prose and fenced code), `bench-references.json`, `bench-definitions.json`, and `bench-linked-attention.json` for focused diagnostics. The definition workload has 256, 1,024, and 4,096 unique labels in reverse authored order, 25% additional case-equivalent duplicates, and two forward references.
+The JSON input is an array of objects containing `markdown` and, for timings, `name`. `core-prepare` times parser construction and disposal; `core-events` additionally drains resolved events into `black_box`, without rendering. `core-arena` measures parsing into the source-backed document and rendering its event traversal. `core-markdown-output` measures parsing into a Document and serializing Markdown, including disposal. `core-ast` is now an alias for the sole arena AST path; historical binaries used that mode for the removed mdast/HTML-renderer path. These diagnostic modes are separate from the direct-HTML path in the six-engine table. `prepare.py` also generates `bench-scanners.json` (long prose and fenced code), `bench-references.json`, `bench-definitions.json`, and `bench-linked-attention.json` for focused diagnostics. The definition workload has 256, 1,024, and 4,096 unique labels in reverse authored order, 25% additional case-equivalent duplicates, and two forward references.
 
 Allocation counting uses a separate executable so timing runs retain the system allocator:
 
@@ -46,6 +46,10 @@ The CommonMark profile disables extensions, allows raw HTML and all URL protocol
 The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,000,020 bytes repeat sections containing prose, emphasis, links, inline code, Unicode, entities, block quotes, nested lists, and fenced Rust code. The 100,130-byte GFM document additionally includes tables, tasks, and autolinks. `prepare.py` regenerates the workloads from the saved README and source literals.
 
 **GFM is not an equal-output throughput comparison:** Inkmark leaves `www.example.com` unlinked in this workload even with autolinking enabled. Its table alignment attributes and empty table bodies also differ. Comrak and Commonmarker do not expose the same independent GFM tag filter as the other adapters. Read GFM timings alongside the output agreement results.
+
+## Serializer and parser storage follow-up
+
+Byte scanners, shared serializer output/scratch, and compact inline storage make complete Markdown round trips **5.7–10.1× faster** on the original four. The parser object shrinks from 1,104 to 368 bytes; 1MB serialization's cumulative requested bytes fall from 5.36 GB to 75.1 MB. Original-four direct HTML medians are 1.0–2.1% lower than main and ahead of Inkmark here, while AST-to-HTML medians are 0.1–2.8% higher. Grammar promotion adds one 1KB allocation on first use. The [full report](measurements/2026-10-24-streamline-serialization/readme.md) retains all timings, allocation traffic, output caveats, and validation. All 8,468 saved HTML/Markdown results remain byte-identical. Diagnostics now use byte spans instead of unist locations; see the [migration guide](../../context/document.md#diagnostics).
 
 ## Single AST follow-up
 

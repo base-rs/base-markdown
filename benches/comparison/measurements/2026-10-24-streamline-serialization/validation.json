@@ -1,0 +1,46 @@
+{
+  "source_tree": "cd6d2bf72d85de8dc429ecb0978b01e879e1e0aa",
+  "coverage": {
+    "covered": 21305,
+    "measured": 21305,
+    "invariant_unreachable_exclusions": 37
+  },
+  "results": {
+    "coverage_all_features_all_targets": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-cleanup-20261024/coverage-complete.log",
+      "log_sha256": "254344a13b086dabcfeb8b6b31fc3091e0374fa2e99ae8e63d1de91987b138a2"
+    },
+    "clippy_all_features_all_targets": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-cleanup-20261024/clippy-complete.log",
+      "log_sha256": "8867fa170d0b6da42da1f6199fddcbcfb5cbb1982ed2111d9c9c5f022162953e"
+    },
+    "clippy_default_all_targets": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-cleanup-20261024/clippy-default.log",
+      "log_sha256": "e460c166d465411d65a4d5df60a5da4aacfe1bd23e5525bb2c1074f9eb72cd80"
+    },
+    "workspace_default": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-cleanup-20261024/workspace-complete.log",
+      "log_sha256": "38afdb86880d9ebd1a7ce55178a56a838b3712eea0f331cc05484293a83a1cb3"
+    },
+    "linux_all_features_library_check": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-cleanup-20261024/linux-complete.log",
+      "log_sha256": "74ca5c29c0c3db92a9b4e67351e15b34c044c52b0b7644f9618be4c467b87957"
+    },
+    "format": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-cleanup-20261024/format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "preservation": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-cleanup-20261024/preservation.log",
+      "log_sha256": "6a5712c127e596ec1cf3a1aed1860af18985ee56659cd130fc58056027e52044"
+    }
+  },
+  "limits": "Native all-feature/all-target source-region coverage and default workspace tests on arm64 macOS. Linux is a library compile check locally; CI supplies Linux runtime coverage. A disk-space failure in earlier validation was resolved with cargo clean before these complete passing runs."
+}
