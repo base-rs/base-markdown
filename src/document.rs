@@ -819,23 +819,45 @@ impl<S: AsRef<str>> Document<S> {
             EventKind::Start(tag) => self.check_capture(Some(parent), tag.kind())?,
             _ => {}
         }
-        let last = self.children(parent).last();
+        let previous = self.children(parent).last();
+        let id = self.insert_child(parent, kind, previous, None);
+        self.refresh_context(id);
+        self.refresh_item(Some(parent));
+        Ok(id)
+    }
+    // Callers validate the semantic content and insertion position before changing links, then refresh context once the operation is complete.
+    fn link_child(
+        &mut self,
+        parent: NodeId,
+        id: NodeId,
+        previous: Option<NodeId>,
+        next: Option<NodeId>,
+    ) {
+        self.nodes[id.index()].parent = Some(parent);
+        self.nodes[id.index()].next_sibling = next;
+        if let Some(previous) = previous {
+            self.nodes[previous.index()].next_sibling = Some(id);
+        } else {
+            self.nodes[parent.index()].first_child = Some(id);
+        }
+    }
+    fn insert_child(
+        &mut self,
+        parent: NodeId,
+        kind: EventKind<'static>,
+        previous: Option<NodeId>,
+        next: Option<NodeId>,
+    ) -> NodeId {
         let id = NodeId::new(self.nodes.len());
         self.nodes.push(Node {
             kind,
             span: 0..0,
-            parent: Some(parent),
+            parent: None,
             first_child: None,
             next_sibling: None,
         });
-        if let Some(last) = last {
-            self.nodes[last.index()].next_sibling = Some(id);
-        } else {
-            self.nodes[parent.index()].first_child = Some(id);
-        }
-        self.refresh_context(id);
-        self.refresh_item(Some(parent));
-        Ok(id)
+        self.link_child(parent, id, previous, next);
+        id
     }
     /// Detach a subtree without moving its arena slots or invalidating IDs.
     ///
@@ -849,7 +871,13 @@ impl<S: AsRef<str>> Document<S> {
         let Some(parent) = node.parent else {
             return Ok(());
         };
-        let next = node.next_sibling;
+        self.unlink_child(id, parent);
+        self.refresh_context(id);
+        self.refresh_item(Some(parent));
+        Ok(())
+    }
+    fn unlink_child(&mut self, id: NodeId, parent: NodeId) {
+        let next = self.nodes[id.index()].next_sibling;
         if self.nodes[parent.index()].first_child == Some(id) {
             self.nodes[parent.index()].first_child = next;
         } else {
@@ -861,9 +889,6 @@ impl<S: AsRef<str>> Document<S> {
         }
         self.nodes[id.index()].parent = None;
         self.nodes[id.index()].next_sibling = None;
-        self.refresh_context(id);
-        self.refresh_item(Some(parent));
-        Ok(())
     }
     /// Move an existing subtree into a container, optionally before one of its children. No node or text allocation is required.
     ///
@@ -905,20 +930,19 @@ impl<S: AsRef<str>> Document<S> {
         if before == Some(id) {
             return Ok(());
         }
-        self.detach(id)
-            .expect("the moved node was checked and is not the root");
+        let former_parent = self.nodes[id.index()].parent;
+        if let Some(parent) = former_parent {
+            self.unlink_child(id, parent);
+        }
         let previous = self
             .children(parent)
             .take_while(|child| Some(*child) != before)
             .last();
-        self.nodes[id.index()].parent = Some(parent);
-        self.nodes[id.index()].next_sibling = before;
-        if let Some(previous) = previous {
-            self.nodes[previous.index()].next_sibling = Some(id);
-        } else {
-            self.nodes[parent.index()].first_child = Some(id);
-        }
+        self.link_child(parent, id, previous, before);
         self.refresh_context(id);
+        if former_parent != Some(parent) {
+            self.refresh_item(former_parent);
+        }
         self.refresh_item(Some(parent));
         Ok(())
     }
@@ -980,8 +1004,12 @@ impl<S: AsRef<str>> Document<S> {
             self.detach(id)
                 .expect("a selected section contains existing non-root siblings");
         }
+        let mut previous = self
+            .children(parent)
+            .take_while(|child| Some(*child) != end)
+            .last();
         for child in replacement.children(replacement.root()) {
-            self.copy_subtree(replacement, child, parent, end);
+            previous = Some(self.copy_subtree(replacement, child, parent, previous, end));
         }
         Ok(true)
     }
@@ -989,19 +1017,25 @@ impl<S: AsRef<str>> Document<S> {
         &mut self,
         source: &Document<T>,
         root: NodeId,
-        parent: NodeId,
+        mut parent: NodeId,
+        mut previous: Option<NodeId>,
         before: Option<NodeId>,
-    ) {
-        let mut path: Vec<(NodeId, NodeId)> = Vec::new();
+    ) -> NodeId {
+        let copied_root = NodeId::new(self.nodes.len());
+        let mut original_parent = source.nodes[root.index()].parent;
         for original in source.descendants(root) {
             let node = &source.nodes[original.index()];
-            while path
-                .last()
-                .is_some_and(|(original, _)| Some(*original) != node.parent)
-            {
-                path.pop();
+            // Source and destination parent links describe the same copied path; ascending them together needs no mapping stack.
+            while original_parent != node.parent {
+                previous = Some(parent);
+                parent = self.nodes[parent.index()]
+                    .parent
+                    .expect("a copied descendant has a copied parent");
+                original_parent = source.nodes[original_parent
+                    .expect("subtree traversal stays below its original parent")
+                    .index()]
+                .parent;
             }
-            let destination = path.last().map_or(parent, |(_, id)| *id);
             let body = source.frontmatter_value(original);
             let kind = borrow_kind(&node.kind).map_text(|value| {
                 body.map_or_else(
@@ -1009,13 +1043,8 @@ impl<S: AsRef<str>> Document<S> {
                     |body| Text::from(String::from(body)),
                 )
             });
-            let id = self
-                .append_child(destination, kind)
-                .expect("materialized source nodes remain valid below a heading's parent");
-            if original == root {
-                self.attach(parent, id, before)
-                    .expect("a copied root is new and its insertion boundary remains attached");
-            }
+            let next = if original == root { before } else { None };
+            let id = self.insert_child(parent, kind, previous, next);
             if let Some(syntax) = source
                 .syntax(original)
                 .and_then(|syntax| syntax.copied(source.source()))
@@ -1023,8 +1052,17 @@ impl<S: AsRef<str>> Document<S> {
                 self.set_syntax(id, Some(syntax))
                     .expect("materialized syntax describes the copied node kind");
             }
-            path.push((original, id));
+            if node.first_child.is_some() {
+                original_parent = Some(original);
+                parent = id;
+                previous = None;
+            } else {
+                previous = Some(id);
+            }
         }
+        self.refresh_context(copied_root);
+        self.refresh_item(self.nodes[copied_root.index()].parent);
+        copied_root
     }
 }
 
