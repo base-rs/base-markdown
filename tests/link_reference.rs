@@ -13,6 +13,29 @@ use support::fixture::Position;
 use support::fixture::{Definition, LinkReference, Node, Paragraph, ReferenceKind, Root, Text};
 
 #[test]
+fn references_share_keys_across_borrowed_and_normalized_definitions() {
+    let source = "[key] [SS] [θ] [a b]\n\n[KEY]: /first\n[key]: /second\n[ß]: /sharp\n[ss]: /ignored\n[ϴ]: /theta\n[θ]: /ignored\n[a  b]: /spaces\n[a b]: /ignored\n";
+    let expected = "<p><a href=\"/first\">key</a> <a href=\"/sharp\">SS</a> <a href=\"/theta\">θ</a> <a href=\"/spaces\">a b</a></p>\n";
+    assert_eq!(to_html(source), expected);
+    let options = Options::default();
+    let document = core_markdown::Document::parse(source, &options.parse).unwrap();
+    let mut output = String::new();
+    core_markdown::render_events(source, document.events(), &options.compile, &mut output).unwrap();
+    assert_eq!(output, expected);
+    assert_eq!(
+        document
+            .nodes()
+            .iter()
+            .filter(|node| matches!(
+                node.kind,
+                core_markdown::stream::EventKind::Definition { .. }
+            ))
+            .count(),
+        8
+    );
+}
+
+#[test]
 fn reference_paragraphs_resolve_emphasis_like_other_compact_inlines() {
     for (label, html) in [("[a]", "<a href=\"/a\">a</a>"), ("[unknown]", "[unknown]")] {
         let source = format!("{label}*a**_\n\n[a]: /a");

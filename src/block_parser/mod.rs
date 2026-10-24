@@ -96,7 +96,7 @@ struct Builder<'a> {
     current: usize,
     blank: bool,
     empty_item: Option<usize>,
-    definitions: Definitions,
+    definitions: Definitions<'a>,
     alignments: Vec<AlignKind>,
     definition_context: bool,
 }
@@ -115,7 +115,7 @@ impl Blocks {
                 Body::List { tight: true, .. }
             )
     }
-    pub fn parse(source: &str, options: &ParseOptions) -> (Self, Definitions) {
+    pub fn parse<'a>(source: &'a str, options: &'a ParseOptions) -> (Self, Definitions<'a>) {
         let mut builder = Builder {
             source,
             options,
