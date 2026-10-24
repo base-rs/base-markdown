@@ -300,7 +300,37 @@ impl InlineParser {
     /// Ordinary lines keep their original source ranges. Only a construct that
     /// crosses stripped container prefixes needs a logical view, scanned by the
     /// same parser and mapped back to source coordinates when events are pulled.
-    pub(crate) fn prepare<const REFERENCES: bool, const EXTENSIONS: bool>(
+    pub(crate) fn prepare<const EXTENSIONS: bool>(
+        &mut self,
+        source: &str,
+        fragments: impl Iterator<Item = Range<usize>> + Clone,
+        definitions: &Definitions<'_>,
+        options: &crate::ParseOptions,
+        task: bool,
+        table: bool,
+    ) {
+        if definitions.is_empty() {
+            self.prepare_region::<false, EXTENSIONS>(
+                source,
+                fragments,
+                definitions,
+                options,
+                task,
+                table,
+            );
+        } else {
+            self.prepare_region::<true, EXTENSIONS>(
+                source,
+                fragments,
+                definitions,
+                options,
+                task,
+                table,
+            );
+        }
+    }
+
+    fn prepare_region<const REFERENCES: bool, const EXTENSIONS: bool>(
         &mut self,
         source: &str,
         fragments: impl Iterator<Item = Range<usize>> + Clone,

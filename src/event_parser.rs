@@ -3,7 +3,8 @@
 
 //! Pull semantic events from compact source-backed block records.
 use crate::block_parser::{Blocks, Body};
-use crate::inline_workspace::InlineWorkspace;
+use crate::definitions::Definitions;
+use crate::inline_parser::InlineParser;
 use crate::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
 use crate::value_builder::ValueBuilder;
 use crate::{LineEnding, ParseOptions};
@@ -12,7 +13,10 @@ use alloc::string::ToString;
 /// A pull producer of resolved semantic events. Preparation records block structure; inline syntax is scanned only when its containing block is consumed.
 pub struct EventParser<'a> {
     blocks: Blocks,
-    inline: InlineWorkspace<'a>,
+    source: &'a str,
+    options: &'a ParseOptions,
+    definitions: Definitions<'a>,
+    inline: InlineParser,
     extensions: bool,
     cursor: usize,
     closing: bool,
@@ -32,7 +36,10 @@ impl<'a> EventParser<'a> {
         let (blocks, definitions) = Blocks::parse(source, options);
         Self {
             blocks,
-            inline: InlineWorkspace::new(source, options, definitions),
+            source,
+            options,
+            definitions,
+            inline: InlineParser::default(),
             extensions: options.constructs != crate::Constructs::default(),
             cursor: 0,
             closing: false,
@@ -70,7 +77,7 @@ impl EventParser<'_> {
         }
     }
     fn value(&self, index: usize) -> Text<'static> {
-        let mut value = ValueBuilder::new(self.inline.source());
+        let mut value = ValueBuilder::new(self.source);
         let mut child = self.blocks.nodes[index].child;
         while child != 0 {
             let node = self.blocks.nodes[child];
@@ -86,7 +93,7 @@ impl EventParser<'_> {
         value.finish()
     }
     fn separator(&self, end: usize) -> Event<'static> {
-        let bytes = self.inline.source().as_bytes();
+        let bytes = self.source.as_bytes();
         // Block boundaries passed here end at a physical line ending, never at container padding or a trimmed inline fragment.
         let start = match bytes[end - 1] {
             b'\n' => end - 1 - usize::from(end > 1 && bytes[end - 2] == b'\r'),
@@ -105,7 +112,7 @@ impl EventParser<'_> {
         self.phase = Phase::Done;
         Event {
             kind: EventKind::End(TagKind::Document),
-            span: self.inline.source().len()..self.inline.source().len(),
+            span: self.source.len()..self.source.len(),
         }
     }
     // Document bookends are infrequent; keep their state transitions out of the hot body loop.
@@ -116,10 +123,10 @@ impl EventParser<'_> {
                 self.phase = Phase::Body;
                 self.cursor = self.blocks.nodes[0].child;
                 self.closing = self.cursor == 0;
-                let line_ending = LineEnding::from_source(self.inline.source());
+                let line_ending = LineEnding::from_source(self.source);
                 Some(Ok(Event {
                     kind: EventKind::Start(Tag::Document(line_ending)),
-                    span: 0..self.inline.source().len(),
+                    span: 0..self.source.len(),
                 }))
             }
             Phase::DocumentEnd => Some(Ok(self.end_document())),
@@ -135,7 +142,11 @@ impl EventParser<'_> {
     fn next_event(&mut self) -> Option<Result<Event<'static>, StreamError>> {
         match self.phase {
             Phase::Inline => {
-                if let Some(event) = self.inline.next_region() {
+                if let Some(event) = self
+                    .inline
+                    .next(self.source, &self.definitions, self.options)
+                    .map(Ok)
+                {
                     return Some(event);
                 }
                 self.phase = Phase::Body;
@@ -175,34 +186,32 @@ impl EventParser<'_> {
                     | Body::Table
             );
             let suppress_separator = match leaf.body {
-                Body::Html(end) => end == leaf.end && leaf.end == self.inline.source().len(),
+                Body::Html(end) => end == leaf.end && leaf.end == self.source.len(),
                 Body::Code(metadata) if leaf.parent == 0 => {
                     let code = &self.blocks.codes[metadata];
-                    code.unclosed && leaf.end == self.inline.source().len()
+                    code.unclosed && leaf.end == self.source.len()
                         || code.fence.is_none()
-                            && self.inline.source()[leaf.end..].trim().is_empty()
-                            && !self.inline.source().ends_with(['\r', '\n'])
+                            && self.source[leaf.end..].trim().is_empty()
+                            && !self.source.ends_with(['\r', '\n'])
                 }
                 _ => false,
             };
             if !suppress_separator
                 && self.blocks.nodes[0].child != 0
-                && (!matches!(last.body, Body::Definition(_))
-                    || last.end < self.inline.source().len())
-                && (self.inline.source().ends_with(['\r', '\n'])
+                && (!matches!(last.body, Body::Definition(_)) || last.end < self.source.len())
+                && (self.source.ends_with(['\r', '\n'])
                     || (matches!(
                         last.body,
                         Body::Paragraph | Body::Heading(_) | Body::Rule | Body::Table
                     ) || last.body == Body::Quote && populated)
-                        && self.inline.source()[..last.end]
+                        && self.source[..last.end]
                             .trim_end_matches([' ', '\t'])
                             .ends_with(['\r', '\n']))
             {
                 // Populated containers retain their final semantic line ending. Empty containers and lists followed by blank lines use the document style.
                 return Some(Ok(
                     if !populated
-                        || matches!(last.body, Body::List { .. })
-                            && leaf.end != self.inline.source().len()
+                        || matches!(last.body, Body::List { .. }) && leaf.end != self.source.len()
                         || leaf.body == Body::Table && last.end > leaf.end
                     {
                         Event {
@@ -254,7 +263,7 @@ impl EventParser<'_> {
                 self.phase = Phase::Separator(node.end);
             }
             self.advance();
-            let end = node.span_end(self.inline.source());
+            let end = node.span_end(self.source);
             return Some(Ok(Event {
                 kind: EventKind::End(tag),
                 span: end..end,
@@ -275,10 +284,10 @@ impl EventParser<'_> {
                         }
                     })
                 };
-                let mut task = self.inline.options().constructs.task_list_item
+                let mut task = self.options.constructs.task_list_item
                     && matches!(node.body, Body::Paragraph)
                     && matches!(nodes[node.parent].body, Body::Item(_))
-                    && self.inline.source()[node.start..node.end].starts_with('[');
+                    && self.source[node.start..node.end].starts_with('[');
                 if task {
                     let mut before = nodes[node.parent].child;
                     while before != index {
@@ -290,14 +299,20 @@ impl EventParser<'_> {
                     }
                 }
                 if self.extensions {
-                    self.inline.region::<true>(
+                    self.inline.prepare::<true>(
+                        self.source,
                         fragments(),
+                        &self.definitions,
+                        self.options,
                         task,
                         matches!(node.body, Body::TableCell { .. }),
                     );
                 } else {
-                    self.inline.region::<false>(
+                    self.inline.prepare::<false>(
+                        self.source,
                         fragments(),
+                        &self.definitions,
+                        self.options,
                         task,
                         matches!(node.body, Body::TableCell { .. }),
                     );
@@ -316,7 +331,7 @@ impl EventParser<'_> {
             }
             Body::Quote => EventKind::Start(Tag::BlockQuote),
             Body::Footnote(index) => EventKind::Start(Tag::FootnoteDefinition(Text::from(
-                self.inline.definitions().footnote_key(index).to_string(),
+                self.definitions.footnote_key(index).to_string(),
             ))),
             Body::Opaque => {
                 self.advance();
@@ -360,7 +375,7 @@ impl EventParser<'_> {
                 EventKind::Rule
             }
             Body::Definition(index) => {
-                let definition = &self.inline.definitions().entries[index];
+                let definition = &self.definitions.entries[index];
                 let kind = EventKind::Definition {
                     label: definition.label.clone(),
                     destination: definition.destination.clone(),
@@ -368,10 +383,10 @@ impl EventParser<'_> {
                 };
                 self.advance();
                 let mut end = node.end;
-                if self.inline.source().as_bytes().get(end - 1) == Some(&b'\n') {
+                if self.source.as_bytes().get(end - 1) == Some(&b'\n') {
                     end -= 1;
                 }
-                if self.inline.source().as_bytes().get(end - 1) == Some(&b'\r') {
+                if self.source.as_bytes().get(end - 1) == Some(&b'\r') {
                     end -= 1;
                 }
                 return Some(Ok(Event {
@@ -402,9 +417,9 @@ impl EventParser<'_> {
                         None
                     } else {
                         Some(crate::value_builder::decode_string_with_options(
-                            self.inline.source(),
+                            self.source,
                             code.info.clone(),
-                            self.inline.options(),
+                            self.options,
                         ))
                     },
                     fence: code.fence,
@@ -438,7 +453,7 @@ impl EventParser<'_> {
         }
         Some(Ok(Event {
             kind,
-            span: node.start..node.span_end(self.inline.source()),
+            span: node.start..node.span_end(self.source),
         }))
     }
 }
