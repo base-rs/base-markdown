@@ -106,14 +106,14 @@ pub enum Name {
     DocumentContainerNewBefore,
     DocumentContainerNewBeforeNotBlockQuote,
     DocumentContainerNewBeforeNotList,
-    DocumentContainerNewBeforeNotGfmFootnoteDefinition,
+    DocumentContainerNewBeforeNotFootnoteDefinition,
     DocumentContainerNewAfter,
     DocumentContainersAfter,
     DocumentFlowInside,
     DocumentFlowEnd,
 
     FlowStart,
-    FlowBeforeGfmTable,
+    FlowBeforeTable,
     FlowBeforeCodeIndented,
     FlowBeforeRaw,
     FlowBeforeHtml,
@@ -140,69 +140,69 @@ pub enum Name {
     FrontmatterCloseSequence,
     FrontmatterCloseAfter,
 
-    GfmAutolinkLiteralProtocolStart,
-    GfmAutolinkLiteralProtocolAfter,
-    GfmAutolinkLiteralProtocolPrefixInside,
-    GfmAutolinkLiteralProtocolSlashesInside,
+    AutolinkLiteralProtocolStart,
+    AutolinkLiteralProtocolAfter,
+    AutolinkLiteralProtocolPrefixInside,
+    AutolinkLiteralProtocolSlashesInside,
 
-    GfmAutolinkLiteralWwwStart,
-    GfmAutolinkLiteralWwwAfter,
-    GfmAutolinkLiteralWwwPrefixInside,
-    GfmAutolinkLiteralWwwPrefixAfter,
+    AutolinkLiteralWwwStart,
+    AutolinkLiteralWwwAfter,
+    AutolinkLiteralWwwPrefixInside,
+    AutolinkLiteralWwwPrefixAfter,
 
-    GfmAutolinkLiteralDomainInside,
-    GfmAutolinkLiteralDomainAtPunctuation,
-    GfmAutolinkLiteralDomainAfter,
+    AutolinkLiteralDomainInside,
+    AutolinkLiteralDomainAtPunctuation,
+    AutolinkLiteralDomainAfter,
 
-    GfmAutolinkLiteralPathInside,
-    GfmAutolinkLiteralPathAtPunctuation,
-    GfmAutolinkLiteralPathAfter,
+    AutolinkLiteralPathInside,
+    AutolinkLiteralPathAtPunctuation,
+    AutolinkLiteralPathAfter,
 
-    GfmAutolinkLiteralTrail,
-    GfmAutolinkLiteralTrailCharRefInside,
-    GfmAutolinkLiteralTrailCharRefStart,
-    GfmAutolinkLiteralTrailBracketAfter,
+    AutolinkLiteralTrail,
+    AutolinkLiteralTrailCharRefInside,
+    AutolinkLiteralTrailCharRefStart,
+    AutolinkLiteralTrailBracketAfter,
 
-    GfmFootnoteDefinitionStart,
-    GfmFootnoteDefinitionLabelBefore,
-    GfmFootnoteDefinitionLabelAtMarker,
-    GfmFootnoteDefinitionLabelInside,
-    GfmFootnoteDefinitionLabelEscape,
-    GfmFootnoteDefinitionLabelAfter,
-    GfmFootnoteDefinitionWhitespaceAfter,
-    GfmFootnoteDefinitionContStart,
-    GfmFootnoteDefinitionContBlank,
-    GfmFootnoteDefinitionContFilled,
+    FootnoteDefinitionStart,
+    FootnoteDefinitionLabelBefore,
+    FootnoteDefinitionLabelAtMarker,
+    FootnoteDefinitionLabelInside,
+    FootnoteDefinitionLabelEscape,
+    FootnoteDefinitionLabelAfter,
+    FootnoteDefinitionWhitespaceAfter,
+    FootnoteDefinitionContStart,
+    FootnoteDefinitionContBlank,
+    FootnoteDefinitionContFilled,
 
-    GfmLabelStartFootnoteStart,
-    GfmLabelStartFootnoteOpen,
+    LabelStartFootnoteStart,
+    LabelStartFootnoteOpen,
 
-    GfmTaskListItemCheckStart,
-    GfmTaskListItemCheckInside,
-    GfmTaskListItemCheckClose,
-    GfmTaskListItemCheckAfter,
-    GfmTaskListItemCheckAfterSpaceOrTab,
+    TaskListItemCheckStart,
+    TaskListItemCheckInside,
+    TaskListItemCheckClose,
+    TaskListItemCheckAfter,
+    TaskListItemCheckAfterSpaceOrTab,
 
-    GfmTableStart,
-    GfmTableHeadRowBefore,
-    GfmTableHeadRowStart,
-    GfmTableHeadRowBreak,
-    GfmTableHeadRowData,
-    GfmTableHeadRowEscape,
-    GfmTableHeadDelimiterStart,
-    GfmTableHeadDelimiterBefore,
-    GfmTableHeadDelimiterCellBefore,
-    GfmTableHeadDelimiterValueBefore,
-    GfmTableHeadDelimiterLeftAlignmentAfter,
-    GfmTableHeadDelimiterFiller,
-    GfmTableHeadDelimiterRightAlignmentAfter,
-    GfmTableHeadDelimiterCellAfter,
-    GfmTableHeadDelimiterNok,
+    TableStart,
+    TableHeadRowBefore,
+    TableHeadRowStart,
+    TableHeadRowBreak,
+    TableHeadRowData,
+    TableHeadRowEscape,
+    TableHeadDelimiterStart,
+    TableHeadDelimiterBefore,
+    TableHeadDelimiterCellBefore,
+    TableHeadDelimiterValueBefore,
+    TableHeadDelimiterLeftAlignmentAfter,
+    TableHeadDelimiterFiller,
+    TableHeadDelimiterRightAlignmentAfter,
+    TableHeadDelimiterCellAfter,
+    TableHeadDelimiterNok,
 
-    GfmTableBodyRowStart,
-    GfmTableBodyRowBreak,
-    GfmTableBodyRowData,
-    GfmTableBodyRowEscape,
+    TableBodyRowStart,
+    TableBodyRowBreak,
+    TableBodyRowData,
+    TableBodyRowEscape,
 
     HardBreakEscapeStart,
     HardBreakEscapeAfter,
@@ -457,7 +457,7 @@ pub fn call(tokenizer: &mut Tokenizer, name: Name) -> State {
         Name::DocumentContainerNewBeforeNotList => {
             construct::document::container_new_before_not_list
         }
-        Name::DocumentContainerNewBeforeNotGfmFootnoteDefinition => {
+        Name::DocumentContainerNewBeforeNotFootnoteDefinition => {
             construct::document::container_new_before_not_footnote_definition
         }
         Name::DocumentContainerNewAfter => construct::document::container_new_after,
@@ -466,7 +466,7 @@ pub fn call(tokenizer: &mut Tokenizer, name: Name) -> State {
         Name::DocumentFlowInside => construct::document::flow_inside,
 
         Name::FlowStart => construct::flow::start,
-        Name::FlowBeforeGfmTable => construct::flow::before_gfm_table,
+        Name::FlowBeforeTable => construct::flow::before_table,
         Name::FlowBeforeCodeIndented => construct::flow::before_code_indented,
         Name::FlowBeforeRaw => construct::flow::before_raw,
         Name::FlowBeforeHtml => construct::flow::before_html,
@@ -493,89 +493,77 @@ pub fn call(tokenizer: &mut Tokenizer, name: Name) -> State {
         Name::FrontmatterCloseSequence => construct::frontmatter::close_sequence,
         Name::FrontmatterCloseAfter => construct::frontmatter::close_after,
 
-        Name::GfmAutolinkLiteralProtocolStart => construct::gfm_autolink_literal::protocol_start,
-        Name::GfmAutolinkLiteralProtocolAfter => construct::gfm_autolink_literal::protocol_after,
-        Name::GfmAutolinkLiteralProtocolPrefixInside => {
-            construct::gfm_autolink_literal::protocol_prefix_inside
+        Name::AutolinkLiteralProtocolStart => construct::autolink_literal::protocol_start,
+        Name::AutolinkLiteralProtocolAfter => construct::autolink_literal::protocol_after,
+        Name::AutolinkLiteralProtocolPrefixInside => {
+            construct::autolink_literal::protocol_prefix_inside
         }
-        Name::GfmAutolinkLiteralProtocolSlashesInside => {
-            construct::gfm_autolink_literal::protocol_slashes_inside
+        Name::AutolinkLiteralProtocolSlashesInside => {
+            construct::autolink_literal::protocol_slashes_inside
         }
-        Name::GfmAutolinkLiteralWwwAfter => construct::gfm_autolink_literal::www_after,
-        Name::GfmAutolinkLiteralWwwStart => construct::gfm_autolink_literal::www_start,
-        Name::GfmAutolinkLiteralWwwPrefixInside => {
-            construct::gfm_autolink_literal::www_prefix_inside
+        Name::AutolinkLiteralWwwAfter => construct::autolink_literal::www_after,
+        Name::AutolinkLiteralWwwStart => construct::autolink_literal::www_start,
+        Name::AutolinkLiteralWwwPrefixInside => construct::autolink_literal::www_prefix_inside,
+        Name::AutolinkLiteralWwwPrefixAfter => construct::autolink_literal::www_prefix_after,
+        Name::AutolinkLiteralDomainInside => construct::autolink_literal::domain_inside,
+        Name::AutolinkLiteralDomainAtPunctuation => {
+            construct::autolink_literal::domain_at_punctuation
         }
-        Name::GfmAutolinkLiteralWwwPrefixAfter => construct::gfm_autolink_literal::www_prefix_after,
-        Name::GfmAutolinkLiteralDomainInside => construct::gfm_autolink_literal::domain_inside,
-        Name::GfmAutolinkLiteralDomainAtPunctuation => {
-            construct::gfm_autolink_literal::domain_at_punctuation
+        Name::AutolinkLiteralDomainAfter => construct::autolink_literal::domain_after,
+        Name::AutolinkLiteralPathInside => construct::autolink_literal::path_inside,
+        Name::AutolinkLiteralPathAtPunctuation => construct::autolink_literal::path_at_punctuation,
+        Name::AutolinkLiteralPathAfter => construct::autolink_literal::path_after,
+        Name::AutolinkLiteralTrail => construct::autolink_literal::trail,
+        Name::AutolinkLiteralTrailCharRefStart => construct::autolink_literal::trail_char_ref_start,
+        Name::AutolinkLiteralTrailCharRefInside => {
+            construct::autolink_literal::trail_char_ref_inside
         }
-        Name::GfmAutolinkLiteralDomainAfter => construct::gfm_autolink_literal::domain_after,
-        Name::GfmAutolinkLiteralPathInside => construct::gfm_autolink_literal::path_inside,
-        Name::GfmAutolinkLiteralPathAtPunctuation => {
-            construct::gfm_autolink_literal::path_at_punctuation
-        }
-        Name::GfmAutolinkLiteralPathAfter => construct::gfm_autolink_literal::path_after,
-        Name::GfmAutolinkLiteralTrail => construct::gfm_autolink_literal::trail,
-        Name::GfmAutolinkLiteralTrailCharRefStart => {
-            construct::gfm_autolink_literal::trail_char_ref_start
-        }
-        Name::GfmAutolinkLiteralTrailCharRefInside => {
-            construct::gfm_autolink_literal::trail_char_ref_inside
-        }
-        Name::GfmAutolinkLiteralTrailBracketAfter => {
-            construct::gfm_autolink_literal::trail_bracket_after
-        }
+        Name::AutolinkLiteralTrailBracketAfter => construct::autolink_literal::trail_bracket_after,
 
-        Name::GfmFootnoteDefinitionStart => construct::gfm_footnote_definition::start,
-        Name::GfmFootnoteDefinitionLabelBefore => construct::gfm_footnote_definition::label_before,
-        Name::GfmFootnoteDefinitionLabelAtMarker => {
-            construct::gfm_footnote_definition::label_at_marker
-        }
-        Name::GfmFootnoteDefinitionLabelInside => construct::gfm_footnote_definition::label_inside,
-        Name::GfmFootnoteDefinitionLabelEscape => construct::gfm_footnote_definition::label_escape,
-        Name::GfmFootnoteDefinitionLabelAfter => construct::gfm_footnote_definition::label_after,
-        Name::GfmFootnoteDefinitionWhitespaceAfter => {
-            construct::gfm_footnote_definition::whitespace_after
-        }
-        Name::GfmFootnoteDefinitionContStart => construct::gfm_footnote_definition::cont_start,
-        Name::GfmFootnoteDefinitionContBlank => construct::gfm_footnote_definition::cont_blank,
-        Name::GfmFootnoteDefinitionContFilled => construct::gfm_footnote_definition::cont_filled,
+        Name::FootnoteDefinitionStart => construct::footnote_definition::start,
+        Name::FootnoteDefinitionLabelBefore => construct::footnote_definition::label_before,
+        Name::FootnoteDefinitionLabelAtMarker => construct::footnote_definition::label_at_marker,
+        Name::FootnoteDefinitionLabelInside => construct::footnote_definition::label_inside,
+        Name::FootnoteDefinitionLabelEscape => construct::footnote_definition::label_escape,
+        Name::FootnoteDefinitionLabelAfter => construct::footnote_definition::label_after,
+        Name::FootnoteDefinitionWhitespaceAfter => construct::footnote_definition::whitespace_after,
+        Name::FootnoteDefinitionContStart => construct::footnote_definition::cont_start,
+        Name::FootnoteDefinitionContBlank => construct::footnote_definition::cont_blank,
+        Name::FootnoteDefinitionContFilled => construct::footnote_definition::cont_filled,
 
-        Name::GfmLabelStartFootnoteStart => construct::gfm_label_start_footnote::start,
-        Name::GfmLabelStartFootnoteOpen => construct::gfm_label_start_footnote::open,
+        Name::LabelStartFootnoteStart => construct::label_start_footnote::start,
+        Name::LabelStartFootnoteOpen => construct::label_start_footnote::open,
 
-        Name::GfmTableStart => construct::gfm_table::start,
-        Name::GfmTableHeadRowBefore => construct::gfm_table::head_row_before,
-        Name::GfmTableHeadRowStart => construct::gfm_table::head_row_start,
-        Name::GfmTableHeadRowBreak => construct::gfm_table::head_row_break,
-        Name::GfmTableHeadRowData => construct::gfm_table::head_row_data,
-        Name::GfmTableHeadRowEscape => construct::gfm_table::head_row_escape,
-        Name::GfmTableHeadDelimiterStart => construct::gfm_table::head_delimiter_start,
-        Name::GfmTableHeadDelimiterBefore => construct::gfm_table::head_delimiter_before,
-        Name::GfmTableHeadDelimiterCellBefore => construct::gfm_table::head_delimiter_cell_before,
-        Name::GfmTableHeadDelimiterValueBefore => construct::gfm_table::head_delimiter_value_before,
-        Name::GfmTableHeadDelimiterLeftAlignmentAfter => {
-            construct::gfm_table::head_delimiter_left_alignment_after
+        Name::TableStart => construct::table::start,
+        Name::TableHeadRowBefore => construct::table::head_row_before,
+        Name::TableHeadRowStart => construct::table::head_row_start,
+        Name::TableHeadRowBreak => construct::table::head_row_break,
+        Name::TableHeadRowData => construct::table::head_row_data,
+        Name::TableHeadRowEscape => construct::table::head_row_escape,
+        Name::TableHeadDelimiterStart => construct::table::head_delimiter_start,
+        Name::TableHeadDelimiterBefore => construct::table::head_delimiter_before,
+        Name::TableHeadDelimiterCellBefore => construct::table::head_delimiter_cell_before,
+        Name::TableHeadDelimiterValueBefore => construct::table::head_delimiter_value_before,
+        Name::TableHeadDelimiterLeftAlignmentAfter => {
+            construct::table::head_delimiter_left_alignment_after
         }
-        Name::GfmTableHeadDelimiterFiller => construct::gfm_table::head_delimiter_filler,
-        Name::GfmTableHeadDelimiterRightAlignmentAfter => {
-            construct::gfm_table::head_delimiter_right_alignment_after
+        Name::TableHeadDelimiterFiller => construct::table::head_delimiter_filler,
+        Name::TableHeadDelimiterRightAlignmentAfter => {
+            construct::table::head_delimiter_right_alignment_after
         }
-        Name::GfmTableHeadDelimiterCellAfter => construct::gfm_table::head_delimiter_cell_after,
-        Name::GfmTableHeadDelimiterNok => construct::gfm_table::head_delimiter_nok,
-        Name::GfmTableBodyRowStart => construct::gfm_table::body_row_start,
-        Name::GfmTableBodyRowBreak => construct::gfm_table::body_row_break,
-        Name::GfmTableBodyRowData => construct::gfm_table::body_row_data,
-        Name::GfmTableBodyRowEscape => construct::gfm_table::body_row_escape,
+        Name::TableHeadDelimiterCellAfter => construct::table::head_delimiter_cell_after,
+        Name::TableHeadDelimiterNok => construct::table::head_delimiter_nok,
+        Name::TableBodyRowStart => construct::table::body_row_start,
+        Name::TableBodyRowBreak => construct::table::body_row_break,
+        Name::TableBodyRowData => construct::table::body_row_data,
+        Name::TableBodyRowEscape => construct::table::body_row_escape,
 
-        Name::GfmTaskListItemCheckStart => construct::gfm_task_list_item_check::start,
-        Name::GfmTaskListItemCheckInside => construct::gfm_task_list_item_check::inside,
-        Name::GfmTaskListItemCheckClose => construct::gfm_task_list_item_check::close,
-        Name::GfmTaskListItemCheckAfter => construct::gfm_task_list_item_check::after,
-        Name::GfmTaskListItemCheckAfterSpaceOrTab => {
-            construct::gfm_task_list_item_check::after_space_or_tab
+        Name::TaskListItemCheckStart => construct::task_list_item_check::start,
+        Name::TaskListItemCheckInside => construct::task_list_item_check::inside,
+        Name::TaskListItemCheckClose => construct::task_list_item_check::close,
+        Name::TaskListItemCheckAfter => construct::task_list_item_check::after,
+        Name::TaskListItemCheckAfterSpaceOrTab => {
+            construct::task_list_item_check::after_space_or_tab
         }
 
         Name::HardBreakEscapeStart => construct::hard_break_escape::start,

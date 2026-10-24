@@ -14,7 +14,7 @@ use support::fixture::Position;
 use support::fixture::{Emphasis, List, ListItem, Node, Paragraph, Root, Text};
 
 #[test]
-fn gfm_task_list_item() -> Result<(), message::Message> {
+fn task_list_item() -> Result<(), message::Message> {
     assert_eq!(
         to_html("* [x] y."),
         "<ul>\n<li>[x] y.</li>\n</ul>",
@@ -39,7 +39,7 @@ fn gfm_task_list_item() -> Result<(), message::Message> {
             &Options {
                 parse: ParseOptions::gfm(),
                 compile: CompileOptions {
-                    gfm_task_list_item_checkable: true,
+                    task_list_item_checkable: true,
                     ..CompileOptions::gfm()
                 }
             }

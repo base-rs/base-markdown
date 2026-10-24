@@ -8,11 +8,11 @@ use alloc::format;
 fn constructs_presets_enable_commonmark_and_gfm() {
     let commonmark = Constructs::default();
     assert!(commonmark.attention);
-    assert!(!commonmark.gfm_autolink_literal);
+    assert!(!commonmark.autolink_literal);
     assert!(!commonmark.frontmatter);
     let gfm = Constructs::gfm();
     assert!(gfm.attention);
-    assert!(gfm.gfm_autolink_literal);
+    assert!(gfm.autolink_literal);
     assert!(!gfm.frontmatter);
 }
 
@@ -28,10 +28,10 @@ fn parse_presets_and_debug_retain_markdown_options() {
 fn compile_presets_and_options_keep_safe_defaults() {
     let commonmark = CompileOptions::default();
     assert!(!commonmark.allow_dangerous_html);
-    assert!(!commonmark.gfm_tagfilter);
+    assert!(!commonmark.tagfilter);
     let gfm = CompileOptions::gfm();
     assert!(!gfm.allow_dangerous_html);
-    assert!(gfm.gfm_tagfilter);
+    assert!(gfm.tagfilter);
     assert_eq!(Options::default().parse.constructs, Constructs::default());
     assert_eq!(Options::gfm().parse.constructs, Constructs::gfm());
 }

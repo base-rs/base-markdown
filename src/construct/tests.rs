@@ -3,8 +3,7 @@
 
 use crate::{
     construct::{
-        content, flow, frontmatter, gfm_autolink_literal, html_flow, html_text, label_end,
-        partial_data,
+        autolink_literal, content, flow, frontmatter, html_flow, html_text, label_end, partial_data,
     },
     event::Point,
     grammar_parser::GrammarParser,
@@ -54,17 +53,17 @@ fn partial_data_retries_when_there_is_no_initial_marker() {
 fn content_resolver_subtokenizes_even_an_empty_event_stream() {
     with_tokenizer("", &ParseOptions::default(), None, |tokenizer| {
         assert_eq!(
-            content::resolve(tokenizer).gfm_footnote_definitions,
+            content::resolve(tokenizer).footnote_definitions,
             [] as [alloc::string::String; 0]
         );
     });
 }
 
 #[test]
-fn gfm_autolink_literal_accepts_uppercase_protocol_and_www_prefixes() {
+fn autolink_literal_accepts_uppercase_protocol_and_www_prefixes() {
     let options = ParseOptions {
         constructs: Constructs {
-            gfm_autolink_literal: true,
+            autolink_literal: true,
             ..Constructs::default()
         },
         ..ParseOptions::default()
@@ -72,15 +71,15 @@ fn gfm_autolink_literal_accepts_uppercase_protocol_and_www_prefixes() {
 
     with_tokenizer("H", &options, Some(b'H'), |tokenizer| {
         assert_eq!(
-            gfm_autolink_literal::protocol_start(tokenizer),
-            State::Retry(StateName::GfmAutolinkLiteralProtocolPrefixInside)
+            autolink_literal::protocol_start(tokenizer),
+            State::Retry(StateName::AutolinkLiteralProtocolPrefixInside)
         );
     });
 
     with_tokenizer("W", &options, Some(b'W'), |tokenizer| {
         assert_eq!(
-            gfm_autolink_literal::www_start(tokenizer),
-            State::Retry(StateName::GfmAutolinkLiteralWwwPrefixInside)
+            autolink_literal::www_start(tokenizer),
+            State::Retry(StateName::AutolinkLiteralWwwPrefixInside)
         );
     });
 }

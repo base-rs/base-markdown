@@ -2,7 +2,7 @@
 // Copyright, 2022-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-//! GFM: table occurs in the [flow][] content type.
+//! table occurs in the [flow][] content type.
 //!
 //! ## Grammar
 //!
@@ -10,18 +10,18 @@
 //! (<small>see [construct][crate::construct] for character groups</small>):
 //!
 //! ```bnf
-//! gfm_table ::= gfm_table_head 0*(eol gfm_table_body_row)
+//! table ::= table_head 0*(eol table_body_row)
 //!
 //! ; Restriction: both rows must have the same number of cells.
-//! gfm_table_head ::= gfm_table_row eol gfm_table_delimiter_row
+//! table_head ::= table_row eol table_delimiter_row
 //!
-//! gfm_table_row ::= ['|'] gfm_table_cell 0*('|' gfm_table_cell) ['|'] *space_or_tab
-//! gfm_table_cell ::= *space_or_tab gfm_table_text *space_or_tab
-//! gfm_table_text ::= 0*(line - '\\' - '|' | '\\' ['\\' | '|'])
+//! table_row ::= ['|'] table_cell 0*('|' table_cell) ['|'] *space_or_tab
+//! table_cell ::= *space_or_tab table_text *space_or_tab
+//! table_text ::= 0*(line - '\\' - '|' | '\\' ['\\' | '|'])
 //
-//! gfm_table_delimiter_row ::= ['|'] gfm_table_delimiter_cell 0*('|' gfm_table_delimiter_cell) ['|'] *space_or_tab
-//! gfm_table_delimiter_cell ::= *space_or_tab gfm_table_delimiter_value *space_or_tab
-//! gfm_table_delimiter_value ::= [':'] 1*'-' [':']
+//! table_delimiter_row ::= ['|'] table_delimiter_cell 0*('|' table_delimiter_cell) ['|'] *space_or_tab
+//! table_delimiter_cell ::= *space_or_tab table_delimiter_value *space_or_tab
+//! table_delimiter_value ::= [':'] 1*'-' [':']
 //! ```
 //!
 //! As this construct occurs in flow, like all flow constructs, it must be
@@ -138,7 +138,7 @@
 //!
 //! ## HTML
 //!
-//! GFM tables relate to several HTML elements: `<table>`, `<tbody>`, `<td>`,
+//! tables relate to several HTML elements: `<table>`, `<tbody>`, `<td>`,
 //! `<th>`, `<thead>`, and `<tr>`.
 //! See
 //! [*§ 4.9.1 The `table` element*][html_table],
@@ -157,7 +157,7 @@
 //!
 //! ## Recommendation
 //!
-//! When authoring markdown with GFM tables, it’s recommended to *always* put
+//! When authoring markdown with tables, it’s recommended to *always* put
 //! pipes around cells.
 //! Without them, it can be hard to infer whether the table will work, how many
 //! columns there are, and which column you are currently editing.
@@ -195,22 +195,22 @@
 //! This bug is not present in this project.
 //! The issue relating to tables is:
 //!
-//! * [GFM tables: escaped escapes are incorrectly treated as escapes](https://github.com/github/cmark-gfm/issues/277)
+//! * [tables: escaped escapes are incorrectly treated as escapes](https://github.com/github/cmark-gfm/issues/277)
 //!
 //! ## Tokens
 //!
-//! * [`GfmTable`][Name::GfmTable]
-//! * [`GfmTableBody`][Name::GfmTableBody]
-//! * [`GfmTableCell`][Name::GfmTableCell]
-//! * [`GfmTableCellDivider`][Name::GfmTableCellDivider]
-//! * [`GfmTableCellText`][Name::GfmTableCellText]
-//! * [`GfmTableDelimiterCell`][Name::GfmTableDelimiterCell]
-//! * [`GfmTableDelimiterCellValue`][Name::GfmTableDelimiterCellValue]
-//! * [`GfmTableDelimiterFiller`][Name::GfmTableDelimiterFiller]
-//! * [`GfmTableDelimiterMarker`][Name::GfmTableDelimiterMarker]
-//! * [`GfmTableDelimiterRow`][Name::GfmTableDelimiterRow]
-//! * [`GfmTableHead`][Name::GfmTableHead]
-//! * [`GfmTableRow`][Name::GfmTableRow]
+//! * [`Table`][Name::Table]
+//! * [`TableBody`][Name::TableBody]
+//! * [`TableCell`][Name::TableCell]
+//! * [`TableCellDivider`][Name::TableCellDivider]
+//! * [`TableCellText`][Name::TableCellText]
+//! * [`TableDelimiterCell`][Name::TableDelimiterCell]
+//! * [`TableDelimiterCellValue`][Name::TableDelimiterCellValue]
+//! * [`TableDelimiterFiller`][Name::TableDelimiterFiller]
+//! * [`TableDelimiterMarker`][Name::TableDelimiterMarker]
+//! * [`TableDelimiterRow`][Name::TableDelimiterRow]
+//! * [`TableHead`][Name::TableHead]
+//! * [`TableRow`][Name::TableRow]
 //! * [`LineEnding`][Name::LineEnding]
 //!
 //! ## References
@@ -237,7 +237,7 @@ use crate::tokenizer::Tokenizer;
 use crate::util::{constant::TAB_SIZE, skip::opt_back as skip_opt_back};
 use alloc::vec;
 
-/// Start of a GFM table.
+/// Start of a table.
 ///
 /// If there is a valid table row or table head before, then we try to parse
 /// another row.
@@ -251,7 +251,7 @@ use alloc::vec;
 ///     ^
 /// ```
 pub fn start(tokenizer: &mut Tokenizer) -> State {
-    if tokenizer.parse_state.options.constructs.gfm_table {
+    if tokenizer.parse_state.options.constructs.table {
         if !tokenizer.pierce
             && !tokenizer.events.is_empty()
             && matches!(
@@ -261,12 +261,12 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
                     &[Name::LineEnding, Name::SpaceOrTab],
                 )]
                 .name,
-                Name::GfmTableHead | Name::GfmTableRow
+                Name::TableHead | Name::TableRow
             )
         {
-            State::Retry(StateName::GfmTableBodyRowStart)
+            State::Retry(StateName::TableBodyRowStart)
         } else {
-            State::Retry(StateName::GfmTableHeadRowBefore)
+            State::Retry(StateName::TableHeadRowBefore)
         }
     } else {
         State::Nok
@@ -282,10 +282,10 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
 ///   | | b |
 /// ```
 pub fn head_row_before(tokenizer: &mut Tokenizer) -> State {
-    tokenizer.enter(Name::GfmTableHead);
-    tokenizer.enter(Name::GfmTableRow);
+    tokenizer.enter(Name::TableHead);
+    tokenizer.enter(Name::TableRow);
     if matches!(tokenizer.current, Some(b'\t' | b' ')) {
-        tokenizer.attempt(State::Next(StateName::GfmTableHeadRowStart), State::Nok);
+        tokenizer.attempt(State::Next(StateName::TableHeadRowStart), State::Nok);
         State::Retry(space_or_tab_min_max(
             tokenizer,
             0,
@@ -296,7 +296,7 @@ pub fn head_row_before(tokenizer: &mut Tokenizer) -> State {
             },
         ))
     } else {
-        State::Retry(StateName::GfmTableHeadRowStart)
+        State::Retry(StateName::TableHeadRowStart)
     }
 }
 
@@ -312,12 +312,12 @@ pub fn head_row_start(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         // 4+ spaces.
         Some(b'\t' | b' ') => State::Nok,
-        Some(b'|') => State::Retry(StateName::GfmTableHeadRowBreak),
+        Some(b'|') => State::Retry(StateName::TableHeadRowBreak),
         _ => {
             tokenizer.tokenize_state.seen = true;
             // Count the first character, that isn’t a pipe, double.
             tokenizer.tokenize_state.size_b += 1;
-            State::Retry(StateName::GfmTableHeadRowBreak)
+            State::Retry(StateName::TableHeadRowBreak)
         }
     }
 }
@@ -346,11 +346,11 @@ pub fn head_row_break(tokenizer: &mut Tokenizer) -> State {
                 tokenizer.tokenize_state.size_b = 0;
                 // Feel free to interrupt:
                 tokenizer.interrupt = true;
-                tokenizer.exit(Name::GfmTableRow);
+                tokenizer.exit(Name::TableRow);
                 tokenizer.enter(Name::LineEnding);
                 tokenizer.consume();
                 tokenizer.exit(Name::LineEnding);
-                State::Next(StateName::GfmTableHeadDelimiterStart)
+                State::Next(StateName::TableHeadDelimiterStart)
             } else {
                 tokenizer.tokenize_state.seen = false;
                 tokenizer.tokenize_state.size = 0;
@@ -359,7 +359,7 @@ pub fn head_row_break(tokenizer: &mut Tokenizer) -> State {
             }
         }
         Some(b'\t' | b' ') => {
-            tokenizer.attempt(State::Next(StateName::GfmTableHeadRowBreak), State::Nok);
+            tokenizer.attempt(State::Next(StateName::TableHeadRowBreak), State::Nok);
             State::Retry(space_or_tab(tokenizer))
         }
         _ => {
@@ -373,16 +373,16 @@ pub fn head_row_break(tokenizer: &mut Tokenizer) -> State {
             }
 
             if tokenizer.current == Some(b'|') {
-                tokenizer.enter(Name::GfmTableCellDivider);
+                tokenizer.enter(Name::TableCellDivider);
                 tokenizer.consume();
-                tokenizer.exit(Name::GfmTableCellDivider);
+                tokenizer.exit(Name::TableCellDivider);
                 // Whether a delimiter was seen.
                 tokenizer.tokenize_state.seen = true;
-                State::Next(StateName::GfmTableHeadRowBreak)
+                State::Next(StateName::TableHeadRowBreak)
             } else {
                 // Anything else is cell data.
                 tokenizer.enter(Name::Data);
-                State::Retry(StateName::GfmTableHeadRowData)
+                State::Retry(StateName::TableHeadRowData)
             }
         }
     }
@@ -400,13 +400,13 @@ pub fn head_row_data(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         None | Some(b'\t' | b'\n' | b' ' | b'|') => {
             tokenizer.exit(Name::Data);
-            State::Retry(StateName::GfmTableHeadRowBreak)
+            State::Retry(StateName::TableHeadRowBreak)
         }
         _ => {
             let name = if tokenizer.current == Some(b'\\') {
-                StateName::GfmTableHeadRowEscape
+                StateName::TableHeadRowEscape
             } else {
-                StateName::GfmTableHeadRowData
+                StateName::TableHeadRowData
             };
             tokenizer.consume();
             State::Next(name)
@@ -426,9 +426,9 @@ pub fn head_row_escape(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         Some(b'\\' | b'|') => {
             tokenizer.consume();
-            State::Next(StateName::GfmTableHeadRowData)
+            State::Next(StateName::TableHeadRowData)
         }
-        _ => State::Retry(StateName::GfmTableHeadRowData),
+        _ => State::Retry(StateName::TableHeadRowData),
     }
 }
 
@@ -448,15 +448,15 @@ pub fn head_delimiter_start(tokenizer: &mut Tokenizer) -> State {
         tokenizer.tokenize_state.size = 0;
         State::Nok
     } else {
-        tokenizer.enter(Name::GfmTableDelimiterRow);
+        tokenizer.enter(Name::TableDelimiterRow);
         // Track if we’ve seen a `:` or `|`.
         tokenizer.tokenize_state.seen = false;
 
         match tokenizer.current {
             Some(b'\t' | b' ') => {
                 tokenizer.attempt(
-                    State::Next(StateName::GfmTableHeadDelimiterBefore),
-                    State::Next(StateName::GfmTableHeadDelimiterNok),
+                    State::Next(StateName::TableHeadDelimiterBefore),
+                    State::Next(StateName::TableHeadDelimiterNok),
                 );
 
                 State::Retry(space_or_tab_min_max(
@@ -469,7 +469,7 @@ pub fn head_delimiter_start(tokenizer: &mut Tokenizer) -> State {
                     },
                 ))
             }
-            _ => State::Retry(StateName::GfmTableHeadDelimiterBefore),
+            _ => State::Retry(StateName::TableHeadDelimiterBefore),
         }
     }
 }
@@ -486,17 +486,17 @@ pub fn head_delimiter_start(tokenizer: &mut Tokenizer) -> State {
 /// ```
 pub fn head_delimiter_before(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
-        Some(b'-' | b':') => State::Retry(StateName::GfmTableHeadDelimiterValueBefore),
+        Some(b'-' | b':') => State::Retry(StateName::TableHeadDelimiterValueBefore),
         Some(b'|') => {
             tokenizer.tokenize_state.seen = true;
             // If we start with a pipe, we open a cell marker.
-            tokenizer.enter(Name::GfmTableCellDivider);
+            tokenizer.enter(Name::TableCellDivider);
             tokenizer.consume();
-            tokenizer.exit(Name::GfmTableCellDivider);
-            State::Next(StateName::GfmTableHeadDelimiterCellBefore)
+            tokenizer.exit(Name::TableCellDivider);
+            State::Next(StateName::TableHeadDelimiterCellBefore)
         }
         // More whitespace / empty row not allowed at start.
-        _ => State::Retry(StateName::GfmTableHeadDelimiterNok),
+        _ => State::Retry(StateName::TableHeadDelimiterNok),
     }
 }
 
@@ -511,12 +511,12 @@ pub fn head_delimiter_cell_before(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         Some(b'\t' | b' ') => {
             tokenizer.attempt(
-                State::Next(StateName::GfmTableHeadDelimiterValueBefore),
+                State::Next(StateName::TableHeadDelimiterValueBefore),
                 State::Nok,
             );
             State::Retry(space_or_tab(tokenizer))
         }
-        _ => State::Retry(StateName::GfmTableHeadDelimiterValueBefore),
+        _ => State::Retry(StateName::TableHeadDelimiterValueBefore),
     }
 }
 
@@ -529,22 +529,22 @@ pub fn head_delimiter_cell_before(tokenizer: &mut Tokenizer) -> State {
 /// ```
 pub fn head_delimiter_value_before(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
-        None | Some(b'\n') => State::Retry(StateName::GfmTableHeadDelimiterCellAfter),
+        None | Some(b'\n') => State::Retry(StateName::TableHeadDelimiterCellAfter),
         Some(b':') => {
             // Align: left.
             tokenizer.tokenize_state.size_b += 1;
             tokenizer.tokenize_state.seen = true;
-            tokenizer.enter(Name::GfmTableDelimiterMarker);
+            tokenizer.enter(Name::TableDelimiterMarker);
             tokenizer.consume();
-            tokenizer.exit(Name::GfmTableDelimiterMarker);
-            State::Next(StateName::GfmTableHeadDelimiterLeftAlignmentAfter)
+            tokenizer.exit(Name::TableDelimiterMarker);
+            State::Next(StateName::TableHeadDelimiterLeftAlignmentAfter)
         }
         Some(b'-') => {
             // Align: none.
             tokenizer.tokenize_state.size_b += 1;
-            State::Retry(StateName::GfmTableHeadDelimiterLeftAlignmentAfter)
+            State::Retry(StateName::TableHeadDelimiterLeftAlignmentAfter)
         }
-        _ => State::Retry(StateName::GfmTableHeadDelimiterNok),
+        _ => State::Retry(StateName::TableHeadDelimiterNok),
     }
 }
 
@@ -558,11 +558,11 @@ pub fn head_delimiter_value_before(tokenizer: &mut Tokenizer) -> State {
 pub fn head_delimiter_left_alignment_after(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         Some(b'-') => {
-            tokenizer.enter(Name::GfmTableDelimiterFiller);
-            State::Retry(StateName::GfmTableHeadDelimiterFiller)
+            tokenizer.enter(Name::TableDelimiterFiller);
+            State::Retry(StateName::TableHeadDelimiterFiller)
         }
         // Anything else is not ok after the left-align colon.
-        _ => State::Retry(StateName::GfmTableHeadDelimiterNok),
+        _ => State::Retry(StateName::TableHeadDelimiterNok),
     }
 }
 
@@ -577,20 +577,20 @@ pub fn head_delimiter_filler(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         Some(b'-') => {
             tokenizer.consume();
-            State::Next(StateName::GfmTableHeadDelimiterFiller)
+            State::Next(StateName::TableHeadDelimiterFiller)
         }
         Some(b':') => {
             // Align is `center` if it was `left`, `right` otherwise.
             tokenizer.tokenize_state.seen = true;
-            tokenizer.exit(Name::GfmTableDelimiterFiller);
-            tokenizer.enter(Name::GfmTableDelimiterMarker);
+            tokenizer.exit(Name::TableDelimiterFiller);
+            tokenizer.enter(Name::TableDelimiterMarker);
             tokenizer.consume();
-            tokenizer.exit(Name::GfmTableDelimiterMarker);
-            State::Next(StateName::GfmTableHeadDelimiterRightAlignmentAfter)
+            tokenizer.exit(Name::TableDelimiterMarker);
+            State::Next(StateName::TableHeadDelimiterRightAlignmentAfter)
         }
         _ => {
-            tokenizer.exit(Name::GfmTableDelimiterFiller);
-            State::Retry(StateName::GfmTableHeadDelimiterRightAlignmentAfter)
+            tokenizer.exit(Name::TableDelimiterFiller);
+            State::Retry(StateName::TableHeadDelimiterRightAlignmentAfter)
         }
     }
 }
@@ -606,12 +606,12 @@ pub fn head_delimiter_right_alignment_after(tokenizer: &mut Tokenizer) -> State 
     match tokenizer.current {
         Some(b'\t' | b' ') => {
             tokenizer.attempt(
-                State::Next(StateName::GfmTableHeadDelimiterCellAfter),
+                State::Next(StateName::TableHeadDelimiterCellAfter),
                 State::Nok,
             );
             State::Retry(space_or_tab(tokenizer))
         }
-        _ => State::Retry(StateName::GfmTableHeadDelimiterCellAfter),
+        _ => State::Retry(StateName::TableHeadDelimiterCellAfter),
     }
 }
 
@@ -632,20 +632,20 @@ pub fn head_delimiter_cell_after(tokenizer: &mut Tokenizer) -> State {
             if !tokenizer.tokenize_state.seen
                 || tokenizer.tokenize_state.size != tokenizer.tokenize_state.size_b
             {
-                State::Retry(StateName::GfmTableHeadDelimiterNok)
+                State::Retry(StateName::TableHeadDelimiterNok)
             } else {
                 // Reset.
                 tokenizer.tokenize_state.seen = false;
                 tokenizer.tokenize_state.size = 0;
                 tokenizer.tokenize_state.size_b = 0;
-                tokenizer.exit(Name::GfmTableDelimiterRow);
-                tokenizer.exit(Name::GfmTableHead);
-                tokenizer.register_resolver(ResolveName::GfmTable);
+                tokenizer.exit(Name::TableDelimiterRow);
+                tokenizer.exit(Name::TableHead);
+                tokenizer.register_resolver(ResolveName::Table);
                 State::Ok
             }
         }
-        Some(b'|') => State::Retry(StateName::GfmTableHeadDelimiterBefore),
-        _ => State::Retry(StateName::GfmTableHeadDelimiterNok),
+        Some(b'|') => State::Retry(StateName::TableHeadDelimiterBefore),
+        _ => State::Retry(StateName::TableHeadDelimiterNok),
     }
 }
 
@@ -676,18 +676,18 @@ pub fn body_row_start(tokenizer: &mut Tokenizer) -> State {
     if tokenizer.lazy {
         State::Nok
     } else {
-        tokenizer.enter(Name::GfmTableRow);
+        tokenizer.enter(Name::TableRow);
 
         match tokenizer.current {
             Some(b'\t' | b' ') => {
-                tokenizer.attempt(State::Next(StateName::GfmTableBodyRowBreak), State::Nok);
+                tokenizer.attempt(State::Next(StateName::TableBodyRowBreak), State::Nok);
                 // We’re parsing a body row.
                 // If we’re here, we already attempted blank lines and indented
                 // code.
                 // So parse as much whitespace as needed:
                 State::Retry(space_or_tab_min_max(tokenizer, 0, usize::MAX))
             }
-            _ => State::Retry(StateName::GfmTableBodyRowBreak),
+            _ => State::Retry(StateName::TableBodyRowBreak),
         }
     }
 }
@@ -705,23 +705,23 @@ pub fn body_row_start(tokenizer: &mut Tokenizer) -> State {
 pub fn body_row_break(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         None | Some(b'\n') => {
-            tokenizer.exit(Name::GfmTableRow);
+            tokenizer.exit(Name::TableRow);
             State::Ok
         }
         Some(b'\t' | b' ') => {
-            tokenizer.attempt(State::Next(StateName::GfmTableBodyRowBreak), State::Nok);
+            tokenizer.attempt(State::Next(StateName::TableBodyRowBreak), State::Nok);
             State::Retry(space_or_tab(tokenizer))
         }
         Some(b'|') => {
-            tokenizer.enter(Name::GfmTableCellDivider);
+            tokenizer.enter(Name::TableCellDivider);
             tokenizer.consume();
-            tokenizer.exit(Name::GfmTableCellDivider);
-            State::Next(StateName::GfmTableBodyRowBreak)
+            tokenizer.exit(Name::TableCellDivider);
+            State::Next(StateName::TableBodyRowBreak)
         }
         // Anything else is cell content.
         _ => {
             tokenizer.enter(Name::Data);
-            State::Retry(StateName::GfmTableBodyRowData)
+            State::Retry(StateName::TableBodyRowData)
         }
     }
 }
@@ -738,13 +738,13 @@ pub fn body_row_data(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         None | Some(b'\t' | b'\n' | b' ' | b'|') => {
             tokenizer.exit(Name::Data);
-            State::Retry(StateName::GfmTableBodyRowBreak)
+            State::Retry(StateName::TableBodyRowBreak)
         }
         _ => {
             let name = if tokenizer.current == Some(b'\\') {
-                StateName::GfmTableBodyRowEscape
+                StateName::TableBodyRowEscape
             } else {
-                StateName::GfmTableBodyRowData
+                StateName::TableBodyRowData
             };
             tokenizer.consume();
             State::Next(name)
@@ -764,13 +764,13 @@ pub fn body_row_escape(tokenizer: &mut Tokenizer) -> State {
     match tokenizer.current {
         Some(b'\\' | b'|') => {
             tokenizer.consume();
-            State::Next(StateName::GfmTableBodyRowData)
+            State::Next(StateName::TableBodyRowData)
         }
-        _ => State::Retry(StateName::GfmTableBodyRowData),
+        _ => State::Retry(StateName::TableBodyRowData),
     }
 }
 
-/// Resolve GFM table.
+/// Resolve table.
 pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
     let mut index = 0;
     let mut in_first_cell_awaiting_pipe = true;
@@ -787,7 +787,7 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
 
         if event.kind == Kind::Enter {
             // Start of head.
-            if event.name == Name::GfmTableHead {
+            if event.name == Name::TableHead {
                 after_head_awaiting_first_body_row = false;
 
                 // Inject previous (body end and) table end.
@@ -800,13 +800,13 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
                 // Inject table start.
                 let enter = Event {
                     kind: Kind::Enter,
-                    name: Name::GfmTable,
+                    name: Name::Table,
                     point: tokenizer.events[index].point.clone(),
                     link: None,
                 };
                 tokenizer.map.add(index, 0, vec![enter]);
-            } else if matches!(event.name, Name::GfmTableRow | Name::GfmTableDelimiterRow) {
-                in_delimiter_row = event.name == Name::GfmTableDelimiterRow;
+            } else if matches!(event.name, Name::TableRow | Name::TableDelimiterRow) {
+                in_delimiter_row = event.name == Name::TableDelimiterRow;
                 in_row = true;
                 in_first_cell_awaiting_pipe = true;
                 last_cell = (0, 0, 0, 0);
@@ -818,7 +818,7 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
                     last_table_has_body = true;
                     let enter = Event {
                         kind: Kind::Enter,
-                        name: Name::GfmTableBody,
+                        name: Name::TableBody,
                         point: tokenizer.events[index].point.clone(),
                         link: None,
                     };
@@ -829,7 +829,7 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
             else if in_row
                 && matches!(
                     event.name,
-                    Name::Data | Name::GfmTableDelimiterMarker | Name::GfmTableDelimiterFiller
+                    Name::Data | Name::TableDelimiterMarker | Name::TableDelimiterFiller
                 )
             {
                 in_first_cell_awaiting_pipe = false;
@@ -844,7 +844,7 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
 
                     cell.2 = index;
                 }
-            } else if event.name == Name::GfmTableCellDivider {
+            } else if event.name == Name::TableCellDivider {
                 if in_first_cell_awaiting_pipe {
                     in_first_cell_awaiting_pipe = false;
                 } else {
@@ -858,10 +858,10 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
                 }
             }
         // Exit events.
-        } else if event.name == Name::GfmTableHead {
+        } else if event.name == Name::TableHead {
             after_head_awaiting_first_body_row = true;
             last_table_end = index;
-        } else if matches!(event.name, Name::GfmTableRow | Name::GfmTableDelimiterRow) {
+        } else if matches!(event.name, Name::TableRow | Name::TableDelimiterRow) {
             in_row = false;
             last_table_end = index;
             if last_cell.1 != 0 {
@@ -876,7 +876,7 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
         } else if in_row
             && (matches!(
                 event.name,
-                Name::Data | Name::GfmTableDelimiterMarker | Name::GfmTableDelimiterFiller
+                Name::Data | Name::TableDelimiterMarker | Name::TableDelimiterFiller
             ))
         {
             cell.3 = index;
@@ -902,14 +902,14 @@ fn flush_cell(
     row_end: Option<usize>,
 ) {
     let group_name = if in_delimiter_row {
-        Name::GfmTableDelimiterCell
+        Name::TableDelimiterCell
     } else {
-        Name::GfmTableCell
+        Name::TableCell
     };
     let value_name = if in_delimiter_row {
-        Name::GfmTableDelimiterCellValue
+        Name::TableDelimiterCellValue
     } else {
-        Name::GfmTableCellText
+        Name::TableCellText
     };
 
     // Insert an exit for the previous cell, if there is one.
@@ -1024,7 +1024,7 @@ fn flush_table_end(tokenizer: &mut Tokenizer, index: usize, body: bool) {
     if body {
         exits.push(Event {
             kind: Kind::Exit,
-            name: Name::GfmTableBody,
+            name: Name::TableBody,
             point: tokenizer.events[index].point.clone(),
             link: None,
         });
@@ -1032,7 +1032,7 @@ fn flush_table_end(tokenizer: &mut Tokenizer, index: usize, body: bool) {
 
     exits.push(Event {
         kind: Kind::Exit,
-        name: Name::GfmTable,
+        name: Name::Table,
         point: tokenizer.events[index].point.clone(),
         link: None,
     });

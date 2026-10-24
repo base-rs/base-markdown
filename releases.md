@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Name individual extensions by their syntax: remove `gfm_` from construct flags, parser and HTML options, internal modules, and tokenizer state. For example, `gfm_table` becomes `table` and `gfm_footnote_definitions` becomes `footnote_definitions`. Serialized configuration keys drop the corresponding `gfm` prefix. This is a breaking API and configuration-format rename; the `gfm()` presets and extension behavior remain unchanged. See `context/extensions.md` for migration examples.
+
 - Serialize list markers directly and reuse traversal positions instead of rescanning siblings for each ordered item. Correct the ordered marker when serializing an attached item on its own. Borrow prepared reference indexes during grammar inline tokenization, remove duplicate reference-key collection and the retained parse context, and distinguish document and inline-region lifecycles. Share byte-based source line-ending detection.
 
 - Share inline HTML and angle autolink recognizers between compact and grammar parsing, keeping complete single-line constructs on the compact path. Replace serializer escape regexes with static byte rules and remove the runtime regex dependency. Preserve Unicode digits as ordinary text when escaping ordered-list markers, which require ASCII digits.

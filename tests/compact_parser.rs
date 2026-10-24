@@ -281,7 +281,7 @@ fn leading_brackets_distinguish_links_from_possible_definitions() {
 }
 
 #[test]
-fn ordinary_gfm_regions_preserve_extension_boundaries() {
+fn ordinary_regions_preserve_extension_boundaries() {
     use core_markdown::{render_events, Document, EventParser, Options};
     let sources = [
         "ordinary *emphasis*, **strong**, `code`, &amp; and \\*escaped*.",
@@ -328,7 +328,7 @@ fn ordinary_gfm_regions_preserve_extension_boundaries() {
 }
 
 #[test]
-fn gfm_uses_commonmark_attention_boundaries_when_no_extension_is_present() {
+fn uses_commonmark_attention_boundaries_when_no_extension_is_present() {
     for source in ["[a]*a**_\n\n[a]: /a", "[a](path) *a**_ [a]*a**_\n\n[a]: /a"] {
         assert_eq!(
             core_markdown::to_html_with_options(source, &core_markdown::Options::gfm()).unwrap(),
@@ -338,7 +338,7 @@ fn gfm_uses_commonmark_attention_boundaries_when_no_extension_is_present() {
 }
 
 #[test]
-fn gfm_preserves_the_same_literal_line_endings_as_commonmark() {
+fn preserves_the_same_literal_line_endings_as_commonmark() {
     for source in [
         "intro\n\n    code\r\n",
         "intro\r\n\r\n    code\n",

@@ -30,7 +30,7 @@ use alloc::{string::String, vec, vec::Vec};
 
 #[derive(Debug)]
 pub struct Subresult {
-    pub gfm_footnote_definitions: Vec<String>,
+    pub footnote_definitions: Vec<String>,
 }
 
 /// Link two [`Event`][]s.
@@ -82,7 +82,7 @@ pub fn subtokenize(
     let mut map = EditMap::new();
     let mut index = 0;
     let mut value = Subresult {
-        gfm_footnote_definitions: vec![],
+        footnote_definitions: vec![],
     };
     let mut acc = (0, 0);
     let mut child: Option<Tokenizer> = None;
@@ -184,8 +184,8 @@ pub fn subtokenize(
 
                 let mut result = tokenizer.flush(state, true);
                 value
-                    .gfm_footnote_definitions
-                    .append(&mut result.gfm_footnote_definitions);
+                    .footnote_definitions
+                    .append(&mut result.footnote_definitions);
 
                 acc = divide_events(&mut map, events, index, &mut tokenizer.events, acc);
             }

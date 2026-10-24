@@ -22,8 +22,8 @@ pub struct ParseState<'a> {
     pub bytes: &'a [u8],
     /// Set of defined definition identifiers.
     pub definitions: Option<&'a Definitions>,
-    /// Set of defined GFM footnote definition identifiers.
-    pub gfm_footnote_definitions: &'a [String],
+    /// Set of defined footnote definition identifiers.
+    pub footnote_definitions: &'a [String],
 }
 
 impl<'a> ParseState<'a> {
@@ -33,7 +33,7 @@ impl<'a> ParseState<'a> {
             bytes,
             options,
             definitions: None,
-            gfm_footnote_definitions: &[],
+            footnote_definitions: &[],
         }
     }
 
@@ -46,7 +46,7 @@ impl<'a> ParseState<'a> {
     ) -> Self {
         Self {
             definitions: Some(definitions),
-            gfm_footnote_definitions: footnotes,
+            footnote_definitions: footnotes,
             ..Self::new(bytes, options)
         }
     }
@@ -76,5 +76,5 @@ pub fn prepare(value: &str, options: &ParseOptions) -> (Vec<Event>, Vec<String>)
     let result = tokenizer.flush(state, true);
     let events = tokenizer.events;
 
-    (events, result.gfm_footnote_definitions)
+    (events, result.footnote_definitions)
 }

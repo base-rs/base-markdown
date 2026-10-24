@@ -38,7 +38,7 @@
 //!
 //! The following constructs are found in markdown (`CommonMark`):
 //!
-//! * [attention][] (strong, emphasis, extension: GFM strikethrough)
+//! * [attention][] (strong, emphasis, extension: strikethrough)
 //! * [autolink][]
 //! * [blank line][blank_line]
 //! * [block quote][block_quote]
@@ -67,11 +67,11 @@
 //! The following constructs are extensions found in markdown:
 //!
 //! * [frontmatter][]
-//! * [gfm autolink literal][gfm_autolink_literal]
-//! * [gfm footnote definition][gfm_footnote_definition]
-//! * [gfm label start footnote][gfm_label_start_footnote]
-//! * [gfm table][gfm_table]
-//! * [gfm task list item check][gfm_task_list_item_check]
+//! * [autolink literal][autolink_literal]
+//! * [footnote definition][footnote_definition]
+//! * [label start footnote][label_start_footnote]
+//! * [table][table]
+//! * [task list item check][task_list_item_check]
 //!
 //! There are also several small subroutines typically used in different places:
 //!
@@ -146,6 +146,7 @@
 //! [bnf]: http://trevorjim.com/a-specification-for-markdown/
 pub mod attention;
 pub mod autolink;
+pub mod autolink_literal;
 pub mod blank_line;
 pub mod block_quote;
 pub mod character_escape;
@@ -155,18 +156,15 @@ pub mod content;
 pub mod definition;
 pub mod document;
 pub mod flow;
+pub mod footnote_definition;
 pub mod frontmatter;
-pub mod gfm_autolink_literal;
-pub mod gfm_footnote_definition;
-pub mod gfm_label_start_footnote;
-pub mod gfm_table;
-pub mod gfm_task_list_item_check;
 pub mod hard_break_escape;
 pub mod heading_atx;
 pub mod heading_setext;
 pub mod html_flow;
 pub mod html_text;
 pub mod label_end;
+pub mod label_start_footnote;
 pub mod label_start_image;
 pub mod label_start_link;
 pub mod list_item;
@@ -183,6 +181,8 @@ pub mod partial_whitespace;
 pub mod raw_flow;
 pub mod raw_text;
 pub mod string;
+pub mod table;
+pub mod task_list_item_check;
 pub mod text;
 pub mod thematic_break;
 

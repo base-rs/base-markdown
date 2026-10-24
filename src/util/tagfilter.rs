@@ -3,7 +3,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Make dangerous HTML a tiny bit safer.
-use crate::util::constant::{GFM_HTML_TAGFILTER_NAMES, GFM_HTML_TAGFILTER_SIZE_MAX};
+use crate::util::constant::{HTML_TAGFILTER_NAMES, HTML_TAGFILTER_SIZE_MAX};
 #[cfg(test)]
 use alloc::string::String;
 
@@ -16,9 +16,9 @@ use alloc::string::String;
 /// ## Examples
 ///
 /// ```rust ignore
-/// use core_markdown::util::gfm_tagfilter::gfm_tagfilter;
+/// use core_markdown::util::tagfilter::tagfilter;
 ///
-/// assert_eq!(gfm_tagfilter("<iframe>"), "&lt;iframe>");
+/// assert_eq!(tagfilter("<iframe>"), "&lt;iframe>");
 /// ```
 ///
 /// ## References
@@ -26,7 +26,7 @@ use alloc::string::String;
 /// * [*§ 6.1 Disallowed Raw HTML (extension)* in GFM](https://github.github.com/gfm/#disallowed-raw-html-extension-)
 /// * [`cmark-gfm#extensions/tagfilter.c`](https://github.com/github/cmark-gfm/blob/master/extensions/tagfilter.c)
 #[cfg(test)]
-fn gfm_tagfilter(value: &str) -> String {
+fn tagfilter(value: &str) -> String {
     let mut result = String::with_capacity(value.len());
     write_filtered(value, |value| {
         result.push_str(value);
@@ -50,7 +50,7 @@ pub(crate) fn write_filtered<E>(
         let name_start = index + 1 + usize::from(bytes.get(index + 1) == Some(&b'/'));
         let mut name_end = name_start;
         while name_end < bytes.len()
-            && name_end - name_start < GFM_HTML_TAGFILTER_SIZE_MAX
+            && name_end - name_start < HTML_TAGFILTER_SIZE_MAX
             && bytes[name_end].is_ascii_alphabetic()
         {
             name_end += 1;
@@ -60,7 +60,7 @@ pub(crate) fn write_filtered<E>(
                 bytes[name_end],
                 b'\t' | b'\n' | 12 | b'\r' | b' ' | b'/' | b'>'
             ))
-            && GFM_HTML_TAGFILTER_NAMES
+            && HTML_TAGFILTER_NAMES
                 .iter()
                 .any(|name| bytes[name_start..name_end].eq_ignore_ascii_case(name.as_bytes()))
         {
@@ -78,17 +78,17 @@ pub(crate) fn write_filtered<E>(
 
 #[cfg(test)]
 mod tests {
-    use super::{gfm_tagfilter, write_filtered};
+    use super::{tagfilter, write_filtered};
 
     #[test]
     fn streams_tag_matches_without_changing_other_bytes() {
         for length in [0, 1, 15, 16, 17, 31, 32, 33, 64] {
             let prefix = "a".repeat(length);
-            for name in crate::util::constant::GFM_HTML_TAGFILTER_NAMES {
+            for name in crate::util::constant::HTML_TAGFILTER_NAMES {
                 let upper = name.to_ascii_uppercase();
                 let source = alloc::format!("{prefix}é😀<{upper}>body</{name}>");
                 assert_eq!(
-                    gfm_tagfilter(&source),
+                    tagfilter(&source),
                     alloc::format!("{prefix}é😀&lt;{upper}>body&lt;/{name}>")
                 );
             }
@@ -106,10 +106,10 @@ mod tests {
             "<script\0>",
             "<plaintextlong>",
         ] {
-            assert_eq!(gfm_tagfilter(source), source);
+            assert_eq!(tagfilter(source), source);
         }
         assert_eq!(
-            gfm_tagfilter("<<sCrIpT>\0</ScRiPt>"),
+            tagfilter("<<sCrIpT>\0</ScRiPt>"),
             "<&lt;sCrIpT>\0&lt;/ScRiPt>"
         );
     }
@@ -143,12 +143,12 @@ mod tests {
     fn filters_disallowed_tags_with_html_separators() {
         for separator in ['\t', '\n', '\u{000c}', '\r', ' ', '/', '>'] {
             let input = alloc::format!("<script{separator}");
-            assert_eq!(gfm_tagfilter(&input), input.replacen('<', "&lt;", 1));
+            assert_eq!(tagfilter(&input), input.replacen('<', "&lt;", 1));
         }
 
-        assert_eq!(gfm_tagfilter("<script"), "&lt;script");
-        assert_eq!(gfm_tagfilter("<script=source>"), "<script=source>");
-        assert_eq!(gfm_tagfilter("<scriptx>"), "<scriptx>");
-        assert_eq!(gfm_tagfilter("</script>"), "&lt;/script>");
+        assert_eq!(tagfilter("<script"), "&lt;script");
+        assert_eq!(tagfilter("<script=source>"), "<script=source>");
+        assert_eq!(tagfilter("<scriptx>"), "<scriptx>");
+        assert_eq!(tagfilter("</script>"), "&lt;/script>");
     }
 }

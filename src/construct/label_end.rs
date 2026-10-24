@@ -51,7 +51,7 @@
 //! attribute in case of a [label start (link)][label_start_link], and an
 //! `src` attribute in case of a [label start (image)][label_start_image].
 //! The title is formed, optionally, on either `<a>` or `<img>`.
-//! When matched with a [gfm label start (footnote)][gfm_label_start_footnote],
+//! When matched with a [gfm label start (footnote)][label_start_footnote],
 //! no reference or resource can follow the label end.
 //!
 //! For info on how to encode characters in URLs, see
@@ -60,7 +60,7 @@
 //! `<img>` when compiling, see
 //! [`sanitize_uri`][sanitize_uri].
 //!
-//! In case of a matched [gfm label start (footnote)][gfm_label_start_footnote],
+//! In case of a matched [gfm label start (footnote)][label_start_footnote],
 //! a counter is injected.
 //! In case of a matched [label start (link)][label_start_link], the interpreted
 //! content between it and the label end, is placed between the opening and
@@ -114,7 +114,7 @@
 //! It can also match with [label start (image)][label_start_image], in which
 //! case they form an `<img>` element.
 //! See [*§ 4.8.3 The `img` element*][html_img] in the HTML spec for more info.
-//! It can also match with [gfm label start (footnote)][gfm_label_start_footnote],
+//! It can also match with [gfm label start (footnote)][label_start_footnote],
 //! in which case they form `<sup>` and `<a>` elements in HTML.
 //! See [*§ 4.5.19 The `sub` and `sup` elements*][html_sup] and
 //! [*§ 4.5.1 The `a` element*][html_a] in the HTML spec for more info.
@@ -133,7 +133,7 @@
 //! ## Tokens
 //!
 //! * [`Data`][Name::Data]
-//! * [`GfmFootnoteCall`][Name::GfmFootnoteCall]
+//! * [`FootnoteCall`][Name::FootnoteCall]
 //! * [`Image`][Name::Image]
 //! * [`Label`][Name::Label]
 //! * [`LabelEnd`][Name::LabelEnd]
@@ -175,7 +175,7 @@
 //! [label]: crate::construct::partial_label
 //! [label_start_image]: crate::construct::label_start_image
 //! [label_start_link]: crate::construct::label_start_link
-//! [gfm_label_start_footnote]: crate::construct::gfm_label_start_footnote
+//! [label_start_footnote]: crate::construct::label_start_footnote
 //! [definition]: crate::construct::definition
 //! [autolink]: crate::construct::autolink
 //! [sanitize_uri]: crate::util::sanitize_uri::sanitize
@@ -268,13 +268,13 @@ pub fn after(tokenizer: &mut Tokenizer) -> State {
     );
 
     // See if this matches a footnote definition.
-    if start.kind == LabelKind::GfmFootnote {
-        if tokenizer.parse_state.gfm_footnote_definitions.contains(&id) {
+    if start.kind == LabelKind::Footnote {
+        if tokenizer.parse_state.footnote_definitions.contains(&id) {
             return State::Retry(StateName::LabelEndOk);
         }
 
         // Nope, this might be a normal link?
-        tokenizer.tokenize_state.label_starts[start_index].kind = LabelKind::GfmUndefinedFootnote;
+        tokenizer.tokenize_state.label_starts[start_index].kind = LabelKind::UndefinedFootnote;
         let mut new_id = String::new();
         new_id.push('^');
         new_id.push_str(&id);
@@ -702,8 +702,8 @@ fn inject_labels(tokenizer: &mut Tokenizer, labels: &[Label]) {
     let mut index = 0;
     while index < labels.len() {
         let label = &labels[index];
-        let group_name = if label.kind == LabelKind::GfmFootnote {
-            Name::GfmFootnoteCall
+        let group_name = if label.kind == LabelKind::Footnote {
+            Name::FootnoteCall
         } else if label.kind == LabelKind::Image {
             Name::Image
         } else {
@@ -714,19 +714,19 @@ fn inject_labels(tokenizer: &mut Tokenizer, labels: &[Label]) {
         // not match, we need to inject the caret as data.
         let mut caret = vec![];
 
-        if label.kind == LabelKind::GfmUndefinedFootnote {
+        if label.kind == LabelKind::UndefinedFootnote {
             // Add caret.
             caret.push(Event {
                 kind: Kind::Enter,
                 name: Name::Data,
-                // Enter:GfmFootnoteCallMarker.
+                // Enter:FootnoteCallMarker.
                 point: tokenizer.events[label.start.1 - 2].point.clone().clone(),
                 link: None,
             });
             caret.push(Event {
                 kind: Kind::Exit,
                 name: Name::Data,
-                // Exit:GfmFootnoteCallMarker.
+                // Exit:FootnoteCallMarker.
                 point: tokenizer.events[label.start.1 - 1].point.clone(),
                 link: None,
             });
@@ -735,7 +735,7 @@ fn inject_labels(tokenizer: &mut Tokenizer, labels: &[Label]) {
             tokenizer.events[label.start.1].name = Name::LabelLink;
             tokenizer.events[label.start.1].point = caret[0].point.clone();
             // Remove the caret.
-            // Enter:GfmFootnoteCallMarker, Exit:GfmFootnoteCallMarker.
+            // Enter:FootnoteCallMarker, Exit:FootnoteCallMarker.
             tokenizer.map.add(label.start.1 - 2, 2, vec![]);
         }
 

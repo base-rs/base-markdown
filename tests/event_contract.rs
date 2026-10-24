@@ -286,7 +286,7 @@ fn writer_failures_propagate_from_every_output_position() {
         options.parse.constructs.math_text = true;
         options.parse.constructs.math_flow = true;
         options.compile.heading_ids = heading_ids;
-        options.compile.gfm_task_list_item_checkable = checkable;
+        options.compile.task_list_item_checkable = checkable;
         options.compile.allow_dangerous_html = true;
         for source in cases {
             let render = |writer: &mut Writer| {

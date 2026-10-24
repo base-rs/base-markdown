@@ -15,7 +15,7 @@ use support::fixture::Position;
 use support::fixture::{Link, Node, Paragraph, Root, Text};
 
 #[test]
-fn gfm_autolink_literal() -> Result<(), message::Message> {
+fn autolink_literal() -> Result<(), message::Message> {
     assert_eq!(
         to_html("https://example.com"),
         "<p>https://example.com</p>",

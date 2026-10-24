@@ -12,18 +12,18 @@ use alloc::{string::String, vec::Vec};
 use core::{convert::TryFrom, ops::Range};
 
 static MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!");
-static GFM_MARKERS: crate::byte_scan::AsciiSet =
+static EXTENSION_MARKERS: crate::byte_scan::AsciiSet =
     crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!~@.:");
 
-/// `CommonMark` with independently enabled GFM constructs can share ordinary inline scanning.
+/// `CommonMark` with independently enabled extensions can share ordinary inline scanning.
 pub(crate) fn supported_options(options: &crate::ParseOptions) -> bool {
     let mut common = options.constructs.clone();
-    common.gfm_autolink_literal = false;
-    common.gfm_strikethrough = false;
-    common.gfm_table = false;
-    common.gfm_task_list_item = false;
-    common.gfm_footnote_definition = false;
-    common.gfm_label_start_footnote = false;
+    common.autolink_literal = false;
+    common.strikethrough = false;
+    common.table = false;
+    common.task_list_item = false;
+    common.footnote_definition = false;
+    common.label_start_footnote = false;
     common == crate::Constructs::default()
 }
 
@@ -131,19 +131,19 @@ impl InlineParser {
         self.nodes[previous].next = index;
         self.nodes[next].previous = index;
     }
-    fn attention<const GFM: bool>(&mut self, bottom: usize) {
+    fn attention<const EXTENSIONS: bool>(&mut self, bottom: usize) {
         if bottom == self.delimiters.len() {
             return;
         }
         // A successful match truncates the active opener stack. Failed searches advance bounds for the marker and modulo-three class, following pulldown-cmark's InlineStack technique.
         let mut bounds = [[0; 6]; 3];
         // The CommonMark specialization never searches strikethrough openers.
-        let lower = &mut bounds[..if GFM { 3 } else { 2 }];
+        let lower = &mut bounds[..if EXTENSIONS { 3 } else { 2 }];
         self.attention_stack.clear();
         for close in bottom..self.delimiters.len() {
             let closer = self.delimiters[close].node;
             let marker = self.delimiters[close].marker;
-            let marker_index = if GFM && marker == b'~' {
+            let marker_index = if EXTENSIONS && marker == b'~' {
                 2
             } else {
                 usize::from(marker == b'_')
@@ -160,7 +160,7 @@ impl InlineParser {
                         let open = self.attention_stack[slot];
                         let candidate = &self.delimiters[open];
                         if candidate.marker == marker
-                            && (!GFM
+                            && (!EXTENSIONS
                                 || marker != b'~'
                                 || self.nodes[candidate.node].end
                                     - self.nodes[candidate.node].start
@@ -181,7 +181,7 @@ impl InlineParser {
                     let take = (self.nodes[opener].end - self.nodes[opener].start)
                         .min(size)
                         .min(2);
-                    let tag = if GFM && marker == b'~' {
+                    let tag = if EXTENSIONS && marker == b'~' {
                         TagKind::Delete
                     } else if take == 2 {
                         TagKind::Strong
@@ -245,7 +245,7 @@ impl InlineParser {
     }
     /// Each fragment contains one physical source line. Returns false when a region needs a compatibility construct; no events have escaped yet.
     // Specialize reference-free and CommonMark regions so unused extension checks compile out.
-    pub(crate) fn prepare<const REFERENCES: bool, const GFM: bool>(
+    pub(crate) fn prepare<const REFERENCES: bool, const EXTENSIONS: bool>(
         &mut self,
         source: &str,
         fragments: impl Iterator<Item = Range<usize>>,
@@ -268,7 +268,11 @@ impl InlineParser {
             kind: Kind::Text,
         });
         let bytes = source.as_bytes();
-        let markers = if GFM { &GFM_MARKERS } else { &MARKERS };
+        let markers = if EXTENSIONS {
+            &EXTENSION_MARKERS
+        } else {
+            &MARKERS
+        };
         let mut fragments = fragments.peekable();
         while let Some(mut range) = fragments.next() {
             let mut indexed_ticks = false;
@@ -283,7 +287,7 @@ impl InlineParser {
                 }
             }
             let inline_start = at;
-            if GFM && task && self.nodes.len() == 1 && bytes.get(at) == Some(&b'[') {
+            if EXTENSIONS && task && self.nodes.len() == 1 && bytes.get(at) == Some(&b'[') {
                 // Keep multiline markers and tab-expanded whitespace on the grammar path.
                 if matches!(bytes.get(at + 1), Some(b' ' | b'x' | b'X'))
                     && bytes.get(at + 2) == Some(&b']')
@@ -316,14 +320,14 @@ impl InlineParser {
                         at = end;
                     }
                     marker
-                        if GFM
-                            && options.constructs.gfm_autolink_literal
+                        if EXTENSIONS
+                            && options.constructs.autolink_literal
                             && (matches!(marker, b'@' | b':')
                                 || (marker == b'.'
                                     && bytes[at.saturating_sub(3)..at]
                                         .eq_ignore_ascii_case(b"www"))) =>
                     {
-                        // A pending label can change link precedence. Complex addresses retain the grammar's complete GFM rules.
+                        // A pending label can change link precedence. Complex addresses retain the grammar's complete literal-autolink rules.
                         if !self.brackets.is_empty()
                             || !matches!(self.nodes[self.last].kind, Kind::Text)
                         {
@@ -415,7 +419,9 @@ impl InlineParser {
                     }
                     marker
                         if matches!(marker, b'*' | b'_')
-                            || (GFM && marker == b'~' && options.constructs.gfm_strikethrough) =>
+                            || (EXTENSIONS
+                                && marker == b'~'
+                                && options.constructs.strikethrough) =>
                     {
                         let marker = bytes[at];
                         while at < range.end && bytes[at] == marker {
@@ -427,8 +433,8 @@ impl InlineParser {
                         let after = classify_opt(after_char);
                         // Mixed adjacent emphasis/strike runs have grammar-specific partial-match rules.
                         // Keep those regions together on the compatibility path.
-                        if GFM
-                            && options.constructs.gfm_strikethrough
+                        if EXTENSIONS
+                            && options.constructs.strikethrough
                             && marker != b'~'
                             && (before_char == Some('~') || after_char == Some('~'))
                         {
@@ -441,10 +447,10 @@ impl InlineParser {
                             && (before != CharacterKind::Punctuation
                                 || after != CharacterKind::Other);
                         let node = self.append(start, at, Kind::Text);
-                        if GFM
+                        if EXTENSIONS
                             && marker == b'~'
                             && (at - start > 2
-                                || (at - start == 1 && !options.gfm_strikethrough_single_tilde))
+                                || (at - start == 1 && !options.strikethrough_single_tilde))
                         {
                             continue;
                         }
@@ -462,8 +468,8 @@ impl InlineParser {
                         });
                     }
                     b'[' | b'!' => {
-                        if GFM
-                            && options.constructs.gfm_label_start_footnote
+                        if EXTENSIONS
+                            && options.constructs.label_start_footnote
                             && (bytes[at..].starts_with(b"[^") || bytes[at..].starts_with(b"![^"))
                         {
                             return false;
@@ -545,7 +551,7 @@ impl InlineParser {
                             }
                         };
                         if let Some((end, kind)) = resolved {
-                            self.attention::<GFM>(bracket.delimiters);
+                            self.attention::<EXTENSIONS>(bracket.delimiters);
                             self.nodes[bracket.node].kind = kind;
                             self.nodes[bracket.node].end = end;
                             self.append(end, end, Kind::End(tag));
@@ -566,7 +572,7 @@ impl InlineParser {
                 }
             }
         }
-        self.attention::<GFM>(0);
+        self.attention::<EXTENSIONS>(0);
         self.cursor = self.nodes[0].next;
         true
     }
@@ -777,7 +783,7 @@ fn angle(bytes: &[u8], start: usize, limit: usize, namespaces: bool) -> Option<(
 }
 
 /// Recognize whitespace-delimited ASCII addresses without path or delimiter ambiguity.
-/// More general GFM links (Unicode, balanced paths, escaped punctuation, and label nesting) use the grammar parser.
+/// More general literal autolinks (Unicode, balanced paths, escaped punctuation, and label nesting) use the grammar parser.
 fn simple_autolink(
     bytes: &[u8],
     inline_start: usize,
@@ -813,7 +819,7 @@ fn simple_autolink(
     while end > domain && bytes[end - 1] == b'.' {
         end -= 1;
     }
-    // Requiring nonempty alphanumeric labels deliberately leaves unusual but valid GFM domains to the grammar.
+    // Requiring nonempty alphanumeric labels deliberately leaves unusual but valid literal-autolink domains to the grammar.
     if end == domain
         || bytes[domain..end].split(|byte| *byte == b'.').any(|label| {
             label.is_empty()

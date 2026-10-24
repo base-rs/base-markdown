@@ -126,34 +126,35 @@ pub struct Constructs {
     ///     ^^^
     /// ````
     pub frontmatter: bool,
-    /// GFM: autolink literal.
+    /// Autolink literal.
     ///
     /// ```markdown
     /// > | https://example.com
     ///     ^^^^^^^^^^^^^^^^^^^
     /// ```
-    pub gfm_autolink_literal: bool,
-    /// GFM: footnote definition.
+    pub autolink_literal: bool,
+    /// Footnote definition.
     ///
     /// ```markdown
     /// > | [^a]: b
     ///     ^^^^^^^
     /// ```
-    pub gfm_footnote_definition: bool,
-    /// GFM: footnote label start.
+    pub footnote_definition: bool,
+    /// Footnote label start.
     ///
     /// ```markdown
     /// > | a[^b]
     ///      ^^
     /// ```
-    pub gfm_label_start_footnote: bool,
+    pub label_start_footnote: bool,
+    /// Strikethrough.
     ///
     /// ```markdown
     /// > | a ~b~ c.
     ///       ^^^
     /// ```
-    pub gfm_strikethrough: bool,
-    /// GFM: table.
+    pub strikethrough: bool,
+    /// Table.
     ///
     /// ```markdown
     /// > | | a |
@@ -163,14 +164,14 @@ pub struct Constructs {
     /// > | | b |
     ///     ^^^^^
     /// ```
-    pub gfm_table: bool,
-    /// GFM: task list item.
+    pub table: bool,
+    /// Task list item.
     ///
     /// ```markdown
     /// > | * [x] y.
     ///       ^^^
     /// ```
-    pub gfm_task_list_item: bool,
+    pub task_list_item: bool,
     /// Hard break (escape).
     ///
     /// ```markdown
@@ -294,12 +295,12 @@ impl Default for Constructs {
             code_text: true,
             definition: true,
             frontmatter: false,
-            gfm_autolink_literal: false,
-            gfm_label_start_footnote: false,
-            gfm_footnote_definition: false,
-            gfm_strikethrough: false,
-            gfm_table: false,
-            gfm_task_list_item: false,
+            autolink_literal: false,
+            label_start_footnote: false,
+            footnote_definition: false,
+            strikethrough: false,
+            table: false,
+            task_list_item: false,
             hard_break_escape: true,
             hard_break_trailing: true,
             heading_atx: true,
@@ -329,12 +330,12 @@ impl Constructs {
     /// <https://github.github.com/gfm/>.
     pub fn gfm() -> Self {
         Self {
-            gfm_autolink_literal: true,
-            gfm_footnote_definition: true,
-            gfm_label_start_footnote: true,
-            gfm_strikethrough: true,
-            gfm_table: true,
-            gfm_task_list_item: true,
+            autolink_literal: true,
+            footnote_definition: true,
+            label_start_footnote: true,
+            strikethrough: true,
+            table: true,
+            task_list_item: true,
             ..Self::default()
         }
     }
@@ -344,7 +345,7 @@ impl Constructs {
 ///
 /// You likely either want to turn on the dangerous options
 /// (`allow_dangerous_html`, `allow_dangerous_protocol`) when dealing with
-/// input you trust, or want to customize how GFM footnotes are compiled
+/// input you trust, or want to customize how footnotes are compiled
 /// (typically because the input markdown is not in English).
 ///
 /// ## Examples
@@ -365,8 +366,8 @@ impl Constructs {
 ///
 /// // In French:
 /// let enFrançais = CompileOptions {
-///   gfm_footnote_back_label: Some("Arrière".into()),
-///   gfm_footnote_label: Some("Notes de bas de page".into()),
+///   footnote_back_label: Some("Arrière".into()),
+///   footnote_label: Some("Notes de bas de page".into()),
 ///   ..CompileOptions::default()
 /// };
 /// # }
@@ -435,7 +436,7 @@ pub struct CompileOptions {
     ///
     /// Pass `true` for trusted content to get actual HTML elements.
     ///
-    /// When using GFM, make sure to also turn off `gfm_tagfilter`.
+    /// When using GFM, make sure to also turn off `tagfilter`.
     /// Otherwise, some dangerous HTML is still ignored.
     ///
     /// ## Examples
@@ -593,14 +594,14 @@ pub struct CompileOptions {
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
     ///
-    /// // Pass `gfm_footnote_back_label` to use something else:
+    /// // Pass `footnote_back_label` to use something else:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "[^a]\n\n[^a]: b",
     ///         &Options {
     ///             parse: ParseOptions::gfm(),
     ///             compile: CompileOptions {
-    ///               gfm_footnote_back_label: Some("Arrière".into()),
+    ///               footnote_back_label: Some("Arrière".into()),
     ///               ..CompileOptions::gfm()
     ///             }
     ///         }
@@ -610,7 +611,7 @@ pub struct CompileOptions {
     /// # Ok(())
     /// # }
     /// ```
-    pub gfm_footnote_back_label: Option<String>,
+    pub footnote_back_label: Option<String>,
 
     /// Prefix to use before the `id` attribute on footnotes to prevent them
     /// from *clobbering*.
@@ -649,14 +650,14 @@ pub struct CompileOptions {
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
     ///
-    /// // Pass `gfm_footnote_clobber_prefix` to use something else:
+    /// // Pass `footnote_clobber_prefix` to use something else:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "[^a]\n\n[^a]: b",
     ///         &Options {
     ///             parse: ParseOptions::gfm(),
     ///             compile: CompileOptions {
-    ///               gfm_footnote_clobber_prefix: Some("".into()),
+    ///               footnote_clobber_prefix: Some("".into()),
     ///               ..CompileOptions::gfm()
     ///             }
     ///         }
@@ -666,7 +667,7 @@ pub struct CompileOptions {
     /// # Ok(())
     /// # }
     /// ```
-    pub gfm_footnote_clobber_prefix: Option<String>,
+    pub footnote_clobber_prefix: Option<String>,
 
     /// Attributes to use on the footnote label.
     ///
@@ -697,14 +698,14 @@ pub struct CompileOptions {
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
     ///
-    /// // Pass `gfm_footnote_label_attributes` to use something else:
+    /// // Pass `footnote_label_attributes` to use something else:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "[^a]\n\n[^a]: b",
     ///         &Options {
     ///             parse: ParseOptions::gfm(),
     ///             compile: CompileOptions {
-    ///               gfm_footnote_label_attributes: Some("class=\"footnote-heading\"".into()),
+    ///               footnote_label_attributes: Some("class=\"footnote-heading\"".into()),
     ///               ..CompileOptions::gfm()
     ///             }
     ///         }
@@ -714,7 +715,7 @@ pub struct CompileOptions {
     /// # Ok(())
     /// # }
     /// ```
-    pub gfm_footnote_label_attributes: Option<String>,
+    pub footnote_label_attributes: Option<String>,
 
     /// HTML tag name to use for the footnote label element.
     ///
@@ -724,7 +725,7 @@ pub struct CompileOptions {
     /// This label is typically hidden visually (assuming a `sr-only` CSS class
     /// is defined that does that), and thus affects screen readers only.
     /// If you do have such a class, but want to show this section to everyone,
-    /// pass different attributes with the `gfm_footnote_label_attributes`
+    /// pass different attributes with the `footnote_label_attributes`
     /// option.
     ///
     /// ## Examples
@@ -742,14 +743,14 @@ pub struct CompileOptions {
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
     ///
-    /// // Pass `gfm_footnote_label_tag_name` to use something else:
+    /// // Pass `footnote_label_tag_name` to use something else:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "[^a]\n\n[^a]: b",
     ///         &Options {
     ///             parse: ParseOptions::gfm(),
     ///             compile: CompileOptions {
-    ///               gfm_footnote_label_tag_name: Some("h1".into()),
+    ///               footnote_label_tag_name: Some("h1".into()),
     ///               ..CompileOptions::gfm()
     ///             }
     ///         }
@@ -759,7 +760,7 @@ pub struct CompileOptions {
     /// # Ok(())
     /// # }
     /// ```
-    pub gfm_footnote_label_tag_name: Option<String>,
+    pub footnote_label_tag_name: Option<String>,
 
     /// Textual label to use for the footnotes section.
     ///
@@ -769,7 +770,7 @@ pub struct CompileOptions {
     /// This label is typically hidden visually (assuming a `sr-only` CSS class
     /// is defined that does that), and thus affects screen readers only.
     /// If you do have such a class, but want to show this section to everyone,
-    /// pass different attributes with the `gfm_footnote_label_attributes`
+    /// pass different attributes with the `footnote_label_attributes`
     /// option.
     ///
     /// ## Examples
@@ -787,14 +788,14 @@ pub struct CompileOptions {
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
     ///
-    /// // Pass `gfm_footnote_label` to use something else:
+    /// // Pass `footnote_label` to use something else:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "[^a]\n\n[^a]: b",
     ///         &Options {
     ///             parse: ParseOptions::gfm(),
     ///             compile: CompileOptions {
-    ///               gfm_footnote_label: Some("Notes de bas de page".into()),
+    ///               footnote_label: Some("Notes de bas de page".into()),
     ///               ..CompileOptions::gfm()
     ///             }
     ///         }
@@ -804,9 +805,9 @@ pub struct CompileOptions {
     /// # Ok(())
     /// # }
     /// ```
-    pub gfm_footnote_label: Option<String>,
+    pub footnote_label: Option<String>,
 
-    /// Whether or not GFM task list html `<input>` items are enabled.
+    /// Whether or not task list HTML `<input>` items are enabled.
     ///
     /// This determines whether or not the user of the browser is able
     /// to click and toggle generated checkbox items. The default is false.
@@ -817,7 +818,7 @@ pub struct CompileOptions {
     /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
     /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
-    /// // With `gfm_task_list_item_checkable`, generated `<input type="checkbox" />`
+    /// // With `task_list_item_checkable`, generated `<input type="checkbox" />`
     /// // tags do not contain the attribute `disabled=""` and are thus toggleable by
     /// // browser users.
     /// assert_eq!(
@@ -826,7 +827,7 @@ pub struct CompileOptions {
     ///         &Options {
     ///             parse: ParseOptions::gfm(),
     ///             compile: CompileOptions {
-    ///                 gfm_task_list_item_checkable: true,
+    ///                 task_list_item_checkable: true,
     ///                 ..CompileOptions::gfm()
     ///             }
     ///         }
@@ -836,12 +837,12 @@ pub struct CompileOptions {
     /// # Ok(())
     /// # }
     /// ```
-    pub gfm_task_list_item_checkable: bool,
+    pub task_list_item_checkable: bool,
 
-    /// Whether to support the GFM tagfilter.
+    /// Whether to filter disallowed raw HTML tags.
     ///
     /// This option does nothing if `allow_dangerous_html` is not turned on.
-    /// The default is `false`, which does not apply the GFM tagfilter to HTML.
+    /// The default is `false`, which does not filter raw HTML tags.
     /// Pass `true` for output that is a bit closer to GitHub’s actual output.
     ///
     /// The tagfilter is kinda weird and kinda useless.
@@ -869,7 +870,7 @@ pub struct CompileOptions {
     ///     "<iframe>"
     /// );
     ///
-    /// // Pass `gfm_tagfilter: true` to make some of that safe:
+    /// // Pass `tagfilter: true` to make some of that safe:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "<iframe>",
@@ -877,7 +878,7 @@ pub struct CompileOptions {
     ///             parse: ParseOptions::gfm(),
     ///             compile: CompileOptions {
     ///               allow_dangerous_html: true,
-    ///               gfm_tagfilter: true,
+    ///               tagfilter: true,
     ///               ..CompileOptions::default()
     ///             }
     ///         }
@@ -892,7 +893,7 @@ pub struct CompileOptions {
     ///
     /// * [*§ 6.1 Disallowed Raw HTML (extension)* in GFM](https://github.github.com/gfm/#disallowed-raw-html-extension-)
     /// * [`cmark-gfm#extensions/tagfilter.c`](https://github.com/github/cmark-gfm/blob/master/extensions/tagfilter.c)
-    pub gfm_tagfilter: bool,
+    pub tagfilter: bool,
 
     /// Whether to add unique `id` attributes to headings for in-page links
     /// and tables of contents.
@@ -908,7 +909,7 @@ impl CompileOptions {
     /// GFM.
     ///
     /// GFM stands for **GitHub flavored markdown**.
-    /// On the compilation side, GFM turns on the GFM tag filter.
+    /// On the compilation side, the GFM preset turns on the tagfilter.
     /// The tagfilter is useless, but it’s included here for consistency, and
     /// this method exists for parity to parse options.
     ///
@@ -916,7 +917,7 @@ impl CompileOptions {
     /// <https://github.github.com/gfm/>.
     pub fn gfm() -> Self {
         Self {
-            gfm_tagfilter: true,
+            tagfilter: true,
             ..Self::default()
         }
     }
@@ -1013,9 +1014,9 @@ pub struct ParseOptions {
     #[cfg_attr(feature = "serde", serde(default))]
     pub html_tag_namespaces: bool,
 
-    /// Whether to support GFM strikethrough with a single tilde
+    /// Whether to support strikethrough with a single tilde
     ///
-    /// This option does nothing if `gfm_strikethrough` is not turned on in
+    /// This option does nothing if `strikethrough` is not turned on in
     /// `constructs`.
     /// This option does not affect strikethrough with double tildes.
     ///
@@ -1045,14 +1046,14 @@ pub struct ParseOptions {
     ///     "<p><del>a</del></p>"
     /// );
     ///
-    /// // Pass `gfm_strikethrough_single_tilde: false` to turn that off:
+    /// // Pass `strikethrough_single_tilde: false` to turn that off:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "~a~",
     ///         &Options {
     ///             parse: ParseOptions {
     ///               constructs: Constructs::gfm(),
-    ///               gfm_strikethrough_single_tilde: false,
+    ///               strikethrough_single_tilde: false,
     ///               ..ParseOptions::default()
     ///             },
     ///             ..Options::default()
@@ -1064,7 +1065,7 @@ pub struct ParseOptions {
     /// # }
     /// ```
     #[cfg_attr(feature = "serde", serde(default))]
-    pub gfm_strikethrough_single_tilde: bool,
+    pub strikethrough_single_tilde: bool,
 
     /// Whether to support math (text) with a single dollar
     ///
@@ -1137,7 +1138,7 @@ impl Default for ParseOptions {
             inline_code_info: false,
             html_block_blank_lines: false,
             html_tag_namespaces: false,
-            gfm_strikethrough_single_tilde: true,
+            strikethrough_single_tilde: true,
             math_text_single_dollar: true,
         }
     }
@@ -1198,7 +1199,7 @@ impl Options {
     /// GFM stands for GitHub flavored markdown.
     /// GFM extends `CommonMark` and adds support for autolink literals,
     /// footnotes, strikethrough, tables, and tasklists.
-    /// On the compilation side, GFM turns on the GFM tag filter.
+    /// On the compilation side, the GFM preset turns on the tagfilter.
     /// The tagfilter is useless, but it’s included here for consistency.
     ///
     /// For more information, see the GFM specification:

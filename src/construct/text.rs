@@ -15,8 +15,8 @@
 //! * [Character escape][crate::construct::character_escape]
 //! * [Character reference][crate::construct::character_reference]
 //! * [Raw (text)][crate::construct::raw_text] (code (text), math (text))
-//! * [GFM: Label start (footnote)][crate::construct::gfm_label_start_footnote]
-//! * [GFM: Task list item check][crate::construct::gfm_task_list_item_check]
+//! * [Label start (footnote)][crate::construct::label_start_footnote]
+//! * [Task list item check][crate::construct::task_list_item_check]
 //! * [Hard break (escape)][crate::construct::hard_break_escape]
 //! * [HTML (text)][crate::construct::html_text]
 //! * [Label start (image)][crate::construct::label_start_image]
@@ -25,7 +25,7 @@
 //!
 //! > 👉 **Note**: for performance reasons, hard break (trailing) is formed by
 //! > [whitespace][crate::construct::partial_whitespace].
-use crate::construct::gfm_autolink_literal::resolve as resolve_gfm_autolink_literal;
+use crate::construct::autolink_literal::resolve as resolve_autolink_literal;
 use crate::construct::partial_whitespace::resolve_whitespace;
 use crate::resolve::Name as ResolveName;
 use crate::state::{Name as StateName, State};
@@ -39,15 +39,15 @@ const MARKERS: [u8; 15] = [
     b'&',  // `character_reference`
     b'*',  // `attention` (emphasis, strong)
     b'<',  // `autolink`, `html_text`
-    b'H',  // `gfm_autolink_literal` (`protocol` kind)
-    b'W',  // `gfm_autolink_literal` (`www.` kind)
+    b'H',  // `autolink_literal` (`protocol` kind)
+    b'W',  // `autolink_literal` (`www.` kind)
     b'[',  // `label_start_link`
     b'\\', // `character_escape`, `hard_break_escape`
-    b']',  // `label_end`, `gfm_label_start_footnote`
+    b']',  // `label_end`, `label_start_footnote`
     b'_',  // `attention` (emphasis, strong)
     b'`',  // `raw_text` (code (text))
-    b'h',  // `gfm_autolink_literal` (`protocol` kind)
-    b'w',  // `gfm_autolink_literal` (`www.` kind)
+    b'h',  // `autolink_literal` (`protocol` kind)
+    b'w',  // `autolink_literal` (`www.` kind)
     b'~',  // `attention` (gfm strikethrough)
 ];
 
@@ -71,12 +71,12 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
             b'&' => constructs.character_reference,
             b'*' | b'_' => constructs.attention,
             b'<' => constructs.autolink || constructs.html_text,
-            b'H' | b'W' | b'h' | b'w' => constructs.gfm_autolink_literal,
-            b'[' => constructs.label_start_link || constructs.gfm_label_start_footnote,
+            b'H' | b'W' | b'h' | b'w' => constructs.autolink_literal,
+            b'[' => constructs.label_start_link || constructs.label_start_footnote,
             b'\\' => constructs.character_escape || constructs.hard_break_escape,
             b']' => constructs.label_end,
             b'`' => constructs.code_text,
-            b'~' => constructs.gfm_strikethrough,
+            b'~' => constructs.strikethrough,
             _ => unreachable!("text markers must have a corresponding construct"),
         };
         if enabled {
@@ -87,7 +87,7 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
         State::Next(StateName::TextBefore),
         State::Next(StateName::TextBefore),
     );
-    State::Retry(StateName::GfmTaskListItemCheckStart)
+    State::Retry(StateName::TaskListItemCheckStart)
 }
 
 /// Before text.
@@ -146,21 +146,21 @@ pub fn before(tokenizer: &mut Tokenizer) -> State {
                 State::Next(StateName::TextBefore),
                 State::Next(StateName::TextBeforeData),
             );
-            State::Retry(StateName::GfmAutolinkLiteralProtocolStart)
+            State::Retry(StateName::AutolinkLiteralProtocolStart)
         }
         Some(b'W' | b'w') => {
             tokenizer.attempt(
                 State::Next(StateName::TextBefore),
                 State::Next(StateName::TextBeforeData),
             );
-            State::Retry(StateName::GfmAutolinkLiteralWwwStart)
+            State::Retry(StateName::AutolinkLiteralWwwStart)
         }
         Some(b'[') => {
             tokenizer.attempt(
                 State::Next(StateName::TextBefore),
                 State::Next(StateName::TextBeforeLabelStartLink),
             );
-            State::Retry(StateName::GfmLabelStartFootnoteStart)
+            State::Retry(StateName::LabelStartFootnoteStart)
         }
         Some(b'\\') => {
             tokenizer.attempt(
@@ -247,13 +247,8 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
         true,
     );
 
-    if tokenizer
-        .parse_state
-        .options
-        .constructs
-        .gfm_autolink_literal
-    {
-        resolve_gfm_autolink_literal(tokenizer);
+    if tokenizer.parse_state.options.constructs.autolink_literal {
+        resolve_autolink_literal(tokenizer);
     }
 
     tokenizer.map.consume(&mut tokenizer.events);

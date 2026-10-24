@@ -13,7 +13,7 @@ use support::fixture::Position;
 use support::fixture::{AlignKind, InlineCode, Node, Root, Table, TableCell, TableRow, Text};
 
 #[test]
-fn gfm_table() -> Result<(), message::Message> {
+fn table() -> Result<(), message::Message> {
     assert_eq!(
         to_html("| a |\n| - |\n| b |"),
         "<p>| a |\n| - |\n| b |</p>",

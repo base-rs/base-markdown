@@ -66,8 +66,8 @@ fn main() {
     options.compile.allow_dangerous_html = true;
     options.compile.allow_dangerous_protocol = true;
     if args[1] == "gfm" {
-        options.parse.constructs.gfm_footnote_definition = false;
-        options.parse.constructs.gfm_label_start_footnote = false;
+        options.parse.constructs.footnote_definition = false;
+        options.parse.constructs.label_start_footnote = false;
     }
     let cases: Vec<Value> = serde_json::from_str(&fs::read_to_string(&args[2]).unwrap()).unwrap();
     for case in cases {

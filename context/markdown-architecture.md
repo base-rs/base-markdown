@@ -4,6 +4,8 @@ This crate exposes a pull-based semantic event contract shared by direct HTML re
 
 The [Pull Parser Architecture](pull-parser.md) specifies the source-backed semantic event contract and implementation of lazy inline parsing, shared HTML rendering, and incremental arena AST construction.
 
+Extensions use their syntax names throughout configuration and implementation: `table`, `strikethrough`, `autolink_literal`, `task_list_item`, and footnote constructs. Each can be enabled independently through `Constructs`; `Options::gfm()` remains a convenient preset. See [Extension configuration](extensions.md) for examples and the configuration-name migration.
+
 MDX is no longer supported. JavaScript expressions and import/export statements are ordinary Markdown, and angle-bracket syntax follows CommonMark HTML rules. There are no MDX presets, callback hooks, tokenizer states, or AST variants. Markdown parsing itself has no syntax errors; public result-returning APIs remain compatible while custom event consumers can still report invalid streams or output failures.
 
 ## Main paths

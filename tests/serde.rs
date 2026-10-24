@@ -210,7 +210,7 @@ fn invalid_serialized_arena_links_ranges_and_metadata_are_rejected() {
 }
 
 #[test]
-fn alignment_and_configuration_serialization_remain_compatible() {
+fn alignment_and_configuration_values_round_trip() {
     use core_markdown::AlignKind;
     for (value, wire) in [
         (AlignKind::None, json!(null)),
@@ -226,6 +226,59 @@ fn alignment_and_configuration_serialization_remain_compatible() {
     let wire = serde_json::to_string(&options).unwrap();
     let restored: Options = serde_json::from_str(&wire).unwrap();
     assert_eq!(serde_json::to_string(&restored).unwrap(), wire);
+}
+
+#[test]
+fn extension_configuration_uses_syntax_names() {
+    let mut options = Options::gfm();
+    options.compile.footnote_back_label = Some("Back to the note".into());
+    options.compile.footnote_clobber_prefix = Some("notes-".into());
+    options.compile.footnote_label = Some("Notes".into());
+    options.compile.footnote_label_attributes = Some("class=\"notes\"".into());
+    options.compile.footnote_label_tag_name = Some("h3".into());
+    options.compile.task_list_item_checkable = true;
+    let wire = serde_json::to_value(&options).unwrap();
+    for key in [
+        "autolinkLiteral",
+        "footnoteDefinition",
+        "labelStartFootnote",
+        "strikethrough",
+        "table",
+        "taskListItem",
+    ] {
+        assert_eq!(wire["parse"]["constructs"][key], true, "{key}");
+    }
+    assert_eq!(wire["parse"]["strikethroughSingleTilde"], true);
+    for (key, expected) in [
+        ("footnoteBackLabel", json!("Back to the note")),
+        ("footnoteClobberPrefix", json!("notes-")),
+        ("footnoteLabel", json!("Notes")),
+        ("footnoteLabelAttributes", json!("class=\"notes\"")),
+        ("footnoteLabelTagName", json!("h3")),
+        ("taskListItemCheckable", json!(true)),
+        ("tagfilter", json!(true)),
+    ] {
+        assert_eq!(wire["compile"][key], expected, "{key}");
+    }
+    for object in [
+        &wire["parse"],
+        &wire["parse"]["constructs"],
+        &wire["compile"],
+    ] {
+        assert!(object
+            .as_object()
+            .unwrap()
+            .keys()
+            .all(|key| !key.starts_with("gfm")));
+    }
+    let restored: Options = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&restored).unwrap(), wire);
+    let source = "note[^a]\n\n[^a]: explanation\n\n- [x] done";
+    let html = core_markdown::to_html_with_options(source, &restored).unwrap();
+    assert!(html.contains("<h3 id=\"footnote-label\" class=\"notes\">Notes</h3>"));
+    assert!(html.contains("id=\"notes-fn-a\""));
+    assert!(html.contains("aria-label=\"Back to the note\""));
+    assert!(!html.contains("disabled=\"\""));
 }
 
 #[test]

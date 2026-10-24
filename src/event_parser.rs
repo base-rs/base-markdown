@@ -35,7 +35,7 @@ impl<'a> EventParser<'a> {
             Producer::Compact(CompactParser {
                 blocks,
                 inline: InlineWorkspace::new(source, options, definitions),
-                gfm: options.constructs != crate::Constructs::default(),
+                extensions: options.constructs != crate::Constructs::default(),
                 cursor: 0,
                 closing: false,
                 inlines: false,
@@ -69,7 +69,7 @@ enum Phase {
 struct CompactParser<'a> {
     blocks: Blocks,
     inline: InlineWorkspace<'a>,
-    gfm: bool,
+    extensions: bool,
     cursor: usize,
     closing: bool,
     inlines: bool,
@@ -285,7 +285,7 @@ impl CompactParser<'_> {
                         }
                     })
                 };
-                let mut task = self.inline.options().constructs.gfm_task_list_item
+                let mut task = self.inline.options().constructs.task_list_item
                     && matches!(node.body, Body::Paragraph)
                     && matches!(nodes[node.parent].body, Body::Item(_))
                     && self.inline.source()[node.start..node.end].starts_with('[');
@@ -299,7 +299,7 @@ impl CompactParser<'_> {
                         before = nodes[before].next;
                     }
                 }
-                if self.gfm {
+                if self.extensions {
                     self.inline.region::<true>(fragments(), task);
                 } else {
                     self.inline.region::<false>(fragments(), task);

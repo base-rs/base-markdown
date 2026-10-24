@@ -333,12 +333,12 @@ impl Builder<'_> {
             return self.indented(at, line.remaining_space());
         }
         if bytes[at] == b'[' && possible_definition(&bytes[at..]) {
-            if self.options.constructs.gfm_table && self.table_head(definition_start).is_some() {
+            if self.options.constructs.table && self.table_head(definition_start).is_some() {
                 // Table heads can take precedence over definitions in the grammar.
                 self.unsupported = true;
                 return bytes.len();
             }
-            if self.options.constructs.gfm_footnote_definition && bytes[at..].starts_with(b"[^") {
+            if self.options.constructs.footnote_definition && bytes[at..].starts_with(b"[^") {
                 self.unsupported = true;
                 return bytes.len();
             }
@@ -413,7 +413,7 @@ impl Builder<'_> {
             }
             _ => {}
         }
-        if self.options.constructs.gfm_table {
+        if self.options.constructs.table {
             if let Some(delimiter_end) = self.table_head(definition_start) {
                 if bytes[start..at].contains(&b'\t') {
                     self.unsupported = true;
@@ -436,7 +436,7 @@ impl Builder<'_> {
             }
             Some(b'[') => {
                 let footnote =
-                    self.options.constructs.gfm_footnote_definition && bytes.starts_with(b"[^");
+                    self.options.constructs.footnote_definition && bytes.starts_with(b"[^");
                 self.unsupported |= footnote;
                 footnote
             }
@@ -469,7 +469,7 @@ impl Builder<'_> {
             let content_start = next + line.bytes_scanned();
             if !line.scan_space(4) {
                 let content = next + line.bytes_scanned();
-                if self.options.constructs.gfm_table && self.table_head(content_start).is_some() {
+                if self.options.constructs.table && self.table_head(content_start).is_some() {
                     // A lazy header can become a table when its delimiter resumes the
                     // container prefix. Preserve the grammar's context-sensitive boundary.
                     if !continued || bytes[next..content_start].contains(&b'\t') {

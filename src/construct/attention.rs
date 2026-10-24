@@ -2,7 +2,7 @@
 // Copyright, 2022-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-//! Attention (emphasis, strong, optionally GFM strikethrough) occurs in the
+//! Attention (emphasis, strong, optionally strikethrough) occurs in the
 //! [text][] content type.
 //!
 //! ## Grammar
@@ -12,7 +12,7 @@
 //!
 //! ```bnf
 //! attention_sequence ::= 1*'*' | 1*'_'
-//! gfm_attention_sequence ::= 1*'~'
+//! strikethrough_sequence ::= 1*'~'
 //! ```
 //!
 //! Sequences are matched together to form attention based on which character
@@ -56,7 +56,7 @@
 //! ## Tokens
 //!
 //! * [`Emphasis`][Name::Emphasis]
-//! * [`GfmStrikethrough`][Name::GfmStrikethrough]
+//! * [`Strikethrough`][Name::Strikethrough]
 //! * [`Strong`][Name::Strong]
 //!
 //! > 👉 **Note**: while parsing, [`AttentionSequence`][Name::AttentionSequence]
@@ -115,8 +115,8 @@ pub fn start(tokenizer: &mut Tokenizer) -> State {
     // Emphasis/strong:
     if (tokenizer.parse_state.options.constructs.attention
         && matches!(tokenizer.current, Some(b'*' | b'_')))
-        // GFM strikethrough:
-        || (tokenizer.parse_state.options.constructs.gfm_strikethrough && tokenizer.current == Some(b'~'))
+        // strikethrough:
+        || (tokenizer.parse_state.options.constructs.strikethrough && tokenizer.current == Some(b'~'))
     {
         tokenizer.tokenize_state.marker = tokenizer.current.unwrap();
         tokenizer.enter(Name::AttentionSequence);
@@ -182,7 +182,7 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
                         continue;
                     }
 
-                    // For GFM strikethrough:
+                    // For strikethrough:
                     // * both sequences must have the same size
                     // * more than 2 markers don’t work
                     // * one marker is prohibited by the spec, but supported by GH
@@ -190,7 +190,7 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
                         && (sequence_close.size != sequence_open.size
                             || sequence_close.size > 2
                             || sequence_close.size == 1
-                                && !tokenizer.parse_state.options.gfm_strikethrough_single_tilde)
+                                && !tokenizer.parse_state.options.strikethrough_single_tilde)
                     {
                         continue;
                     }
@@ -243,12 +243,12 @@ fn get_sequences(tokenizer: &mut Tokenizer) -> Vec<Sequence> {
                     // For regular attention markers (not strikethrough), the
                     // other attention markers can be used around them
                     || (marker != b'~' && matches!(after_char, Some('*' | '_')))
-                    || (marker != b'~' && tokenizer.parse_state.options.constructs.gfm_strikethrough && matches!(after_char, Some('~')));
+                    || (marker != b'~' && tokenizer.parse_state.options.constructs.strikethrough && matches!(after_char, Some('~')));
                 let close = before == CharacterKind::Other
                     || (before == CharacterKind::Punctuation && after != CharacterKind::Other)
                     || (marker != b'~' && matches!(before_char, Some('*' | '_')))
                     || (marker != b'~'
-                        && tokenizer.parse_state.options.constructs.gfm_strikethrough
+                        && tokenizer.parse_state.options.constructs.strikethrough
                         && matches!(before_char, Some('~')));
 
                 sequences.push(Sequence {
@@ -323,7 +323,7 @@ fn match_sequences(
     }
 
     let group_name = if sequences[open].marker == b'~' {
-        Name::GfmStrikethrough
+        Name::Strikethrough
     } else if take == 1 {
         Name::Emphasis
     } else {

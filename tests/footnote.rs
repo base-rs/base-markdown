@@ -13,7 +13,7 @@ use support::fixture::Position;
 use support::fixture::{FootnoteDefinition, FootnoteReference, Node, Paragraph, Root, Text};
 
 #[test]
-fn gfm_footnote() -> Result<(), message::Message> {
+fn footnote() -> Result<(), message::Message> {
     assert_eq!(
         to_html("A call.[^a]\n\n[^a]: whatevs"),
         "<p>A call.<a href=\"whatevs\">^a</a></p>\n",
@@ -40,8 +40,8 @@ fn gfm_footnote() -> Result<(), message::Message> {
             &Options {
                 parse: ParseOptions::gfm(),
                 compile: CompileOptions {
-                    gfm_footnote_label: Some("Voetnoten".into()),
-                    gfm_footnote_back_label: Some("Terug naar de inhoud".into()),
+                    footnote_label: Some("Voetnoten".into()),
+                    footnote_back_label: Some("Terug naar de inhoud".into()),
                     ..CompileOptions::gfm()
                 }
             }
@@ -55,7 +55,7 @@ fn gfm_footnote() -> Result<(), message::Message> {
 </ol>
 </section>
 ",
-        "should support `options.gfm_footnote_label`, `options.gfm_footnote_back_label`"
+        "should support `options.footnote_label`, `options.footnote_back_label`"
     );
 
     assert_eq!(
@@ -64,7 +64,7 @@ fn gfm_footnote() -> Result<(), message::Message> {
             &Options {
                 parse: ParseOptions::gfm(),
                 compile: CompileOptions {
-                    gfm_footnote_label_tag_name: Some("h1".into()),
+                    footnote_label_tag_name: Some("h1".into()),
                     ..CompileOptions::gfm()
                 }
             }
@@ -78,7 +78,7 @@ fn gfm_footnote() -> Result<(), message::Message> {
 </ol>
 </section>
 ",
-        "should support `options.gfm_footnote_label_tag_name`"
+        "should support `options.footnote_label_tag_name`"
     );
 
     assert_eq!(
@@ -87,7 +87,7 @@ fn gfm_footnote() -> Result<(), message::Message> {
             &Options {
                 parse: ParseOptions::gfm(),
                 compile: CompileOptions {
-                    gfm_footnote_label_attributes: Some("class=\"footnote-heading\"".into()),
+                    footnote_label_attributes: Some("class=\"footnote-heading\"".into()),
                     ..CompileOptions::gfm()
                 }
             }
@@ -101,7 +101,7 @@ fn gfm_footnote() -> Result<(), message::Message> {
 </ol>
 </section>
 ",
-        "should support `options.gfm_footnote_label_attributes`"
+        "should support `options.footnote_label_attributes`"
     );
 
     assert_eq!(
@@ -110,7 +110,7 @@ fn gfm_footnote() -> Result<(), message::Message> {
             &Options {
                 parse: ParseOptions::gfm(),
                 compile: CompileOptions {
-                    gfm_footnote_clobber_prefix: Some("".into()),
+                    footnote_clobber_prefix: Some("".into()),
                     ..CompileOptions::gfm()
                 }
             }
@@ -124,7 +124,7 @@ fn gfm_footnote() -> Result<(), message::Message> {
 </ol>
 </section>
 ",
-        "should support `options.gfm_footnote_clobber_prefix`"
+        "should support `options.footnote_clobber_prefix`"
     );
 
     assert_eq!(

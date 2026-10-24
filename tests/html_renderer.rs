@@ -96,7 +96,7 @@ fn renders_references_and_rich_inline_code() -> Result<(), message::Message> {
 }
 
 #[test]
-fn renders_gfm_tables_and_task_lists() -> Result<(), message::Message> {
+fn renders_tables_and_task_lists() -> Result<(), message::Message> {
     assert_eq!(
         render(
             "- [x] done\n\n| A | B |\n| :- | -: |\n| one | two |",
@@ -110,7 +110,7 @@ fn renders_gfm_tables_and_task_lists() -> Result<(), message::Message> {
 }
 
 #[test]
-fn renders_gfm_footnotes() -> Result<(), message::Message> {
+fn renders_footnotes() -> Result<(), message::Message> {
     assert_eq!(
         render(
             "Call.[^note]\n\n[^note]: details",
@@ -181,7 +181,7 @@ fn covers_parser_html_options_and_generated_heading_ids() -> Result<(), message:
         parse: parse_options,
         compile: CompileOptions {
             heading_ids: true,
-            gfm_task_list_item_checkable: false,
+            task_list_item_checkable: false,
             ..CompileOptions::default()
         },
     };
