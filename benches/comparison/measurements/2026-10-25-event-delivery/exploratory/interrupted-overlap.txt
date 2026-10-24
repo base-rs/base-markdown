@@ -1,0 +1,25 @@
+START 1 baseline core-markdown bench-commonmark.json
+baseline [('readme', 0.013885979751671442), ('mixed-100k', 0.4002103018372703), ('mixed-1m', 3.976399105263158)]
+START 1 baseline core-markdown bench-gfm.json
+baseline [('gfm-100k', 0.6126363305439331)]
+START 1 baseline core-markdown bench-references.json
+baseline [('references', 0.5737530344827586)]
+START 1 baseline core-markdown bench-scanners.json
+baseline [('long-lines-1m', 0.11264464149504194), ('code-1m', 0.07288805701964542)]
+START 1 baseline core-markdown bench-definitions.json
+baseline [('definitions-256', 0.042490811615566046), ('definitions-1024', 0.17463827558139536), ('definitions-4096', 0.7504902244897959)]
+START 1 baseline core-markdown multiline.json
+Traceback (most recent call last):
+  File "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/measurements/2026-10-25-event-delivery/measure.py", line 60, in <module>
+    output = subprocess.check_output(command, cwd=comparison, env=env, text=True)
+  File "/nix/store/p3p3jar7bxzsvfzwg215qv6l2h3z3n1m-python3-3.13.12/lib/python3.13/subprocess.py", line 472, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+               **kwargs).stdout
+               ^^^^^^^^^
+  File "/nix/store/p3p3jar7bxzsvfzwg215qv6l2h3z3n1m-python3-3.13.12/lib/python3.13/subprocess.py", line 556, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/p3p3jar7bxzsvfzwg215qv6l2h3z3n1m-python3-3.13.12/lib/python3.13/subprocess.py", line 1209, in communicate
+    stdout = self.stdout.read()
+KeyboardInterrupt
