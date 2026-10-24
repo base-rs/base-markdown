@@ -103,15 +103,16 @@ struct Builder<'a> {
 
 impl Blocks {
     /// Walk authored children in source order without collecting their indexes.
-    pub fn children(&self, index: usize) -> impl Iterator<Item = usize> + Clone + '_ {
+    pub fn children(&self, index: usize) -> impl Iterator<Item = (usize, &Node)> + Clone + '_ {
         let mut next = self.nodes[index].child;
         core::iter::from_fn(move || {
             if next == 0 {
                 None
             } else {
                 let index = next;
-                next = self.nodes[index].next;
-                Some(index)
+                let node = &self.nodes[index];
+                next = node.next;
+                Some((index, node))
             }
         })
     }

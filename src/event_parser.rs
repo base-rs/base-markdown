@@ -67,11 +67,10 @@ enum Phase {
 }
 impl EventParser<'_> {
     fn prepare_inline<const EXTENSIONS: bool>(&mut self, index: usize, task: bool, table: bool) {
-        let nodes = &self.blocks.nodes;
-        let fragments = self.blocks.children(index).map(|child| {
-            let node = nodes[child];
-            node.start..node.end
-        });
+        let fragments = self
+            .blocks
+            .children(index)
+            .map(|(_, node)| node.start..node.end);
         if self.definitions.is_empty() {
             self.inline.prepare::<false, EXTENSIONS>(
                 self.source,
@@ -104,8 +103,7 @@ impl EventParser<'_> {
     }
     fn value(&self, index: usize) -> Text<'static> {
         let mut value = ValueBuilder::new(self.source);
-        for child in self.blocks.children(index) {
-            let node = self.blocks.nodes[child];
+        for (_, node) in self.blocks.children(index) {
             let Body::Fragment(spaces) = node.body else {
                 unreachable!("literal block children are source fragments");
             };
@@ -157,13 +155,13 @@ impl EventParser<'_> {
             Phase::Done => None,
             Phase::Body => {
                 self.phase = Phase::DocumentEnd;
-                let last = self.blocks.children(0).last().unwrap_or(0);
+                let last = self.blocks.children(0).last().map_or(0, |(index, _)| index);
                 let mut leaf = last;
                 while matches!(
                     self.blocks.nodes[leaf].body,
                     Body::Quote | Body::List { .. } | Body::Item(_)
                 ) {
-                    let Some(child) = self.blocks.children(leaf).last() else {
+                    let Some((child, _)) = self.blocks.children(leaf).last() else {
                         break;
                     };
                     leaf = child;
@@ -305,8 +303,8 @@ impl EventParser<'_> {
                     && self
                         .blocks
                         .children(node.parent)
-                        .take_while(|&before| before != index)
-                        .all(|before| matches!(nodes[before].body, Body::Definition(_)));
+                        .take_while(|&(before, _)| before != index)
+                        .all(|(_, child)| matches!(child.body, Body::Definition(_)));
                 let table = matches!(node.body, Body::TableCell { .. });
                 if self.extensions {
                     self.prepare_inline::<true>(index, task, table);
@@ -349,18 +347,14 @@ impl EventParser<'_> {
                 start: matches!(marker, b'.' | b')').then_some(start),
             }),
             Body::Item(_) => {
-                let last = self
+                let block_end = self
                     .blocks
                     .children(index)
-                    .filter(|&child| {
-                        !matches!(
-                            self.blocks.nodes[child].body,
-                            Body::Definition(_) | Body::Footnote(_)
-                        )
+                    .filter(|(_, child)| {
+                        !matches!(child.body, Body::Definition(_) | Body::Footnote(_))
                     })
                     .last()
-                    .unwrap_or(0);
-                let block_end = last != 0 && !self.blocks.tight_paragraph(&self.blocks.nodes[last]);
+                    .is_some_and(|(_, child)| !self.blocks.tight_paragraph(child));
                 EventKind::Start(Tag::Item { block_end })
             }
             Body::Rule => {
