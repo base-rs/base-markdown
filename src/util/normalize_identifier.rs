@@ -87,11 +87,16 @@ fn normalize_unicode_identifier_into(value: &str, result: &mut String) {
                 result.push(' ');
             }
             space = false;
-            // Both lowercase sigma forms uppercase to Σ, so the contextual final-sigma mapping in str::to_lowercase cannot change this lower-then-upper result.
             if character.is_ascii() {
                 result.push(character.to_ascii_uppercase());
-            } else {
+            } else if character.is_uppercase() {
+                // Both lowercase sigma forms uppercase to Σ, so the contextual final-sigma mapping in str::to_lowercase cannot change this lower-then-upper result.
                 result.extend(character.to_lowercase().flat_map(char::to_uppercase));
+            } else {
+                // Lowercase, titlecase and uncased characters have the same uppercase result without the intermediate lowercase conversion.
+                for upper in character.to_uppercase() {
+                    result.push(upper);
+                }
             }
         }
     }
