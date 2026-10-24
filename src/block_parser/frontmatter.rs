@@ -8,7 +8,7 @@ use super::table::line_end;
 /// Return the full authored extent and the next physical line. Failed lookahead
 /// does not mutate block state or consume any part of an ordinary code fence.
 pub(super) fn scan(bytes: &[u8], start: usize) -> Option<(usize, usize)> {
-    let marker = bytes[start];
+    let marker = *bytes.get(start)?;
     if !matches!(marker, b'-' | b'+' | b'`' | b'~') {
         return None;
     }

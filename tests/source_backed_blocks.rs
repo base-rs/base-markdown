@@ -142,6 +142,9 @@ fn frontmatter_and_math_are_independent_of_code_fences() {
     options.parse.constructs.code_fenced = false;
     options.parse.constructs.frontmatter = true;
     options.parse.constructs.math_flow = true;
+    for source in ["", "\u{feff}"] {
+        assert_html(source, &options, "");
+    }
     assert_html(
         "```yaml\na: b\n```\n\n$$\nx\n$$",
         &options,
