@@ -1,0 +1,48 @@
+{
+  "source_commit": "08836d8a3474f220e60c09a90be17d8ae259d07a",
+  "source_src_tree": "2d832ba5ba6c4dbdae14f11f6a8ca9d65c79479a",
+  "coverage": {
+    "covered": 13535,
+    "total": 13535,
+    "unreachable_exclusions": 22,
+    "target": "aarch64-apple-darwin",
+    "all_features": true
+  },
+  "checks": [
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test:coverage --package core-markdown --all-targets true --all-features true",
+      "passed": true
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test",
+      "passed": true
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+      "passed": true
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo check --lib --all-features --target x86_64-unknown-linux-gnu --locked",
+      "passed": true,
+      "scope": "compile-only"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "passed": true
+    }
+  ],
+  "preservation": {
+    "corpus_outputs": 8468,
+    "existing_probes": 24276,
+    "destination_probes": 34320
+  },
+  "review": {
+    "source_commit": "08836d8a3474f220e60c09a90be17d8ae259d07a",
+    "independent": true,
+    "findings": 0
+  },
+  "notes": [
+    "The first coverage run overlapped a comment-only source edit and failed to map source columns; a complete rerun on unchanged final source passed.",
+    "Native runtime coverage is AArch64. Linux x86_64 is a compile-only local check; CI exercises its runner target."
+  ]
+}

@@ -4,22 +4,22 @@ This harness compares the public Markdown-to-HTML APIs of core-markdown, markdow
 
 ## Recorded comparison
 
-The [Unicode folding and real-document study](measurements/2026-10-25-normalize-identifiers/readme.md) compares production **`7663402ac2a9f0414e99f71f98f0d226b35b0504`** with squash-merged #52 and Inkmark 0.2.1. [Metadata](measurements/2026-10-25-normalize-identifiers/metadata.json) pins binaries, sources, compiler, locks and inputs.
+The [inline destination study](measurements/2026-10-25-inline-destinations/readme.md) compares production **`08836d8a3474f220e60c09a90be17d8ae259d07a`** with squash-merged #53 and Inkmark 0.2.1. [Metadata](measurements/2026-10-25-inline-destinations/metadata.json) pins binaries, sources, compiler, locks and inputs.
 
 The original four workloads, in milliseconds per complete conversion; lower is faster:
 
 | Workload | Input bytes | core-markdown ms | Inkmark ms |
 | --- | ---: | ---: | ---: |
-| README | 9,019 | 0.013521 | 0.019388 |
-| Mixed 100 KB | 100,252 | 0.396697 | 0.412547 |
-| Mixed 1 MB | 1,000,020 | 3.982911 | 4.422400 |
-| GFM 100 KB | 100,130 | 0.608064 | 0.714119 |
+| README | 9,019 | 0.013416 | 0.019405 |
+| Mixed 100 KB | 100,252 | 0.393345 | 0.415127 |
+| Mixed 1 MB | 1,000,020 | 3.931404 | 4.457829 |
+| GFM 100 KB | 100,130 | 0.621221 | 0.720311 |
 
-The original four range from 0.5% less time to 1.6% more time versus #52. The original Unicode-label control takes **10.6% less time**, and long lowercase Unicode labels **33.3% less time**, each saving **1,027 allocations**. The late-uppercase stress case takes **7.5% more time**. Small slower medians on real documents persist in a separate paired repeat; the full report retains them and a code-equivalent variability control.
+The shared byte scanner skips ordinary inline link destination runs without changing allocations or output. Clap's README takes **14.9% less time** and Awesome Rust's README **18.2% less time** than #53 in the primary cohort; a separate repeat finds 14.2% and 16.2% less time. The original four take 0.4–1.8% less time. The CommonMark specification takes **2.2% more time** in the primary cohort and 0.2% less in the repeat; small effects remain uncertain on this shared host.
 
-Core-markdown has lower medians than Inkmark on all twelve established workloads and all six pinned real documents in this run. It has twenty-eight lower medians across all twenty-nine inputs; mixed dense-Unicode keys remain **3.7% behind Inkmark**. Real documents agree after entity decoding. **Generated GFM output differs:** Inkmark leaves `www.` unlinked and table formatting differs. These shared-host measurements do not establish a universal ranking; the candidate README process medians alone span 39.4%. See the [complete tables, repeats and raw samples](measurements/2026-10-25-normalize-identifiers/readme.md) before generalizing.
+Core-markdown has lower medians than Inkmark on all twelve established workloads and all six pinned real documents in this run. It has twenty-eight lower medians across all twenty-nine inputs; mixed dense-Unicode keys remain **4.1% behind Inkmark**. Real documents agree after entity decoding. **Generated GFM output differs:** Inkmark leaves `www.` unlinked and table formatting differs. These shared-host measurements do not establish a universal ranking; candidate Awesome Rust process medians span 56.2%. See the [complete tables, repeats and raw samples](measurements/2026-10-25-inline-destinations/readme.md) before generalizing.
 
-The [preceding reference-key study](measurements/2026-10-25-event-delivery/readme.md) retains the #51 comparison and separator-delivery diagnostics.
+The [preceding Unicode folding study](measurements/2026-10-25-normalize-identifiers/readme.md) retains its casing allocation gains, late-uppercase tradeoff, and initial real-document comparison.
 
 ## Reproduction
 
@@ -55,7 +55,7 @@ The CommonMark profile disables extensions, permits raw HTML and all URL protoco
 
 [check.py](check.py) checks direct/document HTML parity, all 652 CommonMark 0.31.2 reference examples, agreement with pinned markdown-rs on all 677 published GFM examples, and 29 targeted inputs under four profiles. `--all` also saves each engine's complete outputs and agreement counts. Downloaded specification sources are verified against recorded SHA-256 hashes; unexpected changes require inspection. The specifications are attributed to their authors and licensed CC BY-SA 4.0; downloaded copies remain under ignored `data/`.
 
-Byte differences can represent equivalent HTML escaping or formatting, or substantive differences in links, emphasis, tables, tag filtering, and footnotes. Read exact and normalized comparisons separately. The latest study preserves all 8,468 saved HTML/Markdown outputs and 24,276 diagnostic results against #51; its [output agreement](measurements/2026-10-25-event-delivery/output-agreement.json) and [preservation records](measurements/2026-10-25-event-delivery/preservation.json) identify the checked inputs and hashes. The [single-parser study](measurements/2026-10-25-single-parser/readme.md#output-and-compatibility) separately records intentional corrections outside the saved corpus. Observed agreement is regression evidence, not a proof for every input.
+Byte differences can represent equivalent HTML escaping or formatting, or substantive differences in links, emphasis, tables, tag filtering, and footnotes. Read exact and normalized comparisons separately. The latest study preserves all 8,468 saved HTML/Markdown outputs, 24,276 existing diagnostic results and 34,320 added destination-boundary probes against #53; its [output agreement](measurements/2026-10-25-inline-destinations/output-agreement.json) and [preservation records](measurements/2026-10-25-inline-destinations/preservation.json) identify the checked inputs and hashes. The [single-parser study](measurements/2026-10-25-single-parser/readme.md#output-and-compatibility) separately records intentional corrections outside the saved corpus. Observed agreement is regression evidence, not a proof for every input.
 
 ## Architecture and allocations
 
@@ -90,3 +90,6 @@ Historical directories retain their original measurements, source identities, va
 
 - [Reference labels and event phases](measurements/2026-10-25-labels-and-event-phases/readme.md).
 - [Source-backed reference keys and separator delivery](measurements/2026-10-25-event-delivery/readme.md).
+
+- [Unicode identifier folding and real documents](measurements/2026-10-25-normalize-identifiers/readme.md).
+- [Inline destination scanning on real documents](measurements/2026-10-25-inline-destinations/readme.md).

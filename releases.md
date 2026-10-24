@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Scan ordinary inline link destination runs with the shared byte scanner, retaining escape, nesting, whitespace, control-byte and Unicode behavior without additional allocations.
+
 - Skip the intermediate lowercase string when Unicode identifier folding can uppercase directly, preserving reference matching and visible footnote identifiers.
 
 - Borrow canonical ASCII reference keys from source while preserving Unicode folding, whitespace normalization, and first-definition precedence. Represent pending block separators as delivery phases, removing separate state and per-inline separator handling.

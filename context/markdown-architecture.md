@@ -18,6 +18,8 @@ The parser owns its compact block arena, prepared definition indexes, and one re
 
 Ordinary inline regions scan physical source fragments without copying them. Constructs that span stripped container prefixes use a lazily constructed logical view and source-segment map with the same scanner. Semantic values map back to source ranges when contiguous, or materialize only the value that requires normalization. Logical-view offsets never escape in public events.
 
+Bare inline link destinations use the shared candidate-byte scanner to skip ordinary URL runs. Scalar handling retains escapes, balanced parentheses, whitespace and control-byte rules; NUL remains destination data until value decoding replaces it. This uses NEON on supported AArch64 targets and the existing scalar fallback elsewhere, without extra parser state or allocation.
+
 Reference and footnote indexes normalize raw identifiers before inline resolution. They preserve authored definitions, including duplicates, while lookup selects the first normalized identifier. String decoding honors independently disabled escape and character-reference constructs. Frontmatter, math, tables, tasks, literal links, and inline-code metadata have direct handlers in the block or inline parser.
 
 Reference keys borrow contiguous canonical ASCII labels from source; other forms use owned normalized storage. Their ASCII letters use lowercase internally after Unicode folding; footnote keys retain uppercase because they appear in rendered IDs. Pending block separators are explicit delivery phases rather than independent parser state.

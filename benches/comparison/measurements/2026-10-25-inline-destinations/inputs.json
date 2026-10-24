@@ -1,0 +1,42 @@
+[
+  {
+    "profile": "commonmark",
+    "path": "../../data/bench-commonmark.json"
+  },
+  {
+    "profile": "gfm",
+    "path": "../../data/bench-gfm.json"
+  },
+  {
+    "profile": "commonmark",
+    "path": "../../data/bench-references.json"
+  },
+  {
+    "profile": "commonmark",
+    "path": "../../data/bench-scanners.json"
+  },
+  {
+    "profile": "commonmark",
+    "path": "../../data/bench-definitions.json"
+  },
+  {
+    "profile": "commonmark",
+    "path": "../2026-10-25-recover-single-parser/multiline.json"
+  },
+  {
+    "profile": "commonmark",
+    "path": "../2026-10-25-event-delivery/key-shapes.json"
+  },
+  {
+    "profile": "commonmark",
+    "path": "../../data/bench-key-controls.json"
+  },
+  {
+    "profile": "gfm",
+    "path": "../../data/bench-real-gfm.json"
+  },
+  {
+    "profile": "commonmark",
+    "path": "../../data/bench-real-commonmark.json"
+  }
+]
