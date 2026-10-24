@@ -65,6 +65,8 @@ for round in range(1, args.rounds + 1):
                 command = ['bundle', 'exec', 'ruby', 'adapter.rb', 'inkmark', 'bench', profile, str(path)]
                 binary_sha = None
             else:
+                # Use a new inode: overwriting a previously executed Mach-O can leave stale signature state on macOS. Startup is outside the measured batches.
+                launch.unlink(missing_ok=True)
                 shutil.copyfile(binaries[engine], launch)
                 launch.chmod(0o755)
                 command = [str(launch), 'bench', mode, profile, str(path)]
