@@ -1,0 +1,52 @@
+[
+  {
+    "profile": "commonmark",
+    "input": "bench-commonmark.json",
+    "output_sha256": "243ac63110930bc54241c75e9eb3a8ada8ea0210a94ef8962f4f23e2f168acfe"
+  },
+  {
+    "profile": "gfm",
+    "input": "bench-gfm.json",
+    "output_sha256": "97bee6a682e0346ce4f6510a6bf51f6099a4a2d85d3736ba16c1b76e6fd7bb74"
+  },
+  {
+    "profile": "commonmark",
+    "input": "bench-references.json",
+    "output_sha256": "7ada26a2fc045bf3f07b498e235a6dd1d344a21d7aa5a71b225f5dc50a959850"
+  },
+  {
+    "profile": "commonmark",
+    "input": "bench-scanners.json",
+    "output_sha256": "75e0702032c2d84a58d4ff93f0c7886c671cefc1bb1a31a8c885eec1b8721999"
+  },
+  {
+    "profile": "commonmark",
+    "input": "bench-definitions.json",
+    "output_sha256": "930ef0e0965ed0f26dfd5591842600f3c43a896403dc8861137f5931b20f31bd"
+  },
+  {
+    "profile": "commonmark",
+    "input": "multiline.json",
+    "output_sha256": "178190ea65aaa404ec1738b99621297cd80687a9211f3ecb6bbb085e24ae4270"
+  },
+  {
+    "profile": "commonmark",
+    "input": "key-shapes.json",
+    "output_sha256": "f2c3cc348c76f7062cc0395cbbe17f1ab250dab5e3bf4301678a6f8cd22d8027"
+  },
+  {
+    "profile": "commonmark",
+    "input": "bench-key-controls.json",
+    "output_sha256": "0f368c0555b39a5ca5b69d13b7a2f9c0e37480f07336b0699c69c7c73888157b"
+  },
+  {
+    "profile": "gfm",
+    "input": "bench-real-gfm.json",
+    "output_sha256": "6803139e1ba82ec4981d1b36277a2465da73bf72790c294167ce8977cd95a000"
+  },
+  {
+    "profile": "commonmark",
+    "input": "bench-real-commonmark.json",
+    "output_sha256": "6051a437d85486b61f8038711c8f5e5b24172dbd4019d568a586a73856c67303"
+  }
+]

@@ -4,6 +4,8 @@ This harness compares the public Markdown-to-HTML APIs of core-markdown, markdow
 
 ## Recorded comparison
 
+The subsequent [parser consolidation study](measurements/2026-10-25-parser-consolidation/readme.md) compares production `561ae1d` with #54 after five simplification rounds: 53 fewer net production lines, unchanged allocations, and identical complete events on 58,596 probes. The original four range from 0.61% less time to 0.67% more in its primary run; mixed-1m is 0.62% slower and 0.65% slower in a separate repeat. That pass does not retime Inkmark; the table below remains the recorded #54 comparison.
+
 The [inline destination study](measurements/2026-10-25-inline-destinations/readme.md) compares production **`08836d8a3474f220e60c09a90be17d8ae259d07a`** with squash-merged #53 and Inkmark 0.2.1. [Metadata](measurements/2026-10-25-inline-destinations/metadata.json) pins binaries, sources, compiler, locks and inputs.
 
 The original four workloads, in milliseconds per complete conversion; lower is faster:
@@ -55,7 +57,7 @@ The CommonMark profile disables extensions, permits raw HTML and all URL protoco
 
 [check.py](check.py) checks direct/document HTML parity, all 652 CommonMark 0.31.2 reference examples, agreement with pinned markdown-rs on all 677 published GFM examples, and 29 targeted inputs under four profiles. `--all` also saves each engine's complete outputs and agreement counts. Downloaded specification sources are verified against recorded SHA-256 hashes; unexpected changes require inspection. The specifications are attributed to their authors and licensed CC BY-SA 4.0; downloaded copies remain under ignored `data/`.
 
-Byte differences can represent equivalent HTML escaping or formatting, or substantive differences in links, emphasis, tables, tag filtering, and footnotes. Read exact and normalized comparisons separately. The latest study preserves all 8,468 saved HTML/Markdown outputs, 24,276 existing diagnostic results and 34,320 added destination-boundary probes against #53; its [output agreement](measurements/2026-10-25-inline-destinations/output-agreement.json) and [preservation records](measurements/2026-10-25-inline-destinations/preservation.json) identify the checked inputs and hashes. The [single-parser study](measurements/2026-10-25-single-parser/readme.md#output-and-compatibility) separately records intentional corrections outside the saved corpus. Observed agreement is regression evidence, not a proof for every input.
+Byte differences can represent equivalent HTML escaping or formatting, or substantive differences in links, emphasis, tables, tag filtering, and footnotes. Read exact and normalized comparisons separately. The consolidation study preserves all 8,468 saved HTML/Markdown outputs and 58,596 diagnostic results against #54, including complete serialized event sequences. Its [output agreement](measurements/2026-10-25-parser-consolidation/output-agreement.json), [event preservation](measurements/2026-10-25-parser-consolidation/event-preservation.json) and [corpus preservation](measurements/2026-10-25-parser-consolidation/preservation.json) identify the checked inputs and hashes. The [single-parser study](measurements/2026-10-25-single-parser/readme.md#output-and-compatibility) separately records intentional corrections outside the saved corpus. Observed agreement is regression evidence, not a proof for every input.
 
 ## Architecture and allocations
 
@@ -93,3 +95,5 @@ Historical directories retain their original measurements, source identities, va
 
 - [Unicode identifier folding and real documents](measurements/2026-10-25-normalize-identifiers/readme.md).
 - [Inline destination scanning on real documents](measurements/2026-10-25-inline-destinations/readme.md).
+
+- [Parser ownership and event-delivery consolidation](measurements/2026-10-25-parser-consolidation/readme.md).

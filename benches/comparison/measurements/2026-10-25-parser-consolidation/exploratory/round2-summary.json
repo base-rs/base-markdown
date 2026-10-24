@@ -1,0 +1,222 @@
+{
+  "core-markdown/readme": {
+    "baseline": {
+      "median_ms": 0.013186340048194956,
+      "process_medians_ms": [
+        0.013145678075259914,
+        0.013227002021129997
+      ],
+      "process_spread_percent": 0.6186363716234267,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "round2": {
+      "median_ms": 0.013109721688311118,
+      "process_medians_ms": [
+        0.013120121908933295,
+        0.013099321467688939
+      ],
+      "process_spread_percent": 0.15879021898701495,
+      "control_engine": "baseline",
+      "time_change_percent": -0.5810434101032214
+    }
+  },
+  "core-markdown/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.3890116019601335,
+      "process_medians_ms": [
+        0.3905886335877862,
+        0.3874345703324808
+      ],
+      "process_spread_percent": 0.8140892674081135,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "round2": {
+      "median_ms": 0.3916008208777084,
+      "process_medians_ms": [
+        0.3911258560411311,
+        0.39207578571428575
+      ],
+      "process_spread_percent": 0.24287058973027076,
+      "control_engine": "baseline",
+      "time_change_percent": 0.665589124984578
+    }
+  },
+  "core-markdown/mixed-1m": {
+    "baseline": {
+      "median_ms": 3.8795862538461536,
+      "process_medians_ms": [
+        3.8835673076923074,
+        3.8756052
+      ],
+      "process_spread_percent": 0.2054416608871179,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "round2": {
+      "median_ms": 3.9290930762483125,
+      "process_medians_ms": [
+        3.9241752051282046,
+        3.934010947368421
+      ],
+      "process_spread_percent": 0.25064482919525677,
+      "control_engine": "baseline",
+      "time_change_percent": 1.276085107093028
+    }
+  },
+  "core-markdown/gfm-100k": {
+    "baseline": {
+      "median_ms": 0.6153069503407984,
+      "process_medians_ms": [
+        0.6155464135021097,
+        0.6150674871794871
+      ],
+      "process_spread_percent": 0.07786565419329872,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "round2": {
+      "median_ms": 0.6039119848206314,
+      "process_medians_ms": [
+        0.6051026708860759,
+        0.6027212987551867
+      ],
+      "process_spread_percent": 0.39510336465753415,
+      "control_engine": "baseline",
+      "time_change_percent": -1.8519156193271935
+    }
+  },
+  "core-markdown/rust-readme": {
+    "baseline": {
+      "median_ms": 0.009513456634747584,
+      "process_medians_ms": [
+        0.009582798968731408,
+        0.009444114300763761
+      ],
+      "process_spread_percent": 1.4684772287903325,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "round2": {
+      "median_ms": 0.0094763154013782,
+      "process_medians_ms": [
+        0.009444188865351515,
+        0.009508441937404884
+      ],
+      "process_spread_percent": 0.680345056303322,
+      "control_engine": "baseline",
+      "time_change_percent": -0.3904073439902622
+    }
+  },
+  "core-markdown/clap-readme": {
+    "baseline": {
+      "median_ms": 0.005575106404002444,
+      "process_medians_ms": [
+        0.005630426181324893,
+        0.005519786626679996
+      ],
+      "process_spread_percent": 2.0044172379801495,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "round2": {
+      "median_ms": 0.005586007841838883,
+      "process_medians_ms": [
+        0.0055674204633920305,
+        0.005604595220285735
+      ],
+      "process_spread_percent": 0.6677195864430052,
+      "control_engine": "baseline",
+      "time_change_percent": 0.19553775383753802
+    }
+  },
+  "core-markdown/tokio-changelog": {
+    "baseline": {
+      "median_ms": 1.0426215997474748,
+      "process_medians_ms": [
+        1.039389472222222,
+        1.0458537272727273
+      ],
+      "process_spread_percent": 0.6219280859834475,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "round2": {
+      "median_ms": 1.0411736623084291,
+      "process_medians_ms": [
+        1.0415692551724138,
+        1.0407780694444446
+      ],
+      "process_spread_percent": 0.07601867787159211,
+      "control_engine": "baseline",
+      "time_change_percent": -0.1388746827608811
+    }
+  },
+  "core-markdown/rust-nll-rfc": {
+    "baseline": {
+      "median_ms": 0.17980599879518072,
+      "process_medians_ms": [
+        0.1805219879518072,
+        0.1790900096385542
+      ],
+      "process_spread_percent": 0.7995858150563917,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "round2": {
+      "median_ms": 0.1797634463336214,
+      "process_medians_ms": [
+        0.17863681182147165,
+        0.18089008084577116
+      ],
+      "process_spread_percent": 1.2613688082115049,
+      "control_engine": "baseline",
+      "time_change_percent": -0.023665763013724916
+    }
+  },
+  "core-markdown/awesome-rust-readme": {
+    "baseline": {
+      "median_ms": 1.0031984699999998,
+      "process_medians_ms": [
+        1.0101388866666665,
+        0.9962580533333333
+      ],
+      "process_spread_percent": 1.3932969763094993,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "round2": {
+      "median_ms": 1.0141852373068434,
+      "process_medians_ms": [
+        1.0135538079470199,
+        1.0148166666666667
+      ],
+      "process_spread_percent": 0.12459710670957858,
+      "control_engine": "baseline",
+      "time_change_percent": 1.0951738499804131
+    }
+  },
+  "core-markdown/commonmark-spec": {
+    "baseline": {
+      "median_ms": 0.4762916922035199,
+      "process_medians_ms": [
+        0.4706711770491803,
+        0.4819122073578595
+      ],
+      "process_spread_percent": 2.3882980001353804,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "round2": {
+      "median_ms": 0.4762018738244176,
+      "process_medians_ms": [
+        0.4759350328947368,
+        0.47646871475409835
+      ],
+      "process_spread_percent": 0.11213334225799176,
+      "control_engine": "baseline",
+      "time_change_percent": -0.018857851306786078
+    }
+  }
+}

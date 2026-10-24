@@ -14,7 +14,9 @@ MDX is no longer supported. JavaScript expressions and import/export statements 
 - `Document` is the only AST. Markdown serialization traverses its node IDs directly; HTML rendering traverses semantic events through `EventHtmlRenderer`. Custom renderers consume events or node IDs.
 - AST helpers include stack-free traversal, `text_content`, code-fence metadata, subtree detachment/attachment, and heading lookup and section replacement. Detached nodes remain in their document arena and retain stable IDs. See [Document AST and migration](document.md).
 
-The parser owns its compact block arena, prepared definition indexes, and one reusable inline workspace. It does not produce a document-wide grammar token stream or select a compatibility backend. Block and inline syntax handlers consume source bytes directly, and HTML/autolink recognizers are small shared byte state machines.
+`EventParser` directly owns its compact block arena, prepared definition indexes, source/configuration references and reusable `InlineParser`. Reference specialization is selected beside block preparation; no separate workspace wrapper mediates ownership. Start and end handling, including the final separator policy, share a cold document-boundary handler. Prepared child walks use one cloneable, allocation-free iterator over the block arena's sibling links.
+
+The parser does not produce a document-wide grammar token stream or select a compatibility backend. Block and inline syntax handlers consume source bytes directly, and HTML/autolink recognizers are small shared byte state machines.
 
 Ordinary inline regions scan physical source fragments without copying them. Constructs that span stripped container prefixes use a lazily constructed logical view and source-segment map with the same scanner. Semantic values map back to source ranges when contiguous, or materialize only the value that requires normalization. Logical-view offsets never escape in public events.
 
