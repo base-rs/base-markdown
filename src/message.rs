@@ -55,7 +55,7 @@ mod tests {
             rule_id: "example",
             source: "parser",
         };
-        assert!(matches!(message.reason, Cow::Borrowed(_)));
+        assert_eq!(message.reason, Cow::Borrowed("invalid value"));
         assert_eq!(message.to_string(), "invalid value (parser:example)");
         assert!(write!(&mut FailingWriter, "{message}").is_err());
 

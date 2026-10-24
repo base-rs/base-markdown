@@ -12,6 +12,8 @@ use crate::{
 use alloc::boxed::Box;
 use core::ops::Range;
 
+// Keep compact storage inline; grammar promotion allocates its workspace once.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum InlineWorkspace<'a> {
     Compact {
         source: &'a str,
@@ -56,17 +58,17 @@ impl<'a> InlineWorkspace<'a> {
         fragments: impl Iterator<Item = Range<usize>> + Clone,
         task: bool,
     ) {
-        let Self::Compact {
-            source,
-            options,
-            definitions,
-            parser,
-        } = self
-        else {
-            if let Self::Grammar(parser) = self {
+        let (source, options, definitions, parser) = match self {
+            Self::Compact {
+                source,
+                options,
+                definitions,
+                parser,
+            } => (source, options, definitions, parser),
+            Self::Grammar(parser) => {
                 parser.region::<GFM>(fragments, task);
+                return;
             }
-            return;
         };
         if !options.inline_code_info
             && if definitions.is_empty() {

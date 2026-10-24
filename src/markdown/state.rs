@@ -533,7 +533,7 @@ impl<'a> State<'a> {
             }
             let start = self.output.len();
             self.container_phrasing(document, cell, &Info::new("", ""))?;
-            self.rewrite(start, |value, output| write_table_pipes(value, output));
+            self.rewrite(start, write_table_pipes);
         }
         self.output.push_str(" |");
         Ok(())
