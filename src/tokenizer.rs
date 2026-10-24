@@ -259,6 +259,8 @@ pub struct TokenizeState<'a> {
     /// Index.
     pub end: usize,
     /// Shallowest positive indentation in the current type 6 or 7 HTML block.
+    pub autolink: crate::util::autolink::Autolink,
+    pub html_inline: crate::util::html_text::HtmlText,
     pub html_flow_indent: usize,
     /// Number of blank lines seen while checking HTML block continuation.
     pub html_flow_blank_lines: usize,
@@ -396,6 +398,8 @@ impl<'a> Tokenizer<'a> {
                 gfm_footnote_definitions: vec![],
 
                 end: 0,
+                autolink: crate::util::autolink::Autolink::default(),
+                html_inline: crate::util::html_text::HtmlText::default(),
                 html_flow_indent: 0,
                 html_flow_blank_lines: 0,
                 html_flow_blank_line_base: 0,

@@ -50,6 +50,8 @@ enum Kind {
     NamedEntity(usize),
     NumericEntity(char),
     Code(usize),
+    Html,
+    AngleLink(bool),
     SoftBreak,
     HardBreak,
     Task(bool),
@@ -299,7 +301,57 @@ impl InlineParser {
             while at < range.end {
                 let start = at;
                 match bytes[at] {
-                    b'<' | 0 => return false,
+                    0 => return false,
+                    b'<' => {
+                        let mut link = crate::util::autolink::Autolink::default();
+                        let mut end = at + 1;
+                        let mut found = false;
+                        while end < range.end {
+                            match link.advance(bytes[end]) {
+                                None => break,
+                                Some(true) => {
+                                    found = true;
+                                    break;
+                                }
+                                Some(false) => end += 1,
+                            }
+                        }
+                        if found {
+                            self.append(at, end + 1, Kind::AngleLink(link.email()));
+                            self.append(at + 1, end, Kind::Text);
+                            self.append(end + 1, end + 1, Kind::End(TagKind::Link));
+                            at = end + 1;
+                            continue;
+                        }
+                        let mut html = crate::util::html_text::HtmlText::default();
+                        end = at + 1;
+                        while end < range.end {
+                            let byte = if bytes[end] == b'\r' {
+                                b'\n'
+                            } else {
+                                bytes[end]
+                            };
+                            match html.advance(byte, options.html_tag_namespaces) {
+                                None => break,
+                                Some(true) => {
+                                    found = true;
+                                    break;
+                                }
+                                Some(false) if byte == b'\n' => return false,
+                                Some(false) => end += 1,
+                            }
+                        }
+                        if found {
+                            self.append(at, end + 1, Kind::Html);
+                            at = end + 1;
+                        } else if end == range.end {
+                            // The grammar handles incomplete and cross-fragment HTML.
+                            return false;
+                        } else {
+                            self.append(at, at + 1, Kind::Text);
+                            at += 1;
+                        }
+                    }
                     marker
                         if GFM
                             && options.constructs.gfm_autolink_literal
@@ -589,6 +641,21 @@ impl InlineParser {
                         title: None,
                     })
                 }
+                Kind::Html => EventKind::Html {
+                    value: Text::Source(node.start..node.end),
+                    block: false,
+                },
+                Kind::AngleLink(email) => EventKind::Start(Tag::Link {
+                    destination: if email {
+                        Text::from(alloc::format!(
+                            "mailto:{}",
+                            &source[node.start + 1..node.end - 1]
+                        ))
+                    } else {
+                        Text::Source(node.start + 1..node.end - 1)
+                    },
+                    title: None,
+                }),
                 Kind::Code(count) => {
                     let mut range = node.start + count..node.end - count;
                     let value = &source[range.clone()];

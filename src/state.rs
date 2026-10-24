@@ -39,14 +39,7 @@ pub enum Name {
     AttentionInside,
 
     AutolinkStart,
-    AutolinkOpen,
-    AutolinkSchemeOrEmailAtext,
-    AutolinkSchemeInsideOrEmailAtext,
-    AutolinkUrlInside,
-    AutolinkEmailAtSignOrDot,
-    AutolinkEmailAtext,
-    AutolinkEmailValue,
-    AutolinkEmailLabel,
+    AutolinkScan,
 
     BlankLineStart,
     BlankLineAfter,
@@ -263,31 +256,7 @@ pub enum Name {
     HtmlFlowContinuationStartNonLazy,
 
     HtmlTextStart,
-    HtmlTextOpen,
-    HtmlTextDeclarationOpen,
-    HtmlTextTagCloseStart,
-    HtmlTextTagClose,
-    HtmlTextTagCloseBetween,
-    HtmlTextTagOpen,
-    HtmlTextTagOpenBetween,
-    HtmlTextTagOpenAttributeName,
-    HtmlTextTagOpenAttributeNameAfter,
-    HtmlTextTagOpenAttributeValueBefore,
-    HtmlTextTagOpenAttributeValueQuoted,
-    HtmlTextTagOpenAttributeValueQuotedAfter,
-    HtmlTextTagOpenAttributeValueUnquoted,
-    HtmlTextCdata,
-    HtmlTextCdataOpenInside,
-    HtmlTextCdataClose,
-    HtmlTextCdataEnd,
-    HtmlTextCommentOpenInside,
-    HtmlTextComment,
-    HtmlTextCommentClose,
-    HtmlTextCommentEnd,
-    HtmlTextDeclaration,
-    HtmlTextEnd,
-    HtmlTextInstruction,
-    HtmlTextInstructionClose,
+    HtmlTextScan,
     HtmlTextLineEndingBefore,
     HtmlTextLineEndingAfter,
     HtmlTextLineEndingAfterPrefix,
@@ -415,14 +384,7 @@ pub fn call(tokenizer: &mut Tokenizer, name: Name) -> State {
         Name::AttentionInside => construct::attention::inside,
 
         Name::AutolinkStart => construct::autolink::start,
-        Name::AutolinkOpen => construct::autolink::open,
-        Name::AutolinkSchemeOrEmailAtext => construct::autolink::scheme_or_email_atext,
-        Name::AutolinkSchemeInsideOrEmailAtext => construct::autolink::scheme_inside_or_email_atext,
-        Name::AutolinkUrlInside => construct::autolink::url_inside,
-        Name::AutolinkEmailAtSignOrDot => construct::autolink::email_at_sign_or_dot,
-        Name::AutolinkEmailAtext => construct::autolink::email_atext,
-        Name::AutolinkEmailValue => construct::autolink::email_value,
-        Name::AutolinkEmailLabel => construct::autolink::email_label,
+        Name::AutolinkScan => construct::autolink::scan,
 
         Name::BlankLineStart => construct::blank_line::start,
         Name::BlankLineAfter => construct::blank_line::after,
@@ -684,41 +646,7 @@ pub fn call(tokenizer: &mut Tokenizer, name: Name) -> State {
         Name::HtmlFlowContinuationStartNonLazy => construct::html_flow::continuation_start_non_lazy,
 
         Name::HtmlTextStart => construct::html_text::start,
-        Name::HtmlTextOpen => construct::html_text::open,
-        Name::HtmlTextDeclarationOpen => construct::html_text::declaration_open,
-        Name::HtmlTextTagCloseStart => construct::html_text::tag_close_start,
-        Name::HtmlTextTagClose => construct::html_text::tag_close,
-        Name::HtmlTextTagCloseBetween => construct::html_text::tag_close_between,
-        Name::HtmlTextTagOpen => construct::html_text::tag_open,
-        Name::HtmlTextTagOpenBetween => construct::html_text::tag_open_between,
-        Name::HtmlTextTagOpenAttributeName => construct::html_text::tag_open_attribute_name,
-        Name::HtmlTextTagOpenAttributeNameAfter => {
-            construct::html_text::tag_open_attribute_name_after
-        }
-        Name::HtmlTextTagOpenAttributeValueBefore => {
-            construct::html_text::tag_open_attribute_value_before
-        }
-        Name::HtmlTextTagOpenAttributeValueQuoted => {
-            construct::html_text::tag_open_attribute_value_quoted
-        }
-        Name::HtmlTextTagOpenAttributeValueQuotedAfter => {
-            construct::html_text::tag_open_attribute_value_quoted_after
-        }
-        Name::HtmlTextTagOpenAttributeValueUnquoted => {
-            construct::html_text::tag_open_attribute_value_unquoted
-        }
-        Name::HtmlTextCdata => construct::html_text::cdata,
-        Name::HtmlTextCdataOpenInside => construct::html_text::cdata_open_inside,
-        Name::HtmlTextCdataClose => construct::html_text::cdata_close,
-        Name::HtmlTextCdataEnd => construct::html_text::cdata_end,
-        Name::HtmlTextCommentOpenInside => construct::html_text::comment_open_inside,
-        Name::HtmlTextComment => construct::html_text::comment,
-        Name::HtmlTextCommentClose => construct::html_text::comment_close,
-        Name::HtmlTextCommentEnd => construct::html_text::comment_end,
-        Name::HtmlTextDeclaration => construct::html_text::declaration,
-        Name::HtmlTextEnd => construct::html_text::end,
-        Name::HtmlTextInstruction => construct::html_text::instruction,
-        Name::HtmlTextInstructionClose => construct::html_text::instruction_close,
+        Name::HtmlTextScan => construct::html_text::scan,
         Name::HtmlTextLineEndingBefore => construct::html_text::line_ending_before,
         Name::HtmlTextLineEndingAfter => construct::html_text::line_ending_after,
         Name::HtmlTextLineEndingAfterPrefix => construct::html_text::line_ending_after_prefix,
