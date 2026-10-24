@@ -17,10 +17,8 @@ pub(super) enum Html {
 
 impl Html {
     /// Types 1–6 interrupt paragraphs; complete custom tags only start fresh blocks.
+    /// Callers dispatch on the opening `<` byte.
     pub fn start(bytes: &[u8], namespaces: bool, complete: bool) -> Option<Self> {
-        if bytes.first() != Some(&b'<') {
-            return None;
-        }
         if bytes.starts_with(b"<!--") {
             return Some(Self::Comment);
         }

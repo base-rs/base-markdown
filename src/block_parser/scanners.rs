@@ -117,44 +117,39 @@ impl LineStart<'_> {
         thematic: bool,
     ) -> Option<(u8, u64, usize)> {
         let save = self.clone();
-        if self.ix < self.bytes.len() {
-            let c = self.bytes[self.ix];
-            if c == b'-' || c == b'+' || c == b'*' {
-                if thematic && self.ix >= self.min_hrule_offset {
-                    // there could be an hrule here
-                    if let Err(min_offset) = scan_hrule(&self.bytes[self.ix..]) {
-                        self.min_hrule_offset = self.ix + min_offset;
-                    } else {
-                        *self = save;
-                        return None;
-                    }
+        // Callers have already found a nonempty marker candidate.
+        let c = self.bytes[self.ix];
+        if c == b'-' || c == b'+' || c == b'*' {
+            if thematic && self.ix >= self.min_hrule_offset {
+                // there could be an hrule here
+                if let Err(min_offset) = scan_hrule(&self.bytes[self.ix..]) {
+                    self.min_hrule_offset = self.ix + min_offset;
+                } else {
+                    *self = save;
+                    return None;
                 }
-                self.ix += 1;
-                if self.scan_space(1) || self.is_at_eol() {
-                    return Some(self.finish_list_marker(c, 0, indent + 2));
-                }
-            } else if c.is_ascii_digit() {
-                let start_ix = self.ix;
-                let mut ix = self.ix + 1;
-                let mut val = u64::from(c - b'0');
-                while ix < self.bytes.len() && ix - start_ix < 10 {
-                    let c = self.bytes[ix];
-                    ix += 1;
-                    if c.is_ascii_digit() {
-                        val = val * 10 + u64::from(c - b'0');
-                    } else if c == b')' || c == b'.' {
-                        self.ix = ix;
-                        if self.scan_space(1) || self.is_at_eol() {
-                            return Some(self.finish_list_marker(
-                                c,
-                                val,
-                                indent + 1 + ix - start_ix,
-                            ));
-                        }
-                        break;
-                    } else {
-                        break;
+            }
+            self.ix += 1;
+            if self.scan_space(1) || self.is_at_eol() {
+                return Some(self.finish_list_marker(c, 0, indent + 2));
+            }
+        } else if c.is_ascii_digit() {
+            let start_ix = self.ix;
+            let mut ix = self.ix + 1;
+            let mut val = u64::from(c - b'0');
+            while ix < self.bytes.len() && ix - start_ix < 10 {
+                let c = self.bytes[ix];
+                ix += 1;
+                if c.is_ascii_digit() {
+                    val = val * 10 + u64::from(c - b'0');
+                } else if c == b')' || c == b'.' {
+                    self.ix = ix;
+                    if self.scan_space(1) || self.is_at_eol() {
+                        return Some(self.finish_list_marker(c, val, indent + 1 + ix - start_ix));
                     }
+                    break;
+                } else {
+                    break;
                 }
             }
         }
@@ -297,7 +292,8 @@ pub(crate) fn scan_atx_heading(data: &[u8]) -> Option<u8> {
 }
 
 pub(crate) fn scan_setext_heading(data: &[u8]) -> Option<(usize, u8)> {
-    let c = *data.first()?;
+    // Block classifiers only probe nonempty content.
+    let c = data[0];
     let level = if c == b'=' {
         1
     } else if c == b'-' {

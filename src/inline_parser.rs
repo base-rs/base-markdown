@@ -182,7 +182,7 @@ impl InlineParser {
                                 || self.nodes[candidate.node].end
                                     - self.nodes[candidate.node].start
                                     == size)
-                            && (marker == b'~'
+                            && ((EXTENSIONS && marker == b'~')
                                 || !((candidate.close || self.delimiters[close].open)
                                     && (candidate.run_modulo + closer_modulo) % 3 == 0
                                     && (candidate.run_modulo != 0 || closer_modulo != 0)))
@@ -212,12 +212,12 @@ impl InlineParser {
                     self.nodes[closer].start += take;
                     // Mixed strike/emphasis resolution retries the remaining
                     // run, so its modulo changes after a partial match.
-                    if self.delimiters[open].mixed {
+                    if EXTENSIONS && self.delimiters[open].mixed {
                         self.delimiters[open].run_modulo =
                             u8::try_from((self.nodes[opener].end - self.nodes[opener].start) % 3)
                                 .unwrap();
                     }
-                    if self.delimiters[close].mixed {
+                    if EXTENSIONS && self.delimiters[close].mixed {
                         self.delimiters[close].run_modulo =
                             u8::try_from((self.nodes[closer].end - self.nodes[closer].start) % 3)
                                 .unwrap();
@@ -747,7 +747,7 @@ impl InlineParser {
                         }
                         if let Some((end, kind)) = resolved {
                             self.attention::<EXTENSIONS>(bracket.delimiters);
-                            if !bracket.image {
+                            if EXTENSIONS && options.constructs.autolink_literal && !bracket.image {
                                 self.suppress_autolinks(bracket.node);
                             }
                             self.nodes[bracket.node].kind = kind;
@@ -1018,23 +1018,25 @@ impl InlineParser {
         }
     }
 
+    #[inline]
     fn raw_text(&self, source: &str, mut range: Range<usize>) -> Text<'static> {
         let bytes = source.as_bytes();
-        let needs_normalization = bytes[range.clone()]
-            .iter()
-            .any(|byte| matches!(byte, 0 | b'\r' | b'\n'))
+        let needs_normalization = memchr::memchr3(0, b'\r', b'\n', &bytes[range.clone()]).is_some()
             || (self.table && source[range.clone()].contains("\\|"));
-        if !needs_normalization {
-            let value = &source[range.clone()];
-            if value.starts_with(' ')
-                && value.ends_with(' ')
-                && value.bytes().any(|byte| byte != b' ')
-            {
-                range.start += 1;
-                range.end -= 1;
-            }
-            return self.text(source, range);
+        if needs_normalization {
+            return self.normalized_raw_text(source, range);
         }
+        let value = &source[range.clone()];
+        if value.starts_with(' ') && value.ends_with(' ') && value.bytes().any(|byte| byte != b' ')
+        {
+            range.start += 1;
+            range.end -= 1;
+        }
+        self.text(source, range)
+    }
+
+    fn normalized_raw_text(&self, source: &str, range: Range<usize>) -> Text<'static> {
+        let bytes = source.as_bytes();
         let mut value = String::with_capacity(range.len());
         let mut at = range.start;
         let mut start = at;

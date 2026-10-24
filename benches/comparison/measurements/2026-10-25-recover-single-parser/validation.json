@@ -1,0 +1,19 @@
+{
+  "source_commit": "5d2c629a9019e1c73f1cc0254c476857003cf76f",
+  "reviewed_commit": "5d2c629a9019e1c73f1cc0254c476857003cf76f",
+  "coverage": {
+    "covered_regions": 13344,
+    "measured_regions": 13344,
+    "excluded_invariant_regions": 22,
+    "target": "aarch64-apple-darwin",
+    "features": "all",
+    "all_targets": true
+  },
+  "passed": [
+    "default workspace Bake tests",
+    "all-feature workspace/all-target Clippy",
+    "default workspace/all-target Clippy",
+    "rustfmt",
+    "x86_64 Linux all-feature library compile (compile-only)"
+  ]
+}

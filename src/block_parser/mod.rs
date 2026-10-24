@@ -337,17 +337,13 @@ impl Builder<'_> {
                     continue;
                 }
             }
-            let marker = self
-                .options
-                .constructs
-                .list_item
-                .then(|| {
-                    line.scan_list_marker_with_indent(
-                        indent,
-                        self.options.constructs.thematic_break,
-                    )
-                })
-                .flatten();
+            let marker = if matches!(bytes.get(at), Some(b'*' | b'-' | b'+' | b'0'..=b'9'))
+                && self.options.constructs.list_item
+            {
+                line.scan_list_marker_with_indent(indent, self.options.constructs.thematic_break)
+            } else {
+                None
+            };
             if let Some((marker, number, width)) = marker {
                 let content = start + line.bytes_scanned();
                 self.list(at - indent, marker, number, start);
@@ -519,16 +515,21 @@ impl Builder<'_> {
                 true
             }
             Some(b'*' | b'-' | b'+' | b'0'..=b'9') if constructs.list_item => {
-                let mut line = LineStart::new(bytes);
-                line.scan_list_marker_with_indent(0, constructs.thematic_break)
-                    .is_some_and(|(marker, number, _)| {
-                        !current_container
-                            || ((matches!(marker, b'*' | b'-' | b'+') || number == 1)
-                                && scan_blank_line(&bytes[line.bytes_scanned()..]).is_none())
-                    })
+                self.list_interrupts(bytes, current_container)
             }
             _ => false,
         }
+    }
+    // List lookahead needs an aligned line cursor; ordinary interruption dispatch does not need its stack frame.
+    #[inline(never)]
+    fn list_interrupts(&self, bytes: &[u8], current_container: bool) -> bool {
+        let mut line = LineStart::new(bytes);
+        line.scan_list_marker_with_indent(0, self.options.constructs.thematic_break)
+            .is_some_and(|(marker, number, _)| {
+                !current_container
+                    || ((matches!(marker, b'*' | b'-' | b'+') || number == 1)
+                        && scan_blank_line(&bytes[line.bytes_scanned()..]).is_none())
+            })
     }
     fn paragraph(&mut self, start: usize, line_start: usize) -> usize {
         self.finish_list(line_start);
@@ -542,11 +543,14 @@ impl Builder<'_> {
             let mut line = LineStart::new(&bytes[next..]);
             let continued = self.containers(&mut line) == self.open.len();
             let content_start = next + line.bytes_scanned();
-            let indented = line.scan_space(4);
-            if !self.options.constructs.code_indented {
-                line.scan_all_space();
+            let indented = line.scan_space(4) && self.options.constructs.code_indented;
+            line.scan_all_space();
+            if line.is_at_eol() {
+                self.trim_fragment();
+                self.pop(next);
+                return next;
             }
-            if !indented || !self.options.constructs.code_indented {
+            if !indented {
                 let content = next + line.bytes_scanned();
                 if self.options.constructs.table && self.table_delimiter(content_start).is_some() {
                     self.definition_context = true;
@@ -554,7 +558,10 @@ impl Builder<'_> {
                     self.pop(next);
                     return next;
                 }
-                if continued && self.options.constructs.heading_setext {
+                if matches!(bytes.get(content), Some(b'=' | b'-'))
+                    && continued
+                    && self.options.constructs.heading_setext
+                {
                     if let Some((length, level)) = scan_setext_heading(&bytes[content..]) {
                         self.trim_fragment();
                         self.blocks.nodes[paragraph].body = Body::Heading(level);
@@ -564,6 +571,7 @@ impl Builder<'_> {
                 }
                 if self.interrupts(&bytes[content..], continued)
                     || !continued
+                        && bytes.get(content) == Some(&b'<')
                         && self.options.constructs.html_flow
                         && html::Html::start(
                             &bytes[content..],
@@ -576,12 +584,6 @@ impl Builder<'_> {
                     self.pop(next);
                     return next;
                 }
-            }
-            line.scan_all_space();
-            if line.is_at_eol() {
-                self.trim_fragment();
-                self.pop(next);
-                return next;
             }
             at = content_start;
         }
@@ -695,7 +697,8 @@ impl Builder<'_> {
             }
             let content = at + line.bytes_scanned();
             if self.interrupts(&bytes[content..], false)
-                || self.options.constructs.html_flow
+                || bytes.get(content) == Some(&b'<')
+                    && self.options.constructs.html_flow
                     && html::Html::start(&bytes[content..], self.options.html_tag_namespaces, true)
                         .is_some()
             {

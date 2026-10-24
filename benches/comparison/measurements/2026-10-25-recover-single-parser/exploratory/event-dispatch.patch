@@ -1,0 +1,44 @@
+diff --git a/src/inline_parser.rs b/src/inline_parser.rs
+index 9452e2e..d0f6ea0 100644
+--- a/src/inline_parser.rs
++++ b/src/inline_parser.rs
+@@ -1130,24 +1130,21 @@ impl InlineParser {
+                     },
+                     title: None,
+                 }),
+-                Kind::Code(_) | Kind::Math(_) | Kind::CodeInfo(_) => {
+-                    let (count, start, language) = match node.kind {
+-                        Kind::CodeInfo(index) => {
+-                            let info = &self.code_info[index];
+-                            (
+-                                info.count,
+-                                info.language.end + 1,
+-                                Some(self.text(source, info.language.clone())),
+-                            )
+-                        }
+-                        Kind::Code(count) | Kind::Math(count) => (count, node.start, None),
+-                        _ => unreachable!("raw inline candidates have raw metadata"),
+-                    };
+-                    let value = self.raw_text(source, start + count..node.end - count);
+-                    if matches!(node.kind, Kind::Math(_)) {
+-                        EventKind::Math(value)
+-                    } else {
+-                        EventKind::Code { value, language }
++                Kind::Code(count) => EventKind::Code {
++                    value: self.raw_text(source, node.start + count..node.end - count),
++                    language: None,
++                },
++                Kind::Math(count) => {
++                    EventKind::Math(self.raw_text(source, node.start + count..node.end - count))
++                }
++                Kind::CodeInfo(index) => {
++                    let info = &self.code_info[index];
++                    EventKind::Code {
++                        value: self.raw_text(
++                            source,
++                            info.language.end + 1 + info.count..node.end - info.count,
++                        ),
++                        language: Some(self.text(source, info.language.clone())),
+                     }
+                 }
+                 Kind::Start(tag, index) => EventKind::Start(match tag {

@@ -234,45 +234,43 @@ pub(super) fn scan(
     if literal {
         cursor.bump();
     }
-    let destination_start = cursor.clone();
+    // Destinations cannot cross a physical line, so update fragment state once after scanning this contiguous source range.
+    let destination_start = cursor.at;
+    let bytes = &source.as_bytes()[destination_start..cursor.range.end];
+    let mut length = 0;
     let mut depth = 0usize;
     loop {
-        match cursor.byte() {
+        match bytes.get(length).copied() {
             Some(b'>') if literal => break,
             None | Some(b'\r' | b'\n' | b'<') if literal => return None,
             None | Some(b' ' | b'\t' | b'\r' | b'\n') if !literal => break,
             Some(b'\\') => {
-                cursor.bump();
-                if cursor
-                    .byte()
-                    .is_some_and(|byte| byte.is_ascii_punctuation())
-                {
-                    cursor.bump();
+                length += 1;
+                if bytes.get(length).is_some_and(u8::is_ascii_punctuation) {
+                    length += 1;
                 }
             }
             Some(b'(') if !literal => {
                 depth += 1;
-                cursor.bump();
+                length += 1;
             }
             Some(b')') if !literal => {
                 if depth == 0 {
                     return None;
                 }
                 depth -= 1;
-                cursor.bump();
+                length += 1;
             }
             Some(1..=0x1f | 0x7f) if !literal => return None,
-            Some(_) => cursor.bump(),
+            Some(_) => length += 1,
             None => unreachable!("both destination forms handle end of input above"),
         }
     }
-    let destination_end = cursor.at;
-    if depth != 0 || (!literal && destination_start.at == destination_end) {
+    let destination_end = destination_start + length;
+    if depth != 0 || (!literal && length == 0) {
         return None;
     }
-    if literal {
-        cursor.bump();
-    }
+    cursor.advance(length + usize::from(literal));
     let checkpoint = cursor.line_end();
     let after_destination = cursor.consumed;
     cursor.whitespace();
@@ -345,7 +343,11 @@ pub(super) fn scan(
     };
     Some(Metadata {
         label: label_start.value(label_end, None),
-        destination: destination_start.value(destination_end, Some(options)),
+        destination: decode_string_with_options(
+            source,
+            destination_start..destination_end,
+            options,
+        ),
         title,
         end,
     })
