@@ -92,32 +92,19 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     }
 
     fn escaped(&mut self, value: &str, encode: bool) -> Result<(), StreamError> {
-        static ESCAPES: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0&\"<>");
-        let mut start = 0;
-        while start < value.len() {
-            let remaining = &value.as_bytes()[start..];
-            let offset = if encode {
-                ESCAPES.find(remaining)
-            } else {
-                memchr::memchr(0, remaining).unwrap_or(remaining.len())
-            };
-            let index = start + offset;
-            if index == value.len() {
-                break;
-            }
-            let replacement = match value.as_bytes()[index] {
-                0 => "�",
-                b'&' => "&amp;",
-                b'"' => "&quot;",
-                b'<' => "&lt;",
-                b'>' => "&gt;",
-                _ => unreachable!("the candidate scanner returns only HTML escapes"),
-            };
-            self.write(&value[start..index])?;
-            self.write(replacement)?;
-            start = index + 1;
+        let index = find_escape(value.as_bytes(), encode);
+        // Ordinary spans need only one write; select a destination for the replacement loop only when an escape is present.
+        if index == value.len() {
+            return self.write(value);
         }
-        self.write(&value[start..])
+        if let Some(heading) = self.heading.as_mut() {
+            write_escaped(&mut heading.output, &mut self.last, value, encode, index)
+        } else if let Some(capture) = self.captures.last_mut() {
+            write_escaped(&mut capture.output, &mut self.last, value, encode, index)
+        } else {
+            write_escaped(self.output, &mut self.last, value, encode, index)
+        }
+        .map_err(StreamError::Write)
     }
 
     fn newline(&mut self) -> Result<(), StreamError> {
@@ -834,6 +821,53 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         self.write("</section>")?;
         self.newline()
     }
+}
+
+#[inline]
+fn find_escape(bytes: &[u8], encode: bool) -> usize {
+    static ESCAPES: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0&\"<>");
+    if encode {
+        ESCAPES.find(bytes)
+    } else {
+        memchr::memchr(0, bytes).unwrap_or(bytes.len())
+    }
+}
+
+// Select the destination once per source span. Keep the last successfully written byte even when a caller's writer fails partway through an escape.
+fn write_escaped(
+    output: &mut impl Write,
+    last: &mut Option<u8>,
+    value: &str,
+    encode: bool,
+    mut index: usize,
+) -> fmt::Result {
+    let mut start = 0;
+    loop {
+        let replacement = match value.as_bytes()[index] {
+            0 => "�",
+            b'&' => "&amp;",
+            b'"' => "&quot;",
+            b'<' => "&lt;",
+            b'>' => "&gt;",
+            _ => unreachable!("the candidate scanner returns only HTML escapes"),
+        };
+        if start != index {
+            output.write_str(&value[start..index])?;
+            *last = Some(value.as_bytes()[index - 1]);
+        }
+        output.write_str(replacement)?;
+        *last = replacement.as_bytes().last().copied();
+        start = index + 1;
+        index = start + find_escape(&value.as_bytes()[start..], encode);
+        if index == value.len() {
+            break;
+        }
+    }
+    if start < value.len() {
+        output.write_str(&value[start..])?;
+        *last = value.as_bytes().last().copied();
+    }
+    Ok(())
 }
 
 /// Render events with the shared HTML writer.
