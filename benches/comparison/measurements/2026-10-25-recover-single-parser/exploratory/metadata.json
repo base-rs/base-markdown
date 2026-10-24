@@ -1,0 +1,7 @@
+{
+  "status": "Discarded experiment; never included in final timings or production diff. Initial two rounds and confirming three rounds are separate runs; no samples removed. Shared-machine outliers remain visible. Same screen.py methodology as final adapter (200 ms warmup, seven calibrated samples), engines alternate by round.",
+  "control_source_commit": "6f3dd14dfcf2b02c2fa6397d7a834147f59334fd",
+  "candidate_source": "Apply event-dispatch.patch to the control source commit. The experiment commit was dropped from the production branch.",
+  "control_binary_sha256": "7024590851ae2ecd2620d87d1bf46cd7f9cdcda05ff7d4ca6a1685faa64e2d17",
+  "candidate_binary_sha256": "92852b3f1600ba25d584b5e0e6de4b091e2f2a72876de6e01657500f3d1d7d05"
+}

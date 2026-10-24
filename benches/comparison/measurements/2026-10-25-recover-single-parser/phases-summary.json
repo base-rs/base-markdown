@@ -1,0 +1,186 @@
+{
+  "core-prepare/readme": {
+    "baseline": {
+      "median_ms": 0.003554506570389445,
+      "process_medians_ms": [
+        0.003554506570389445
+      ],
+      "time_change_percent": 0.0
+    },
+    "pre-unification": {
+      "median_ms": 0.0031923689692107842,
+      "process_medians_ms": [
+        0.0031923689692107842
+      ],
+      "time_change_percent": -10.188125806136394
+    },
+    "candidate": {
+      "median_ms": 0.0030298982602282093,
+      "process_medians_ms": [
+        0.0030298982602282093
+      ],
+      "time_change_percent": -14.758963017017512
+    }
+  },
+  "core-prepare/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.08506457614781635,
+      "process_medians_ms": [
+        0.08506457614781635
+      ],
+      "time_change_percent": 0.0
+    },
+    "pre-unification": {
+      "median_ms": 0.07822819011213047,
+      "process_medians_ms": [
+        0.07822819011213047
+      ],
+      "time_change_percent": -8.036701462905437
+    },
+    "candidate": {
+      "median_ms": 0.07720793208312214,
+      "process_medians_ms": [
+        0.07720793208312214
+      ],
+      "time_change_percent": -9.236093824815805
+    }
+  },
+  "core-prepare/mixed-1m": {
+    "baseline": {
+      "median_ms": 0.8658271428571429,
+      "process_medians_ms": [
+        0.8658271428571429
+      ],
+      "time_change_percent": 0.0
+    },
+    "pre-unification": {
+      "median_ms": 0.8090713945945947,
+      "process_medians_ms": [
+        0.8090713945945947
+      ],
+      "time_change_percent": -6.555089977343509
+    },
+    "candidate": {
+      "median_ms": 0.8148770491803279,
+      "process_medians_ms": [
+        0.8148770491803279
+      ],
+      "time_change_percent": -5.884557223360409
+    }
+  },
+  "core-prepare/gfm-100k": {
+    "baseline": {
+      "median_ms": 0.1452919689762151,
+      "process_medians_ms": [
+        0.1452919689762151
+      ],
+      "time_change_percent": 0.0
+    },
+    "pre-unification": {
+      "median_ms": 0.1363125394736842,
+      "process_medians_ms": [
+        0.1363125394736842
+      ],
+      "time_change_percent": -6.1802655479194835
+    },
+    "candidate": {
+      "median_ms": 0.13343007075471697,
+      "process_medians_ms": [
+        0.13343007075471697
+      ],
+      "time_change_percent": -8.164180240024121
+    }
+  },
+  "core-events/readme": {
+    "baseline": {
+      "median_ms": 0.010559873869766735,
+      "process_medians_ms": [
+        0.010559873869766735
+      ],
+      "time_change_percent": 0.0
+    },
+    "pre-unification": {
+      "median_ms": 0.009622247814207651,
+      "process_medians_ms": [
+        0.009622247814207651
+      ],
+      "time_change_percent": -8.879140670832609
+    },
+    "candidate": {
+      "median_ms": 0.010084869383640553,
+      "process_medians_ms": [
+        0.010084869383640553
+      ],
+      "time_change_percent": -4.498202270068163
+    }
+  },
+  "core-events/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.3149223684210526,
+      "process_medians_ms": [
+        0.3149223684210526
+      ],
+      "time_change_percent": 0.0
+    },
+    "pre-unification": {
+      "median_ms": 0.2953292058252427,
+      "process_medians_ms": [
+        0.2953292058252427
+      ],
+      "time_change_percent": -6.221584923943468
+    },
+    "candidate": {
+      "median_ms": 0.31052800829875515,
+      "process_medians_ms": [
+        0.31052800829875515
+      ],
+      "time_change_percent": -1.3953788498193176
+    }
+  },
+  "core-events/mixed-1m": {
+    "baseline": {
+      "median_ms": 3.182594625,
+      "process_medians_ms": [
+        3.182594625
+      ],
+      "time_change_percent": 0.0
+    },
+    "pre-unification": {
+      "median_ms": 2.9442679607843134,
+      "process_medians_ms": [
+        2.9442679607843134
+      ],
+      "time_change_percent": -7.488439223254417
+    },
+    "candidate": {
+      "median_ms": 3.147614795918367,
+      "process_medians_ms": [
+        3.147614795918367
+      ],
+      "time_change_percent": -1.0990978494985981
+    }
+  },
+  "core-events/gfm-100k": {
+    "baseline": {
+      "median_ms": 0.49961267605633797,
+      "process_medians_ms": [
+        0.49961267605633797
+      ],
+      "time_change_percent": 0.0
+    },
+    "pre-unification": {
+      "median_ms": 0.44879525159235667,
+      "process_medians_ms": [
+        0.44879525159235667
+      ],
+      "time_change_percent": -10.171364118521875
+    },
+    "candidate": {
+      "median_ms": 0.48384473648648646,
+      "process_medians_ms": [
+        0.48384473648648646
+      ],
+      "time_change_percent": -3.1560327280554135
+    }
+  }
+}
