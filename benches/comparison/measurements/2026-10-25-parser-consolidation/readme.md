@@ -92,7 +92,7 @@ A full 29-input comparison was also completed after round four, before the node-
 
 All **8,468 saved corpus HTML/Markdown outputs**, **24,276 existing probes** and **34,320 destination-boundary probes** match #54. Direct HTML, checked event rendering and document rendering agree on all 29 timed inputs. [Output preservation](preservation.json), [destination preservation](destination-preservation.json) and [agreement](output-agreement.json) retain input/output hashes.
 
-A separate probe compares the **complete serialized semantic event sequence for all 58,596 diagnostic cases**, including event order, spans, tags, separator values and source/owned value representations. [Event preservation](event-preservation.json) retains cohort hashes and counts. It does not merely compare rendered HTML. Both `EventParser` layouts measure **520 bytes** on this compiler/target.
+A separate probe compares the **complete serialized semantic event sequence for all 58,596 diagnostic cases**, including event order, spans, tags, separator values, source ranges and materialized value contents. [Event preservation](event-preservation.json) retains cohort hashes and counts. It does not merely compare rendered HTML. Both `EventParser` layouts measure **520 bytes** on this compiler/target.
 
 Every recorded allocation/reallocation count, cumulative requested-byte total, event/node count and 120-byte document node size is unchanged across all 29 inputs. [Allocator diagnostics](allocations.json) run in separate executables outside timing. Cumulative requested bytes are not peak memory. Borrowed child references do not introduce a retained collection.
 
