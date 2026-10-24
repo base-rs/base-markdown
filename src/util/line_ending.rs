@@ -56,8 +56,20 @@ pub enum LineEnding {
     LineFeed,
 }
 
-// xxxxxxxxxxxxxxx
 impl LineEnding {
+    /// Detect the first authored line ending without decoding unrelated UTF-8 text.
+    pub(crate) fn from_source(source: &str) -> Option<Self> {
+        let bytes = source.as_bytes();
+        let index = memchr::memchr2(b'\r', b'\n', bytes)?;
+        Some(if bytes[index] == b'\n' {
+            Self::LineFeed
+        } else if bytes.get(index + 1) == Some(&b'\n') {
+            Self::CarriageReturnLineFeed
+        } else {
+            Self::CarriageReturn
+        })
+    }
+
     /// Turn the line ending into a [str].
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -90,6 +102,18 @@ impl FromStr for LineEnding {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detects_the_first_source_line_ending() {
+        for (source, expected) in [
+            ("plain é", None),
+            ("é\rfirst\n", Some(LineEnding::CarriageReturn)),
+            ("\n\r", Some(LineEnding::LineFeed)),
+            ("é\r\nfirst\r", Some(LineEnding::CarriageReturnLineFeed)),
+        ] {
+            assert_eq!(LineEnding::from_source(source), expected);
+        }
+    }
 
     #[test]
     fn test_line_ending() {

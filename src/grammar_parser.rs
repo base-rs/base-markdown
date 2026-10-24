@@ -92,15 +92,7 @@ impl<'a> GrammarParser<'a> {
         let mut stack = Vec::new();
         pair_tokens(&tokens, &mut matching, &mut stack);
         let line_ending = if matches!(phase, Phase::Start) {
-            source.find(['\r', '\n']).map(|index| {
-                if source.as_bytes()[index] == b'\n' {
-                    LineEnding::LineFeed
-                } else if source.as_bytes().get(index + 1) == Some(&b'\n') {
-                    LineEnding::CarriageReturnLineFeed
-                } else {
-                    LineEnding::CarriageReturn
-                }
-            })
+            LineEnding::from_source(source)
         } else {
             None
         };

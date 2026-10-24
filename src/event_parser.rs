@@ -134,15 +134,7 @@ impl CompactParser<'_> {
                 self.phase = Phase::Body;
                 self.cursor = self.blocks.nodes[0].child;
                 self.closing = self.cursor == 0;
-                let line_ending = self.inline.source().find(['\r', '\n']).map(|index| {
-                    if self.inline.source().as_bytes()[index] == b'\n' {
-                        LineEnding::LineFeed
-                    } else if self.inline.source().as_bytes().get(index + 1) == Some(&b'\n') {
-                        LineEnding::CarriageReturnLineFeed
-                    } else {
-                        LineEnding::CarriageReturn
-                    }
-                });
+                let line_ending = LineEnding::from_source(self.inline.source());
                 Some(Ok(Event {
                     kind: EventKind::Start(Tag::Document(line_ending)),
                     span: 0..self.inline.source().len(),
