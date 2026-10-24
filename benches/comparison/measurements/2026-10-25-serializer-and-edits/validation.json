@@ -1,0 +1,51 @@
+{
+  "src_tree": "4b2957eb7d2cca40beb976ed4604ac229806d506",
+  "coverage": {
+    "measured": 13523,
+    "covered": 13523,
+    "unreachable_exclusions": 22,
+    "target": "aarch64-apple-darwin",
+    "features": "all"
+  },
+  "checks": [
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test:coverage --package core-markdown --all-targets true --all-features true",
+      "scope": "native runtime",
+      "passed": true,
+      "log_sha256": "edb7c28cead9f6e1afa2c53a4f88b178b0112fae027dfaa57908620a19e29a8d",
+      "production_src_tree": "4b2957eb7d2cca40beb976ed4604ac229806d506",
+      "tests_commit": "431933b75fcc0f01918c6ba9dd253943b6268ea8"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test",
+      "scope": "default workspace",
+      "passed": true,
+      "log_sha256": "8c2b635447701a7625b7cccd337dba2666bbce9d330ff15717bd3376696917fd",
+      "production_src_tree": "4b2957eb7d2cca40beb976ed4604ac229806d506",
+      "tests_commit": "a4754cb273af915288c06d7bd6492f5a54680812"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+      "scope": "all features/targets",
+      "passed": true,
+      "log_sha256": "b592ce302986eae95765d5e1f5fa669f5ff78ef88124ee09048441d9e500732c",
+      "production_src_tree": "4b2957eb7d2cca40beb976ed4604ac229806d506",
+      "tests_commit": "a4754cb273af915288c06d7bd6492f5a54680812"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo check --lib --all-features --target x86_64-unknown-linux-gnu --locked",
+      "scope": "compile-only",
+      "passed": true,
+      "log_sha256": "9194c281a0d13d63e8e9faade33cbff7a8316325be04e1f0a3d8abab085d95a4",
+      "production_src_tree": "4b2957eb7d2cca40beb976ed4604ac229806d506",
+      "tests_commit": "a4754cb273af915288c06d7bd6492f5a54680812"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "passed": true,
+      "production_src_tree": "4b2957eb7d2cca40beb976ed4604ac229806d506",
+      "tests_commit": "a4754cb273af915288c06d7bd6492f5a54680812"
+    }
+  ],
+  "production_commit": "431933b75fcc0f01918c6ba9dd253943b6268ea8"
+}
