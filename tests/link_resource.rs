@@ -12,6 +12,46 @@ use support::fixture::Position;
 use support::fixture::{Image, Link, Node, Paragraph, Root, Text};
 
 #[test]
+fn destination_boundaries_preserve_escapes_controls_and_unicode() {
+    // Place significant bytes on either side of each vector and tail boundary.
+    for length in 0..65 {
+        let prefix = "a".repeat(length);
+        for (suffix, encoded) in [
+            ("z", "z"),
+            ("(z)", "(z)"),
+            ("\\(z\\)", "(z)"),
+            ("\\q", "%5Cq"),
+            ("\0", "%EF%BF%BD"),
+            ("é", "%C3%A9"),
+            ("🦀", "%F0%9F%A6%80"),
+        ] {
+            assert_eq!(
+                to_html(&format!("[x]({prefix}{suffix})")),
+                format!("<p><a href=\"{prefix}{encoded}\">x</a></p>"),
+                "length {length}, suffix {suffix:?}"
+            );
+        }
+        assert_eq!(
+            to_html(&format!("[x]({prefix}z \"title\")")),
+            format!("<p><a href=\"{prefix}z\" title=\"title\">x</a></p>")
+        );
+        for control in (1_u8..=32).chain(core::iter::once(127)) {
+            let source = format!("[x](a{prefix}{}z)", char::from(control));
+            assert!(
+                !to_html(&source).contains("<a "),
+                "length {}, control {}",
+                length,
+                control
+            );
+        }
+        for suffix in ["z", "(z", "z\\"] {
+            let source = format!("[x]({prefix}{suffix}");
+            assert!(!to_html(&source).contains("<a "));
+        }
+    }
+}
+
+#[test]
 fn link_resource() -> Result<(), message::Message> {
     let danger = Options {
         compile: CompileOptions {

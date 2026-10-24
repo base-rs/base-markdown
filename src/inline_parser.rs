@@ -18,6 +18,12 @@ use core::{convert::TryFrom, ops::Range};
 
 mod autolink;
 
+// Inline destinations only need scalar handling at escapes, parentheses, whitespace, or controls.
+// NUL remains ordinary destination data; value decoding replaces it later.
+static DESTINATION_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(
+    b"\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\x0c\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f ()\\\x7f",
+);
+
 static MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!");
 static EXTENSION_MARKERS: crate::byte_scan::AsciiSet =
     crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!~@.:$");
@@ -1219,7 +1225,11 @@ fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
     } else {
         let begin = at;
         let mut depth = 0;
-        while at < end && !bytes[at].is_ascii_whitespace() {
+        loop {
+            at += DESTINATION_MARKERS.find(&bytes[at..end]);
+            if at == end || bytes[at].is_ascii_whitespace() {
+                break;
+            }
             match bytes[at] {
                 b'\\' if at + 1 < end && bytes[at + 1].is_ascii_punctuation() => {
                     at += 1;
