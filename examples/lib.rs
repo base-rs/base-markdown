@@ -36,13 +36,10 @@ fn main() -> Result<(), core_markdown::message::Message> {
         )?
     );
 
-    // Access syntax tree and support MDX extensions:
+    // Access the syntax tree:
     println!(
         "{:?}",
-        core_markdown::to_mdast(
-            "# <HelloMessage />, {username}!",
-            &core_markdown::ParseOptions::mdx()
-        )?
+        core_markdown::to_mdast("# Hello, *world*!", &core_markdown::ParseOptions::default())?
     );
 
     Ok(())

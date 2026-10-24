@@ -4,7 +4,7 @@
 //! HTML rendering for mdast trees.
 use super::Renderer;
 use crate::{
-    mdast::{AlignKind, AttributeContent, AttributeValue, Heading, Node},
+    mdast::{AlignKind, Heading, Node},
     util::{encode::encode, sanitize_uri::sanitize_with_protocols},
     CompileOptions,
 };
@@ -20,10 +20,8 @@ use alloc::{
 ///
 /// This renders AST nodes directly. It is separate from [`crate::to_html`],
 /// which renders Markdown source through the parser's event compiler. Raw HTML
-/// is escaped and JSX is omitted by default; URLs use the same safe protocol
-/// allowlists as the built-in HTML compiler. Pass `allow_dangerous_html` to
-/// render raw HTML and static JSX. MDX expressions and ESM are omitted because
-/// evaluating JavaScript is outside the renderer's scope.
+/// is escaped by default; URLs use the same safe protocol allowlists as the
+/// built-in HTML compiler. Pass `allow_dangerous_html` to render raw HTML.
 ///
 /// # Example
 ///
@@ -207,24 +205,9 @@ impl HtmlRenderer {
                 format!("<td>{}</td>", self.render_inline_children(&cell.children))
             }
             Node::FootnoteReference(reference) => self.render_footnote_reference(reference),
-            Node::FootnoteDefinition(_)
-            | Node::Definition(_)
-            | Node::MdxTextExpression(_)
-            | Node::MdxFlowExpression(_)
-            | Node::MdxjsEsm(_)
-            | Node::Frontmatter(_) => String::new(),
-            Node::MdxJsxFlowElement(element) => self.render_jsx(
-                element.name.as_deref(),
-                &element.attributes,
-                &element.children,
-                true,
-            ),
-            Node::MdxJsxTextElement(element) => self.render_jsx(
-                element.name.as_deref(),
-                &element.attributes,
-                &element.children,
-                false,
-            ),
+            Node::FootnoteDefinition(_) | Node::Definition(_) | Node::Frontmatter(_) => {
+                String::new()
+            }
         }
     }
 
@@ -548,67 +531,6 @@ impl HtmlRenderer {
         output
     }
 
-    fn render_jsx(
-        &mut self,
-        name: Option<&str>,
-        attributes: &[AttributeContent],
-        children: &[Node],
-        flow: bool,
-    ) -> String {
-        // JSX is an HTML-like construct. Keep it disabled under the same
-        // trust option as raw HTML.
-        if !self.options.allow_dangerous_html {
-            return String::new();
-        }
-
-        let content = if flow {
-            self.render_flow_children(children)
-        } else {
-            self.render_inline_children(children)
-        };
-
-        let Some(name) = name else {
-            return content;
-        };
-
-        let mut opening = format!("<{}", encode(name, true));
-        for attribute in attributes {
-            let attribute = match attribute {
-                AttributeContent::Property(attribute) => attribute,
-                AttributeContent::Expression(_) => continue,
-            };
-            match &attribute.value {
-                Some(AttributeValue::Literal(value)) => {
-                    opening.push(' ');
-                    opening.push_str(&encode(&attribute.name, true));
-                    opening.push_str("=\"");
-                    let value = if attribute.name.eq_ignore_ascii_case("href") {
-                        self.link_url(value)
-                    } else if attribute.name.eq_ignore_ascii_case("src") {
-                        self.image_url(value)
-                    } else {
-                        encode(value, true)
-                    };
-                    opening.push_str(&value);
-                    opening.push('"');
-                }
-                Some(AttributeValue::Expression(_)) => {}
-                None => {
-                    opening.push(' ');
-                    opening.push_str(&encode(&attribute.name, true));
-                }
-            }
-        }
-
-        let output = if children.is_empty() {
-            format!("{opening}/>")
-        } else {
-            format!("{}>{}</{}>", opening, content, encode(name, true))
-        };
-
-        self.render_html(&output)
-    }
-
     fn render_html(&self, value: &str) -> String {
         if !self.options.allow_dangerous_html {
             return encode(value, true);
@@ -693,8 +615,7 @@ impl Renderer for HtmlRenderer {
             | Node::List(_)
             | Node::ListItem(_)
             | Node::Table(_)
-            | Node::FootnoteDefinition(_)
-            | Node::MdxJsxFlowElement(_) => node
+            | Node::FootnoteDefinition(_) => node
                 .children()
                 .map(|children| self.render_flow_children(children))
                 .unwrap_or_default(),
@@ -763,10 +684,9 @@ mod tests {
     fn omits_empty_nodes_from_lists_and_only_terminates_code_when_needed() {
         let mut renderer = HtmlRenderer::new();
         let list = crate::mdast::List {
-            children: vec![Node::MdxFlowExpression(crate::mdast::MdxFlowExpression {
-                value: "value".into(),
+            children: vec![Node::Paragraph(Paragraph {
+                children: vec![],
                 position: None,
-                stops: vec![],
             })],
             position: None,
             ordered: false,

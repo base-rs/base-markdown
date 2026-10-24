@@ -1,0 +1,226 @@
+diff --git a/src/document.rs b/src/document.rs
+index 4f4751c..9ae5aa2 100644
+--- a/src/document.rs
++++ b/src/document.rs
+@@ -227,10 +227,8 @@ impl<S: AsRef<str>> Document<S> {
+     pub fn parse(source: S, options: &crate::ParseOptions) -> Result<Self, StreamError> {
+         let mut builder = AstBuilder::new();
+         {
+-            let mut events = crate::EventParser::prepare(source.as_ref(), options);
+-            if builder.consume(&mut events, usize::MAX).is_err() {
+-                unreachable!("the built-in Markdown producer yields a balanced semantic stream");
+-            }
++            let mut events = crate::EventParser::new(source.as_ref(), options)?;
++            builder.consume(&mut events, usize::MAX)?;
+         }
+         builder.finish(source)
+     }
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index a0c713f..d678cb2 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -459,7 +459,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+         &mut self,
+         options: &crate::ParseOptions,
+     ) -> Result<(), StreamError> {
+-        let events = crate::EventParser::prepare(self.source, options);
++        let events = crate::EventParser::new(self.source, options)?;
+         self.render_inner::<false>(events)
+     }
+ 
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index f1e1b6e..eaddd51 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -24,11 +24,6 @@ impl<'a> EventParser<'a> {
+     /// # Errors
+     /// Markdown preparation is currently infallible; the result is retained for API compatibility.
+     pub fn new(source: &'a str, options: &'a ParseOptions) -> Result<Self, StreamError> {
+-        Ok(Self::prepare(source, options))
+-    }
+-
+-    /// Built-in Markdown preparation has no syntax errors.
+-    pub(crate) fn prepare(source: &'a str, options: &'a ParseOptions) -> Self {
+         let producer = if let Some((blocks, definitions)) = Blocks::parse(source, options) {
+             Producer::Compact(CompactParser {
+                 blocks,
+@@ -45,7 +40,7 @@ impl<'a> EventParser<'a> {
+         } else {
+             Producer::Compatibility(Box::new(GrammarParser::new(source, options)))
+         };
+-        Self { producer }
++        Ok(Self { producer })
+     }
+ }
+ impl Iterator for EventParser<'_> {
+diff --git a/src/grammar_parser.rs b/src/grammar_parser.rs
+index 98e5470..6a8621c 100644
+--- a/src/grammar_parser.rs
++++ b/src/grammar_parser.rs
+@@ -904,10 +904,11 @@ impl<'a> GrammarParser<'a> {
+                 })
+             }
+             Name::Frontmatter => {
++                let block = true;
+                 let value = self.text(index);
+                 self.index = self.matching[index] + 1;
+-                self.slurp = true;
+-                Some(EventKind::Opaque { value, block: true })
++                self.slurp = block;
++                Some(EventKind::Opaque { value, block })
+             }
+             Name::GfmTaskListItemCheck => {
+                 let checked = self
+diff --git a/src/lib.rs b/src/lib.rs
+index 923f03f..6bc1249 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -150,6 +150,7 @@ pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, me
+         .render_markdown(&options.parse);
+     match result {
+         Ok(()) => Ok(output),
++        Err(stream::StreamError::Parse(error)) => Err(error),
+         Err(_) => unreachable!(
+             "parser events are balanced and source-valid; writing to String cannot fail"
+         ),
+diff --git a/src/renderer/html_renderer.rs b/src/renderer/html_renderer.rs
+index 33390a5..2addde4 100644
+--- a/src/renderer/html_renderer.rs
++++ b/src/renderer/html_renderer.rs
+@@ -684,10 +684,7 @@ mod tests {
+     fn omits_empty_nodes_from_lists_and_only_terminates_code_when_needed() {
+         let mut renderer = HtmlRenderer::new();
+         let list = crate::mdast::List {
+-            children: vec![Node::Paragraph(Paragraph {
+-                children: vec![],
+-                position: None,
+-            })],
++            children: vec![],
+             position: None,
+             ordered: false,
+             start: None,
+diff --git a/src/to_mdast.rs b/src/to_mdast.rs
+index c483630..0b242e4 100644
+--- a/src/to_mdast.rs
++++ b/src/to_mdast.rs
+@@ -156,8 +156,9 @@ impl<'a> CompileContext<'a> {
+     }
+ 
+     fn tail_push(&mut self, mut child: Node) {
+-        // Every new node is positioned by its opening token.
+-        child.position_set(Some(position_from_event(&self.events[self.index])));
++        if child.position().is_none() {
++            child.position_set(Some(position_from_event(&self.events[self.index])));
++        }
+ 
+         let (tree, stack, event_stack) = self.trees.last_mut().expect("Cannot get tail w/o tree");
+         let node = delve_mut(tree, stack);
+@@ -209,10 +210,10 @@ pub fn compile(events: &[Event], bytes: &[u8], parse_inline_code_info: bool) ->
+     debug_assert_eq!(context.trees.len(), 1, "expected 1 final tree");
+     let (tree, _, event_stack) = context.trees.pop().unwrap();
+ 
+-    if !event_stack.is_empty() {
++    if let Some(index) = event_stack.last() {
+         unreachable!(
+             "grammar containers must close before the document ends: {:?}",
+-            event_stack.last()
++            events[*index].name
+         );
+     }
+ 
+diff --git a/src/util/char.rs b/src/util/char.rs
+index 4679101..5d933cf 100644
+--- a/src/util/char.rs
++++ b/src/util/char.rs
+@@ -5,10 +5,7 @@
+ 
+ //! Deal with bytes, chars, and kinds.
+ use crate::util::unicode::PUNCTUATION;
+-#[cfg(any(feature = "log", test))]
+-use alloc::format;
+-use alloc::string::String;
+-#[cfg(any(feature = "log", test))]
++use alloc::{format, string::String};
+ use core::str;
+ 
+ /// Character kinds.
+@@ -125,7 +122,6 @@ pub fn format_byte_opt(byte: Option<u8>) -> String {
+ }
+ 
+ /// Format a byte (`u8`).
+-#[cfg(any(feature = "log", test))]
+ pub fn format_byte(byte: u8) -> String {
+     let representation = format!("U+{byte:>04X}");
+     let printable = match byte {
+diff --git a/src/util/location.rs b/src/util/location.rs
+index 2d53aa1..ef61521 100644
+--- a/src/util/location.rs
++++ b/src/util/location.rs
+@@ -5,9 +5,16 @@
+ //! Deal with positions in a file.
+ //!
+ //! * Convert between byte indices and unist points.
++//! * Convert between byte indices into a string which is built up of several
++//!   slices in a whole document, and byte indices into that whole document.
+ use crate::unist::Point;
+ use alloc::{vec, vec::Vec};
+ 
++/// Each stop represents a new slice, which contains the byte index into the
++/// corresponding string where the slice starts (`0`), and the byte index into
++/// the whole document where that slice starts (`1`).
++pub type Stop = (usize, usize);
++
+ #[derive(Debug)]
+ pub struct Location {
+     /// List, where each index is a line number (0-based), and each value is
+@@ -75,6 +82,34 @@ impl Location {
+ 
+         None
+     }
++
++    /// Like `to_point`, but takes a relative offset from a certain string
++    /// instead of an absolute offset into the whole document.
++    ///
++    /// The relative offset is made absolute based on `stops`, which represent
++    /// where that certain string is in the whole document.
++    #[must_use]
++    pub fn relative_to_point(&self, stops: &[Stop], relative: usize) -> Option<Point> {
++        Location::relative_to_absolute(stops, relative).and_then(|absolute| self.to_point(absolute))
++    }
++
++    /// Turn a relative offset into an absolute offset.
++    #[must_use]
++    pub fn relative_to_absolute(stops: &[Stop], relative: usize) -> Option<usize> {
++        let mut index = 0;
++
++        while index < stops.len() && stops[index].0 <= relative {
++            index += 1;
++        }
++
++        // There are no points: that only occurs if there was an empty string.
++        if index == 0 {
++            None
++        } else {
++            let (stop_relative, stop_absolute) = &stops[index - 1];
++            Some(stop_absolute + (relative - stop_relative))
++        }
++    }
+ }
+ 
+ #[cfg(test)]
+@@ -171,5 +206,15 @@ mod tests {
+     fn test_empty() {
+         let location = Location::new("".as_bytes());
+         assert_eq!(location.to_point(0), Some(Point::new(1, 1, 0)), "to_point");
++        assert_eq!(
++            location.relative_to_point(&[], 0),
++            None,
++            "relative_to_point"
++        );
++        assert_eq!(
++            Location::relative_to_absolute(&[], 0),
++            None,
++            "relative_to_absolute"
++        );
+     }
+ }

@@ -244,7 +244,7 @@ pub enum EventKind<'a> {
         destination: Text<'a>,
         title: Option<Text<'a>>,
     },
-    /// Frontmatter or MDX syntax retained verbatim and omitted from HTML.
+    /// Frontmatter retained verbatim and omitted from HTML.
     Opaque { value: Text<'a>, block: bool },
     /// A call to a footnote definition.
     FootnoteReference(Text<'a>),
@@ -377,7 +377,7 @@ impl Event<'_> {
 /// An error while parsing, consuming, or writing a semantic stream.
 #[derive(Debug)]
 pub enum StreamError {
-    /// A Markdown extension reported a syntax error.
+    /// A custom event producer reported a diagnostic.
     Parse(crate::message::Message),
     /// A source range is out of bounds or splits a UTF-8 character.
     InvalidRange,

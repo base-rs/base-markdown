@@ -677,7 +677,7 @@ mod tests {
     #[test]
     fn unterminated_cdata_is_rejected_at_eof() {
         let options = ParseOptions::default();
-        let (_, parse_state) = parse("", &options).expect("valid empty input");
+        let (_, parse_state) = parse("", &options);
         let mut tokenizer = Tokenizer::new(
             Point {
                 line: 1,

@@ -4,6 +4,8 @@ This crate exposes a pull-based semantic event contract shared by direct HTML re
 
 The [Pull Parser Architecture](pull-parser.md) specifies the source-backed semantic event contract and implementation of lazy inline parsing, shared HTML rendering, and incremental arena AST construction.
 
+MDX is no longer supported. JavaScript expressions and import/export statements are ordinary Markdown, and angle-bracket syntax follows CommonMark HTML rules. There are no MDX presets, callback hooks, tokenizer states, or AST variants. Markdown parsing itself has no syntax errors; public result-returning APIs remain compatible while custom event consumers can still report invalid streams or output failures.
+
 ## Main paths
 
 - `to_html` and `to_html_with_options` pull `EventParser` events through the shared `EventHtmlRenderer`. This path does not construct an AST.

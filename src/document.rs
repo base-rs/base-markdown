@@ -223,12 +223,14 @@ impl<S: AsRef<str>> Document<S> {
     /// Parse an owned or borrowed UTF-8 buffer into an arena document.
     ///
     /// # Errors
-    /// Returns errors reported by Markdown extensions.
+    /// Returns stream validation errors; built-in Markdown parsing has no syntax errors.
     pub fn parse(source: S, options: &crate::ParseOptions) -> Result<Self, StreamError> {
         let mut builder = AstBuilder::new();
         {
-            let mut events = crate::EventParser::new(source.as_ref(), options)?;
-            builder.consume(&mut events, usize::MAX)?;
+            let mut events = crate::EventParser::prepare(source.as_ref(), options);
+            if builder.consume(&mut events, usize::MAX).is_err() {
+                unreachable!("the built-in Markdown producer yields a balanced semantic stream");
+            }
         }
         builder.finish(source)
     }

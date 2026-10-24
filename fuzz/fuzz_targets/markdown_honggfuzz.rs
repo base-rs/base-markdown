@@ -12,7 +12,6 @@ fn main() {
                 let _ = core_markdown::to_html_with_options(s, &core_markdown::Options::gfm());
                 let _ = core_markdown::to_mdast(s, &core_markdown::ParseOptions::default());
                 let _ = core_markdown::to_mdast(s, &core_markdown::ParseOptions::gfm());
-                let _ = core_markdown::to_mdast(s, &core_markdown::ParseOptions::mdx());
             }
         });
     }

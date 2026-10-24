@@ -5,7 +5,10 @@
 
 //! Deal with bytes, chars, and kinds.
 use crate::util::unicode::PUNCTUATION;
-use alloc::{format, string::String};
+#[cfg(any(feature = "log", test))]
+use alloc::format;
+use alloc::string::String;
+#[cfg(any(feature = "log", test))]
 use core::str;
 
 /// Character kinds.
@@ -113,13 +116,6 @@ pub fn classify_opt(char_opt: Option<char>) -> Kind {
     char_opt.map_or(Kind::Whitespace, classify)
 }
 
-/// Format an optional `char` (`none` means eof).
-pub fn format_opt(char: Option<char>) -> String {
-    char.map_or("end of file".into(), |char| {
-        format!("character {}", format(char))
-    })
-}
-
 /// Format an optional `byte` (`none` means eof).
 #[cfg(feature = "log")]
 pub fn format_byte_opt(byte: Option<u8>) -> String {
@@ -128,23 +124,8 @@ pub fn format_byte_opt(byte: Option<u8>) -> String {
     })
 }
 
-/// Format a `char`.
-pub fn format(char: char) -> String {
-    let representation = format!("U+{:>04X}", char as u32);
-    let printable = match char {
-        '`' => Some("`` ` ``".into()),
-        '!'..='~' => Some(format!("`{char}`")),
-        _ => None,
-    };
-
-    if let Some(char) = printable {
-        format!("{char} ({representation})")
-    } else {
-        representation
-    }
-}
-
 /// Format a byte (`u8`).
+#[cfg(any(feature = "log", test))]
 pub fn format_byte(byte: u8) -> String {
     let representation = format!("U+{byte:>04X}");
     let printable = match byte {
@@ -194,21 +175,6 @@ mod tests {
     }
 
     #[test]
-    fn test_format_opt() {
-        assert_eq!(
-            format_opt(None),
-            "end of file".to_string(),
-            "should format an optional char: none -> eof"
-        );
-
-        assert_eq!(
-            format_opt(Some('!')),
-            "character `!` (U+0021)".to_string(),
-            "should format an optional char: char -> pretty"
-        );
-    }
-
-    #[test]
     #[cfg(feature = "log")]
     fn test_format_byte_opt() {
         assert_eq!(
@@ -221,27 +187,6 @@ mod tests {
             format_byte_opt(Some(b'!')),
             "byte `!` (U+0021)".to_string(),
             "should format an optional byte: char -> pretty"
-        );
-    }
-
-    #[test]
-    fn test_format() {
-        assert_eq!(
-            format('`'),
-            "`` ` `` (U+0060)".to_string(),
-            "should format a char: grave accent"
-        );
-
-        assert_eq!(
-            format('!'),
-            "`!` (U+0021)".to_string(),
-            "should format a char: regular"
-        );
-
-        assert_eq!(
-            format(' '),
-            "U+0020".to_string(),
-            "should format a char: unprintable"
         );
     }
 

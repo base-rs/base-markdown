@@ -1,0 +1,12 @@
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index f1e1b6e..ee04771 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -9,6 +9,7 @@ use crate::{LineEnding, ParseOptions};
+ use alloc::boxed::Box;
+ 
+ /// A pull producer of resolved semantic events. Preparation records block structure; inline syntax is scanned only when its containing block is consumed.
++#[repr(align(16))]
+ pub struct EventParser<'a> {
+     producer: Producer<'a>,
+ }

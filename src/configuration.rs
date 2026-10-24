@@ -5,11 +5,8 @@
 // Copyright, 2025, by Ophir Lojkine.
 // Copyright, 2026, by Samuel Williams.
 
-use crate::util::{
-    line_ending::LineEnding,
-    mdx::{EsmParse as MdxEsmParse, ExpressionParse as MdxExpressionParse},
-};
-use alloc::{boxed::Box, fmt, string::String};
+use crate::util::line_ending::LineEnding;
+use alloc::string::String;
 
 /// Control which constructs are enabled.
 ///
@@ -266,79 +263,7 @@ pub struct Constructs {
     ///       ^^^
     /// ```
     pub math_text: bool,
-    /// MDX: ESM.
-    ///
-    /// ```markdown
-    /// > | import a from 'b'
-    ///     ^^^^^^^^^^^^^^^^^
-    /// ```
-    ///
-    /// > 👉 **Note**: to support ESM, you *must* pass
-    /// > [`mdx_esm_parse`][MdxEsmParse] in [`ParseOptions`][] too.
-    /// > Otherwise, ESM is treated as normal markdown.
-    pub mdx_esm: bool,
-    /// MDX: expression (flow).
-    ///
-    /// ```markdown
-    /// > | {Math.PI}
-    ///     ^^^^^^^^^
-    /// ```
-    ///
-    /// > 👉 **Note**: You *can* pass
-    /// > [`mdx_expression_parse`][MdxExpressionParse] in [`ParseOptions`][]
-    /// > too, to parse expressions according to a certain grammar (typically,
-    /// > a programming language).
-    /// > Otherwise, expressions are parsed with a basic algorithm that only
-    /// > cares about braces.
-    pub mdx_expression_flow: bool,
-    /// MDX: expression (text).
-    ///
-    /// ```markdown
-    /// > | a {Math.PI} c
-    ///       ^^^^^^^^^
-    /// ```
-    ///
-    /// > 👉 **Note**: You *can* pass
-    /// > [`mdx_expression_parse`][MdxExpressionParse] in [`ParseOptions`][]
-    /// > too, to parse expressions according to a certain grammar (typically,
-    /// > a programming language).
-    /// > Otherwise, expressions are parsed with a basic algorithm that only
-    /// > cares about braces.
-    pub mdx_expression_text: bool,
-    /// MDX: JSX (flow).
-    ///
-    /// ```markdown
-    /// > | <Component />
-    ///     ^^^^^^^^^^^^^
-    /// ```
-    ///
-    /// > 👉 **Note**: You *must* pass `html_flow: false` to use this,
-    /// > as it’s preferred when on over `mdx_jsx_flow`.
-    ///
-    /// > 👉 **Note**: You *can* pass
-    /// > [`mdx_expression_parse`][MdxExpressionParse] in [`ParseOptions`][]
-    /// > too, to parse expressions in JSX according to a certain grammar
-    /// > (typically, a programming language).
-    /// > Otherwise, expressions are parsed with a basic algorithm that only
-    /// > cares about braces.
-    pub mdx_jsx_flow: bool,
-    /// MDX: JSX (text).
-    ///
-    /// ```markdown
-    /// > | a <Component /> c
-    ///       ^^^^^^^^^^^^^
-    /// ```
-    ///
-    /// > 👉 **Note**: You *must* pass `html_text: false` to use this,
-    /// > as it’s preferred when on over `mdx_jsx_text`.
-    ///
-    /// > 👉 **Note**: You *can* pass
-    /// > [`mdx_expression_parse`][MdxExpressionParse] in [`ParseOptions`][]
-    /// > too, to parse expressions in JSX according to a certain grammar
-    /// > (typically, a programming language).
-    /// > Otherwise, expressions are parsed with a basic algorithm that only
-    /// > cares about braces.
-    pub mdx_jsx_text: bool,
+
     /// Thematic break.
     ///
     /// ```markdown
@@ -387,11 +312,7 @@ impl Default for Constructs {
             list_item: true,
             math_flow: false,
             math_text: false,
-            mdx_esm: false,
-            mdx_expression_flow: false,
-            mdx_expression_text: false,
-            mdx_jsx_flow: false,
-            mdx_jsx_text: false,
+
             thematic_break: true,
         }
     }
@@ -414,40 +335,6 @@ impl Constructs {
             gfm_strikethrough: true,
             gfm_table: true,
             gfm_task_list_item: true,
-            ..Self::default()
-        }
-    }
-
-    /// MDX.
-    ///
-    /// This turns on `CommonMark`, turns off some conflicting constructs
-    /// (autolinks, code (indented), and HTML), and turns on MDX (ESM,
-    /// expressions, and JSX).
-    ///
-    /// For more information, see the MDX website:
-    /// <https://mdxjs.com>.
-    ///
-    /// > 👉 **Note**: to support ESM, you *must* pass
-    /// > [`mdx_esm_parse`][MdxEsmParse] in [`ParseOptions`][] too.
-    /// > Otherwise, ESM is treated as normal markdown.
-    /// >
-    /// > You *can* pass
-    /// > [`mdx_expression_parse`][MdxExpressionParse]
-    /// > to parse expressions according to a certain grammar (typically, a
-    /// > programming language).
-    /// > Otherwise, expressions are parsed with a basic algorithm that only
-    /// > cares about braces.
-    pub fn mdx() -> Self {
-        Self {
-            autolink: false,
-            code_indented: false,
-            html_flow: false,
-            html_text: false,
-            mdx_esm: true,
-            mdx_expression_flow: true,
-            mdx_expression_text: true,
-            mdx_jsx_flow: true,
-            mdx_jsx_text: true,
             ..Self::default()
         }
     }
@@ -1041,7 +928,6 @@ impl CompileOptions {
 ///
 /// * To control what markdown constructs are turned on and off
 /// * To control some of those constructs
-/// * To add support for certain programming languages when parsing MDX
 ///
 /// In most cases, you will want to use the default trait or `gfm` method.
 ///
@@ -1064,8 +950,8 @@ impl CompileOptions {
     derive(serde::Serialize, serde::Deserialize),
     serde(default, rename_all = "camelCase")
 )]
+#[derive(Debug)]
 pub struct ParseOptions {
-    // Note: when adding fields, don’t forget to add them to `fmt::Debug` below.
     /// Which constructs to enable and disable.
     ///
     /// The default is to follow `CommonMark`.
@@ -1241,61 +1127,6 @@ pub struct ParseOptions {
     /// ```
     #[cfg_attr(feature = "serde", serde(default))]
     pub math_text_single_dollar: bool,
-
-    /// Function to parse expressions with.
-    ///
-    /// This function can be used to add support for arbitrary programming
-    /// languages within expressions.
-    ///
-    /// It only makes sense to pass this when compiling to a syntax tree
-    /// with [`to_mdast()`][crate::to_mdast()].
-    ///
-    /// For an example that adds support for JavaScript with SWC, see
-    /// `tests/test_utils/mod.rs`.
-    #[cfg_attr(feature = "serde", serde(skip))]
-    pub mdx_expression_parse: Option<Box<MdxExpressionParse>>,
-
-    /// Function to parse ESM with.
-    ///
-    /// This function can be used to add support for arbitrary programming
-    /// languages within ESM blocks, however, the keywords (`export`,
-    /// `import`) are currently hardcoded JavaScript-specific.
-    ///
-    /// > 👉 **Note**: please raise an issue if you’re interested in working on
-    /// > MDX that is aware of, say, Rust, or other programming languages.
-    ///
-    /// It only makes sense to pass this when compiling to a syntax tree
-    /// with [`to_mdast()`][crate::to_mdast()].
-    ///
-    /// For an example that adds support for JavaScript with SWC, see
-    /// `tests/test_utils/mod.rs`.
-    #[cfg_attr(feature = "serde", serde(skip))]
-    pub mdx_esm_parse: Option<Box<MdxEsmParse>>,
-    // Note: when adding fields, don’t forget to add them to `fmt::Debug` below.
-}
-
-impl fmt::Debug for ParseOptions {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ParseOptions")
-            .field("constructs", &self.constructs)
-            .field("inline_code_info", &self.inline_code_info)
-            .field("html_block_blank_lines", &self.html_block_blank_lines)
-            .field("html_tag_namespaces", &self.html_tag_namespaces)
-            .field(
-                "gfm_strikethrough_single_tilde",
-                &self.gfm_strikethrough_single_tilde,
-            )
-            .field("math_text_single_dollar", &self.math_text_single_dollar)
-            .field(
-                "mdx_expression_parse",
-                &self.mdx_expression_parse.as_ref().map(|_d| "[Function]"),
-            )
-            .field(
-                "mdx_esm_parse",
-                &self.mdx_esm_parse.as_ref().map(|_d| "[Function]"),
-            )
-            .finish()
-    }
 }
 
 impl Default for ParseOptions {
@@ -1308,8 +1139,6 @@ impl Default for ParseOptions {
             html_tag_namespaces: false,
             gfm_strikethrough_single_tilde: true,
             math_text_single_dollar: true,
-            mdx_expression_parse: None,
-            mdx_esm_parse: None,
         }
     }
 }
@@ -1326,32 +1155,6 @@ impl ParseOptions {
     pub fn gfm() -> Self {
         Self {
             constructs: Constructs::gfm(),
-            ..Self::default()
-        }
-    }
-
-    /// MDX.
-    ///
-    /// This turns on `CommonMark`, turns off some conflicting constructs
-    /// (autolinks, code (indented), and HTML), and turns on MDX (ESM,
-    /// expressions, and JSX).
-    ///
-    /// For more information, see the MDX website:
-    /// <https://mdxjs.com>.
-    ///
-    /// > 👉 **Note**: to support ESM, you *must* pass
-    /// > [`mdx_esm_parse`][MdxEsmParse] in [`ParseOptions`][] too.
-    /// > Otherwise, ESM is treated as normal markdown.
-    /// >
-    /// > You *can* pass
-    /// > [`mdx_expression_parse`][MdxExpressionParse]
-    /// > to parse expressions according to a certain grammar (typically, a
-    /// > programming language).
-    /// > Otherwise, expressions are parsed with a basic algorithm that only
-    /// > cares about braces.
-    pub fn mdx() -> Self {
-        Self {
-            constructs: Constructs::mdx(),
             ..Self::default()
         }
     }

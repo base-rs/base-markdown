@@ -1,0 +1,70 @@
+{
+  "source_head": "8e5c47e610dc94c5863a96307e22bf3ce678eedb",
+  "source_tree": "edc296ef3b967f61e5558fd3e74e441692107377",
+  "native_target": "aarch64-apple-darwin",
+  "coverage": {
+    "features": "all",
+    "targets": "all",
+    "covered_regions": 24480,
+    "measured_regions": 24480,
+    "invariant_unreachable_exclusions": 64
+  },
+  "passed": [
+    "Formatting",
+    "Workspace all-target/all-feature Clippy with warnings denied",
+    "Default-feature library Clippy with warnings denied",
+    "Native all-target/all-feature region coverage",
+    "Default-feature workspace tests including Bake and generator",
+    "x86_64-unknown-linux-gnu all-feature library cross-check",
+    "2117 saved corpus outputs through direct, checked events, and arena",
+    "13-fixture full allocation comparison",
+    "13-fixture baseline/Inkmark output comparison",
+    "Three sequential timing rounds with recomputed sample medians"
+  ],
+  "logs": {
+    "fmt": {
+      "path": "/tmp/core-markdown-unify-selected-fmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "clippy": {
+      "path": "/tmp/core-markdown-unify-selected-clippy.log",
+      "sha256": "d8bd70b8367d7295789596f9b4bf52220448e4534ea98f86d9249730c8391279"
+    },
+    "default-clippy": {
+      "path": "/tmp/core-markdown-unify-selected-default-clippy.log",
+      "sha256": "cacdf1534da8a8c4bfa5e4296ab6acf59c84af3ddae59834f39605934c621b46"
+    },
+    "portable": {
+      "path": "/tmp/core-markdown-unify-selected-portable.log",
+      "sha256": "c0efbf6a7dec6cd79fc001e178603e3b5263fe78930ac7682bc78d6084256327"
+    },
+    "coverage": {
+      "path": "/tmp/core-markdown-unify-selected-coverage.log",
+      "sha256": "182db69a35fd80ae6b5027ede779859149711f9f733ab6a2c44aa61ce6038f5f"
+    },
+    "workspace": {
+      "path": "/tmp/core-markdown-unify-selected-workspace.log",
+      "sha256": "768dca4f965b62af7ef47af73467fbb80c5b04898d625db703140fefd9500d88"
+    },
+    "build": {
+      "path": "/tmp/core-markdown-unify-selected-build.log",
+      "sha256": "3a04209b95c55afbef4a05d19d4013a1253db86d56e7d8969b034945fdc2e55c"
+    },
+    "preservation": {
+      "path": "/tmp/core-markdown-unify-selected-preservation.log",
+      "sha256": "0e1a550bd098e364639d9ed9d1a522a6b25c595a9fca806e75b06876445c73e2"
+    },
+    "allocations": {
+      "path": "/tmp/core-markdown-unify-selected-allocations.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "agreement": {
+      "path": "/tmp/core-markdown-unify-selected-agreement.log",
+      "sha256": "2d29f43b7f49aa86d66a89ffeb690248715f444cbd1ea5cd84d6fe02a02bbfbb"
+    },
+    "timings": {
+      "path": "/tmp/core-markdown-unify-selected-timings.log",
+      "sha256": "76ef8c85ce2362d47c795684aa4651474be23320da22d7a493c92105ca1bfed4"
+    }
+  }
+}

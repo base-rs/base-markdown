@@ -3,12 +3,10 @@
 
 use core_markdown::{
     mdast::{
-        AlignKind, AttributeContent, AttributeValue, AttributeValueExpression, Blockquote, Break,
-        Code, Definition, Delete, Emphasis, FootnoteDefinition, FootnoteReference, Frontmatter,
-        Heading, Html, Image, ImageReference, InlineCode, InlineMath, Link, LinkReference, List,
-        ListItem, Math, MdxFlowExpression, MdxJsxAttribute, MdxJsxExpressionAttribute,
-        MdxJsxFlowElement, MdxJsxTextElement, MdxTextExpression, MdxjsEsm, Node, Paragraph,
-        ReferenceKind, Root, Strong, Table, TableCell, TableRow, Text, ThematicBreak,
+        AlignKind, Blockquote, Break, Code, Definition, Delete, Emphasis, FootnoteDefinition,
+        FootnoteReference, Frontmatter, Heading, Html, Image, ImageReference, InlineCode,
+        InlineMath, Link, LinkReference, List, ListItem, Math, Node, Paragraph, ReferenceKind,
+        Root, Strong, Table, TableCell, TableRow, Text, ThematicBreak,
     },
     message,
     renderer::Renderer,
@@ -146,29 +144,6 @@ fn renders_gfm_footnotes() -> Result<(), message::Message> {
 }
 
 #[test]
-fn omits_mdx_by_default_and_renders_static_jsx_when_enabled() -> Result<(), message::Message> {
-    let source = "<Widget title=\"demo\">hello</Widget>";
-
-    assert_eq!(
-        render(source, &ParseOptions::mdx(), CompileOptions::default())?,
-        ""
-    );
-    assert_eq!(
-        render(
-            source,
-            &ParseOptions::mdx(),
-            CompileOptions {
-                allow_dangerous_html: true,
-                ..CompileOptions::default()
-            },
-        )?,
-        "<p><Widget title=\"demo\">hello</Widget></p>"
-    );
-
-    Ok(())
-}
-
-#[test]
 fn renders_ast_node_variants_and_custom_renderer_methods() {
     let tree = Node::Root(Root {
         position: None,
@@ -267,20 +242,6 @@ fn renders_ast_node_variants_and_custom_renderer_methods() {
                     alt: "image & alt".into(),
                     url: "javascript:alert(1)".into(),
                     title: Some("image title".into()),
-                }),
-                Node::MdxTextExpression(MdxTextExpression {
-                    value: "value".into(),
-                    position: None,
-                    stops: vec![],
-                }),
-                Node::MdxJsxTextElement(MdxJsxTextElement {
-                    children: vec![text("jsx text")],
-                    position: None,
-                    name: Some("Widget".into()),
-                    attributes: vec![AttributeContent::Property(MdxJsxAttribute {
-                        name: "title".into(),
-                        value: Some(AttributeValue::Literal("a & \"b\"".into())),
-                    })],
                 }),
             ]),
             Node::Definition(Definition {
@@ -404,16 +365,6 @@ fn renders_ast_node_variants_and_custom_renderer_methods() {
                 position: None,
                 align: vec![],
             }),
-            Node::MdxFlowExpression(MdxFlowExpression {
-                value: "expression".into(),
-                position: None,
-                stops: vec![],
-            }),
-            Node::MdxjsEsm(MdxjsEsm {
-                value: "export const answer = 42".into(),
-                position: None,
-                stops: vec![],
-            }),
             Node::Frontmatter(Frontmatter {
                 info: String::new(),
                 fence: '-',
@@ -429,48 +380,6 @@ fn renders_ast_node_variants_and_custom_renderer_methods() {
                 closing_fence_length: 3,
                 value: "title = 'Example'".into(),
                 position: None,
-            }),
-            Node::MdxJsxFlowElement(MdxJsxFlowElement {
-                children: vec![paragraph(vec![text("jsx flow")])],
-                position: None,
-                name: Some("Panel".into()),
-                attributes: vec![
-                    AttributeContent::Expression(MdxJsxExpressionAttribute {
-                        value: "...props".into(),
-                        stops: vec![],
-                    }),
-                    AttributeContent::Property(MdxJsxAttribute {
-                        name: "href".into(),
-                        value: Some(AttributeValue::Literal("javascript:bad()".into())),
-                    }),
-                    AttributeContent::Property(MdxJsxAttribute {
-                        name: "src".into(),
-                        value: Some(AttributeValue::Literal("data:image/png;base64,abc".into())),
-                    }),
-                    AttributeContent::Property(MdxJsxAttribute {
-                        name: "title".into(),
-                        value: Some(AttributeValue::Expression(AttributeValueExpression {
-                            value: "title".into(),
-                            stops: vec![],
-                        })),
-                    }),
-                    AttributeContent::Property(MdxJsxAttribute {
-                        name: "disabled".into(),
-                        value: None,
-                    }),
-                ],
-            }),
-            Node::MdxJsxFlowElement(MdxJsxFlowElement {
-                children: vec![],
-                position: None,
-                name: Some("Empty".into()),
-                attributes: vec![],
-            }),
-            Node::MdxJsxTextElement(MdxJsxTextElement {
-                children: vec![],
-                position: None,
-                name: None,
-                attributes: vec![],
             }),
             Node::FootnoteReference(FootnoteReference {
                 position: None,
@@ -523,9 +432,6 @@ fn renders_ast_node_variants_and_custom_renderer_methods() {
         "<td align=\"center\">raw cell node</td>",
         "second body row",
         "<table>\n<tbody>",
-        "<Widget title=\"a &amp; &quot;b&quot;\">jsx text</Widget>",
-        "<Panel href=\"\" src=\"data:image/png;base64,abc\" disabled>",
-        "<Empty/>",
         "<h3 id=\"footnote-label\" class=\"notes\">Notes &amp; details</h3>",
         "aria-label=\"Back &amp; forth\"",
     ] {

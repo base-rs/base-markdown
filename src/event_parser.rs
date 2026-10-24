@@ -22,15 +22,18 @@ impl<'a> EventParser<'a> {
     /// Prepare Markdown for pull consumption.
     ///
     /// # Errors
-    /// Returns syntax errors from enabled Markdown extensions.
+    /// Markdown preparation is currently infallible; the result is retained for API compatibility.
     pub fn new(source: &'a str, options: &'a ParseOptions) -> Result<Self, StreamError> {
+        Ok(Self::prepare(source, options))
+    }
+
+    /// Built-in Markdown preparation has no syntax errors.
+    pub(crate) fn prepare(source: &'a str, options: &'a ParseOptions) -> Self {
         let producer = if let Some((blocks, definitions)) = Blocks::parse(source, options) {
             Producer::Compact(CompactParser {
                 blocks,
-                source,
                 inline: GrammarParser::empty(source, options, definitions),
                 gfm: options.constructs != crate::Constructs::default(),
-                options,
                 cursor: 0,
                 closing: false,
                 inlines: false,
@@ -38,9 +41,9 @@ impl<'a> EventParser<'a> {
                 separator: None,
             })
         } else {
-            Producer::Compatibility(Box::new(GrammarParser::new(source, options)?))
+            Producer::Compatibility(Box::new(GrammarParser::new(source, options)))
         };
-        Ok(Self { producer })
+        Self { producer }
     }
 }
 impl Iterator for EventParser<'_> {
@@ -63,10 +66,8 @@ enum Phase {
 }
 struct CompactParser<'a> {
     blocks: Blocks,
-    source: &'a str,
     inline: GrammarParser<'a>,
     gfm: bool,
-    options: &'a ParseOptions,
     cursor: usize,
     closing: bool,
     inlines: bool,
@@ -85,7 +86,7 @@ impl CompactParser<'_> {
         }
     }
     fn value(&self, index: usize) -> Text<'static> {
-        let mut value = ValueBuilder::new(self.source);
+        let mut value = ValueBuilder::new(self.inline.source());
         let mut child = self.blocks.nodes[index].child;
         while child != 0 {
             let node = self.blocks.nodes[child];
@@ -101,7 +102,7 @@ impl CompactParser<'_> {
         value.finish()
     }
     fn separator(&self, end: usize) -> Event<'static> {
-        let bytes = self.source.as_bytes();
+        let bytes = self.inline.source().as_bytes();
         // Block boundaries passed here end at a physical line ending, never at container padding or a trimmed inline fragment.
         let start = match bytes[end - 1] {
             b'\n' => end - 1 - usize::from(end > 1 && bytes[end - 2] == b'\r'),
@@ -120,7 +121,7 @@ impl CompactParser<'_> {
         self.phase = Phase::Done;
         Event {
             kind: EventKind::End(TagKind::Document),
-            span: self.source.len()..self.source.len(),
+            span: self.inline.source().len()..self.inline.source().len(),
         }
     }
     // Document bookends are infrequent; keep their state transitions out of the hot body loop.
@@ -131,10 +132,10 @@ impl CompactParser<'_> {
                 self.phase = Phase::Body;
                 self.cursor = self.blocks.nodes[0].child;
                 self.closing = self.cursor == 0;
-                let line_ending = self.source.find(['\r', '\n']).map(|index| {
-                    if self.source.as_bytes()[index] == b'\n' {
+                let line_ending = self.inline.source().find(['\r', '\n']).map(|index| {
+                    if self.inline.source().as_bytes()[index] == b'\n' {
                         LineEnding::LineFeed
-                    } else if self.source.as_bytes().get(index + 1) == Some(&b'\n') {
+                    } else if self.inline.source().as_bytes().get(index + 1) == Some(&b'\n') {
                         LineEnding::CarriageReturnLineFeed
                     } else {
                         LineEnding::CarriageReturn
@@ -142,7 +143,7 @@ impl CompactParser<'_> {
                 });
                 Some(Ok(Event {
                     kind: EventKind::Start(Tag::Document(line_ending)),
-                    span: 0..self.source.len(),
+                    span: 0..self.inline.source().len(),
                 }))
             }
             Phase::DocumentEnd => Some(Ok(self.end_document())),
@@ -194,32 +195,34 @@ impl CompactParser<'_> {
                     | Body::Table
             );
             let suppress_separator = match leaf.body {
-                Body::Html(end) => end == leaf.end && leaf.end == self.source.len(),
+                Body::Html(end) => end == leaf.end && leaf.end == self.inline.source().len(),
                 Body::Code(metadata) if leaf.parent == 0 => {
                     let code = &self.blocks.codes[metadata];
-                    code.unclosed && leaf.end == self.source.len()
+                    code.unclosed && leaf.end == self.inline.source().len()
                         || code.fence.is_none()
-                            && self.source[leaf.end..].trim().is_empty()
-                            && !self.source.ends_with(['\r', '\n'])
+                            && self.inline.source()[leaf.end..].trim().is_empty()
+                            && !self.inline.source().ends_with(['\r', '\n'])
                 }
                 _ => false,
             };
             if !suppress_separator
                 && self.blocks.nodes[0].child != 0
-                && (!matches!(last.body, Body::Definition(_)) || last.end < self.source.len())
-                && (self.source.ends_with(['\r', '\n'])
+                && (!matches!(last.body, Body::Definition(_))
+                    || last.end < self.inline.source().len())
+                && (self.inline.source().ends_with(['\r', '\n'])
                     || (matches!(
                         last.body,
                         Body::Paragraph | Body::Heading(_) | Body::Rule | Body::Table
                     ) || last.body == Body::Quote && populated)
-                        && self.source[..last.end]
+                        && self.inline.source()[..last.end]
                             .trim_end_matches([' ', '\t'])
                             .ends_with(['\r', '\n']))
             {
                 // Populated containers retain their final semantic line ending. Empty containers and lists followed by blank lines use the document style.
                 return Some(Ok(
                     if !populated
-                        || matches!(last.body, Body::List { .. }) && leaf.end != self.source.len()
+                        || matches!(last.body, Body::List { .. })
+                            && leaf.end != self.inline.source().len()
                         || leaf.body == Body::Table && last.end > leaf.end
                     {
                         Event {
@@ -267,7 +270,7 @@ impl CompactParser<'_> {
                 self.separator = Some(node.end);
             }
             self.advance();
-            let end = node.span_end(self.source);
+            let end = node.span_end(self.inline.source());
             return Some(Ok(Event {
                 kind: EventKind::End(tag),
                 span: end..end,
@@ -288,10 +291,10 @@ impl CompactParser<'_> {
                         }
                     })
                 };
-                let mut task = self.options.constructs.gfm_task_list_item
+                let mut task = self.inline.options().constructs.gfm_task_list_item
                     && matches!(node.body, Body::Paragraph)
                     && matches!(nodes[node.parent].body, Body::Item(_))
-                    && self.source[node.start..node.end].starts_with('[');
+                    && self.inline.source()[node.start..node.end].starts_with('[');
                 if task {
                     let mut before = nodes[node.parent].child;
                     while before != index {
@@ -360,10 +363,10 @@ impl CompactParser<'_> {
                 };
                 self.advance();
                 let mut end = node.end;
-                if self.source.as_bytes().get(end - 1) == Some(&b'\n') {
+                if self.inline.source().as_bytes().get(end - 1) == Some(&b'\n') {
                     end -= 1;
                 }
-                if self.source.as_bytes().get(end - 1) == Some(&b'\r') {
+                if self.inline.source().as_bytes().get(end - 1) == Some(&b'\r') {
                     end -= 1;
                 }
                 return Some(Ok(Event {
@@ -394,7 +397,7 @@ impl CompactParser<'_> {
                         None
                     } else {
                         Some(crate::grammar_parser::decode_string(
-                            self.source,
+                            self.inline.source(),
                             code.info.clone(),
                         ))
                     },
@@ -431,7 +434,7 @@ impl CompactParser<'_> {
         }
         Some(Ok(Event {
             kind,
-            span: node.start..node.span_end(self.source),
+            span: node.start..node.span_end(self.inline.source()),
         }))
     }
 }

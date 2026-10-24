@@ -8,19 +8,12 @@ memchr = { version = "2.8", default-features = false }
 log = { optional = true, version = "0.4" }
 regex = { version = "1" }
 serde = { features = ["derive"], optional = true, version = "1" }
-unicode-id = { features = ["no_std"], version = "0.3" }
 
 [dev-dependencies]
 criterion = "0.5"
 env_logger = "0.11"
 pretty_assertions = { workspace = true }
 serde_json = { version = "1" }
-swc_core = { version = "50", features = [
-  "common",
-  "ecma_ast",
-  "ecma_parser",
-  "ecma_visit",
-] }
 
 [features]
 default = []

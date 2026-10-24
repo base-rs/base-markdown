@@ -5,15 +5,8 @@
 //! Deal with positions in a file.
 //!
 //! * Convert between byte indices and unist points.
-//! * Convert between byte indices into a string which is built up of several
-//!   slices in a whole document, and byte indices into that whole document.
 use crate::unist::Point;
 use alloc::{vec, vec::Vec};
-
-/// Each stop represents a new slice, which contains the byte index into the
-/// corresponding string where the slice starts (`0`), and the byte index into
-/// the whole document where that slice starts (`1`).
-pub type Stop = (usize, usize);
 
 #[derive(Debug)]
 pub struct Location {
@@ -81,34 +74,6 @@ impl Location {
         }
 
         None
-    }
-
-    /// Like `to_point`, but takes a relative offset from a certain string
-    /// instead of an absolute offset into the whole document.
-    ///
-    /// The relative offset is made absolute based on `stops`, which represent
-    /// where that certain string is in the whole document.
-    #[must_use]
-    pub fn relative_to_point(&self, stops: &[Stop], relative: usize) -> Option<Point> {
-        Location::relative_to_absolute(stops, relative).and_then(|absolute| self.to_point(absolute))
-    }
-
-    /// Turn a relative offset into an absolute offset.
-    #[must_use]
-    pub fn relative_to_absolute(stops: &[Stop], relative: usize) -> Option<usize> {
-        let mut index = 0;
-
-        while index < stops.len() && stops[index].0 <= relative {
-            index += 1;
-        }
-
-        // There are no points: that only occurs if there was an empty string.
-        if index == 0 {
-            None
-        } else {
-            let (stop_relative, stop_absolute) = &stops[index - 1];
-            Some(stop_absolute + (relative - stop_relative))
-        }
     }
 }
 
@@ -206,15 +171,5 @@ mod tests {
     fn test_empty() {
         let location = Location::new("".as_bytes());
         assert_eq!(location.to_point(0), Some(Point::new(1, 1, 0)), "to_point");
-        assert_eq!(
-            location.relative_to_point(&[], 0),
-            None,
-            "relative_to_point"
-        );
-        assert_eq!(
-            Location::relative_to_absolute(&[], 0),
-            None,
-            "relative_to_absolute"
-        );
     }
 }

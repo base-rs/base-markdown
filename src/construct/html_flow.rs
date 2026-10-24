@@ -1052,7 +1052,7 @@ mod tests {
     use crate::{event::Point, parser::parse, tokenizer::Tokenizer, ParseOptions};
 
     fn with_tokenizer(source: &str, options: &ParseOptions, run: impl FnOnce(&mut Tokenizer<'_>)) {
-        let (_, parse_state) = parse(source, options).expect("parse test input");
+        let (_, parse_state) = parse(source, options);
         let mut tokenizer = Tokenizer::new(
             Point {
                 line: 1,
@@ -1072,10 +1072,8 @@ mod tests {
             ..ParseOptions::default()
         };
 
-        crate::parser::parse("<div>\n\n  content\n\n</div>", &options)
-            .expect("tracks blank lines in a basic HTML block");
-        crate::parser::parse("<widget>\n\n  content\n\n</widget>", &options)
-            .expect("tracks blank lines in a complete HTML block");
+        crate::parser::parse("<div>\n\n  content\n\n</div>", &options);
+        crate::parser::parse("<widget>\n\n  content\n\n</widget>", &options);
     }
 
     #[test]
@@ -1109,7 +1107,6 @@ mod tests {
             ..ParseOptions::default()
         };
 
-        parse("<!-- comment -->\n\ncontent", &options)
-            .expect("parses blank lines after an HTML comment");
+        parse("<!-- comment -->\n\ncontent", &options);
     }
 }

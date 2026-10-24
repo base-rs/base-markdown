@@ -178,13 +178,9 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Subresult {
 
     tokenizer.map.consume(&mut tokenizer.events);
 
-    let Ok(result) = subtokenize(
+    subtokenize(
         &mut tokenizer.events,
         tokenizer.parse_state,
         Some(&Content::Content),
-    ) else {
-        unreachable!("content resolution only parses paragraph and definition structure")
-    };
-
-    result
+    )
 }

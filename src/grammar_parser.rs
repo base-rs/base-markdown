@@ -57,16 +57,19 @@ pub(crate) struct GrammarParser<'a> {
 }
 
 impl<'a> GrammarParser<'a> {
+    pub(crate) fn source(&self) -> &'a str {
+        self.source
+    }
+    pub(crate) fn options(&self) -> &'a ParseOptions {
+        self.options
+    }
+
     /// Prepare Markdown for pull consumption.
-    ///
-    /// # Errors
-    /// Returns syntax errors from enabled Markdown extensions.
-    pub fn new(source: &'a str, options: &'a ParseOptions) -> Result<Self, StreamError> {
-        let (mut tokens, parse_state) = crate::parser::prepare(source, options)?;
+    pub fn new(source: &'a str, options: &'a ParseOptions) -> Self {
+        let (mut tokens, parse_state) = crate::parser::prepare(source, options);
         // Definition destinations and code-info strings are small and needed before their opening semantic events.
-        crate::subtokenize::subtokenize(&mut tokens, &parse_state, Some(&Content::String))
-            .expect("string tokenization has no extension syntax errors");
-        Ok(Self::from_tokens(source, options, tokens, parse_state))
+        crate::subtokenize::subtokenize(&mut tokens, &parse_state, Some(&Content::String));
+        Self::from_tokens(source, options, tokens, parse_state)
     }
 
     fn from_tokens(
@@ -136,7 +139,6 @@ impl<'a> GrammarParser<'a> {
             options,
             Vec::new(),
             ParseState {
-                location: None,
                 options,
                 bytes: source.as_bytes(),
                 definitions: Vec::new(),
@@ -244,11 +246,8 @@ impl<'a> GrammarParser<'a> {
             tokenizer.define_skip(point(fragment.start, line + 1));
             state = tokenizer.push((fragment.start, 0), (fragment.end, 0), state);
         }
-        tokenizer
-            .flush(state, true)
-            .expect("compact blocks enable only infallible inline constructs");
-        crate::subtokenize::subtokenize(&mut tokenizer.events, &self.parse_state, None)
-            .expect("resolved inline tokens contain only infallible string links");
+        tokenizer.flush(state, true);
+        crate::subtokenize::subtokenize(&mut tokenizer.events, &self.parse_state, None);
         self.buffers = tokenizer.into_buffers();
         self.tokens = core::mem::take(&mut self.buffers.events);
         pair_tokens(&self.tokens, &mut self.matching, &mut self.matching_stack);
@@ -259,7 +258,7 @@ impl<'a> GrammarParser<'a> {
         self.containers.push(TagKind::Paragraph);
     }
 
-    fn inline(&mut self, index: usize) -> Result<(), StreamError> {
+    fn inline(&mut self, index: usize) {
         let mut task = false;
         if self.options.constructs.gfm_task_list_item
             && index > 2
@@ -317,7 +316,7 @@ impl<'a> GrammarParser<'a> {
                 }
             {
                 self.direct_inline = true;
-                return Ok(());
+                return;
             }
         }
         let mut tokenizer = Tokenizer::with_buffers(
@@ -344,10 +343,9 @@ impl<'a> GrammarParser<'a> {
             );
             current = link.next();
         }
-        tokenizer.flush(state, true)?;
+        tokenizer.flush(state, true);
         // Resolve only the active inline region, never splice it into the block buffer.
-        crate::subtokenize::subtokenize(&mut tokenizer.events, &self.parse_state, None)
-            .expect("resolved inline tokens contain only infallible string links");
+        crate::subtokenize::subtokenize(&mut tokenizer.events, &self.parse_state, None);
         self.buffers = tokenizer.into_buffers();
         let tokens = core::mem::take(&mut self.buffers.events);
         let mut matching = core::mem::take(&mut self.inline_matching);
@@ -356,7 +354,6 @@ impl<'a> GrammarParser<'a> {
         let block_matching = core::mem::replace(&mut self.matching, matching);
         self.block_tokens = Some((blocks, block_matching, self.index));
         self.index = 0;
-        Ok(())
     }
 
     fn span(&self, index: usize) -> Range<usize> {
@@ -913,17 +910,11 @@ impl<'a> GrammarParser<'a> {
                     title,
                 })
             }
-            Name::Frontmatter
-            | Name::MdxEsm
-            | Name::MdxFlowExpression
-            | Name::MdxTextExpression
-            | Name::MdxJsxFlowTag
-            | Name::MdxJsxTextTag => {
-                let block = !matches!(name, Name::MdxTextExpression | Name::MdxJsxTextTag);
+            Name::Frontmatter => {
                 let value = self.text(index);
                 self.index = self.matching[index] + 1;
-                self.slurp = block;
-                Some(EventKind::Opaque { value, block })
+                self.slurp = true;
+                Some(EventKind::Opaque { value, block: true })
             }
             Name::GfmTaskListItemCheck => {
                 let checked = self
@@ -1063,11 +1054,7 @@ impl Iterator for GrammarParser<'_> {
                         let first = link.previous().is_none();
                         self.index = self.matching[index] + 1;
                         if first {
-                            if let Err(error) = self.inline(index) {
-                                self.ended = true;
-                                self.index = self.tokens.len();
-                                return Some(Err(error));
-                            }
+                            self.inline(index);
                         }
                         continue;
                     }

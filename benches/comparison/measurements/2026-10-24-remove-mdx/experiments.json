@@ -1,0 +1,84 @@
+{
+  "initial": {
+    "base_head": "fc3d6c836151a73542ac30cc2d786ac008a20810",
+    "binary": "/tmp/core-markdown-unify-20261024/candidate",
+    "binary_sha256": "b4f6ca751f58d3836fe2a6583e14fc0835342ca71989ec6020b097e9b08590ae",
+    "patch": "initial-control.patch",
+    "patch_sha256": "a6d7b7145f7388152756c4659b85adfb4e9874fac43d8f1fcf9b389f6e8441dc",
+    "source_head": "9fbab3b1722c39439ec13d3e6fcb8505bf073ded",
+    "patch_applies_to_base": true
+  },
+  "wrapper": {
+    "base_head": "fc3d6c836151a73542ac30cc2d786ac008a20810",
+    "binary": "/tmp/core-markdown-unify-20261024/wrapper-control",
+    "binary_sha256": "b120346268c45e33708a29a98e567562e3f4b0c77ee665920719453f2846bcfa",
+    "patch": "wrapper-control.patch",
+    "patch_sha256": "8810e9c1aa5153e39df4fd60864babec410b9fa6c87f24ac8ce17435e8bc0a87",
+    "patch_applies_to_base": true
+  },
+  "infallible": {
+    "base_head": "fc3d6c836151a73542ac30cc2d786ac008a20810",
+    "binary": "/tmp/core-markdown-unify-20261024/infallible-events",
+    "binary_sha256": "666996c8ff387ae177278ebbb9b43100a8a239173cf81bb6b60d027b39ce0542",
+    "patch": "infallible-events.patch",
+    "patch_sha256": "b80563a3d27a03edfd701ba94b8af2dbd5bc9872a37e64907c589be441eb8f40",
+    "patch_applies_to_base": true
+  },
+  "infallible_aligned": {
+    "base_head": "fc3d6c836151a73542ac30cc2d786ac008a20810",
+    "binary": "/tmp/core-markdown-unify-20261024/aligned-events",
+    "binary_sha256": "d5df3384af8c89ac185bd085d33bdd53f42ef2b24f5ee9df5c2b026f8455f4fe",
+    "patch": "aligned-events.patch",
+    "patch_sha256": "e7222aff826597629dfe99acd7828187f21dece5476aea3b9c4f0cb5bcf83f55",
+    "patch_applies_to_base": true
+  },
+  "align16": {
+    "base_head": "fc3d6c836151a73542ac30cc2d786ac008a20810",
+    "binary": "/tmp/core-markdown-unify-20261024/align-16",
+    "binary_sha256": "d6beb2e71447c38a1f0408b9abab12771c85a4a0ae19f6a71558e555f742766b",
+    "patch": "align-16.patch",
+    "patch_sha256": "ba3b8c14eabf12cde88df1d4b812cc376a1a35dd0a537fac4a403c6fc5548047",
+    "patch_applies_to_base": true
+  },
+  "align32": {
+    "base_head": "fc3d6c836151a73542ac30cc2d786ac008a20810",
+    "binary": "/tmp/core-markdown-unify-20261024/align-32",
+    "binary_sha256": "840570d2bb1a981404f22da0f05a75f6a2cd71212d1c3dca125ac6b89b0c483b",
+    "patch": "align-32.patch",
+    "patch_sha256": "77a1c1628076a34c4b9e56764ffbcad084fcf92747d61c6ff91e3e6def548fea",
+    "patch_applies_to_base": true
+  },
+  "align64": {
+    "base_head": "fc3d6c836151a73542ac30cc2d786ac008a20810",
+    "binary": "/tmp/core-markdown-unify-20261024/align-64",
+    "binary_sha256": "8df762616f36c4a8120776b19583792754f03d86bab9fbffe0e88e778e20d3e9",
+    "patch": "align-64.patch",
+    "patch_sha256": "5f5786212117cb50c67812589c3801935984aeb0d08aa2158c01afd0429ce3fc",
+    "patch_applies_to_base": true
+  },
+  "dedup": {
+    "base_head": "fc3d6c836151a73542ac30cc2d786ac008a20810",
+    "binary": "/tmp/core-markdown-unify-20261024/dedup-context",
+    "binary_sha256": "674201eb89b2230ac69a4a0eac1199b53335964f76d3f1c052f2e661f36bab5e",
+    "patch": "dedup-context.patch",
+    "patch_sha256": "bc4a9e7413a3cf86438e61d73fcea5adb175de2b1736bdf7e08f631cdf276111",
+    "selected_source_head": "8e5c47e610dc94c5863a96307e22bf3ce678eedb",
+    "patch_applies_to_base": true
+  },
+  "cached": {
+    "base_head": "fc3d6c836151a73542ac30cc2d786ac008a20810",
+    "binary": "/tmp/core-markdown-unify-20261024/cached-context",
+    "binary_sha256": "970925e22d54f919143b92ef6b93ed52e7d29afdb0a8f1705aadc1cd784ea9fa",
+    "patch": "cached-context.patch",
+    "patch_sha256": "e9934b73eef0de1d709308441f85978c79f279c35139c4c060d8f3676f18ed21",
+    "patch_applies_to_base": true
+  },
+  "cached_aligned": {
+    "base_head": "fc3d6c836151a73542ac30cc2d786ac008a20810",
+    "binary": "/tmp/core-markdown-unify-20261024/cached-align",
+    "binary_sha256": "f442414684d4eac67d762825b6dd5b785b2c769a6472a0c707f334fe37d829e8",
+    "patch": "cached-align.patch",
+    "patch_sha256": "546c76f1090b0c6e79d71b7996db7a584c94e6f3343c84e02ed4394f6731aedd",
+    "patch_applies_to_base": true
+  }
+}

@@ -528,11 +528,7 @@ fn custom_block_events_inside_images_contribute_only_alt_text() {
 }
 
 #[test]
-fn extension_errors_and_unclosed_container_fences_keep_their_boundaries() {
-    let options = core_markdown::ParseOptions::mdx();
-    assert!(core_markdown::EventParser::new("{b", &options).is_err());
-    assert!(Document::parse("{b", &options).is_err());
-    assert!(Document::parse("a {", &options).is_err());
+fn extensions_and_unclosed_container_fences_keep_their_boundaries() {
     let mut options = Options::gfm();
     options.parse.inline_code_info = true;
     options.parse.constructs.frontmatter = true;

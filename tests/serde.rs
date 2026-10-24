@@ -4,8 +4,6 @@
 // Copyright, 2026, by Samuel Williams.
 
 use core_markdown::{mdast::Node, message::Message, Constructs, ParseOptions};
-use test_utils::swc::{parse_esm, parse_expression};
-mod test_utils;
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -21,7 +19,7 @@ fn serde_constructs() -> Result<(), Error> {
 
     assert_eq!(
         serde_json::to_string(&Constructs::default()).unwrap(),
-        r#"{"attention":true,"autolink":true,"blockQuote":true,"characterEscape":true,"characterReference":true,"codeIndented":true,"codeFenced":true,"codeText":true,"definition":true,"frontmatter":false,"gfmAutolinkLiteral":false,"gfmFootnoteDefinition":false,"gfmLabelStartFootnote":false,"gfmStrikethrough":false,"gfmTable":false,"gfmTaskListItem":false,"hardBreakEscape":true,"hardBreakTrailing":true,"headingAtx":true,"headingSetext":true,"htmlFlow":true,"htmlText":true,"labelStartImage":true,"labelStartLink":true,"labelEnd":true,"listItem":true,"mathFlow":false,"mathText":false,"mdxEsm":false,"mdxExpressionFlow":false,"mdxExpressionText":false,"mdxJsxFlow":false,"mdxJsxText":false,"thematicBreak":true}"#
+        r#"{"attention":true,"autolink":true,"blockQuote":true,"characterEscape":true,"characterReference":true,"codeIndented":true,"codeFenced":true,"codeText":true,"definition":true,"frontmatter":false,"gfmAutolinkLiteral":false,"gfmFootnoteDefinition":false,"gfmLabelStartFootnote":false,"gfmStrikethrough":false,"gfmTable":false,"gfmTaskListItem":false,"hardBreakEscape":true,"hardBreakTrailing":true,"headingAtx":true,"headingSetext":true,"htmlFlow":true,"htmlText":true,"labelStartImage":true,"labelStartLink":true,"labelEnd":true,"listItem":true,"mathFlow":false,"mathText":false,"thematicBreak":true}"#
     );
 
     Ok(())
@@ -47,7 +45,7 @@ fn serde_parse_options() -> Result<(), Error> {
 
     assert_eq!(
         serde_json::to_string(&ParseOptions::gfm()).unwrap(),
-        r#"{"constructs":{"attention":true,"autolink":true,"blockQuote":true,"characterEscape":true,"characterReference":true,"codeIndented":true,"codeFenced":true,"codeText":true,"definition":true,"frontmatter":false,"gfmAutolinkLiteral":true,"gfmFootnoteDefinition":true,"gfmLabelStartFootnote":true,"gfmStrikethrough":true,"gfmTable":true,"gfmTaskListItem":true,"hardBreakEscape":true,"hardBreakTrailing":true,"headingAtx":true,"headingSetext":true,"htmlFlow":true,"htmlText":true,"labelStartImage":true,"labelStartLink":true,"labelEnd":true,"listItem":true,"mathFlow":false,"mathText":false,"mdxEsm":false,"mdxExpressionFlow":false,"mdxExpressionText":false,"mdxJsxFlow":false,"mdxJsxText":false,"thematicBreak":true},"inlineCodeInfo":false,"htmlBlockBlankLines":false,"htmlTagNamespaces":false,"gfmStrikethroughSingleTilde":true,"mathTextSingleDollar":true}"#
+        r#"{"constructs":{"attention":true,"autolink":true,"blockQuote":true,"characterEscape":true,"characterReference":true,"codeIndented":true,"codeFenced":true,"codeText":true,"definition":true,"frontmatter":false,"gfmAutolinkLiteral":true,"gfmFootnoteDefinition":true,"gfmLabelStartFootnote":true,"gfmStrikethrough":true,"gfmTable":true,"gfmTaskListItem":true,"hardBreakEscape":true,"hardBreakTrailing":true,"headingAtx":true,"headingSetext":true,"htmlFlow":true,"htmlText":true,"labelStartImage":true,"labelStartLink":true,"labelEnd":true,"listItem":true,"mathFlow":false,"mathText":false,"thematicBreak":true},"inlineCodeInfo":false,"htmlBlockBlankLines":false,"htmlTagNamespaces":false,"gfmStrikethroughSingleTilde":true,"mathTextSingleDollar":true}"#
     );
 
     Ok(())
@@ -101,48 +99,6 @@ fn serde_footnote_definition() -> Result<(), Error> {
 }
 
 #[test]
-fn serde_mdx_jsx_flow_element() -> Result<(), Error> {
-    let options = ParseOptions {
-        mdx_esm_parse: Some(Box::new(parse_esm)),
-        mdx_expression_parse: Some(Box::new(parse_expression)),
-        ..ParseOptions::mdx()
-    };
-
-    assert_serde(
-        "<a b c={d} e=\"f\" {...g} />",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "mdxJsxFlowElement",
-      "name": "a",
-      "attributes": [
-        {"type": "mdxJsxAttribute", "name": "b"},
-        {
-          "type": "mdxJsxAttribute",
-          "name": "c",
-          "value": {
-            "_markdownRsStops": [[0, 8]],
-            "type": "mdxJsxAttributeValueExpression",
-            "value": "d"
-          }
-        },
-        {"type": "mdxJsxAttribute", "name": "e", "value": "f"},
-        {
-          "_markdownRsStops": [[0, 18]],
-          "type": "mdxJsxExpressionAttribute",
-          "value": "...g"
-        }
-      ],
-      "children": []
-    }
-  ]
-}"#,
-        options,
-    )
-}
-
-#[test]
 fn serde_list() -> Result<(), Error> {
     assert_serde(
         "* a",
@@ -169,30 +125,6 @@ fn serde_list() -> Result<(), Error> {
   ]
 }"#,
         ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_mdxjs_esm() -> Result<(), Error> {
-    let options = ParseOptions {
-        mdx_esm_parse: Some(Box::new(parse_esm)),
-        mdx_expression_parse: Some(Box::new(parse_expression)),
-        ..ParseOptions::mdx()
-    };
-
-    assert_serde(
-        "import a, {b} from 'c'",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "_markdownRsStops": [[0, 0]],
-      "type": "mdxjsEsm",
-      "value": "import a, {b} from 'c'"
-    }
-  ]
-}"#,
-        options,
     )
 }
 
@@ -338,36 +270,6 @@ fn serde_emphasis() -> Result<(), Error> {
 }
 
 #[test]
-fn serde_mdx_text_expression() -> Result<(), Error> {
-    let options = ParseOptions {
-        mdx_esm_parse: Some(Box::new(parse_esm)),
-        mdx_expression_parse: Some(Box::new(parse_expression)),
-        ..ParseOptions::mdx()
-    };
-
-    assert_serde(
-        "a {b}",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [
-        {"type": "text","value": "a "},
-        {
-          "_markdownRsStops": [[0,3]],
-          "type": "mdxTextExpression",
-          "value": "b"
-        }
-      ]
-    }
-  ]
-}"#,
-        options,
-    )
-}
-
-#[test]
 fn serde_footnote_reference() -> Result<(), Error> {
     assert_serde(
         "[^a]\n\n[^a]: b",
@@ -449,31 +351,6 @@ fn serde_image_reference() -> Result<(), Error> {
   ]
 }"#,
         ParseOptions::default(),
-    )
-}
-
-#[test]
-fn serde_mdx_jsx_text_element() -> Result<(), Error> {
-    assert_serde(
-        "a <b c />",
-        r#"{
-  "type": "root",
-  "children": [
-    {
-      "type": "paragraph",
-      "children": [
-        {"type": "text", "value": "a "},
-        {
-          "type": "mdxJsxTextElement",
-          "name": "b",
-          "attributes": [{"type": "mdxJsxAttribute", "name": "c"}],
-          "children": []
-        }
-      ]
-    }
-  ]
-}"#,
-        ParseOptions::mdx(),
     )
 }
 
@@ -609,26 +486,6 @@ fn serde_math() -> Result<(), Error> {
 }
 
 #[test]
-fn serde_mdx_flow_expression() -> Result<(), Error> {
-    let options = ParseOptions {
-        mdx_esm_parse: Some(Box::new(parse_esm)),
-        mdx_expression_parse: Some(Box::new(parse_expression)),
-        ..ParseOptions::mdx()
-    };
-
-    assert_serde(
-        "{a}",
-        r#"{
-  "type": "root",
-  "children": [
-    {"_markdownRsStops": [[0, 1]], "type": "mdxFlowExpression", "value": "a"}
-  ]
-}"#,
-        options,
-    )
-}
-
-#[test]
 fn serde_heading() -> Result<(), Error> {
     assert_serde(
         "# a",
@@ -728,7 +585,6 @@ fn serde_paragraph() -> Result<(), Error> {
 ///
 /// Refer below links for the mdast JSON construct types.
 /// * <https://github.com/syntax-tree/mdast#nodes>
-/// * <https://github.com/syntax-tree/mdast-util-mdx#syntax-tree>
 /// * <https://github.com/syntax-tree/mdast-util-frontmatter#syntax-tree>
 #[cfg(feature = "serde")]
 fn assert_serde(input: &str, expected: &str, options: ParseOptions) -> Result<(), Error> {
