@@ -131,8 +131,78 @@ impl EventParser<'_> {
             }
             Phase::DocumentEnd => Some(Ok(self.end_document())),
             Phase::Done => None,
-            Phase::Body | Phase::Inline | Phase::Separator(_) => {
-                unreachable!("body delivery bypasses document boundary handling")
+            Phase::Body => {
+                self.phase = Phase::DocumentEnd;
+                let mut last = self.blocks.nodes[0].child;
+                while self.blocks.nodes[last].next != 0 {
+                    last = self.blocks.nodes[last].next;
+                }
+                let last = self.blocks.nodes[last];
+                let mut leaf = last;
+                while matches!(leaf.body, Body::Quote | Body::List { .. } | Body::Item(_))
+                    && leaf.child != 0
+                {
+                    let mut child = leaf.child;
+                    while self.blocks.nodes[child].next != 0 {
+                        child = self.blocks.nodes[child].next;
+                    }
+                    leaf = self.blocks.nodes[child];
+                }
+                let populated = matches!(
+                    leaf.body,
+                    Body::Paragraph
+                        | Body::Heading(_)
+                        | Body::Rule
+                        | Body::Code(_)
+                        | Body::Html(_)
+                        | Body::Table
+                );
+                let suppress_separator = match leaf.body {
+                    Body::Html(end) => end == leaf.end && leaf.end == self.source.len(),
+                    Body::Code(metadata) if leaf.parent == 0 => {
+                        let code = &self.blocks.codes[metadata];
+                        code.unclosed && leaf.end == self.source.len()
+                            || code.fence.is_none()
+                                && self.source[leaf.end..].trim().is_empty()
+                                && !self.source.ends_with(['\r', '\n'])
+                    }
+                    _ => false,
+                };
+                if !suppress_separator
+                    && self.blocks.nodes[0].child != 0
+                    && (!matches!(last.body, Body::Definition(_)) || last.end < self.source.len())
+                    && (self.source.ends_with(['\r', '\n'])
+                        || (matches!(
+                            last.body,
+                            Body::Paragraph | Body::Heading(_) | Body::Rule | Body::Table
+                        ) || last.body == Body::Quote && populated)
+                            && self.source[..last.end]
+                                .trim_end_matches([' ', '\t'])
+                                .ends_with(['\r', '\n']))
+                {
+                    // Populated containers retain their final semantic line ending. Empty containers and lists followed by blank lines use the document style.
+                    return Some(Ok(
+                        if !populated
+                            || matches!(last.body, Body::List { .. })
+                                && leaf.end != self.source.len()
+                            || leaf.body == Body::Table && last.end > leaf.end
+                        {
+                            Event {
+                                kind: EventKind::Separator {
+                                    value: Text::Literal(""),
+                                    conditional: true,
+                                },
+                                span: last.end..last.end,
+                            }
+                        } else {
+                            self.separator(leaf.end)
+                        },
+                    ));
+                }
+                Some(Ok(self.end_document()))
+            }
+            Phase::Inline | Phase::Separator(_) => {
+                unreachable!("active body delivery bypasses document boundary handling")
             }
         }
     }
@@ -160,73 +230,7 @@ impl EventParser<'_> {
             _ => return self.document_boundary(),
         }
         if self.cursor == 0 {
-            self.phase = Phase::DocumentEnd;
-            let mut last = self.blocks.nodes[0].child;
-            while self.blocks.nodes[last].next != 0 {
-                last = self.blocks.nodes[last].next;
-            }
-            let last = self.blocks.nodes[last];
-            let mut leaf = last;
-            while matches!(leaf.body, Body::Quote | Body::List { .. } | Body::Item(_))
-                && leaf.child != 0
-            {
-                let mut child = leaf.child;
-                while self.blocks.nodes[child].next != 0 {
-                    child = self.blocks.nodes[child].next;
-                }
-                leaf = self.blocks.nodes[child];
-            }
-            let populated = matches!(
-                leaf.body,
-                Body::Paragraph
-                    | Body::Heading(_)
-                    | Body::Rule
-                    | Body::Code(_)
-                    | Body::Html(_)
-                    | Body::Table
-            );
-            let suppress_separator = match leaf.body {
-                Body::Html(end) => end == leaf.end && leaf.end == self.source.len(),
-                Body::Code(metadata) if leaf.parent == 0 => {
-                    let code = &self.blocks.codes[metadata];
-                    code.unclosed && leaf.end == self.source.len()
-                        || code.fence.is_none()
-                            && self.source[leaf.end..].trim().is_empty()
-                            && !self.source.ends_with(['\r', '\n'])
-                }
-                _ => false,
-            };
-            if !suppress_separator
-                && self.blocks.nodes[0].child != 0
-                && (!matches!(last.body, Body::Definition(_)) || last.end < self.source.len())
-                && (self.source.ends_with(['\r', '\n'])
-                    || (matches!(
-                        last.body,
-                        Body::Paragraph | Body::Heading(_) | Body::Rule | Body::Table
-                    ) || last.body == Body::Quote && populated)
-                        && self.source[..last.end]
-                            .trim_end_matches([' ', '\t'])
-                            .ends_with(['\r', '\n']))
-            {
-                // Populated containers retain their final semantic line ending. Empty containers and lists followed by blank lines use the document style.
-                return Some(Ok(
-                    if !populated
-                        || matches!(last.body, Body::List { .. }) && leaf.end != self.source.len()
-                        || leaf.body == Body::Table && last.end > leaf.end
-                    {
-                        Event {
-                            kind: EventKind::Separator {
-                                value: Text::Literal(""),
-                                conditional: true,
-                            },
-                            span: last.end..last.end,
-                        }
-                    } else {
-                        self.separator(leaf.end)
-                    },
-                ));
-            }
-            return Some(Ok(self.end_document()));
+            return self.document_boundary();
         }
         let index = self.cursor;
         let node = self.blocks.nodes[index];
