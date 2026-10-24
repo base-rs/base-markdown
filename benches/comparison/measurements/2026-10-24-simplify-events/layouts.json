@@ -1,0 +1,52 @@
+{
+  "baseline": {
+    "types": {
+      "event_parser::EventParser": {
+        "bytes": 1176,
+        "diagnostic": "print-type-size type: `event_parser::EventParser<'_>`: 1176 bytes, alignment: 8 bytes"
+      },
+      "document::Node": {
+        "bytes": 128,
+        "diagnostic": "print-type-size type: `document::Node`: 128 bytes, alignment: 8 bytes"
+      },
+      "document::AstBuilder": {
+        "bytes": 56,
+        "diagnostic": "print-type-size type: `document::AstBuilder`: 56 bytes, alignment: 8 bytes"
+      },
+      "inline_parser::Node": {
+        "bytes": 48,
+        "diagnostic": "print-type-size type: `inline_parser::Node`: 48 bytes, alignment: 8 bytes"
+      },
+      "inline_parser::InlineParser": {
+        "bytes": 240,
+        "diagnostic": "print-type-size type: `inline_parser::InlineParser`: 240 bytes, alignment: 8 bytes"
+      }
+    },
+    "diagnostic_sha256": "edf210f5567ba1758815267a3afb805c2ec545a80f75df83b360d32fc3bb296d"
+  },
+  "combined": {
+    "types": {
+      "event_parser::EventParser": {
+        "bytes": 1152,
+        "diagnostic": "print-type-size type: `event_parser::EventParser<'_>`: 1152 bytes, alignment: 8 bytes"
+      },
+      "document::Node": {
+        "bytes": 120,
+        "diagnostic": "print-type-size type: `document::Node`: 120 bytes, alignment: 8 bytes"
+      },
+      "document::AstBuilder": {
+        "bytes": 64,
+        "diagnostic": "print-type-size type: `document::AstBuilder`: 64 bytes, alignment: 8 bytes"
+      },
+      "inline_parser::Node": {
+        "bytes": 48,
+        "diagnostic": "print-type-size type: `inline_parser::Node`: 48 bytes, alignment: 8 bytes"
+      },
+      "inline_parser::InlineParser": {
+        "bytes": 216,
+        "diagnostic": "print-type-size type: `inline_parser::InlineParser`: 216 bytes, alignment: 8 bytes"
+      }
+    },
+    "diagnostic_sha256": "a32daafa7813c9b6abaff9859c98fd31b92e00ac58bc75bef43783ea5954c610"
+  }
+}

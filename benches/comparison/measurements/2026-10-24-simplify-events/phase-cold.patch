@@ -1,0 +1,34 @@
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index 3cea473..839422e 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -123,10 +123,8 @@ impl CompactParser<'_> {
+             span: self.source.len()..self.source.len(),
+         }
+     }
+-    // Paired mixed-document benchmarks justify inlining this event boundary.
+-    #[allow(clippy::inline_always)]
+-    #[inline(always)]
+-    fn next(&mut self) -> Option<Result<Event<'static>, StreamError>> {
++    #[cold]
++    fn document_boundary(&mut self) -> Option<Result<Event<'static>, StreamError>> {
+         match self.phase {
+             Phase::Start => {
+                 self.phase = Phase::Body;
+@@ -148,7 +146,15 @@ impl CompactParser<'_> {
+             }
+             Phase::DocumentEnd => return Some(Ok(self.end_document())),
+             Phase::Done => return None,
+-            Phase::Body => {}
++            Phase::Body => unreachable!("body delivery bypasses document boundary handling"),
++        }
++    }
++    // Paired mixed-document benchmarks justify inlining this event boundary.
++    #[allow(clippy::inline_always)]
++    #[inline(always)]
++    fn next(&mut self) -> Option<Result<Event<'static>, StreamError>> {
++        if !matches!(self.phase, Phase::Body) {
++            return self.document_boundary();
+         }
+         if let Some(end) = self.separator.take() {
+             return Some(Ok(self.separator(end)));

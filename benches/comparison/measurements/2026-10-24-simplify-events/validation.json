@@ -1,0 +1,71 @@
+{
+  "source_head": "bdf9d9c0f4e74b6fbe2e77651fbdc7a3cff8c9a3",
+  "native_target": "aarch64-apple-darwin",
+  "coverage": {
+    "features": "all",
+    "targets": "all",
+    "covered_regions": 27101,
+    "measured_regions": 27101,
+    "invariant_unreachable_exclusions": 69
+  },
+  "passed": [
+    "Formatting check",
+    "Workspace all-target/all-feature Clippy with warnings denied",
+    "Native all-target/all-feature coverage",
+    "Default workspace tests including Bake and the generator",
+    "x86_64-unknown-linux-gnu library cross-check",
+    "Saved corpus preservation through direct, checked-event, and arena HTML",
+    "Complete allocation collection",
+    "Benchmark output comparison"
+  ],
+  "logs": {
+    "final-fmt.log": {
+      "path": "/tmp/core-markdown-simplify-20261024/final-fmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "final-clippy.log": {
+      "path": "/tmp/core-markdown-simplify-20261024/final-clippy.log",
+      "sha256": "4ae57f09bc6fa66efc3d9809e9cde47ca794b39c16c49f774845e3254bc02867"
+    },
+    "final-coverage.log": {
+      "path": "/tmp/core-markdown-simplify-20261024/final-coverage.log",
+      "sha256": "538b3efffea74d34b9a25221759b187704e1473df566b2b0d59e5a1765aa4dda"
+    },
+    "final-workspace-tests.log": {
+      "path": "/tmp/core-markdown-simplify-20261024/final-workspace-tests.log",
+      "sha256": "77bb6f83d5858f776dd294aa7c35ad534f71caf7413146e6cf8f26f317b0cc74"
+    },
+    "final-portable-check.log": {
+      "path": "/tmp/core-markdown-simplify-20261024/final-portable-check.log",
+      "sha256": "7683ef4cc6f2b8827402be9dfac19539ef119a1ed69501b618af4e0f72028f19"
+    },
+    "final-build.log": {
+      "path": "/tmp/core-markdown-simplify-20261024/final-build.log",
+      "sha256": "132b591dc9adee3dc25d0942efdfaa79a56dc1fd26f5016ec5d7bb2e64ff5714"
+    },
+    "final-preservation.log": {
+      "path": "/tmp/core-markdown-simplify-20261024/final-preservation.log",
+      "sha256": "0e1a550bd098e364639d9ed9d1a522a6b25c595a9fca806e75b06876445c73e2"
+    },
+    "final-allocations.log": {
+      "path": "/tmp/core-markdown-simplify-20261024/final-allocations.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "final-output-agreement.log": {
+      "path": "/tmp/core-markdown-simplify-20261024/final-output-agreement.log",
+      "sha256": "fe04929e94a52bc466a090fbb577abe892fe7903b25d53e0cd5f69e759cdfec4"
+    },
+    "final-html.log": {
+      "path": "/tmp/core-markdown-simplify-20261024/final-html.log",
+      "sha256": "f68e41a8e80cd159922c8d1320f72af09cbc5192d8bb448b39e632c5076958c1"
+    },
+    "phases.log": {
+      "path": "/tmp/core-markdown-simplify-20261024/phases.log",
+      "sha256": "55fd7a621b392b9667eb43fd00ce83cff94e5e056e7a21507b016e7a45a09339"
+    },
+    "layout.log": {
+      "path": "/tmp/core-markdown-simplify-20261024/layout.log",
+      "sha256": "ed97c27c0c66db782b984878fb7d408601004ce77c140fbdc5039d4de5e7c365"
+    }
+  }
+}

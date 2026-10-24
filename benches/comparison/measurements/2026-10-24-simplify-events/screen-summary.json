@@ -1,0 +1,464 @@
+{
+  "core-markdown/readme": {
+    "baseline": {
+      "median_ms": 0.01364046916989393,
+      "process_medians_ms": [
+        0.013640008682170544,
+        0.013640929657617314
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "arena": {
+      "median_ms": 0.013629427477946241,
+      "process_medians_ms": [
+        0.013581225443131463,
+        0.013677629512761021
+      ],
+      "time_reduction_percent": 0.08094803639202564
+    },
+    "blocks": {
+      "median_ms": 0.01391798789736122,
+      "process_medians_ms": [
+        0.013839492924528301,
+        0.013996482870194137
+      ],
+      "time_reduction_percent": -2.0345247953773127
+    },
+    "tagfilter": {
+      "median_ms": 0.013771684042631908,
+      "process_medians_ms": [
+        0.01371015603232098,
+        0.013833212052942833
+      ],
+      "time_reduction_percent": -0.9619527825889262
+    },
+    "entities": {
+      "median_ms": 0.013442080551148143,
+      "process_medians_ms": [
+        0.013514047768351162,
+        0.013370113333945123
+      ],
+      "time_reduction_percent": 1.4544119874091432
+    }
+  },
+  "core-markdown/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.407590744212691,
+      "process_medians_ms": [
+        0.40923062972972973,
+        0.40595085869565223
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "arena": {
+      "median_ms": 0.40549677366914416,
+      "process_medians_ms": [
+        0.4010545392953929,
+        0.4099390080428954
+      ],
+      "time_reduction_percent": 0.5137433990537676
+    },
+    "blocks": {
+      "median_ms": 0.41787032755284026,
+      "process_medians_ms": [
+        0.41895787671232876,
+        0.4167827783933518
+      ],
+      "time_reduction_percent": -2.522035518742083
+    },
+    "tagfilter": {
+      "median_ms": 0.41478079241596166,
+      "process_medians_ms": [
+        0.4129740972972973,
+        0.41658748753462604
+      ],
+      "time_reduction_percent": -1.7640361822148565
+    },
+    "entities": {
+      "median_ms": 0.3989983991461366,
+      "process_medians_ms": [
+        0.3990500877659574,
+        0.3989467105263158
+      ],
+      "time_reduction_percent": 2.108081498060388
+    }
+  },
+  "core-markdown/mixed-1m": {
+    "baseline": {
+      "median_ms": 4.172087958333333,
+      "process_medians_ms": [
+        4.150087972222222,
+        4.194087944444444
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "arena": {
+      "median_ms": 4.118546200292398,
+      "process_medians_ms": [
+        4.071065789473684,
+        4.1660266111111115
+      ],
+      "time_reduction_percent": 1.2833324363162202
+    },
+    "blocks": {
+      "median_ms": 4.173826013513514,
+      "process_medians_ms": [
+        4.193117108108108,
+        4.154534918918919
+      ],
+      "time_reduction_percent": -0.04165912122513493
+    },
+    "tagfilter": {
+      "median_ms": 4.182297297297297,
+      "process_medians_ms": [
+        4.1717736486486485,
+        4.192820945945946
+      ],
+      "time_reduction_percent": -0.24470574604191775
+    },
+    "entities": {
+      "median_ms": 4.057632131578947,
+      "process_medians_ms": [
+        4.048417763157894,
+        4.0668465000000005
+      ],
+      "time_reduction_percent": 2.7433704154240623
+    }
+  },
+  "core-markdown/gfm-100k": {
+    "baseline": {
+      "median_ms": 0.6122422911522634,
+      "process_medians_ms": [
+        0.5999995,
+        0.6244850823045267
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "arena": {
+      "median_ms": 0.6285699657970145,
+      "process_medians_ms": [
+        0.6371363455284553,
+        0.6200035860655738
+      ],
+      "time_reduction_percent": -2.6668648802456785
+    },
+    "blocks": {
+      "median_ms": 0.6197426797520662,
+      "process_medians_ms": [
+        0.621842111570248,
+        0.6176432479338844
+      ],
+      "time_reduction_percent": -1.2250686873797711
+    },
+    "tagfilter": {
+      "median_ms": 0.6247223381742738,
+      "process_medians_ms": [
+        0.6301284605809128,
+        0.6193162157676348
+      ],
+      "time_reduction_percent": -2.038416359399564
+    },
+    "entities": {
+      "median_ms": 0.6006604380796143,
+      "process_medians_ms": [
+        0.599625498007968,
+        0.6016953781512606
+      ],
+      "time_reduction_percent": 1.8917107230295271
+    }
+  },
+  "core-markdown/references": {
+    "baseline": {
+      "median_ms": 0.5530856828222028,
+      "process_medians_ms": [
+        0.5528801678832117,
+        0.5532911977611941
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "arena": {
+      "median_ms": 0.5791531229000884,
+      "process_medians_ms": [
+        0.6094184252873563,
+        0.5488878205128205
+      ],
+      "time_reduction_percent": -4.713092543794017
+    },
+    "blocks": {
+      "median_ms": 0.5641903695728414,
+      "process_medians_ms": [
+        0.5668132075471698,
+        0.561567531598513
+      ],
+      "time_reduction_percent": -2.007769699258044
+    },
+    "tagfilter": {
+      "median_ms": 0.5570982751337652,
+      "process_medians_ms": [
+        0.5591834905660378,
+        0.5550130597014926
+      ],
+      "time_reduction_percent": -0.7254919872609067
+    },
+    "entities": {
+      "median_ms": 0.5331447528908417,
+      "process_medians_ms": [
+        0.5345582717391304,
+        0.5317312340425532
+      ],
+      "time_reduction_percent": 3.605396153017282
+    }
+  },
+  "core-markdown/entities-100k": {
+    "baseline": {
+      "median_ms": 0.8336447206593407,
+      "process_medians_ms": [
+        0.8296925384615386,
+        0.8375969028571428
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "arena": {
+      "median_ms": 0.8784899712643679,
+      "process_medians_ms": [
+        0.8889066666666667,
+        0.868073275862069
+      ],
+      "time_reduction_percent": -5.379419972762323
+    },
+    "blocks": {
+      "median_ms": 0.8517213085714286,
+      "process_medians_ms": [
+        0.8481271428571429,
+        0.8553154742857144
+      ],
+      "time_reduction_percent": -2.1683803020777104
+    },
+    "tagfilter": {
+      "median_ms": 0.8511127775630252,
+      "process_medians_ms": [
+        0.8524610294117647,
+        0.8497645257142857
+      ],
+      "time_reduction_percent": -2.0953838572706163
+    },
+    "entities": {
+      "median_ms": 0.8057471438962032,
+      "process_medians_ms": [
+        0.8158287292817679,
+        0.7956655585106384
+      ],
+      "time_reduction_percent": 3.346458757763493
+    }
+  },
+  "core-markdown/html-safe-100k": {
+    "baseline": {
+      "median_ms": 0.36411966438784094,
+      "process_medians_ms": [
+        0.3658956292682927,
+        0.3623436995073892
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "arena": {
+      "median_ms": 0.38077715925517,
+      "process_medians_ms": [
+        0.38992059033078885,
+        0.3716337281795511
+      ],
+      "time_reduction_percent": -4.574730918565928
+    },
+    "blocks": {
+      "median_ms": 0.36504970675603854,
+      "process_medians_ms": [
+        0.37031648668280875,
+        0.35978292682926827
+      ],
+      "time_reduction_percent": -0.2554221754985875
+    },
+    "tagfilter": {
+      "median_ms": 0.26584985669333594,
+      "process_medians_ms": [
+        0.2663409296028881,
+        0.2653587837837838
+      ],
+      "time_reduction_percent": 26.988327548778912
+    },
+    "entities": {
+      "median_ms": 0.36484564528771013,
+      "process_medians_ms": [
+        0.3667598585365853,
+        0.36293143203883493
+      ],
+      "time_reduction_percent": -0.19937975640225147
+    }
+  },
+  "core-markdown/html-filtered-100k": {
+    "baseline": {
+      "median_ms": 0.3927418626943005,
+      "process_medians_ms": [
+        0.391376725388601,
+        0.394107
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "arena": {
+      "median_ms": 0.4004226173961263,
+      "process_medians_ms": [
+        0.4054923324175824,
+        0.3953529023746702
+      ],
+      "time_reduction_percent": -1.9556750709318393
+    },
+    "blocks": {
+      "median_ms": 0.3939944602789611,
+      "process_medians_ms": [
+        0.39404385789473684,
+        0.3939450626631854
+      ],
+      "time_reduction_percent": -0.3189366104411562
+    },
+    "tagfilter": {
+      "median_ms": 0.27749893292766425,
+      "process_medians_ms": [
+        0.27936752336448595,
+        0.2756303424908425
+      ],
+      "time_reduction_percent": 29.343174413861295
+    },
+    "entities": {
+      "median_ms": 0.38745230261471075,
+      "process_medians_ms": [
+        0.387555914507772,
+        0.38734869072164946
+      ],
+      "time_reduction_percent": 1.3468286887733716
+    }
+  },
+  "core-arena/readme": {
+    "baseline": {
+      "median_ms": 0.02762821412116519,
+      "process_medians_ms": [
+        0.027502276528526295,
+        0.027754151713804086
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "arena": {
+      "median_ms": 0.02756468800219965,
+      "process_medians_ms": [
+        0.027676905835543768,
+        0.027452470168855533
+      ],
+      "time_reduction_percent": 0.2299320494873247
+    },
+    "blocks": {
+      "median_ms": 0.02737093490204348,
+      "process_medians_ms": [
+        0.02743257193572496,
+        0.027309297868362004
+      ],
+      "time_reduction_percent": 0.931219144289952
+    },
+    "tagfilter": {
+      "median_ms": 0.027362069592253783,
+      "process_medians_ms": [
+        0.027406388442117076,
+        0.027317750742390495
+      ],
+      "time_reduction_percent": 0.9633070300679392
+    },
+    "entities": {
+      "median_ms": 0.02731580818096633,
+      "process_medians_ms": [
+        0.027336909700242044,
+        0.027294706661690614
+      ],
+      "time_reduction_percent": 1.1307496707126496
+    }
+  },
+  "core-arena/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.8601870031356154,
+      "process_medians_ms": [
+        0.8460283202247191,
+        0.8743456860465116
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "arena": {
+      "median_ms": 0.8398275139664805,
+      "process_medians_ms": [
+        0.8405761173184357,
+        0.8390789106145252
+      ],
+      "time_reduction_percent": 2.3668677967603524
+    },
+    "blocks": {
+      "median_ms": 0.8576091826788919,
+      "process_medians_ms": [
+        0.8507875722543352,
+        0.8644307931034484
+      ],
+      "time_reduction_percent": 0.2996814003613957
+    },
+    "tagfilter": {
+      "median_ms": 0.861792390777975,
+      "process_medians_ms": [
+        0.8751737309941521,
+        0.8484110505617978
+      ],
+      "time_reduction_percent": -0.18663239929312958
+    },
+    "entities": {
+      "median_ms": 0.8500460106053269,
+      "process_medians_ms": [
+        0.8407396440677966,
+        0.8593523771428572
+      ],
+      "time_reduction_percent": 1.178928825164971
+    }
+  },
+  "core-arena/mixed-1m": {
+    "baseline": {
+      "median_ms": 9.438060354779411,
+      "process_medians_ms": [
+        9.436568647058822,
+        9.4395520625
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "arena": {
+      "median_ms": 9.19862255882353,
+      "process_medians_ms": [
+        9.14178676470588,
+        9.255458352941178
+      ],
+      "time_reduction_percent": 2.5369385970776315
+    },
+    "blocks": {
+      "median_ms": 9.327506147058823,
+      "process_medians_ms": [
+        9.285318647058824,
+        9.369693647058824
+      ],
+      "time_reduction_percent": 1.1713657633541597
+    },
+    "tagfilter": {
+      "median_ms": 9.47489971875,
+      "process_medians_ms": [
+        9.444192687500001,
+        9.50560675
+      ],
+      "time_reduction_percent": -0.3903277006692685
+    },
+    "entities": {
+      "median_ms": 9.418340262867646,
+      "process_medians_ms": [
+        9.4537369375,
+        9.382943588235293
+      ],
+      "time_reduction_percent": 0.2089422102686478
+    }
+  }
+}

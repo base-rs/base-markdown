@@ -1,0 +1,45 @@
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index 2c15c5d..3268e2b 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -5,7 +5,7 @@
+ use crate::block_parser::{Blocks, Body};
+ use crate::grammar_parser::{GrammarParser, ValueBuilder};
+ use crate::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
+-use crate::{LineEnding, ParseOptions};
++use crate::ParseOptions;
+ use alloc::boxed::Box;
+ 
+ /// A pull producer of resolved semantic events. Preparation records block structure; inline syntax is scanned only when its containing block is consumed.
+@@ -130,15 +130,7 @@ impl CompactParser<'_> {
+                 self.phase = Phase::Body;
+                 self.cursor = self.blocks.nodes[0].child;
+                 self.closing = self.cursor == 0;
+-                let line_ending = self.source.find(['\r', '\n']).map(|index| {
+-                    if self.source.as_bytes()[index] == b'\n' {
+-                        LineEnding::LineFeed
+-                    } else if self.source.as_bytes().get(index + 1) == Some(&b'\n') {
+-                        LineEnding::CarriageReturnLineFeed
+-                    } else {
+-                        LineEnding::CarriageReturn
+-                    }
+-                });
++                let line_ending = self.inline.line_ending();
+                 Some(Ok(Event {
+                     kind: EventKind::Start(Tag::Document(line_ending)),
+                     span: 0..self.source.len(),
+diff --git a/src/grammar_parser.rs b/src/grammar_parser.rs
+index a831015..a5427e2 100644
+--- a/src/grammar_parser.rs
++++ b/src/grammar_parser.rs
+@@ -147,6 +147,10 @@ impl<'a> GrammarParser<'a> {
+         parser
+     }
+ 
++    pub(crate) fn line_ending(&self) -> Option<LineEnding> {
++        self.line_ending.clone()
++    }
++
+     pub(crate) fn definitions(&self) -> &Definitions {
+         &self.definitions
+     }

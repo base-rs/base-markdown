@@ -1,0 +1,1033 @@
+diff --git a/src/document.rs b/src/document.rs
+index 4d1decb..5ecfc33 100644
+--- a/src/document.rs
++++ b/src/document.rs
+@@ -28,7 +28,6 @@ pub struct Node {
+     pub span: Range<usize>,
+     parent: Option<NodeId>,
+     first_child: Option<NodeId>,
+-    last_child: Option<NodeId>,
+     next_sibling: Option<NodeId>,
+ }
+ 
+@@ -61,6 +60,8 @@ pub enum BuildProgress {
+ pub struct AstBuilder {
+     nodes: Vec<Node>,
+     open: Vec<NodeId>,
++    // Only the active container needs a tail. Opening a child resets it; closing that child makes the child the parent's new tail.
++    last_child: Option<NodeId>,
+     complete: bool,
+     failed: bool,
+ }
+@@ -136,6 +137,7 @@ impl AstBuilder {
+                 return Err(StreamError::InvalidRange);
+             }
+             node.span.end = event.span.end;
++            self.last_child = Some(id);
+             return Ok(());
+         }
+         if self.open.is_empty() {
+@@ -163,17 +165,16 @@ impl AstBuilder {
+             span: event.span,
+             parent,
+             first_child: None,
+-            last_child: None,
+             next_sibling: None,
+         });
+         if let Some(parent) = parent {
+-            if let Some(previous) = self.nodes[parent.index()].last_child {
++            if let Some(previous) = self.last_child {
+                 self.nodes[previous.index()].next_sibling = Some(id);
+             } else {
+                 self.nodes[parent.index()].first_child = Some(id);
+             }
+-            self.nodes[parent.index()].last_child = Some(id);
+         }
++        self.last_child = if start { None } else { Some(id) };
+         if start {
+             self.open.push(id);
+         }
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index 0adbe08..d678cb2 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -646,7 +646,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+                             .resolve(self.source)
+                             .expect("event values are source-valid");
+                         if self.options.allow_dangerous_html && self.options.gfm_tagfilter {
+-                            self.escaped(&crate::util::gfm_tagfilter::gfm_tagfilter(value), false)
++                            crate::util::gfm_tagfilter::write_filtered(value, |part| {
++                                self.escaped(part, false)
++                            })
+                         } else {
+                             self.escaped(value, !self.options.allow_dangerous_html)
+                         }
+@@ -836,3 +838,69 @@ pub fn render_events<'a>(
+ ) -> Result<(), StreamError> {
+     EventHtmlRenderer::new(source, options, output).render(events)
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::EventHtmlRenderer;
++    use crate::stream::{Event, EventKind, Tag, Text};
++    use crate::CompileOptions;
++    use alloc::string::String;
++    use core::fmt::{self, Write};
++
++    #[test]
++    fn filtered_html_preserves_written_prefix_when_a_writer_fails() {
++        struct Writer {
++            remaining: usize,
++            output: String,
++        }
++        impl Write for Writer {
++            fn write_str(&mut self, value: &str) -> fmt::Result {
++                if self.remaining == 0 {
++                    return Err(fmt::Error);
++                }
++                self.remaining -= 1;
++                self.output.push_str(value);
++                Ok(())
++            }
++        }
++        let options = CompileOptions {
++            allow_dangerous_html: true,
++            gfm_tagfilter: true,
++            ..CompileOptions::default()
++        };
++        for (remaining, expected) in [
++            "",
++            "prefix",
++            "prefix&lt;",
++            "prefix&lt;script>",
++            "prefix&lt;script>�",
++        ]
++        .iter()
++        .copied()
++        .enumerate()
++        {
++            let mut writer = Writer {
++                remaining,
++                output: String::new(),
++            };
++            let mut renderer = EventHtmlRenderer::new("", &options, &mut writer);
++            renderer
++                .event(Event {
++                    kind: EventKind::Start(Tag::Document(None)),
++                    span: 0..0,
++                })
++                .unwrap();
++            renderer
++                .event(Event {
++                    kind: EventKind::Html {
++                        value: Text::Literal("prefix<script>\0tail"),
++                        block: false,
++                    },
++                    span: 0..0,
++                })
++                .unwrap_err();
++            assert_eq!(renderer.last, expected.as_bytes().last().copied());
++            assert_eq!(writer.output, expected);
++        }
++    }
++}
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index f65ca42..2c15c5d 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -34,10 +34,7 @@ impl<'a> EventParser<'a> {
+                 cursor: 0,
+                 closing: false,
+                 inlines: false,
+-                started: false,
+-                ended: false,
+-                final_separator: false,
+-                suppress_final_separator: false,
++                phase: Phase::Start,
+                 separator: None,
+             })
+         } else {
+@@ -58,7 +55,12 @@ impl Iterator for EventParser<'_> {
+         }
+     }
+ }
+-#[allow(clippy::struct_excessive_bools)]
++enum Phase {
++    Start,
++    Body,
++    DocumentEnd,
++    Done,
++}
+ struct CompactParser<'a> {
+     blocks: Blocks,
+     source: &'a str,
+@@ -68,10 +70,7 @@ struct CompactParser<'a> {
+     cursor: usize,
+     closing: bool,
+     inlines: bool,
+-    started: bool,
+-    ended: bool,
+-    final_separator: bool,
+-    suppress_final_separator: bool,
++    phase: Phase,
+     separator: Option<usize>,
+ }
+ impl CompactParser<'_> {
+@@ -117,12 +116,45 @@ impl CompactParser<'_> {
+             span: end..end,
+         }
+     }
++    fn end_document(&mut self) -> Event<'static> {
++        self.phase = Phase::Done;
++        Event {
++            kind: EventKind::End(TagKind::Document),
++            span: self.source.len()..self.source.len(),
++        }
++    }
++    #[cold]
++    fn document_boundary(&mut self) -> Option<Result<Event<'static>, StreamError>> {
++        match self.phase {
++            Phase::Start => {
++                self.phase = Phase::Body;
++                self.cursor = self.blocks.nodes[0].child;
++                self.closing = self.cursor == 0;
++                let line_ending = self.source.find(['\r', '\n']).map(|index| {
++                    if self.source.as_bytes()[index] == b'\n' {
++                        LineEnding::LineFeed
++                    } else if self.source.as_bytes().get(index + 1) == Some(&b'\n') {
++                        LineEnding::CarriageReturnLineFeed
++                    } else {
++                        LineEnding::CarriageReturn
++                    }
++                });
++                Some(Ok(Event {
++                    kind: EventKind::Start(Tag::Document(line_ending)),
++                    span: 0..self.source.len(),
++                }))
++            }
++            Phase::DocumentEnd => Some(Ok(self.end_document())),
++            Phase::Done => None,
++            Phase::Body => unreachable!("body delivery bypasses document boundary handling"),
++        }
++    }
+     // Paired mixed-document benchmarks justify inlining this event boundary.
+     #[allow(clippy::inline_always)]
+     #[inline(always)]
+     fn next(&mut self) -> Option<Result<Event<'static>, StreamError>> {
+-        if self.ended {
+-            return None;
++        if !matches!(self.phase, Phase::Body) {
++            return self.document_boundary();
+         }
+         if let Some(end) = self.separator.take() {
+             return Some(Ok(self.separator(end)));
+@@ -134,25 +166,8 @@ impl CompactParser<'_> {
+             self.inlines = false;
+             self.closing = true;
+         }
+-        if !self.started {
+-            self.started = true;
+-            self.cursor = self.blocks.nodes[0].child;
+-            self.closing = self.cursor == 0;
+-            let line_ending = self.source.find(['\r', '\n']).map(|index| {
+-                if self.source.as_bytes()[index] == b'\n' {
+-                    LineEnding::LineFeed
+-                } else if self.source.as_bytes().get(index + 1) == Some(&b'\n') {
+-                    LineEnding::CarriageReturnLineFeed
+-                } else {
+-                    LineEnding::CarriageReturn
+-                }
+-            });
+-            return Some(Ok(Event {
+-                kind: EventKind::Start(Tag::Document(line_ending)),
+-                span: 0..self.source.len(),
+-            }));
+-        }
+         if self.cursor == 0 {
++            self.phase = Phase::DocumentEnd;
+             let mut last = self.blocks.nodes[0].child;
+             while self.blocks.nodes[last].next != 0 {
+                 last = self.blocks.nodes[last].next;
+@@ -177,8 +192,18 @@ impl CompactParser<'_> {
+                     | Body::Html(_)
+                     | Body::Table
+             );
+-            if !self.final_separator
+-                && !self.suppress_final_separator
++            let suppress_separator = match leaf.body {
++                Body::Html(end) => end == leaf.end && leaf.end == self.source.len(),
++                Body::Code(metadata) if leaf.parent == 0 => {
++                    let code = &self.blocks.codes[metadata];
++                    code.unclosed && leaf.end == self.source.len()
++                        || code.fence.is_none()
++                            && self.source[leaf.end..].trim().is_empty()
++                            && !self.source.ends_with(['\r', '\n'])
++                }
++                _ => false,
++            };
++            if !suppress_separator
+                 && self.blocks.nodes[0].child != 0
+                 && (!matches!(last.body, Body::Definition(_)) || last.end < self.source.len())
+                 && (self.source.ends_with(['\r', '\n'])
+@@ -190,7 +215,6 @@ impl CompactParser<'_> {
+                             .trim_end_matches([' ', '\t'])
+                             .ends_with(['\r', '\n']))
+             {
+-                self.final_separator = true;
+                 // Populated containers retain their final semantic line ending. Empty containers and lists followed by blank lines use the document style.
+                 return Some(Ok(
+                     if !populated
+@@ -209,11 +233,7 @@ impl CompactParser<'_> {
+                     },
+                 ));
+             }
+-            self.ended = true;
+-            return Some(Ok(Event {
+-                kind: EventKind::End(TagKind::Document),
+-                span: self.source.len()..self.source.len(),
+-            }));
++            return Some(Ok(self.end_document()));
+         }
+         let index = self.cursor;
+         let node = self.blocks.nodes[index];
+@@ -351,9 +371,6 @@ impl CompactParser<'_> {
+                 }));
+             }
+             Body::Html(end) => {
+-                if end == node.end && node.end == self.source.len() {
+-                    self.suppress_final_separator = true;
+-                }
+                 let kind = EventKind::Html {
+                     value: self.value(index),
+                     block: true,
+@@ -370,14 +387,6 @@ impl CompactParser<'_> {
+             Body::Code(metadata) => {
+                 let code = &self.blocks.codes[metadata];
+                 let value = self.value(index);
+-                if code.unclosed && node.parent == 0 && node.end == self.source.len()
+-                    || code.fence.is_none()
+-                        && node.parent == 0
+-                        && self.source[node.end..].trim().is_empty()
+-                        && !self.source.ends_with(['\r', '\n'])
+-                {
+-                    self.suppress_final_separator = true;
+-                }
+                 let kind = EventKind::CodeBlock {
+                     value,
+                     language: if code.info.is_empty() {
+diff --git a/src/grammar_parser.rs b/src/grammar_parser.rs
+index a1fb9e6..a831015 100644
+--- a/src/grammar_parser.rs
++++ b/src/grammar_parser.rs
+@@ -1174,7 +1174,7 @@ fn pair_tokens(tokens: &[Token], matching: &mut Vec<usize>, stack: &mut Vec<usiz
+ }
+ 
+ pub(crate) fn decode_string(source: &str, range: Range<usize>) -> Text<'static> {
+-    use crate::util::character_reference::{decode, value_max, value_test};
++    use crate::util::character_reference::{scan, Reference};
+     let bytes = source.as_bytes();
+     let mut value = ValueBuilder::new(source);
+     let mut start = range.start;
+@@ -1189,31 +1189,16 @@ pub(crate) fn decode_string(source: &str, range: Range<usize>) -> Text<'static>
+             continue;
+         }
+         if bytes[index] == b'&' {
+-            let mut begin = index + 1;
+-            let mut marker = b'&';
+-            if bytes.get(begin) == Some(&b'#') {
+-                marker = b'#';
+-                begin += 1;
+-                if matches!(bytes.get(begin), Some(b'x' | b'X')) {
+-                    marker = b'x';
+-                    begin += 1;
+-                }
+-            }
+-            let mut end = begin;
+-            while end < range.end
+-                && end - begin < value_max(marker)
+-                && value_test(marker)(&bytes[end])
+-            {
+-                end += 1;
+-            }
+-            if end > begin && end < range.end && bytes[end] == b';' {
+-                if let Some(decoded) = decode(&source[begin..end], marker, true) {
+-                    value.append(Text::Source(start..index));
+-                    value.append(Text::from(decoded));
+-                    index = end + 1;
+-                    start = index;
+-                    continue;
+-                }
++            if let Some((end, reference)) = scan(source, index, range.end) {
++                let decoded = match reference {
++                    Reference::Named(index) => Text::Literal(CHARACTER_REFERENCES[index].1),
++                    Reference::Numeric(character) => Text::from(String::from(character)),
++                };
++                value.append(Text::Source(start..index));
++                value.append(decoded);
++                index = end;
++                start = index;
++                continue;
+             }
+         }
+         index += 1;
+diff --git a/src/inline_parser.rs b/src/inline_parser.rs
+index f4fdb26..7ce5a17 100644
+--- a/src/inline_parser.rs
++++ b/src/inline_parser.rs
+@@ -6,6 +6,7 @@ use crate::definitions::{scan_label, Definitions};
+ use crate::grammar_parser::decode_string;
+ use crate::stream::{Event, EventKind, Tag, TagKind, Text};
+ use crate::util::char::{classify_opt, Kind as CharacterKind};
++use crate::util::character_reference::{scan as scan_character_reference, Reference};
+ use crate::util::normalize_identifier::normalize_identifier_into;
+ use alloc::{string::String, vec::Vec};
+ use core::{convert::TryFrom, ops::Range};
+@@ -46,7 +47,8 @@ impl AutolinkPrefix {
+ #[derive(Clone, Copy)]
+ enum Kind {
+     Text,
+-    Decoded(usize),
++    NamedEntity(usize),
++    NumericEntity(char),
+     Code(usize),
+     SoftBreak,
+     HardBreak,
+@@ -95,7 +97,6 @@ pub(crate) struct InlineParser {
+     links: Vec<Link>,
+     tick_heads: Vec<usize>,
+     ticks: Vec<Tick>,
+-    values: Vec<Text<'static>>,
+     reference_key: String,
+     last: usize,
+     cursor: usize,
+@@ -251,7 +252,6 @@ impl InlineParser {
+         self.delimiters.clear();
+         self.brackets.clear();
+         self.links.clear();
+-        self.values.clear();
+         self.last = 0;
+         self.cursor = 0;
+         self.link_bottom = 0;
+@@ -361,10 +361,13 @@ impl InlineParser {
+                         self.append(start, at, Kind::SoftBreak);
+                     }
+                     b'&' => {
+-                        if let Some((end, value)) = entity(source, at, range.end) {
+-                            let index = self.values.len();
+-                            self.values.push(value);
+-                            self.append(at, end, Kind::Decoded(index));
++                        if let Some((end, value)) = scan_character_reference(source, at, range.end)
++                        {
++                            let kind = match value {
++                                Reference::Named(index) => Kind::NamedEntity(index),
++                                Reference::Numeric(character) => Kind::NumericEntity(character),
++                            };
++                            self.append(at, end, kind);
+                             at = end;
+                         } else {
+                             self.append(at, at + 1, Kind::Text);
+@@ -563,10 +566,12 @@ impl InlineParser {
+             let kind = match node.kind {
+                 Kind::Text if node.start == node.end => continue,
+                 Kind::Text => EventKind::Text(Text::Source(node.start..node.end)),
+-                Kind::Decoded(index) => EventKind::Text(core::mem::replace(
+-                    &mut self.values[index],
+-                    Text::Literal(""),
++                Kind::NamedEntity(index) => EventKind::Text(Text::Literal(
++                    crate::util::constant::CHARACTER_REFERENCES[index].1,
+                 )),
++                Kind::NumericEntity(character) => {
++                    EventKind::Text(Text::from(String::from(character)))
++                }
+                 Kind::SoftBreak => EventKind::SoftBreak(Text::Source(node.start..node.end)),
+                 Kind::HardBreak => EventKind::HardBreak,
+                 Kind::Task(checked) => EventKind::TaskMarker(checked),
+@@ -713,41 +718,6 @@ fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
+     }
+ }
+ 
+-fn entity(source: &str, start: usize, end: usize) -> Option<(usize, Text<'static>)> {
+-    use crate::util::character_reference::{decode_numeric, value_max, value_test};
+-    let bytes = source.as_bytes();
+-    let mut begin = start + 1;
+-    let mut marker = b'&';
+-    if bytes.get(begin) == Some(&b'#') {
+-        marker = b'#';
+-        begin += 1;
+-        if matches!(bytes.get(begin), Some(b'x' | b'X')) {
+-            marker = b'x';
+-            begin += 1;
+-        }
+-    }
+-    let mut at = begin;
+-    while at < end && at - begin < value_max(marker) && value_test(marker)(&bytes[at]) {
+-        at += 1;
+-    }
+-    if at == begin || at == end || bytes[at] != b';' {
+-        return None;
+-    }
+-    let value = if marker == b'&' {
+-        let references = crate::util::constant::CHARACTER_REFERENCES.as_slice();
+-        let index = references
+-            .binary_search_by_key(&&source[begin..at], |entry| entry.0)
+-            .ok()?;
+-        Text::Literal(references[index].1)
+-    } else {
+-        Text::from(decode_numeric(
+-            &source[begin..at],
+-            if marker == b'#' { 10 } else { 16 },
+-        ))
+-    };
+-    Some((at + 1, value))
+-}
+-
+ /// Recognize whitespace-delimited ASCII addresses without path or delimiter ambiguity.
+ /// More general GFM links (Unicode, balanced paths, escaped punctuation, and label nesting) use the grammar parser.
+ fn simple_autolink(
+diff --git a/src/util/character_reference.rs b/src/util/character_reference.rs
+index 29c6f15..1c839c3 100644
+--- a/src/util/character_reference.rs
++++ b/src/util/character_reference.rs
+@@ -86,6 +86,10 @@ pub fn decode_named(value: &str, html5: bool) -> Option<String> {
+ /// * [`micromark-util-decode-numeric-character-reference` in `micromark`](https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-numeric-character-reference)
+ /// * [*§ 2.5 Entity and numeric character references* in `CommonMark`](https://spec.commonmark.org/0.31/#entity-and-numeric-character-references)
+ pub fn decode_numeric(value: &str, radix: u32) -> String {
++    decode_numeric_char(value, radix).into()
++}
++
++fn decode_numeric_char(value: &str, radix: u32) -> char {
+     if let Some(char) = char::from_u32(u32::from_str_radix(value, radix).unwrap()) {
+         if !matches!(char,
+             // C0 except for HT, LF, FF, CR, space.
+@@ -95,11 +99,52 @@ pub fn decode_numeric(value: &str, radix: u32) -> String {
+             // Lone surrogates, noncharacters, and out of range are handled by
+             // Rust.
+         ) {
+-            return char.into();
++            return char;
+         }
+     }
+ 
+-    char::REPLACEMENT_CHARACTER.into()
++    char::REPLACEMENT_CHARACTER
++}
++
++/// A resolved reference that requires no owned string until its text is consumed.
++pub(crate) enum Reference {
++    Named(usize),
++    Numeric(char),
++}
++
++/// Scan an HTML 5 character reference beginning at `start`, without reading past `end`.
++/// Both bounds refer to the complete source; callers check the opening ampersand.
++pub(crate) fn scan(source: &str, start: usize, end: usize) -> Option<(usize, Reference)> {
++    let bytes = &source.as_bytes()[..end];
++    let mut begin = start + 1;
++    let mut marker = b'&';
++    if bytes.get(begin) == Some(&b'#') {
++        marker = b'#';
++        begin += 1;
++        if matches!(bytes.get(begin), Some(b'x' | b'X')) {
++            marker = b'x';
++            begin += 1;
++        }
++    }
++    let mut at = begin;
++    while at < end && at - begin < value_max(marker) && value_test(marker)(&bytes[at]) {
++        at += 1;
++    }
++    if at == begin || at == end || bytes[at] != b';' {
++        return None;
++    }
++    let value = if marker == b'&' {
++        let index = CHARACTER_REFERENCES
++            .binary_search_by_key(&&source[begin..at], |entry| entry.0)
++            .ok()?;
++        Reference::Named(index)
++    } else {
++        Reference::Numeric(decode_numeric_char(
++            &source[begin..at],
++            if marker == b'#' { 10 } else { 16 },
++        ))
++    };
++    Some((at + 1, value))
+ }
+ 
+ /// Decode a character reference.
+@@ -239,6 +284,61 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn bounded_scanning_requires_the_semicolon_inside_the_region() {
++        for (source, expected) in [
++            ("&amp;", "&"),
++            ("&NotEqualTilde;", "≂̸"),
++            ("&#65;", "A"),
++            ("&#x41;", "A"),
++            ("&#X1F600;", "😀"),
++            ("&#0;", "�"),
++            ("&#55296;", "�"),
++            ("&#x110000;", "�"),
++        ] {
++            let input = alloc::format!("é{source}tail");
++            let start = "é".len();
++            let finish = start + source.len();
++            for end in start..finish {
++                assert!(
++                    super::scan(&input, start, end).is_none(),
++                    "{:?}, end={}",
++                    input,
++                    end
++                );
++            }
++            let (end, reference) = super::scan(&input, start, finish).unwrap();
++            assert_eq!(end, finish);
++            let actual: alloc::string::String = match reference {
++                super::Reference::Named(index) => CHARACTER_REFERENCES[index].1.into(),
++                super::Reference::Numeric(character) => character.into(),
++            };
++            assert_eq!(actual, expected);
++        }
++        for source in [
++            "&",
++            "&#",
++            "&#x",
++            "&;",
++            "&#;",
++            "&#x;",
++            "&amp",
++            "&unknown;",
++            "&amp ;",
++            "&amp!;",
++            "&#xg;",
++            "&#12345678;",
++            "&#x1234567;",
++            "&ThisNameIsLongerThanAnyValidNamedReference;",
++        ] {
++            assert!(
++                super::scan(source, 0, source.len()).is_none(),
++                "{:?}",
++                source
++            );
++        }
++    }
++
+     use super::{decode, decode_numeric, value_max, value_test};
+ 
+     #[test]
+diff --git a/src/util/gfm_tagfilter.rs b/src/util/gfm_tagfilter.rs
+index 23969bb..b13adf4 100644
+--- a/src/util/gfm_tagfilter.rs
++++ b/src/util/gfm_tagfilter.rs
+@@ -5,8 +5,6 @@
+ //! Make dangerous HTML a tiny bit safer.
+ use crate::util::constant::{GFM_HTML_TAGFILTER_NAMES, GFM_HTML_TAGFILTER_SIZE_MAX};
+ use alloc::string::String;
+-use core::str;
+-extern crate std;
+ 
+ /// Make dangerous HTML a tiny bit safer.
+ ///
+@@ -27,62 +25,117 @@ extern crate std;
+ /// * [*§ 6.1 Disallowed Raw HTML (extension)* in GFM](https://github.github.com/gfm/#disallowed-raw-html-extension-)
+ /// * [`cmark-gfm#extensions/tagfilter.c`](https://github.com/github/cmark-gfm/blob/master/extensions/tagfilter.c)
+ pub fn gfm_tagfilter(value: &str) -> String {
++    let mut result = String::with_capacity(value.len());
++    write_filtered(value, |value| {
++        result.push_str(value);
++        Ok::<_, core::convert::Infallible>(())
++    })
++    .unwrap();
++    result
++}
++
++/// Emit source runs and escaped tag openers without constructing filtered HTML.
++/// NUL replacement and any further escaping remain the caller's responsibility.
++pub(crate) fn write_filtered<E>(
++    value: &str,
++    mut write: impl FnMut(&str) -> Result<(), E>,
++) -> Result<(), E> {
+     let bytes = value.as_bytes();
+-    // It’ll grow a bit bigger for each encoded `<`.
+-    let mut result = String::with_capacity(bytes.len());
+     let mut index = 0;
+     let mut start = 0;
+-    let len = bytes.len();
+-
+-    while index < len {
+-        if bytes[index] == b'<' {
+-            let mut name_start = index + 1;
+-
+-            // Optional `/`.
+-            if name_start < len && bytes[name_start] == b'/' {
+-                name_start += 1;
+-            }
+-
+-            // Tag name.
+-            let mut name_end = name_start;
+-
+-            while name_end < len
+-                && name_end - name_start < GFM_HTML_TAGFILTER_SIZE_MAX
+-                && bytes[name_end].is_ascii_alphabetic()
+-            {
+-                name_end += 1;
+-            }
+-
+-            // Non-empty.
+-            if (name_end == len || (name_end != name_start &&
+-                // HTML whitespace, closing slash, or closing angle bracket.
+-                matches!(bytes[name_end], b'\t' | b'\n' | 12 /* `\f` */ | b'\r' | b' ' | b'/' | b'>'))) &&
+-                // Known name.
+-                GFM_HTML_TAGFILTER_NAMES.contains(&str::from_utf8(&bytes[name_start..name_end])
+-                .unwrap()
+-                .to_ascii_lowercase().as_str())
+-            {
+-                result.push_str(&value[start..index]);
+-                result.push_str("&lt;");
+-                start = index + 1;
+-            }
+-
+-            // There was no `<` before `name_end`, so move to that next.
+-            index = name_end;
+-            continue;
++    while let Some(offset) = memchr::memchr(b'<', &bytes[index..]) {
++        index += offset;
++        let name_start = index + 1 + usize::from(bytes.get(index + 1) == Some(&b'/'));
++        let mut name_end = name_start;
++        while name_end < bytes.len()
++            && name_end - name_start < GFM_HTML_TAGFILTER_SIZE_MAX
++            && bytes[name_end].is_ascii_alphabetic()
++        {
++            name_end += 1;
+         }
+-
+-        index += 1;
++        if (name_end == bytes.len()
++            || matches!(
++                bytes[name_end],
++                b'\t' | b'\n' | 12 | b'\r' | b' ' | b'/' | b'>'
++            ))
++            && GFM_HTML_TAGFILTER_NAMES
++                .iter()
++                .any(|name| bytes[name_start..name_end].eq_ignore_ascii_case(name.as_bytes()))
++        {
++            if start < index {
++                write(&value[start..index])?;
++            }
++            write("&lt;")?;
++            start = index + 1;
++        }
++        // Tag names contain no '<', including names too long to be filtered.
++        index = name_end;
+     }
+-
+-    result.push_str(&value[start..]);
+-
+-    result
++    write(&value[start..])
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+-    use super::gfm_tagfilter;
++    use super::{gfm_tagfilter, write_filtered};
++
++    #[test]
++    fn streams_tag_matches_without_changing_other_bytes() {
++        for length in [0, 1, 15, 16, 17, 31, 32, 33, 64] {
++            let prefix = "a".repeat(length);
++            for name in crate::util::constant::GFM_HTML_TAGFILTER_NAMES {
++                let upper = name.to_ascii_uppercase();
++                let source = alloc::format!("{prefix}é😀<{upper}>body</{name}>");
++                assert_eq!(
++                    gfm_tagfilter(&source),
++                    alloc::format!("{prefix}é😀&lt;{upper}>body&lt;/{name}>")
++                );
++            }
++        }
++        for source in [
++            "",
++            "é😀",
++            "<",
++            "</",
++            "<>",
++            "</>",
++            "<é>",
++            "<scriptx>",
++            "<script=source>",
++            "<script\0>",
++            "<plaintextlong>",
++        ] {
++            assert_eq!(gfm_tagfilter(source), source);
++        }
++        assert_eq!(
++            gfm_tagfilter("<<sCrIpT>\0</ScRiPt>"),
++            "<&lt;sCrIpT>\0&lt;/ScRiPt>"
++        );
++    }
++
++    #[test]
++    fn propagates_failure_from_every_emitted_run() {
++        let source = "é<script>\0</script>😀";
++        let mut calls = 0;
++        write_filtered(source, |_| {
++            calls += 1;
++            Ok::<_, ()>(())
++        })
++        .unwrap();
++        for remaining in 0..calls {
++            let mut successful = 0;
++            assert_eq!(
++                write_filtered(source, |_| {
++                    if successful == remaining {
++                        return Err("write failed");
++                    }
++                    successful += 1;
++                    Ok(())
++                }),
++                Err("write failed")
++            );
++            assert_eq!(successful, remaining);
++        }
++    }
+ 
+     #[test]
+     fn filters_disallowed_tags_with_html_separators() {
+diff --git a/tests/event_character_reference.rs b/tests/event_character_reference.rs
+new file mode 100644
+index 0000000..b7c77d5
+--- /dev/null
++++ b/tests/event_character_reference.rs
+@@ -0,0 +1,82 @@
++// Released under the MIT License.
++// Copyright, 2026, by Samuel Williams.
++
++use core_markdown::{
++    render_events,
++    stream::{EventKind, Text},
++    Document, EventParser, Options,
++};
++
++#[test]
++fn references_keep_their_meaning_across_regions_and_rendering_paths() {
++    for (source, expected) in [
++        (
++            "&NotEqualTilde; &#x1F600; &#0; &#55296; &#x110000;",
++            "<p>≂̸ 😀 � � �</p>",
++        ),
++        (
++            "&#8; &#9; &#10; &#11; &#12; &#13; &#14; &#127; &#159; &#160;",
++            "<p>� \t \n � \u{c} \r � � � \u{a0}</p>",
++        ),
++        (
++            "&amp\n; &#x1F600\n;",
++            "<p>&amp;amp\n; &amp;#x1F600\n;</p>",
++        ),
++        (
++            "[x](a&amp;b \"t&#65; &NotEqualTilde;\")",
++            "<p><a href=\"a&amp;b\" title=\"tA ≂̸\">x</a></p>",
++        ),
++        (
++            "> &amp;\n> &#65;\n\n&amp; <b>&NotEqualTilde;</b> &#x42;\n\n&#67;",
++            "<blockquote>\n<p>&amp;\nA</p>\n</blockquote>\n<p>&amp; &lt;b&gt;≂̸&lt;/b&gt; B</p>\n<p>C</p>",
++        ),
++        (
++            "[x][id]\n\n[id]: a&amp;b \"t&#65; &NotEqualTilde;\"",
++            "<p><a href=\"a&amp;b\" title=\"tA ≂̸\">x</a></p>\n",
++        ),
++    ] {
++        for mut options in [Options::default(), Options::gfm()] {
++            // Also exercise the grammar inline producer, with the same semantic values.
++            for grammar in [false, true] {
++                options.parse.inline_code_info = grammar;
++                assert_eq!(
++                    core_markdown::to_html_with_options(source, &options).unwrap(),
++                    expected,
++                    "source={source:?}, grammar={grammar}"
++                );
++                let mut checked = String::new();
++                render_events(
++                    source,
++                    EventParser::new(source, &options.parse).unwrap(),
++                    &options.compile,
++                    &mut checked,
++                )
++                .unwrap();
++                assert_eq!(checked, expected);
++                let document = Document::parse(source, &options.parse).unwrap();
++                let mut arena = String::new();
++                render_events(source, document.events(), &options.compile, &mut arena).unwrap();
++                assert_eq!(arena, expected);
++            }
++        }
++    }
++}
++
++#[test]
++fn a_pulled_numeric_value_survives_dropping_unconsumed_entities() {
++    let source = "&#65; &NotEqualTilde; &#66;";
++    let options = Options::default();
++    let mut parser = EventParser::new(source, &options.parse).unwrap();
++    let first = parser
++        .find_map(|event| {
++            let event = event.unwrap();
++            matches!(&event.kind, EventKind::Text(_)).then_some(event)
++        })
++        .unwrap();
++    drop(parser);
++    assert_eq!(first.span, 0..5);
++    let EventKind::Text(Text::Value(value)) = first.kind else {
++        panic!("numeric references produce an independently owned semantic value");
++    };
++    assert_eq!(value, "A");
++}
+diff --git a/tests/event_contract.rs b/tests/event_contract.rs
+index e8c263c..61d0f6f 100644
+--- a/tests/event_contract.rs
++++ b/tests/event_contract.rs
+@@ -139,6 +139,53 @@ fn builder_failures_are_permanent_and_completion_does_not_pull_again() {
+     assert_eq!(builder.finish("").unwrap().nodes().len(), 1);
+ }
+ 
++#[test]
++fn builder_links_siblings_across_nested_and_empty_containers() {
++    let input = document(vec![
++        EventKind::Start(Tag::BlockQuote),
++        EventKind::Start(Tag::Paragraph { tight: false }),
++        EventKind::Text(Text::Literal("a")),
++        EventKind::Start(Tag::Strong),
++        EventKind::Text(Text::Literal("b")),
++        EventKind::End(TagKind::Strong),
++        EventKind::Text(Text::Literal("c")),
++        EventKind::End(TagKind::Paragraph),
++        EventKind::Start(Tag::Paragraph { tight: false }),
++        EventKind::End(TagKind::Paragraph),
++        EventKind::End(TagKind::BlockQuote),
++        EventKind::Rule,
++        EventKind::Start(Tag::Paragraph { tight: false }),
++        EventKind::Text(Text::Literal("tail")),
++        EventKind::End(TagKind::Paragraph),
++    ]);
++    let input: Vec<_> = input.into_iter().map(Result::unwrap).collect();
++    for budget in [1, 2, 3, 7, usize::MAX] {
++        let mut builder = AstBuilder::new();
++        let mut events = input.iter().cloned().map(Ok);
++        while builder.consume(&mut events, budget).unwrap() == BuildProgress::Pending {}
++        let ast = builder.finish("").unwrap();
++        assert_eq!(
++            ast.events().map(Result::unwrap).collect::<Vec<_>>(),
++            input,
++            "budget {budget}"
++        );
++        // Every child in each sibling chain keeps its own parent, including after closing nested and empty containers.
++        let mut parents = vec![ast.root()];
++        let mut visited = 0;
++        while let Some(parent) = parents.pop() {
++            visited += 1;
++            let mut child = ast.node(parent).unwrap().first_child();
++            while let Some(id) = child {
++                let node = ast.node(id).unwrap();
++                assert_eq!(node.parent(), Some(parent));
++                parents.push(id);
++                child = node.next_sibling();
++            }
++        }
++        assert_eq!(visited, ast.nodes().len());
++    }
++}
++
+ #[test]
+ fn edits_detach_every_supported_leaf_and_preserve_arena_links() {
+     use std::borrow::Cow;
+@@ -305,6 +352,56 @@ fn heading_ids_use_normalized_semantic_code_text() {
+     }
+ }
+ 
++#[test]
++fn document_completion_yields_one_terminal_separator_and_end() {
++    let options = Options::default();
++    for (source, expected_separator) in [
++        ("", None),
++        ("a", None),
++        ("a\n", Some(("\n", false))),
++        ("a\r\n", Some(("\r\n", false))),
++        ("a\r\n\r\nb\n", Some(("\n", false))),
++        ("- a\n\n", Some(("", true))),
++        (">\n", Some(("", true))),
++        ("a\n\n[x]: /a\n", None),
++        ("```\ncode\n", None),
++        ("> ```\n> code\n", Some(("\n", false))),
++        ("    code\n ", None),
++        ("<!--\nbody\n", None),
++        ("> <!--\n> body\n", None),
++        ("<!-- closed -->\r\n", Some(("\r\n", false))),
++    ] {
++        let mut parser = core_markdown::EventParser::new(source, &options.parse).unwrap();
++        assert!(matches!(
++            parser.next().unwrap().unwrap().kind,
++            EventKind::Start(Tag::Document(_))
++        ));
++        let mut terminal_separator = None;
++        loop {
++            let event = parser.next().expect("document end event").unwrap();
++            if matches!(event.kind, EventKind::End(TagKind::Document)) {
++                assert_eq!(event.span, source.len()..source.len());
++                break;
++            }
++            terminal_separator = match event.kind {
++                EventKind::Separator { value, conditional } => {
++                    Some((value.resolve(source).unwrap().to_owned(), conditional))
++                }
++                _ => None,
++            };
++        }
++        assert_eq!(
++            terminal_separator
++                .as_ref()
++                .map(|(value, conditional)| (value.as_str(), *conditional)),
++            expected_separator,
++            "{source:?}"
++        );
++        assert!(parser.next().is_none(), "{:?}", source);
++        assert!(parser.next().is_none(), "{:?}", source);
++    }
++}
++
+ #[test]
+ fn paragraph_tightness_follows_its_own_list() {
+     let options = Options::default();
+diff --git a/tests/gfm_tagfilter.rs b/tests/gfm_tagfilter.rs
+index fb1c465..282d3d3 100644
+--- a/tests/gfm_tagfilter.rs
++++ b/tests/gfm_tagfilter.rs
+@@ -173,3 +173,28 @@ javascript:/*--></title></style></textarea></script></xmp><svg/onload='+/"/+/onm
+ 
+     Ok(())
+ }
++
++#[test]
++fn filtered_html_uses_the_same_heading_and_footnote_captures() {
++    use core_markdown::{render_events, Document, EventParser};
++    let mut options = Options::gfm();
++    options.compile.allow_dangerous_html = true;
++    options.compile.heading_ids = true;
++    let source = "# <iframe>é</iframe>\n\nCall[^x].\n\n[^x]: <style>😀</style>\n";
++    let expected = to_html_with_options(source, &options).unwrap();
++    assert!(expected.contains("&lt;iframe>é&lt;/iframe>"));
++    assert!(expected.contains("&lt;style>😀&lt;/style>"));
++    let mut checked = String::new();
++    render_events(
++        source,
++        EventParser::new(source, &options.parse).unwrap(),
++        &options.compile,
++        &mut checked,
++    )
++    .unwrap();
++    assert_eq!(checked, expected);
++    let document = Document::parse(source, &options.parse).unwrap();
++    checked.clear();
++    render_events(source, document.events(), &options.compile, &mut checked).unwrap();
++    assert_eq!(checked, expected);
++}

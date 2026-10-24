@@ -1,0 +1,296 @@
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index 0adbe08..d678cb2 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -646,7 +646,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+                             .resolve(self.source)
+                             .expect("event values are source-valid");
+                         if self.options.allow_dangerous_html && self.options.gfm_tagfilter {
+-                            self.escaped(&crate::util::gfm_tagfilter::gfm_tagfilter(value), false)
++                            crate::util::gfm_tagfilter::write_filtered(value, |part| {
++                                self.escaped(part, false)
++                            })
+                         } else {
+                             self.escaped(value, !self.options.allow_dangerous_html)
+                         }
+@@ -836,3 +838,69 @@ pub fn render_events<'a>(
+ ) -> Result<(), StreamError> {
+     EventHtmlRenderer::new(source, options, output).render(events)
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::EventHtmlRenderer;
++    use crate::stream::{Event, EventKind, Tag, Text};
++    use crate::CompileOptions;
++    use alloc::string::String;
++    use core::fmt::{self, Write};
++
++    #[test]
++    fn filtered_html_preserves_written_prefix_when_a_writer_fails() {
++        struct Writer {
++            remaining: usize,
++            output: String,
++        }
++        impl Write for Writer {
++            fn write_str(&mut self, value: &str) -> fmt::Result {
++                if self.remaining == 0 {
++                    return Err(fmt::Error);
++                }
++                self.remaining -= 1;
++                self.output.push_str(value);
++                Ok(())
++            }
++        }
++        let options = CompileOptions {
++            allow_dangerous_html: true,
++            gfm_tagfilter: true,
++            ..CompileOptions::default()
++        };
++        for (remaining, expected) in [
++            "",
++            "prefix",
++            "prefix&lt;",
++            "prefix&lt;script>",
++            "prefix&lt;script>�",
++        ]
++        .iter()
++        .copied()
++        .enumerate()
++        {
++            let mut writer = Writer {
++                remaining,
++                output: String::new(),
++            };
++            let mut renderer = EventHtmlRenderer::new("", &options, &mut writer);
++            renderer
++                .event(Event {
++                    kind: EventKind::Start(Tag::Document(None)),
++                    span: 0..0,
++                })
++                .unwrap();
++            renderer
++                .event(Event {
++                    kind: EventKind::Html {
++                        value: Text::Literal("prefix<script>\0tail"),
++                        block: false,
++                    },
++                    span: 0..0,
++                })
++                .unwrap_err();
++            assert_eq!(renderer.last, expected.as_bytes().last().copied());
++            assert_eq!(writer.output, expected);
++        }
++    }
++}
+diff --git a/src/util/gfm_tagfilter.rs b/src/util/gfm_tagfilter.rs
+index 23969bb..b13adf4 100644
+--- a/src/util/gfm_tagfilter.rs
++++ b/src/util/gfm_tagfilter.rs
+@@ -5,8 +5,6 @@
+ //! Make dangerous HTML a tiny bit safer.
+ use crate::util::constant::{GFM_HTML_TAGFILTER_NAMES, GFM_HTML_TAGFILTER_SIZE_MAX};
+ use alloc::string::String;
+-use core::str;
+-extern crate std;
+ 
+ /// Make dangerous HTML a tiny bit safer.
+ ///
+@@ -27,62 +25,117 @@ extern crate std;
+ /// * [*§ 6.1 Disallowed Raw HTML (extension)* in GFM](https://github.github.com/gfm/#disallowed-raw-html-extension-)
+ /// * [`cmark-gfm#extensions/tagfilter.c`](https://github.com/github/cmark-gfm/blob/master/extensions/tagfilter.c)
+ pub fn gfm_tagfilter(value: &str) -> String {
++    let mut result = String::with_capacity(value.len());
++    write_filtered(value, |value| {
++        result.push_str(value);
++        Ok::<_, core::convert::Infallible>(())
++    })
++    .unwrap();
++    result
++}
++
++/// Emit source runs and escaped tag openers without constructing filtered HTML.
++/// NUL replacement and any further escaping remain the caller's responsibility.
++pub(crate) fn write_filtered<E>(
++    value: &str,
++    mut write: impl FnMut(&str) -> Result<(), E>,
++) -> Result<(), E> {
+     let bytes = value.as_bytes();
+-    // It’ll grow a bit bigger for each encoded `<`.
+-    let mut result = String::with_capacity(bytes.len());
+     let mut index = 0;
+     let mut start = 0;
+-    let len = bytes.len();
+-
+-    while index < len {
+-        if bytes[index] == b'<' {
+-            let mut name_start = index + 1;
+-
+-            // Optional `/`.
+-            if name_start < len && bytes[name_start] == b'/' {
+-                name_start += 1;
+-            }
+-
+-            // Tag name.
+-            let mut name_end = name_start;
+-
+-            while name_end < len
+-                && name_end - name_start < GFM_HTML_TAGFILTER_SIZE_MAX
+-                && bytes[name_end].is_ascii_alphabetic()
+-            {
+-                name_end += 1;
+-            }
+-
+-            // Non-empty.
+-            if (name_end == len || (name_end != name_start &&
+-                // HTML whitespace, closing slash, or closing angle bracket.
+-                matches!(bytes[name_end], b'\t' | b'\n' | 12 /* `\f` */ | b'\r' | b' ' | b'/' | b'>'))) &&
+-                // Known name.
+-                GFM_HTML_TAGFILTER_NAMES.contains(&str::from_utf8(&bytes[name_start..name_end])
+-                .unwrap()
+-                .to_ascii_lowercase().as_str())
+-            {
+-                result.push_str(&value[start..index]);
+-                result.push_str("&lt;");
+-                start = index + 1;
+-            }
+-
+-            // There was no `<` before `name_end`, so move to that next.
+-            index = name_end;
+-            continue;
++    while let Some(offset) = memchr::memchr(b'<', &bytes[index..]) {
++        index += offset;
++        let name_start = index + 1 + usize::from(bytes.get(index + 1) == Some(&b'/'));
++        let mut name_end = name_start;
++        while name_end < bytes.len()
++            && name_end - name_start < GFM_HTML_TAGFILTER_SIZE_MAX
++            && bytes[name_end].is_ascii_alphabetic()
++        {
++            name_end += 1;
+         }
+-
+-        index += 1;
++        if (name_end == bytes.len()
++            || matches!(
++                bytes[name_end],
++                b'\t' | b'\n' | 12 | b'\r' | b' ' | b'/' | b'>'
++            ))
++            && GFM_HTML_TAGFILTER_NAMES
++                .iter()
++                .any(|name| bytes[name_start..name_end].eq_ignore_ascii_case(name.as_bytes()))
++        {
++            if start < index {
++                write(&value[start..index])?;
++            }
++            write("&lt;")?;
++            start = index + 1;
++        }
++        // Tag names contain no '<', including names too long to be filtered.
++        index = name_end;
+     }
+-
+-    result.push_str(&value[start..]);
+-
+-    result
++    write(&value[start..])
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+-    use super::gfm_tagfilter;
++    use super::{gfm_tagfilter, write_filtered};
++
++    #[test]
++    fn streams_tag_matches_without_changing_other_bytes() {
++        for length in [0, 1, 15, 16, 17, 31, 32, 33, 64] {
++            let prefix = "a".repeat(length);
++            for name in crate::util::constant::GFM_HTML_TAGFILTER_NAMES {
++                let upper = name.to_ascii_uppercase();
++                let source = alloc::format!("{prefix}é😀<{upper}>body</{name}>");
++                assert_eq!(
++                    gfm_tagfilter(&source),
++                    alloc::format!("{prefix}é😀&lt;{upper}>body&lt;/{name}>")
++                );
++            }
++        }
++        for source in [
++            "",
++            "é😀",
++            "<",
++            "</",
++            "<>",
++            "</>",
++            "<é>",
++            "<scriptx>",
++            "<script=source>",
++            "<script\0>",
++            "<plaintextlong>",
++        ] {
++            assert_eq!(gfm_tagfilter(source), source);
++        }
++        assert_eq!(
++            gfm_tagfilter("<<sCrIpT>\0</ScRiPt>"),
++            "<&lt;sCrIpT>\0&lt;/ScRiPt>"
++        );
++    }
++
++    #[test]
++    fn propagates_failure_from_every_emitted_run() {
++        let source = "é<script>\0</script>😀";
++        let mut calls = 0;
++        write_filtered(source, |_| {
++            calls += 1;
++            Ok::<_, ()>(())
++        })
++        .unwrap();
++        for remaining in 0..calls {
++            let mut successful = 0;
++            assert_eq!(
++                write_filtered(source, |_| {
++                    if successful == remaining {
++                        return Err("write failed");
++                    }
++                    successful += 1;
++                    Ok(())
++                }),
++                Err("write failed")
++            );
++            assert_eq!(successful, remaining);
++        }
++    }
+ 
+     #[test]
+     fn filters_disallowed_tags_with_html_separators() {
+diff --git a/tests/gfm_tagfilter.rs b/tests/gfm_tagfilter.rs
+index fb1c465..282d3d3 100644
+--- a/tests/gfm_tagfilter.rs
++++ b/tests/gfm_tagfilter.rs
+@@ -173,3 +173,28 @@ javascript:/*--></title></style></textarea></script></xmp><svg/onload='+/"/+/onm
+ 
+     Ok(())
+ }
++
++#[test]
++fn filtered_html_uses_the_same_heading_and_footnote_captures() {
++    use core_markdown::{render_events, Document, EventParser};
++    let mut options = Options::gfm();
++    options.compile.allow_dangerous_html = true;
++    options.compile.heading_ids = true;
++    let source = "# <iframe>é</iframe>\n\nCall[^x].\n\n[^x]: <style>😀</style>\n";
++    let expected = to_html_with_options(source, &options).unwrap();
++    assert!(expected.contains("&lt;iframe>é&lt;/iframe>"));
++    assert!(expected.contains("&lt;style>😀&lt;/style>"));
++    let mut checked = String::new();
++    render_events(
++        source,
++        EventParser::new(source, &options.parse).unwrap(),
++        &options.compile,
++        &mut checked,
++    )
++    .unwrap();
++    assert_eq!(checked, expected);
++    let document = Document::parse(source, &options.parse).unwrap();
++    checked.clear();
++    render_events(source, document.events(), &options.compile, &mut checked).unwrap();
++    assert_eq!(checked, expected);
++}

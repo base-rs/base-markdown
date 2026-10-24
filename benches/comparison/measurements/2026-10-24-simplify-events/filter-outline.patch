@@ -1,0 +1,28 @@
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index d678cb2..cedc98a 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -646,9 +646,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+                             .resolve(self.source)
+                             .expect("event values are source-valid");
+                         if self.options.allow_dangerous_html && self.options.gfm_tagfilter {
+-                            crate::util::gfm_tagfilter::write_filtered(value, |part| {
+-                                self.escaped(part, false)
+-                            })
++                            self.filtered_html(value)
+                         } else {
+                             self.escaped(value, !self.options.allow_dangerous_html)
+                         }
+@@ -682,6 +680,12 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+         }
+     }
+ 
++    // Keep the raw HTML scanner outside the hot event dispatch.
++    #[inline(never)]
++    fn filtered_html(&mut self, value: &str) -> Result<(), StreamError> {
++        crate::util::gfm_tagfilter::write_filtered(value, |part| self.escaped(part, false))
++    }
++
+     fn prefix(&mut self) -> Result<(), StreamError> {
+         self.escaped(
+             self.options

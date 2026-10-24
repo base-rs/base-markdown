@@ -1,0 +1,392 @@
+[
+  {
+    "document": "readme",
+    "events_unchanged": 385,
+    "nodes_unchanged": 311,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 17,
+        "reallocations": 13,
+        "requested_bytes": 58313
+      },
+      "final": {
+        "allocations": 17,
+        "reallocations": 13,
+        "requested_bytes": 58313
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 17,
+        "reallocations": 18,
+        "requested_bytes": 160105
+      },
+      "final": {
+        "allocations": 17,
+        "reallocations": 18,
+        "requested_bytes": 151945
+      }
+    }
+  },
+  {
+    "document": "mixed-100k",
+    "events_unchanged": 16514,
+    "nodes_unchanged": 12127,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 13,
+        "reallocations": 21,
+        "requested_bytes": 1187168
+      },
+      "final": {
+        "allocations": 12,
+        "reallocations": 21,
+        "requested_bytes": 1187072
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 13,
+        "reallocations": 27,
+        "requested_bytes": 4860672
+      },
+      "final": {
+        "allocations": 12,
+        "reallocations": 27,
+        "requested_bytes": 4598464
+      }
+    }
+  },
+  {
+    "document": "mixed-1m",
+    "events_unchanged": 164290,
+    "nodes_unchanged": 120650,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 13,
+        "reallocations": 27,
+        "requested_bytes": 10712376
+      },
+      "final": {
+        "allocations": 12,
+        "reallocations": 27,
+        "requested_bytes": 10712280
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 13,
+        "reallocations": 33,
+        "requested_bytes": 40075992
+      },
+      "final": {
+        "allocations": 12,
+        "reallocations": 33,
+        "requested_bytes": 37978776
+      }
+    }
+  },
+  {
+    "document": "references",
+    "events_unchanged": 26005,
+    "nodes_unchanged": 20003,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 10,
+        "reallocations": 22,
+        "requested_bytes": 4400811
+      },
+      "final": {
+        "allocations": 10,
+        "reallocations": 22,
+        "requested_bytes": 4400811
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 10,
+        "reallocations": 28,
+        "requested_bytes": 11744395
+      },
+      "final": {
+        "allocations": 10,
+        "reallocations": 28,
+        "requested_bytes": 11220139
+      }
+    }
+  },
+  {
+    "document": "long-lines-1m",
+    "events_unchanged": 914,
+    "nodes_unchanged": 685,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 5,
+        "reallocations": 9,
+        "requested_bytes": 2991536
+      },
+      "final": {
+        "allocations": 5,
+        "reallocations": 9,
+        "requested_bytes": 2991536
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 5,
+        "reallocations": 9,
+        "requested_bytes": 1160080
+      },
+      "final": {
+        "allocations": 5,
+        "reallocations": 9,
+        "requested_bytes": 1143728
+      }
+    }
+  },
+  {
+    "document": "code-1m",
+    "events_unchanged": 4,
+    "nodes_unchanged": 3,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 5,
+        "reallocations": 3,
+        "requested_bytes": 4038321
+      },
+      "final": {
+        "allocations": 5,
+        "reallocations": 3,
+        "requested_bytes": 4038321
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 5,
+        "reallocations": 1,
+        "requested_bytes": 911672
+      },
+      "final": {
+        "allocations": 5,
+        "reallocations": 1,
+        "requested_bytes": 911640
+      }
+    }
+  },
+  {
+    "document": "definitions-256",
+    "events_unchanged": 332,
+    "nodes_unchanged": 328,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 329,
+        "reallocations": 12,
+        "requested_bytes": 161822
+      },
+      "final": {
+        "allocations": 329,
+        "reallocations": 12,
+        "requested_bytes": 161822
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 329,
+        "reallocations": 19,
+        "requested_bytes": 288254
+      },
+      "final": {
+        "allocations": 329,
+        "reallocations": 19,
+        "requested_bytes": 280094
+      }
+    }
+  },
+  {
+    "document": "definitions-1024",
+    "events_unchanged": 1292,
+    "nodes_unchanged": 1288,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 1289,
+        "reallocations": 14,
+        "requested_bytes": 640860
+      },
+      "final": {
+        "allocations": 1289,
+        "reallocations": 14,
+        "requested_bytes": 640860
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 1289,
+        "reallocations": 23,
+        "requested_bytes": 1160508
+      },
+      "final": {
+        "allocations": 1289,
+        "reallocations": 23,
+        "requested_bytes": 1127772
+      }
+    }
+  },
+  {
+    "document": "definitions-4096",
+    "events_unchanged": 5132,
+    "nodes_unchanged": 5128,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 5129,
+        "reallocations": 16,
+        "requested_bytes": 2618748
+      },
+      "final": {
+        "allocations": 5129,
+        "reallocations": 16,
+        "requested_bytes": 2618748
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 5129,
+        "reallocations": 27,
+        "requested_bytes": 4711260
+      },
+      "final": {
+        "allocations": 5129,
+        "reallocations": 27,
+        "requested_bytes": 4580220
+      }
+    }
+  },
+  {
+    "document": "gfm-100k",
+    "events_unchanged": 24167,
+    "nodes_unchanged": 17006,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 372,
+        "reallocations": 379,
+        "requested_bytes": 1873855
+      },
+      "final": {
+        "allocations": 371,
+        "reallocations": 379,
+        "requested_bytes": 1873759
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 372,
+        "reallocations": 386,
+        "requested_bytes": 9741663
+      },
+      "final": {
+        "allocations": 371,
+        "reallocations": 386,
+        "requested_bytes": 9217311
+      }
+    }
+  },
+  {
+    "document": "entities-100k",
+    "events_unchanged": 20702,
+    "nodes_unchanged": 18401,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 6908,
+        "reallocations": 2310,
+        "requested_bytes": 563042
+      },
+      "final": {
+        "allocations": 4607,
+        "reallocations": 2309,
+        "requested_bytes": 560454
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 6908,
+        "reallocations": 2318,
+        "requested_bytes": 8693058
+      },
+      "final": {
+        "allocations": 4607,
+        "reallocations": 2317,
+        "requested_bytes": 8166214
+      }
+    }
+  },
+  {
+    "document": "html-safe-100k",
+    "events_unchanged": 3776,
+    "nodes_unchanged": 3775,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 9439,
+        "reallocations": 9,
+        "requested_bytes": 1682405
+      },
+      "final": {
+        "allocations": 4,
+        "reallocations": 9,
+        "requested_bytes": 1571072
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 4,
+        "reallocations": 14,
+        "requested_bytes": 2361056
+      },
+      "final": {
+        "allocations": 4,
+        "reallocations": 14,
+        "requested_bytes": 2295552
+      }
+    }
+  },
+  {
+    "document": "html-filtered-100k",
+    "events_unchanged": 2820,
+    "nodes_unchanged": 2819,
+    "traversal_allocations": 0,
+    "html": {
+      "baseline": {
+        "allocations": 9867,
+        "reallocations": 1417,
+        "requested_bytes": 1205173
+      },
+      "final": {
+        "allocations": 4,
+        "reallocations": 8,
+        "requested_bytes": 871240
+      }
+    },
+    "arena": {
+      "baseline": {
+        "allocations": 4,
+        "reallocations": 13,
+        "requested_bytes": 1661224
+      },
+      "final": {
+        "allocations": 4,
+        "reallocations": 13,
+        "requested_bytes": 1595720
+      }
+    }
+  }
+]
