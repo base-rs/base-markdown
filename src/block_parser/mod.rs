@@ -337,17 +337,13 @@ impl Builder<'_> {
                     continue;
                 }
             }
-            let marker = self
-                .options
-                .constructs
-                .list_item
-                .then(|| {
-                    line.scan_list_marker_with_indent(
-                        indent,
-                        self.options.constructs.thematic_break,
-                    )
-                })
-                .flatten();
+            let marker = if matches!(bytes.get(at), Some(b'*' | b'-' | b'+' | b'0'..=b'9'))
+                && self.options.constructs.list_item
+            {
+                line.scan_list_marker_with_indent(indent, self.options.constructs.thematic_break)
+            } else {
+                None
+            };
             if let Some((marker, number, width)) = marker {
                 let content = start + line.bytes_scanned();
                 self.list(at - indent, marker, number, start);
@@ -557,7 +553,10 @@ impl Builder<'_> {
                     self.pop(next);
                     return next;
                 }
-                if continued && self.options.constructs.heading_setext {
+                if matches!(bytes.get(content), Some(b'=' | b'-'))
+                    && continued
+                    && self.options.constructs.heading_setext
+                {
                     if let Some((length, level)) = scan_setext_heading(&bytes[content..]) {
                         self.trim_fragment();
                         self.blocks.nodes[paragraph].body = Body::Heading(level);
@@ -567,6 +566,7 @@ impl Builder<'_> {
                 }
                 if self.interrupts(&bytes[content..], continued)
                     || !continued
+                        && bytes.get(content) == Some(&b'<')
                         && self.options.constructs.html_flow
                         && html::Html::start(
                             &bytes[content..],
@@ -692,7 +692,8 @@ impl Builder<'_> {
             }
             let content = at + line.bytes_scanned();
             if self.interrupts(&bytes[content..], false)
-                || self.options.constructs.html_flow
+                || bytes.get(content) == Some(&b'<')
+                    && self.options.constructs.html_flow
                     && html::Html::start(&bytes[content..], self.options.html_tag_namespaces, true)
                         .is_some()
             {
