@@ -2,10 +2,16 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Definition metadata scanned over source fragments, without grammar tokens.
+use crate::byte_scan::AsciiSet;
 use crate::stream::Text;
 use crate::value_builder::{decode_string_with_options, ValueBuilder};
 use crate::ParseOptions;
 use core::ops::Range;
+
+static LABEL_MARKERS: AsciiSet = AsciiSet::new(b"[]\\\r\n \t");
+static DOUBLE_TITLE_MARKERS: AsciiSet = AsciiSet::new(b"\"\\\r\n");
+static SINGLE_TITLE_MARKERS: AsciiSet = AsciiSet::new(b"'\\\r\n");
+static PAREN_TITLE_MARKERS: AsciiSet = AsciiSet::new(b"()\\\r\n");
 
 pub(super) struct Metadata {
     pub label: Text<'static>,
@@ -40,7 +46,10 @@ impl<'a, I: Iterator<Item = Range<usize>> + Clone> Cursor<'a, I> {
         (self.at < self.range.end).then(|| self.source.as_bytes()[self.at])
     }
     fn bump(&mut self) {
-        self.at += 1;
+        self.advance(1);
+    }
+    fn advance(&mut self, count: usize) {
+        self.at += count;
         self.consumed = self.at;
         while self.at == self.range.end {
             let Some(range) = self.remaining.next() else {
@@ -75,15 +84,28 @@ impl<'a, I: Iterator<Item = Range<usize>> + Clone> Cursor<'a, I> {
         }
     }
     fn line_end(&self) -> Option<usize> {
-        let mut cursor = self.clone();
-        cursor.spaces();
-        if cursor.byte().is_none() || cursor.newline() {
-            Some(cursor.consumed)
-        } else {
-            None
+        let bytes = self.source.as_bytes();
+        let mut end = self.at;
+        while end < self.range.end && matches!(bytes[end], b' ' | b'\t') {
+            end += 1;
+        }
+        // A line-ending check must not request the following fragment: most
+        // definitions finish here without inspecting its container prefixes.
+        match bytes.get(end).filter(|_| end < self.range.end) {
+            None => Some(end),
+            Some(b'\n') => Some(end + 1),
+            Some(b'\r') => Some(end + 1 + usize::from(bytes.get(end + 1) == Some(&b'\n'))),
+            _ => None,
         }
     }
     fn value(&self, end: usize, options: Option<&ParseOptions>) -> Text<'static> {
+        if end <= self.range.end {
+            let range = self.at..end;
+            return match options {
+                Some(options) => decode_string_with_options(self.source, range, options),
+                None => Text::Source(range),
+            };
+        }
         let mut result = ValueBuilder::new(self.source);
         let mut cursor = self.clone();
         let mut continuation = false;
@@ -168,6 +190,15 @@ pub(super) fn scan(
             }
             byte => {
                 content |= !matches!(byte, b' ' | b'\t');
+                let count = if matches!(byte, b' ' | b'\t') {
+                    1
+                } else {
+                    let end = cursor
+                        .range
+                        .end
+                        .min(cursor.at + crate::util::constant::LINK_REFERENCE_SIZE_MAX - size + 1);
+                    LABEL_MARKERS.find(&source.as_bytes()[cursor.at..end])
+                };
                 let width = if byte == b'\t' {
                     let column = *column.get_or_insert_with(|| {
                         let bytes = source.as_bytes();
@@ -179,13 +210,13 @@ pub(super) fn scan(
                     });
                     4 - column % 4
                 } else {
-                    1
+                    count
                 };
                 size += width;
                 if let Some(column) = &mut column {
                     *column += width;
                 }
-                cursor.bump();
+                cursor.advance(count);
             }
         }
     }
@@ -253,6 +284,11 @@ pub(super) fn scan(
             b'(' => b')',
             byte => byte,
         };
+        let title_markers = match marker {
+            b'"' => &DOUBLE_TITLE_MARKERS,
+            b'\'' => &SINGLE_TITLE_MARKERS,
+            _ => &PAREN_TITLE_MARKERS,
+        };
         cursor.bump();
         let title_start = cursor.clone();
         let mut valid = true;
@@ -284,7 +320,10 @@ pub(super) fn scan(
                         break;
                     }
                 }
-                Some(_) => cursor.bump(),
+                Some(_) => {
+                    let count = title_markers.find(&source.as_bytes()[cursor.at..cursor.range.end]);
+                    cursor.advance(count);
+                }
             }
         }
         if valid {

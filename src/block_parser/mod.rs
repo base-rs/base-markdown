@@ -470,27 +470,36 @@ impl Builder<'_> {
         &self,
         start: usize,
     ) -> impl Iterator<Item = Range<usize>> + Clone + '_ {
-        let bytes = self.source.as_bytes();
-        let mut at = Some(start);
+        let mut at = Some((start, false));
         core::iter::from_fn(move || {
-            let current = at.take()?;
-            let end = current + scan_nextline(&bytes[current..]);
-            if end < bytes.len() {
-                let mut line = LineStart::new(&bytes[end..]);
+            let bytes = self.source.as_bytes();
+            let (start, continuation) = at.take()?;
+            let current = if continuation {
+                let mut line = LineStart::new(&bytes[start..]);
                 self.containers(&mut line);
-                let candidate = end + line.bytes_scanned();
+                let candidate = start + line.bytes_scanned();
                 let indented = line.scan_space(4) && self.options.constructs.code_indented;
                 line.scan_all_space();
-                let content = end + line.bytes_scanned();
+                if line.is_at_eol() {
+                    return None;
+                }
+                let content = start + line.bytes_scanned();
                 let interrupted = !indented
                     && ((self.options.constructs.heading_setext
                         && scan_setext_heading(&bytes[content..]).is_some())
                         || self.interrupts(&bytes[content..], false)
                         || (self.options.constructs.table
                             && self.table_delimiter(candidate).is_some()));
-                if !(line.is_at_eol() || interrupted) {
-                    at = Some(candidate);
+                if interrupted {
+                    return None;
                 }
+                candidate
+            } else {
+                start
+            };
+            let end = current + scan_nextline(&bytes[current..]);
+            if end < bytes.len() {
+                at = Some((end, true));
             }
             Some(current..end)
         })
