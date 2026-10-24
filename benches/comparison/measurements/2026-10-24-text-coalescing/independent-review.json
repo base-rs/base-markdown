@@ -1,0 +1,50 @@
+{
+  "reviewed_commit": "7d853c742e2faf4f785246a483a90b5938755791",
+  "baseline_commit": "3f633aba6733e30566ec2b26c01bd683a7075031",
+  "inline_parser_sha256": "8272d7697d936a0def924686345bce81df067d0552f5a4ba0ab8a7693f5479cb",
+  "status": "approved production source and focused tests",
+  "scope": "Coalesce an escaped ASCII punctuation byte with the following ordinary source run, stopping at the existing syntax-marker set.",
+  "assessment": [
+    "The merged range excludes the escape backslash and remains a contiguous valid UTF-8 source slice.",
+    "Syntax-candidate bytes stop scanning before delimiter/bracket/code/entity/link/newline handling; semantic nodes remain separate.",
+    "Trailing-space trimming and hard-break source positions are preserved, including tabs and CR/CRLF.",
+    "Node indices remain opaque linked-storage identities; fewer text nodes do not alter delimiter/bracket mutation or source-backed link/code detail ranges.",
+    "No new allocation or public representation is introduced. Text-event segmentation and text-node counts intentionally change; source ownership and bounded AST construction/editing are preserved."
+  ],
+  "verification": {
+    "sources": 27838,
+    "source_option_combinations": 83514,
+    "input_sha256": "70c244853cc8d1a835830fe3637a57bf708d9875a20ff04bddb07ab150fae5af",
+    "baseline_driver_output_identical": true,
+    "rendering_path_disagreements": 0,
+    "panics": 0,
+    "changed_records": 0
+  },
+  "verification_provenance": {
+    "baseline_driver": "Previously approved aa2c98c renderer driver; verified src and Cargo.toml equal merged baseline 3f633aba.",
+    "candidate_driver": "rustc temporary public-API driver against exact candidate comparison release rlib.",
+    "modes": [
+      "CommonMark",
+      "GFM single-tilde enabled",
+      "GFM single-tilde disabled"
+    ],
+    "corpus": "All 32 ASCII punctuation escapes crossed with ordinary Unicode/text runs, whitespace/newlines, literal links, bracket/link/image/table contexts; backtick-run matrices; 10,000 seeded random mixed escaped/unescaped syntax inputs.",
+    "checks": "Complete driver output identical to baseline, including direct/checked/arena HTML and selected non-text HTML/table/task/strike/link values and spans. Text event chunk boundaries are deliberately excluded."
+  },
+  "tests": [
+    {
+      "suite": "inline_text_runs",
+      "passed": 4
+    },
+    {
+      "suite": "event_contract",
+      "passed": 13
+    },
+    {
+      "suite": "event_stream",
+      "passed": 8
+    }
+  ],
+  "unresolved_findings": [],
+  "followup": "Final documentation/evidence commit requires focused confirmation before PR."
+}

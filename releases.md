@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Coalesce escaped punctuation and following ordinary source text into a single semantic event and AST text node. Retain source-backed ranges and existing structured link/code metadata without allocating combined strings.
+
 - Batch fixed HTML tags and attribute delimiters in the shared event renderer, reducing writer calls without changing output bytes or adding temporary allocations.
 
 - Shrink reusable inline records by storing literal-link prefixes as small tags, and reduce block event span lookup overhead. Reserve up to 4 KiB for convenience HTML output to reduce early growth while bounding spare capacity for documents with little rendered output.

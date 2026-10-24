@@ -1,0 +1,26 @@
+{
+  "source_commit": "7d853c742e2faf4f785246a483a90b5938755791",
+  "format": "passed",
+  "clippy_workspace_all_targets_all_features": "passed",
+  "coverage": {
+    "target": "aarch64-apple-darwin",
+    "features": "all",
+    "all_targets": true,
+    "covered_regions": 26833,
+    "measured_regions": 26833,
+    "excluded_invariant_unreachable_regions": 68
+  },
+  "saved_outputs": 2117,
+  "rendering_paths": [
+    "direct",
+    "checked events",
+    "arena"
+  ],
+  "independent_source_review": "approved; see independent-review.json",
+  "note": "Text event boundaries and AST text-node counts intentionally change; output bytes and checked non-text metadata remain unchanged. No architecture-specific implementation changed.",
+  "workspace_tests": "passed",
+  "portable_library_check": {
+    "target": "x86_64-unknown-linux-gnu",
+    "result": "passed with rustup stable"
+  }
+}
