@@ -11,12 +11,14 @@ pub struct EscapeInfos {
     pub before: bool,
 }
 
+#[cfg(test)]
 pub struct SafeConfig<'a> {
     pub after: &'a str,
     pub before: &'a str,
     pub encode: Option<char>,
 }
 
+#[cfg(test)]
 impl<'a> SafeConfig<'a> {
     pub(crate) fn new(before: &'a str, after: &'a str, encode: Option<char>) -> Self {
         SafeConfig {
@@ -28,8 +30,7 @@ impl<'a> SafeConfig<'a> {
 }
 
 /// JS: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/util/safe.js#L148>.
-pub fn escape_backslashes(value: &str, after: &str) -> String {
-    let mut results: String = String::new();
+pub fn write_backslashes(value: &str, after: &str, results: &mut String) {
     let mut start = 0;
     let bytes = value.as_bytes();
     let mut at = 0;
@@ -47,5 +48,11 @@ pub fn escape_backslashes(value: &str, after: &str) -> String {
         }
     }
     results.push_str(&value[start..]);
-    results
+}
+
+#[cfg(test)]
+pub fn escape_backslashes(value: &str, after: &str) -> String {
+    let mut output = String::new();
+    write_backslashes(value, after, &mut output);
+    output
 }
