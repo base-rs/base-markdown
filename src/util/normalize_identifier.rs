@@ -56,23 +56,44 @@ pub fn normalize_identifier(value: &str) -> String {
 
 /// Normalize into reusable storage. ASCII labels need no allocation after capacity is established.
 pub(crate) fn normalize_identifier_into(value: &str, result: &mut String) {
-    collapse_whitespace_into(value, result);
-    if result.is_ascii() {
+    if value.is_ascii() {
+        collapse_whitespace_into(value, result);
         result.make_ascii_uppercase();
     } else {
-        *result = result.to_lowercase().to_uppercase();
+        normalize_unicode_identifier_into(value, result);
     }
 }
 
 /// Reference matching uses lowercase ASCII so canonical source labels can be borrowed.
 /// Footnote identifiers retain the original uppercase form because it is visible in HTML.
 pub(crate) fn normalize_reference_identifier_into(value: &str, result: &mut String) {
-    collapse_whitespace_into(value, result);
-    if result.is_ascii() {
+    if value.is_ascii() {
+        collapse_whitespace_into(value, result);
         result.make_ascii_lowercase();
     } else {
-        *result = result.to_lowercase().to_uppercase();
+        normalize_unicode_identifier_into(value, result);
         result.make_ascii_lowercase();
+    }
+}
+
+fn normalize_unicode_identifier_into(value: &str, result: &mut String) {
+    result.clear();
+    let mut space = false;
+    for character in value.chars() {
+        if matches!(character, ' ' | '\t' | '\r' | '\n') {
+            space = true;
+        } else {
+            if space && !result.is_empty() {
+                result.push(' ');
+            }
+            space = false;
+            // Both lowercase sigma forms uppercase to Σ, so the contextual final-sigma mapping in str::to_lowercase cannot change this lower-then-upper result.
+            if character.is_ascii() {
+                result.push(character.to_ascii_uppercase());
+            } else {
+                result.extend(character.to_lowercase().flat_map(char::to_uppercase));
+            }
+        }
     }
 }
 
@@ -98,6 +119,60 @@ fn collapse_whitespace_into(value: &str, result: &mut String) {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::String;
+
+    #[test]
+    fn unicode_folding_matches_string_casing_for_every_scalar() {
+        let mut value = String::new();
+        let mut result = String::new();
+        for character in (0..=0x10ffff).filter_map(char::from_u32) {
+            value.clear();
+            value.push(character);
+            let expected = if matches!(character, ' ' | '\t' | '\r' | '\n') {
+                String::new()
+            } else {
+                value.to_lowercase().to_uppercase()
+            };
+            super::normalize_identifier_into(&value, &mut result);
+            assert_eq!(result, expected, "U+{:04X}", character as u32);
+            super::normalize_reference_identifier_into(&value, &mut result);
+            assert_eq!(result, expected.to_ascii_lowercase());
+        }
+    }
+
+    #[test]
+    fn contextual_casing_and_expansion_reuse_storage() {
+        let mut result = String::with_capacity(128);
+        let pointer = result.as_ptr();
+        for value in [
+            "ΟΣ",
+            "ΟΣΑ",
+            "ΟΣ\u{301}",
+            "ΣΣ",
+            "Σ\u{345}Σ",
+            "Σ'Σ",
+            " Σ\tΣ\r\nΣ ",
+            "ẞ ß SS",
+            "İ ı I i",
+            "ϴ θ Θ",
+            "ﬃ ǰ ΐ",
+            "a\u{a0}B\u{2003}Σ",
+        ] {
+            let collapsed = value
+                .split([' ', '\t', '\r', '\n'])
+                .filter(|part| !part.is_empty())
+                .collect::<alloc::vec::Vec<_>>()
+                .join(" ");
+            let expected = collapsed.to_lowercase().to_uppercase();
+            super::normalize_identifier_into(value, &mut result);
+            assert_eq!(result, expected);
+            assert_eq!(result.as_ptr(), pointer);
+            super::normalize_reference_identifier_into(value, &mut result);
+            assert_eq!(result, expected.to_ascii_lowercase());
+            assert_eq!(result.as_ptr(), pointer);
+        }
+    }
+
     #[test]
     fn labels_preserve_collapsed_spaces_and_unicode_folding() {
         assert_eq!(super::normalize_identifier(" a\tb\r\nc "), "A B C");
