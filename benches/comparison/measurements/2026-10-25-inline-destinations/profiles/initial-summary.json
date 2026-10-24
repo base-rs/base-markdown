@@ -1,0 +1,1857 @@
+{
+  "mixed-1m-core-prepare": {
+    "samples": 2500,
+    "exclusive_top_of_stack": [
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown12block_parserNtB4_6Blocks5parse",
+        "samples": 980,
+        "percent": 39.2
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10containers",
+        "samples": 420,
+        "percent": 16.8
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6append",
+        "samples": 292,
+        "percent": 11.68
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners13scan_nextline",
+        "samples": 212,
+        "percent": 8.48
+      },
+      {
+        "symbol": "_platform_memmove",
+        "samples": 112,
+        "percent": 4.4799999999999995
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent",
+        "samples": 108,
+        "percent": 4.32
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_list",
+        "samples": 106,
+        "percent": 4.24
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker",
+        "samples": 81,
+        "percent": 3.2399999999999998
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6fenced",
+        "samples": 71,
+        "percent": 2.8400000000000003
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners15scan_code_fence",
+        "samples": 31,
+        "percent": 1.24
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10interrupts",
+        "samples": 26,
+        "percent": 1.04
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners23scan_closing_code_fence",
+        "samples": 22,
+        "percent": 0.88
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners19scan_setext_heading",
+        "samples": 17,
+        "percent": 0.6799999999999999
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder15list_interrupts",
+        "samples": 15,
+        "percent": 0.6
+      }
+    ]
+  },
+  "awesome-rust-readme-core-markdown": {
+    "samples": 2523,
+    "exclusive_top_of_stack": [
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13inline_parser8resource",
+        "samples": 510,
+        "percent": 20.214030915576693
+      },
+      {
+        "symbol": "_RINvMNtCs8seiryzelau_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_",
+        "samples": 431,
+        "percent": 17.082837891399127
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_Kb1_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2s_11EventParser10next_event00EEB7_",
+        "samples": 291,
+        "percent": 11.533888228299643
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_",
+        "samples": 219,
+        "percent": 8.680142687277051
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown4util12sanitize_uri15write_sanitizedNtNtB6_6stream11StreamErrorNCNvMNtB6_19event_html_rendererINtB1F_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE11destination0EB6_",
+        "samples": 180,
+        "percent": 7.13436385255648
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners13scan_nextline",
+        "samples": 170,
+        "percent": 6.738010305192231
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown12block_parserNtB4_6Blocks5parse",
+        "samples": 141,
+        "percent": 5.58858501783591
+      },
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13value_builder6decode",
+        "samples": 112,
+        "percent": 4.439159730479588
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10containers",
+        "samples": 82,
+        "percent": 3.250099088386841
+      },
+      {
+        "symbol": "_RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs8seiryzelau_13core_markdown6stream9EventKindEBF_",
+        "samples": 74,
+        "percent": 2.933016250495442
+      },
+      {
+        "symbol": "_platform_memmove",
+        "samples": 56,
+        "percent": 2.219579865239794
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown12block_parser10definition4scanINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EEB6_",
+        "samples": 38,
+        "percent": 1.506143479984146
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent",
+        "samples": 34,
+        "percent": 1.3476020610384463
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown13value_builderNtB2_12ValueBuilder6append",
+        "samples": 22,
+        "percent": 0.8719778042013475
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser9attentionKb1_EB7_",
+        "samples": 20,
+        "percent": 0.7927070947284978
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker",
+        "samples": 16,
+        "percent": 0.6341656757827983
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6append",
+        "samples": 16,
+        "percent": 0.6341656757827983
+      },
+      {
+        "symbol": "DYLD-STUB$$memcpy",
+        "samples": 15,
+        "percent": 0.5945303210463734
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder15table_delimiter",
+        "samples": 13,
+        "percent": 0.5152596115735236
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser18suppress_autolinks",
+        "samples": 12,
+        "percent": 0.47562425683709864
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_",
+        "samples": 9,
+        "percent": 0.356718192627824
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10interrupts",
+        "samples": 9,
+        "percent": 0.356718192627824
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown6streamNtB2_4Text7resolve",
+        "samples": 8,
+        "percent": 0.3170828378913991
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_list",
+        "samples": 8,
+        "percent": 0.3170828378913991
+      },
+      {
+        "symbol": "_RNvXNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fnINtB2_6FromFnNCNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB17_7Builder20definition_fragments0ENtNtNtB6_6traits8iterator8Iterator4nextB19_",
+        "samples": 8,
+        "percent": 0.3170828378913991
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10table_head",
+        "samples": 6,
+        "percent": 0.23781212841854932
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown13inline_parser8autolink3web",
+        "samples": 6,
+        "percent": 0.23781212841854932
+      }
+    ]
+  },
+  "clap-readme-core-events": {
+    "samples": 2492,
+    "exclusive_top_of_stack": [
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13inline_parser8resource",
+        "samples": 525,
+        "percent": 21.06741573033708
+      },
+      {
+        "symbol": "_RNCNvCseVgRDH8534i_19markdown_comparison8renderers_0B3_",
+        "samples": 454,
+        "percent": 18.218298555377206
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_Kb1_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2s_11EventParser10next_event00EECseVgRDH8534i_19markdown_comparison",
+        "samples": 218,
+        "percent": 8.747993579454254
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown12block_parserNtB4_6Blocks5parse",
+        "samples": 181,
+        "percent": 7.263242375601926
+      },
+      {
+        "symbol": "_RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs8seiryzelau_13core_markdown6stream9EventKindECseVgRDH8534i_19markdown_comparison",
+        "samples": 146,
+        "percent": 5.858747993579454
+      },
+      {
+        "symbol": "mach_absolute_time",
+        "samples": 90,
+        "percent": 3.611556982343499
+      },
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13value_builder6decode",
+        "samples": 89,
+        "percent": 3.571428571428571
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners13scan_nextline",
+        "samples": 89,
+        "percent": 3.571428571428571
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10containers",
+        "samples": 88,
+        "percent": 3.5313001605136436
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser6append",
+        "samples": 86,
+        "percent": 3.451043338683788
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6append",
+        "samples": 63,
+        "percent": 2.528089887640449
+      },
+      {
+        "symbol": "_platform_memmove",
+        "samples": 47,
+        "percent": 1.886035313001605
+      },
+      {
+        "symbol": "xzm_malloc_zone_malloc_type_realloc",
+        "samples": 34,
+        "percent": 1.3643659711075442
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown13value_builderNtB2_12ValueBuilder6append",
+        "samples": 26,
+        "percent": 1.043338683788122
+      },
+      {
+        "symbol": "_xzm_free",
+        "samples": 26,
+        "percent": 1.043338683788122
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser9attentionKb1_ECseVgRDH8534i_19markdown_comparison",
+        "samples": 24,
+        "percent": 0.9630818619582664
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder15table_delimiter",
+        "samples": 18,
+        "percent": 0.7223113964686998
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown12block_parser10definition4scanINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EEB6_",
+        "samples": 16,
+        "percent": 0.6420545746388443
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_list",
+        "samples": 14,
+        "percent": 0.5617977528089888
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12event_parserNtB5_11EventParser9separator",
+        "samples": 14,
+        "percent": 0.5617977528089888
+      },
+      {
+        "symbol": "_RNvNtCsglYb6d7nGNF_6memchr6memmem4find",
+        "samples": 14,
+        "percent": 0.5617977528089888
+      },
+      {
+        "symbol": "_xzm_xzone_malloc_tiny",
+        "samples": 14,
+        "percent": 0.5617977528089888
+      },
+      {
+        "symbol": "xzm_malloc_zone_size",
+        "samples": 14,
+        "percent": 0.5617977528089888
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser18suppress_autolinks",
+        "samples": 12,
+        "percent": 0.4815409309791332
+      },
+      {
+        "symbol": "__xzm_xzone_free_to_freelist_chunk",
+        "samples": 12,
+        "percent": 0.4815409309791332
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent",
+        "samples": 10,
+        "percent": 0.40128410914927765
+      },
+      {
+        "symbol": "_RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs8seiryzelau_13core_markdown",
+        "samples": 10,
+        "percent": 0.40128410914927765
+      },
+      {
+        "symbol": "_realloc",
+        "samples": 10,
+        "percent": 0.40128410914927765
+      },
+      {
+        "symbol": "_xzm_malloc_tc",
+        "samples": 10,
+        "percent": 0.40128410914927765
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser7decoded",
+        "samples": 9,
+        "percent": 0.3611556982343499
+      },
+      {
+        "symbol": "_malloc_zone_realloc",
+        "samples": 9,
+        "percent": 0.3611556982343499
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker",
+        "samples": 8,
+        "percent": 0.32102728731942215
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10interrupts",
+        "samples": 8,
+        "percent": 0.32102728731942215
+      },
+      {
+        "symbol": "_xzm_free_tc",
+        "samples": 8,
+        "percent": 0.32102728731942215
+      },
+      {
+        "symbol": "_xzm_malloc",
+        "samples": 8,
+        "percent": 0.32102728731942215
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12event_parserNtB5_11EventParser5value",
+        "samples": 6,
+        "percent": 0.2407704654895666
+      },
+      {
+        "symbol": "_RNvCsjVqd8RsBhQu_7___rustc35___rust_no_alloc_shim_is_unstable_v2",
+        "samples": 5,
+        "percent": 0.20064205457463882
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10table_head",
+        "samples": 5,
+        "percent": 0.20064205457463882
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12event_parserNtB5_11EventParser17document_boundary",
+        "samples": 5,
+        "percent": 0.20064205457463882
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown13inline_parser8autolink3web",
+        "samples": 5,
+        "percent": 0.20064205457463882
+      },
+      {
+        "symbol": "_RNvXNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fnINtB2_6FromFnNCNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB17_7Builder20definition_fragments0ENtNtNtB6_6traits8iterator8Iterator4nextB19_",
+        "samples": 5,
+        "percent": 0.20064205457463882
+      }
+    ]
+  },
+  "awesome-rust-readme-core-prepare": {
+    "samples": 2545,
+    "exclusive_top_of_stack": [
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners13scan_nextline",
+        "samples": 677,
+        "percent": 26.601178781925345
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown12block_parserNtB4_6Blocks5parse",
+        "samples": 661,
+        "percent": 25.972495088408643
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10containers",
+        "samples": 367,
+        "percent": 14.420432220039292
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent",
+        "samples": 193,
+        "percent": 7.583497053045186
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown12block_parser10definition4scanINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EEB6_",
+        "samples": 188,
+        "percent": 7.387033398821218
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6append",
+        "samples": 121,
+        "percent": 4.754420432220039
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker",
+        "samples": 95,
+        "percent": 3.732809430255403
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder15table_delimiter",
+        "samples": 63,
+        "percent": 2.475442043222004
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10interrupts",
+        "samples": 51,
+        "percent": 2.0039292730844793
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_list",
+        "samples": 45,
+        "percent": 1.768172888015717
+      },
+      {
+        "symbol": "_RNvXNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fnINtB2_6FromFnNCNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB17_7Builder20definition_fragments0ENtNtNtB6_6traits8iterator8Iterator4nextB19_",
+        "samples": 30,
+        "percent": 1.1787819253438114
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10table_head",
+        "samples": 25,
+        "percent": 0.9823182711198428
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder15list_interrupts",
+        "samples": 21,
+        "percent": 0.8251473477406679
+      }
+    ]
+  },
+  "awesome-rust-readme-core-events": {
+    "samples": 2550,
+    "exclusive_top_of_stack": [
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13inline_parser8resource",
+        "samples": 665,
+        "percent": 26.078431372549023
+      },
+      {
+        "symbol": "_RNCNvCseVgRDH8534i_19markdown_comparison8renderers_0B3_",
+        "samples": 448,
+        "percent": 17.568627450980394
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_Kb1_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2s_11EventParser10next_event00EECseVgRDH8534i_19markdown_comparison",
+        "samples": 323,
+        "percent": 12.666666666666668
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners13scan_nextline",
+        "samples": 204,
+        "percent": 8.0
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown12block_parserNtB4_6Blocks5parse",
+        "samples": 190,
+        "percent": 7.450980392156863
+      },
+      {
+        "symbol": "_RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs8seiryzelau_13core_markdown6stream9EventKindECseVgRDH8534i_19markdown_comparison",
+        "samples": 130,
+        "percent": 5.098039215686274
+      },
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13value_builder6decode",
+        "samples": 117,
+        "percent": 4.588235294117647
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10containers",
+        "samples": 106,
+        "percent": 4.156862745098039
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser6append",
+        "samples": 84,
+        "percent": 3.294117647058824
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown12block_parser10definition4scanINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EEB6_",
+        "samples": 62,
+        "percent": 2.431372549019608
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent",
+        "samples": 39,
+        "percent": 1.5294117647058825
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6append",
+        "samples": 30,
+        "percent": 1.1764705882352942
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser18suppress_autolinks",
+        "samples": 23,
+        "percent": 0.9019607843137255
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker",
+        "samples": 22,
+        "percent": 0.8627450980392156
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown13value_builderNtB2_12ValueBuilder6append",
+        "samples": 20,
+        "percent": 0.7843137254901961
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser9attentionKb1_ECseVgRDH8534i_19markdown_comparison",
+        "samples": 17,
+        "percent": 0.6666666666666667
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder15table_delimiter",
+        "samples": 15,
+        "percent": 0.5882352941176471
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser7decoded",
+        "samples": 12,
+        "percent": 0.4705882352941176
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10interrupts",
+        "samples": 10,
+        "percent": 0.39215686274509803
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_list",
+        "samples": 7,
+        "percent": 0.27450980392156865
+      },
+      {
+        "symbol": "_RNvXNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fnINtB2_6FromFnNCNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB17_7Builder20definition_fragments0ENtNtNtB6_6traits8iterator8Iterator4nextB19_",
+        "samples": 6,
+        "percent": 0.2352941176470588
+      }
+    ]
+  },
+  "clap-readme-core-prepare": {
+    "samples": 2473,
+    "exclusive_top_of_stack": [
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown12block_parserNtB4_6Blocks5parse",
+        "samples": 659,
+        "percent": 26.647796198948647
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners13scan_nextline",
+        "samples": 388,
+        "percent": 15.689446016983421
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10containers",
+        "samples": 204,
+        "percent": 8.24909017387788
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6append",
+        "samples": 202,
+        "percent": 8.168216740800647
+      },
+      {
+        "symbol": "_platform_memmove",
+        "samples": 157,
+        "percent": 6.348564496562879
+      },
+      {
+        "symbol": "mach_absolute_time",
+        "samples": 112,
+        "percent": 4.528912252325111
+      },
+      {
+        "symbol": "_RNvNtCsglYb6d7nGNF_6memchr6memmem4find",
+        "samples": 88,
+        "percent": 3.558431055398301
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown12block_parser10definition4scanINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EEB6_",
+        "samples": 86,
+        "percent": 3.4775576223210676
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder15table_delimiter",
+        "samples": 72,
+        "percent": 2.911443590780429
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_list",
+        "samples": 67,
+        "percent": 2.7092600080873432
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent",
+        "samples": 41,
+        "percent": 1.6579053780832995
+      },
+      {
+        "symbol": "_RNvXNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fnINtB2_6FromFnNCNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB17_7Builder20definition_fragments0ENtNtNtB6_6traits8iterator8Iterator4nextB19_",
+        "samples": 29,
+        "percent": 1.1726647796198948
+      },
+      {
+        "symbol": "_xzm_malloc",
+        "samples": 25,
+        "percent": 1.0109179134654267
+      },
+      {
+        "symbol": "xzm_malloc_zone_malloc_type_realloc",
+        "samples": 22,
+        "percent": 0.8896077638495753
+      },
+      {
+        "symbol": "_xzm_free",
+        "samples": 20,
+        "percent": 0.8087343307723414
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker",
+        "samples": 18,
+        "percent": 0.7278608976951072
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10interrupts",
+        "samples": 16,
+        "percent": 0.646987464617873
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6fenced",
+        "samples": 16,
+        "percent": 0.646987464617873
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10table_head",
+        "samples": 14,
+        "percent": 0.5661140315406389
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners23scan_closing_code_fence",
+        "samples": 13,
+        "percent": 0.5256773150020219
+      },
+      {
+        "symbol": "_xzm_xzone_malloc_tiny",
+        "samples": 13,
+        "percent": 0.5256773150020219
+      },
+      {
+        "symbol": "xzm_malloc_zone_size",
+        "samples": 13,
+        "percent": 0.5256773150020219
+      },
+      {
+        "symbol": "_RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs8seiryzelau_13core_markdown",
+        "samples": 12,
+        "percent": 0.4852405984634048
+      },
+      {
+        "symbol": "__xzm_xzone_free_to_freelist_chunk",
+        "samples": 11,
+        "percent": 0.44480388192478765
+      },
+      {
+        "symbol": "_malloc_zone_realloc",
+        "samples": 10,
+        "percent": 0.4043671653861707
+      },
+      {
+        "symbol": "_xzm_free_outlined",
+        "samples": 10,
+        "percent": 0.4043671653861707
+      },
+      {
+        "symbol": "_RNCNvCseVgRDH8534i_19markdown_comparison8renderers_0B3_",
+        "samples": 9,
+        "percent": 0.3639304488475536
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser4htmlNtB2_4Html5start",
+        "samples": 9,
+        "percent": 0.3639304488475536
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_html",
+        "samples": 9,
+        "percent": 0.3639304488475536
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners15scan_code_fence",
+        "samples": 9,
+        "percent": 0.3639304488475536
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners19scan_setext_heading",
+        "samples": 9,
+        "percent": 0.3639304488475536
+      },
+      {
+        "symbol": "_realloc",
+        "samples": 9,
+        "percent": 0.3639304488475536
+      },
+      {
+        "symbol": "_xzm_malloc_tc",
+        "samples": 7,
+        "percent": 0.28305701577031944
+      },
+      {
+        "symbol": "_xzm_xzone_malloc_small_freelist",
+        "samples": 7,
+        "percent": 0.28305701577031944
+      },
+      {
+        "symbol": "default_zone_realloc",
+        "samples": 6,
+        "percent": 0.2426202992317024
+      },
+      {
+        "symbol": "DYLD-STUB$$_platform_memmove",
+        "samples": 5,
+        "percent": 0.20218358269308534
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser4htmlNtB2_4Html6closed",
+        "samples": 5,
+        "percent": 0.20218358269308534
+      },
+      {
+        "symbol": "_xzm_xzone_free_freelist",
+        "samples": 5,
+        "percent": 0.20218358269308534
+      }
+    ]
+  },
+  "tokio-changelog-core-prepare": {
+    "samples": 2500,
+    "exclusive_top_of_stack": [
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown12block_parser10definition4scanINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EEB6_",
+        "samples": 642,
+        "percent": 25.679999999999996
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners13scan_nextline",
+        "samples": 332,
+        "percent": 13.28
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown12block_parserNtB4_6Blocks5parse",
+        "samples": 319,
+        "percent": 12.76
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10containers",
+        "samples": 208,
+        "percent": 8.32
+      },
+      {
+        "symbol": "_platform_memcmp",
+        "samples": 151,
+        "percent": 6.04
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6append",
+        "samples": 83,
+        "percent": 3.32
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder15table_delimiter",
+        "samples": 78,
+        "percent": 3.1199999999999997
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent",
+        "samples": 68,
+        "percent": 2.7199999999999998
+      },
+      {
+        "symbol": "_RNvXNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fnINtB2_6FromFnNCNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB17_7Builder20definition_fragments0ENtNtNtB6_6traits8iterator8Iterator4nextB19_",
+        "samples": 66,
+        "percent": 2.64
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown11definitionsNtB2_11Definitions4push",
+        "samples": 60,
+        "percent": 2.4
+      },
+      {
+        "symbol": "DYLD-STUB$$memcmp",
+        "samples": 50,
+        "percent": 2.0
+      },
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13value_builder6decode",
+        "samples": 48,
+        "percent": 1.92
+      },
+      {
+        "symbol": "_RINvNtNtNtNtCs9nEiEE0E2Vj_4core5slice4sort6shared9smallsort18small_sort_networkjNCINvMB8_Sj16sort_unstable_byNCNvMNtCs8seiryzelau_13core_markdown11definitionsNtB1O_11Definitions6finish0E0EB1Q_",
+        "samples": 42,
+        "percent": 1.68
+      },
+      {
+        "symbol": "_RINvNtNtNtNtCs9nEiEE0E2Vj_4core5slice4sort8unstable9quicksort9quicksortjNCINvMB8_Sj16sort_unstable_byNCNvMNtCs8seiryzelau_13core_markdown11definitionsNtB1G_11Definitions6finish0E0EB1I_",
+        "samples": 41,
+        "percent": 1.6400000000000001
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_list",
+        "samples": 39,
+        "percent": 1.5599999999999998
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser10definitionINtB2_6CursorINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EE10whitespaceB6_",
+        "samples": 36,
+        "percent": 1.44
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker",
+        "samples": 35,
+        "percent": 1.4000000000000001
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser10definitionINtB2_6CursorINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EE7newlineB6_",
+        "samples": 32,
+        "percent": 1.28
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10interrupts",
+        "samples": 25,
+        "percent": 1.0
+      },
+      {
+        "symbol": "_platform_memmove",
+        "samples": 22,
+        "percent": 0.88
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown13value_builderNtB2_12ValueBuilder6append",
+        "samples": 20,
+        "percent": 0.8
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10table_head",
+        "samples": 18,
+        "percent": 0.72
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser10definitionINtB2_6CursorINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EE8line_endB6_",
+        "samples": 12,
+        "percent": 0.48
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser10definitionINtB2_6CursorINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EE7advanceB6_",
+        "samples": 11,
+        "percent": 0.44
+      },
+      {
+        "symbol": "_RINvMs_NtCs3vUkWdPtNor_5alloc3vecINtB5_3VecjE8dedup_byNCNvMNtCs8seiryzelau_13core_markdown11definitionsNtBV_11Definitions6finishs_0EBX_",
+        "samples": 10,
+        "percent": 0.4
+      },
+      {
+        "symbol": "_RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs8seiryzelau_13core_markdown11definitions10DefinitionECseVgRDH8534i_19markdown_comparison",
+        "samples": 10,
+        "percent": 0.4
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners19scan_setext_heading",
+        "samples": 8,
+        "percent": 0.32
+      },
+      {
+        "symbol": "_RINvNtNtNtNtCs9nEiEE0E2Vj_4core5slice4sort6shared9smallsort25insertion_sort_shift_leftjNCINvMB8_Sj16sort_unstable_byNCNvMNtCs8seiryzelau_13core_markdown11definitionsNtB1V_11Definitions6finish0E0EB1X_",
+        "samples": 7,
+        "percent": 0.27999999999999997
+      },
+      {
+        "symbol": "mach_absolute_time",
+        "samples": 5,
+        "percent": 0.2
+      }
+    ]
+  },
+  "tokio-changelog-core-events": {
+    "samples": 2466,
+    "exclusive_top_of_stack": [
+      {
+        "symbol": "_RNCNvCseVgRDH8534i_19markdown_comparison8renderers_0B3_",
+        "samples": 501,
+        "percent": 20.316301703163017
+      },
+      {
+        "symbol": "_platform_memcmp",
+        "samples": 393,
+        "percent": 15.936739659367397
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb1_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_11EventParser10next_event00EECseVgRDH8534i_19markdown_comparison",
+        "samples": 235,
+        "percent": 9.529602595296026
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown12block_parser10definition4scanINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EEB6_",
+        "samples": 206,
+        "percent": 8.35360908353609
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown12block_parserNtB4_6Blocks5parse",
+        "samples": 128,
+        "percent": 5.190592051905921
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners13scan_nextline",
+        "samples": 123,
+        "percent": 4.987834549878346
+      },
+      {
+        "symbol": "_RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs8seiryzelau_13core_markdown6stream9EventKindECseVgRDH8534i_19markdown_comparison",
+        "samples": 101,
+        "percent": 4.095701540957015
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser11index_ticks",
+        "samples": 82,
+        "percent": 3.32522303325223
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10containers",
+        "samples": 76,
+        "percent": 3.0819140308191404
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser6append",
+        "samples": 66,
+        "percent": 2.67639902676399
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown13inline_parser8autolink3web",
+        "samples": 38,
+        "percent": 1.5409570154095702
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown11definitionsNtB2_11Definitions4find",
+        "samples": 37,
+        "percent": 1.5004055150040552
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent",
+        "samples": 33,
+        "percent": 1.338199513381995
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6append",
+        "samples": 33,
+        "percent": 1.338199513381995
+      },
+      {
+        "symbol": "DYLD-STUB$$memcmp",
+        "samples": 32,
+        "percent": 1.2976480129764802
+      },
+      {
+        "symbol": "_platform_memmove",
+        "samples": 31,
+        "percent": 1.257096512570965
+      },
+      {
+        "symbol": "_RNvXNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fnINtB2_6FromFnNCNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB17_7Builder20definition_fragments0ENtNtNtB6_6traits8iterator8Iterator4nextB19_",
+        "samples": 30,
+        "percent": 1.2165450121654502
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown11definitionsNtB2_11Definitions4push",
+        "samples": 29,
+        "percent": 1.1759935117599352
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder15table_delimiter",
+        "samples": 28,
+        "percent": 1.1354420113544201
+      },
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13value_builder6decode",
+        "samples": 23,
+        "percent": 0.9326845093268451
+      },
+      {
+        "symbol": "_RINvNtNtNtNtCs9nEiEE0E2Vj_4core5slice4sort8unstable9quicksort9quicksortjNCINvMB8_Sj16sort_unstable_byNCNvMNtCs8seiryzelau_13core_markdown11definitionsNtB1G_11Definitions6finish0E0EB1I_",
+        "samples": 20,
+        "percent": 0.8110300081103
+      },
+      {
+        "symbol": "_RINvNtNtNtNtCs9nEiEE0E2Vj_4core5slice4sort6shared9smallsort18small_sort_networkjNCINvMB8_Sj16sort_unstable_byNCNvMNtCs8seiryzelau_13core_markdown11definitionsNtB1O_11Definitions6finish0E0EB1Q_",
+        "samples": 19,
+        "percent": 0.7704785077047851
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser10definitionINtB2_6CursorINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EE10whitespaceB6_",
+        "samples": 18,
+        "percent": 0.7299270072992701
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown4util20normalize_identifier24collapse_whitespace_into",
+        "samples": 17,
+        "percent": 0.689375506893755
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown4util20normalize_identifier35normalize_reference_identifier_into",
+        "samples": 17,
+        "percent": 0.689375506893755
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker",
+        "samples": 16,
+        "percent": 0.6488240064882401
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser10definitionINtB2_6CursorINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EE7newlineB6_",
+        "samples": 12,
+        "percent": 0.48661800486618007
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10interrupts",
+        "samples": 12,
+        "percent": 0.48661800486618007
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_list",
+        "samples": 12,
+        "percent": 0.48661800486618007
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown13value_builderNtB2_12ValueBuilder6append",
+        "samples": 10,
+        "percent": 0.40551500405515
+      },
+      {
+        "symbol": "_RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs8seiryzelau_13core_markdown11definitions10DefinitionECseVgRDH8534i_19markdown_comparison",
+        "samples": 9,
+        "percent": 0.36496350364963503
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser10definitionINtB2_6CursorINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EE7advanceB6_",
+        "samples": 9,
+        "percent": 0.36496350364963503
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser10definitionINtB2_6CursorINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EE8line_endB6_",
+        "samples": 9,
+        "percent": 0.36496350364963503
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10table_head",
+        "samples": 9,
+        "percent": 0.36496350364963503
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser9attentionKb1_ECseVgRDH8534i_19markdown_comparison",
+        "samples": 7,
+        "percent": 0.28386050283860503
+      },
+      {
+        "symbol": "_RINvNtNtNtNtCs9nEiEE0E2Vj_4core5slice4sort6shared5pivot11median3_recjNCINvMB8_Sj16sort_unstable_byNCNvMNtCs8seiryzelau_13core_markdown11definitionsNtB1D_11Definitions6finish0E0EB1F_",
+        "samples": 6,
+        "percent": 0.24330900243309003
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser10definitionINtB2_6CursorINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EE5valueB6_",
+        "samples": 6,
+        "percent": 0.24330900243309003
+      }
+    ]
+  },
+  "mixed-1m-core-events": {
+    "samples": 2518,
+    "exclusive_top_of_stack": [
+      {
+        "symbol": "_RNCNvCseVgRDH8534i_19markdown_comparison8renderers_0B3_",
+        "samples": 896,
+        "percent": 35.58379666401906
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_11EventParser10next_event00EECseVgRDH8534i_19markdown_comparison",
+        "samples": 260,
+        "percent": 10.325655281969818
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown12block_parserNtB4_6Blocks5parse",
+        "samples": 232,
+        "percent": 9.213661636219221
+      },
+      {
+        "symbol": "_RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs8seiryzelau_13core_markdown6stream9EventKindECseVgRDH8534i_19markdown_comparison",
+        "samples": 206,
+        "percent": 8.18109610802224
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10containers",
+        "samples": 106,
+        "percent": 4.209690230341541
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser6append",
+        "samples": 101,
+        "percent": 4.011119936457506
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser9attentionKb0_ECseVgRDH8534i_19markdown_comparison",
+        "samples": 84,
+        "percent": 3.3359809372517866
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6append",
+        "samples": 77,
+        "percent": 3.057982525814138
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners13scan_nextline",
+        "samples": 77,
+        "percent": 3.057982525814138
+      },
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13inline_parser8resource",
+        "samples": 64,
+        "percent": 2.5416997617156474
+      },
+      {
+        "symbol": "_platform_memcmp",
+        "samples": 51,
+        "percent": 2.0254169976171568
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser11index_ticks",
+        "samples": 43,
+        "percent": 1.7077045274027005
+      },
+      {
+        "symbol": "_platform_memmove",
+        "samples": 34,
+        "percent": 1.3502779984114377
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent",
+        "samples": 30,
+        "percent": 1.1914217633042097
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown4util4char8classify",
+        "samples": 28,
+        "percent": 1.1119936457505957
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_list",
+        "samples": 26,
+        "percent": 1.0325655281969817
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown13value_builderNtB2_12ValueBuilder6append",
+        "samples": 24,
+        "percent": 0.9531374106433679
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser12insert_after",
+        "samples": 23,
+        "percent": 0.9134233518665608
+      },
+      {
+        "symbol": "DYLD-STUB$$memcmp",
+        "samples": 21,
+        "percent": 0.8339952343129466
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker",
+        "samples": 20,
+        "percent": 0.7942811755361397
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6fenced",
+        "samples": 18,
+        "percent": 0.7148530579825259
+      },
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13value_builder6decode",
+        "samples": 17,
+        "percent": 0.6751389992057188
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12event_parserNtB5_11EventParser9separator",
+        "samples": 16,
+        "percent": 0.6354249404289118
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10interrupts",
+        "samples": 13,
+        "percent": 0.5162827640984908
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown4util19character_reference4scan",
+        "samples": 13,
+        "percent": 0.5162827640984908
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners19scan_setext_heading",
+        "samples": 7,
+        "percent": 0.2779984114376489
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners23scan_closing_code_fence",
+        "samples": 6,
+        "percent": 0.23828435266084197
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12event_parserNtB5_11EventParser5value",
+        "samples": 5,
+        "percent": 0.19857029388403494
+      }
+    ]
+  },
+  "tokio-changelog-core-markdown": {
+    "samples": 2462,
+    "exclusive_top_of_stack": [
+      {
+        "symbol": "_RINvMNtCs8seiryzelau_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_",
+        "samples": 475,
+        "percent": 19.293257514216084
+      },
+      {
+        "symbol": "_platform_memcmp",
+        "samples": 317,
+        "percent": 12.875710804224209
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb1_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_11EventParser10next_event00EEB7_",
+        "samples": 217,
+        "percent": 8.813972380178717
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown12block_parser10definition4scanINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EEB6_",
+        "samples": 205,
+        "percent": 8.326563769293257
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_",
+        "samples": 199,
+        "percent": 8.082859463850529
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners13scan_nextline",
+        "samples": 127,
+        "percent": 5.158407798537774
+      },
+      {
+        "symbol": "_platform_memmove",
+        "samples": 104,
+        "percent": 4.224207961007311
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown12block_parserNtB4_6Blocks5parse",
+        "samples": 100,
+        "percent": 4.061738424045491
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10containers",
+        "samples": 79,
+        "percent": 3.2087733549959383
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser11index_ticks",
+        "samples": 72,
+        "percent": 2.924451665312754
+      },
+      {
+        "symbol": "_RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs8seiryzelau_13core_markdown6stream9EventKindEBF_",
+        "samples": 71,
+        "percent": 2.883834281072299
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown4util12sanitize_uri15write_sanitizedNtNtB6_6stream11StreamErrorNCNvMNtB6_19event_html_rendererINtB1F_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE11destination0EB6_",
+        "samples": 65,
+        "percent": 2.6401299756295695
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown11definitionsNtB2_11Definitions4find",
+        "samples": 39,
+        "percent": 1.5840779853777416
+      },
+      {
+        "symbol": "DYLD-STUB$$memcmp",
+        "samples": 38,
+        "percent": 1.543460601137287
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown13inline_parser8autolink3web",
+        "samples": 36,
+        "percent": 1.462225832656377
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder15table_delimiter",
+        "samples": 26,
+        "percent": 1.0560519902518277
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown11definitionsNtB2_11Definitions4push",
+        "samples": 24,
+        "percent": 0.974817221770918
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6append",
+        "samples": 23,
+        "percent": 0.934199837530463
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser10definitionINtB2_6CursorINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EE10whitespaceB6_",
+        "samples": 19,
+        "percent": 0.7717303005686434
+      },
+      {
+        "symbol": "_RNvXNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fnINtB2_6FromFnNCNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB17_7Builder20definition_fragments0ENtNtNtB6_6traits8iterator8Iterator4nextB19_",
+        "samples": 18,
+        "percent": 0.7311129163281885
+      },
+      {
+        "symbol": "_RINvNtNtNtNtCs9nEiEE0E2Vj_4core5slice4sort8unstable9quicksort9quicksortjNCINvMB8_Sj16sort_unstable_byNCNvMNtCs8seiryzelau_13core_markdown11definitionsNtB1G_11Definitions6finish0E0EB1I_",
+        "samples": 17,
+        "percent": 0.6904955320877335
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown4util20normalize_identifier35normalize_reference_identifier_into",
+        "samples": 17,
+        "percent": 0.6904955320877335
+      },
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13value_builder6decode",
+        "samples": 15,
+        "percent": 0.6092607636068237
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown4util20normalize_identifier24collapse_whitespace_into",
+        "samples": 15,
+        "percent": 0.6092607636068237
+      },
+      {
+        "symbol": "DYLD-STUB$$memcpy",
+        "samples": 13,
+        "percent": 0.5280259951259139
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser10definitionINtB2_6CursorINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EE7newlineB6_",
+        "samples": 12,
+        "percent": 0.487408610885459
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker",
+        "samples": 12,
+        "percent": 0.487408610885459
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown13value_builderNtB2_12ValueBuilder6append",
+        "samples": 11,
+        "percent": 0.4467912266450041
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent",
+        "samples": 11,
+        "percent": 0.4467912266450041
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10interrupts",
+        "samples": 10,
+        "percent": 0.4061738424045491
+      },
+      {
+        "symbol": "_RINvNtNtNtNtCs9nEiEE0E2Vj_4core5slice4sort6shared9smallsort18small_sort_networkjNCINvMB8_Sj16sort_unstable_byNCNvMNtCs8seiryzelau_13core_markdown11definitionsNtB1O_11Definitions6finish0E0EB1Q_",
+        "samples": 9,
+        "percent": 0.36555645816409427
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10table_head",
+        "samples": 7,
+        "percent": 0.2843216896831844
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_list",
+        "samples": 7,
+        "percent": 0.2843216896831844
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_",
+        "samples": 6,
+        "percent": 0.2437043054427295
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser9attentionKb1_EB7_",
+        "samples": 5,
+        "percent": 0.20308692120227456
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser10definitionINtB2_6CursorINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EE5valueB6_",
+        "samples": 5,
+        "percent": 0.20308692120227456
+      }
+    ]
+  },
+  "clap-readme-core-markdown": {
+    "samples": 2468,
+    "exclusive_top_of_stack": [
+      {
+        "symbol": "_RINvMNtCs8seiryzelau_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_",
+        "samples": 492,
+        "percent": 19.93517017828201
+      },
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13inline_parser8resource",
+        "samples": 398,
+        "percent": 16.12641815235008
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_Kb1_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2s_11EventParser10next_event00EEB7_",
+        "samples": 189,
+        "percent": 7.658022690437602
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown4util12sanitize_uri15write_sanitizedNtNtB6_6stream11StreamErrorNCNvMNtB6_19event_html_rendererINtB1F_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE11destination0EB6_",
+        "samples": 183,
+        "percent": 7.414910858995137
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown12block_parserNtB4_6Blocks5parse",
+        "samples": 142,
+        "percent": 5.753646677471637
+      },
+      {
+        "symbol": "_platform_memmove",
+        "samples": 121,
+        "percent": 4.902755267423014
+      },
+      {
+        "symbol": "_RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs8seiryzelau_13core_markdown6stream9EventKindEBF_",
+        "samples": 95,
+        "percent": 3.8492706645056725
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_",
+        "samples": 91,
+        "percent": 3.687196110210697
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners13scan_nextline",
+        "samples": 80,
+        "percent": 3.2414910858995136
+      },
+      {
+        "symbol": "mach_absolute_time",
+        "samples": 77,
+        "percent": 3.119935170178282
+      },
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13value_builder6decode",
+        "samples": 74,
+        "percent": 2.99837925445705
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10containers",
+        "samples": 60,
+        "percent": 2.4311183144246353
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6append",
+        "samples": 47,
+        "percent": 1.9043760129659644
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser9attentionKb1_EB7_",
+        "samples": 24,
+        "percent": 0.9724473257698543
+      },
+      {
+        "symbol": "xzm_malloc_zone_malloc_type_realloc",
+        "samples": 23,
+        "percent": 0.9319286871961102
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_list",
+        "samples": 21,
+        "percent": 0.8508914100486222
+      },
+      {
+        "symbol": "_RNvNtCsglYb6d7nGNF_6memchr6memmem4find",
+        "samples": 20,
+        "percent": 0.8103727714748784
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown4util9tagfilter14write_filteredNtNtB6_6stream11StreamErrorNCINvMNtB6_19event_html_rendererINtB1B_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9event_refKb0_E0EB6_",
+        "samples": 19,
+        "percent": 0.7698541329011345
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder15table_delimiter",
+        "samples": 18,
+        "percent": 0.7293354943273906
+      },
+      {
+        "symbol": "_xzm_free",
+        "samples": 18,
+        "percent": 0.7293354943273906
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown13value_builderNtB2_12ValueBuilder6append",
+        "samples": 16,
+        "percent": 0.6482982171799028
+      },
+      {
+        "symbol": "_malloc_zone_realloc",
+        "samples": 15,
+        "percent": 0.6077795786061588
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown12block_parser10definition4scanINtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNvMs0_B4_NtB4_7Builder20definition_fragments0EEB6_",
+        "samples": 14,
+        "percent": 0.5672609400324149
+      },
+      {
+        "symbol": "_xzm_xzone_malloc_tiny",
+        "samples": 14,
+        "percent": 0.5672609400324149
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown6streamNtB2_4Text7resolve",
+        "samples": 13,
+        "percent": 0.526742301458671
+      },
+      {
+        "symbol": "xzm_malloc_zone_size",
+        "samples": 13,
+        "percent": 0.526742301458671
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser18suppress_autolinks",
+        "samples": 11,
+        "percent": 0.44570502431118314
+      },
+      {
+        "symbol": "_xzm_malloc_tc",
+        "samples": 11,
+        "percent": 0.44570502431118314
+      },
+      {
+        "symbol": "__xzm_xzone_free_to_freelist_chunk",
+        "samples": 10,
+        "percent": 0.4051863857374392
+      },
+      {
+        "symbol": "_xzm_malloc",
+        "samples": 10,
+        "percent": 0.4051863857374392
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent",
+        "samples": 9,
+        "percent": 0.3646677471636953
+      },
+      {
+        "symbol": "_realloc",
+        "samples": 9,
+        "percent": 0.3646677471636953
+      },
+      {
+        "symbol": "DYLD-STUB$$memcpy",
+        "samples": 8,
+        "percent": 0.3241491085899514
+      },
+      {
+        "symbol": "_RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs8seiryzelau_13core_markdown",
+        "samples": 8,
+        "percent": 0.3241491085899514
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown13inline_parser8autolink3web",
+        "samples": 8,
+        "percent": 0.3241491085899514
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6fenced",
+        "samples": 6,
+        "percent": 0.24311183144246357
+      },
+      {
+        "symbol": "_RNvMNtCs9nEiEE0E2Vj_4core6resultINtB2_6ResultReNtNtCs8seiryzelau_13core_markdown6stream11StreamErrorE6expectBN_",
+        "samples": 5,
+        "percent": 0.2025931928687196
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker",
+        "samples": 5,
+        "percent": 0.2025931928687196
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10interrupts",
+        "samples": 5,
+        "percent": 0.2025931928687196
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12event_parserNtB5_11EventParser5value",
+        "samples": 5,
+        "percent": 0.2025931928687196
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown4util19character_reference4scan",
+        "samples": 5,
+        "percent": 0.2025931928687196
+      },
+      {
+        "symbol": "_xzm_free_tc",
+        "samples": 5,
+        "percent": 0.2025931928687196
+      },
+      {
+        "symbol": "_xzm_xzone_free_freelist",
+        "samples": 5,
+        "percent": 0.2025931928687196
+      }
+    ]
+  },
+  "mixed-1m-core-markdown": {
+    "samples": 2466,
+    "exclusive_top_of_stack": [
+      {
+        "symbol": "_RINvMNtCs8seiryzelau_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_",
+        "samples": 863,
+        "percent": 34.99594484995945
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_",
+        "samples": 232,
+        "percent": 9.407948094079481
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_11EventParser10next_event00EEB7_",
+        "samples": 225,
+        "percent": 9.124087591240876
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown12block_parserNtB4_6Blocks5parse",
+        "samples": 157,
+        "percent": 6.366585563665855
+      },
+      {
+        "symbol": "_platform_memmove",
+        "samples": 147,
+        "percent": 5.961070559610706
+      },
+      {
+        "symbol": "_RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs8seiryzelau_13core_markdown6stream9EventKindEBF_",
+        "samples": 111,
+        "percent": 4.5012165450121655
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10containers",
+        "samples": 95,
+        "percent": 3.852392538523925
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6append",
+        "samples": 64,
+        "percent": 2.5952960259529605
+      },
+      {
+        "symbol": "_RINvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB5_12InlineParser9attentionKb0_EB7_",
+        "samples": 63,
+        "percent": 2.5547445255474455
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners13scan_nextline",
+        "samples": 55,
+        "percent": 2.2303325223033252
+      },
+      {
+        "symbol": "_platform_memcmp",
+        "samples": 55,
+        "percent": 2.2303325223033252
+      },
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13inline_parser8resource",
+        "samples": 50,
+        "percent": 2.02757502027575
+      },
+      {
+        "symbol": "_RNvMs_NtCs8seiryzelau_13core_markdown13inline_parserNtB4_12InlineParser11index_ticks",
+        "samples": 40,
+        "percent": 1.6220600162206
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown4util12sanitize_uri15write_sanitizedNtNtB6_6stream11StreamErrorNCNvMNtB6_19event_html_rendererINtB1F_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE11destination0EB6_",
+        "samples": 37,
+        "percent": 1.5004055150040552
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent",
+        "samples": 31,
+        "percent": 1.257096512570965
+      },
+      {
+        "symbol": "_RINvNtNtCs8seiryzelau_13core_markdown4util6encode13write_escapedNtNtCs3vUkWdPtNor_5alloc6string6StringEB6_",
+        "samples": 26,
+        "percent": 1.05433901054339
+      },
+      {
+        "symbol": "DYLD-STUB$$memcmp",
+        "samples": 25,
+        "percent": 1.013787510137875
+      },
+      {
+        "symbol": "DYLD-STUB$$memcpy",
+        "samples": 22,
+        "percent": 0.8921330089213302
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown4util4char8classify",
+        "samples": 20,
+        "percent": 0.8110300081103
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_",
+        "samples": 17,
+        "percent": 0.689375506893755
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder11finish_list",
+        "samples": 16,
+        "percent": 0.6488240064882401
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder6fenced",
+        "samples": 14,
+        "percent": 0.5677210056772101
+      },
+      {
+        "symbol": "_RNvNtCs8seiryzelau_13core_markdown13value_builder6decode",
+        "samples": 14,
+        "percent": 0.5677210056772101
+      },
+      {
+        "symbol": "_RNvMNtNtCs8seiryzelau_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker",
+        "samples": 11,
+        "percent": 0.4460665044606651
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder10interrupts",
+        "samples": 11,
+        "percent": 0.4460665044606651
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown6streamNtB2_4Text7resolve",
+        "samples": 9,
+        "percent": 0.36496350364963503
+      },
+      {
+        "symbol": "_RNvMs0_NtCs8seiryzelau_13core_markdown12block_parserNtB5_7Builder15list_interrupts",
+        "samples": 9,
+        "percent": 0.36496350364963503
+      },
+      {
+        "symbol": "_RNvMNtCs8seiryzelau_13core_markdown13value_builderNtB2_12ValueBuilder6append",
+        "samples": 7,
+        "percent": 0.28386050283860503
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown4util19character_reference4scan",
+        "samples": 7,
+        "percent": 0.28386050283860503
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners19scan_setext_heading",
+        "samples": 6,
+        "percent": 0.24330900243309003
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners23scan_closing_code_fence",
+        "samples": 6,
+        "percent": 0.24330900243309003
+      },
+      {
+        "symbol": "_RNvNtNtCs8seiryzelau_13core_markdown12block_parser8scanners15scan_code_fence",
+        "samples": 5,
+        "percent": 0.202757502027575
+      }
+    ]
+  }
+}

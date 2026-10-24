@@ -1,0 +1,178 @@
+{
+  "core-markdown/rust-readme": {
+    "baseline": {
+      "median_ms": 0.009523711748461245,
+      "process_medians_ms": [
+        0.009507809852951143,
+        0.009539613643971347
+      ],
+      "process_spread_percent": 0.3345017571037445,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "destinations": {
+      "median_ms": 0.009457479513319836,
+      "process_medians_ms": [
+        0.00945597523110578,
+        0.009458983795533891
+      ],
+      "process_spread_percent": 0.03181654302788495,
+      "control_engine": "baseline",
+      "time_change_percent": -0.6954456087156391
+    }
+  },
+  "core-markdown/clap-readme": {
+    "baseline": {
+      "median_ms": 0.006486385934885075,
+      "process_medians_ms": [
+        0.0065107702111058124,
+        0.006462001658664338
+      ],
+      "process_spread_percent": 0.7546973061525852,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "destinations": {
+      "median_ms": 0.005596734143696304,
+      "process_medians_ms": [
+        0.005636608340482674,
+        0.005556859946909934
+      ],
+      "process_spread_percent": 1.4351341285303798,
+      "control_engine": "baseline",
+      "time_change_percent": -13.715677730553255
+    }
+  },
+  "core-markdown/tokio-changelog": {
+    "baseline": {
+      "median_ms": 1.0359206931034484,
+      "process_medians_ms": [
+        1.0372632206896553,
+        1.0345781655172415
+      ],
+      "process_spread_percent": 0.25953139761762944,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "destinations": {
+      "median_ms": 1.042594822605364,
+      "process_medians_ms": [
+        1.0409985555555556,
+        1.0441910896551725
+      ],
+      "process_spread_percent": 0.30667997400948277,
+      "control_engine": "baseline",
+      "time_change_percent": 0.6442703139678763
+    }
+  },
+  "core-markdown/rust-nll-rfc": {
+    "baseline": {
+      "median_ms": 0.1833718850006665,
+      "process_medians_ms": [
+        0.18164175891758916,
+        0.18510201108374386
+      ],
+      "process_spread_percent": 1.9049871498572069,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "destinations": {
+      "median_ms": 0.18276797139991616,
+      "process_medians_ms": [
+        0.1824007738386308,
+        0.18313516896120152
+      ],
+      "process_spread_percent": 0.40262719675765446,
+      "control_engine": "baseline",
+      "time_change_percent": -0.32933816476181654
+    }
+  },
+  "core-markdown/awesome-rust-readme": {
+    "baseline": {
+      "median_ms": 1.2054772588309786,
+      "process_medians_ms": [
+        1.213640120967742,
+        1.1973143966942148
+      ],
+      "process_spread_percent": 1.3635286035649896,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "destinations": {
+      "median_ms": 1.0118571195918369,
+      "process_medians_ms": [
+        1.0308089591836735,
+        0.99290528
+      ],
+      "process_spread_percent": 3.8174516690729687,
+      "control_engine": "baseline",
+      "time_change_percent": -16.061699863745783
+    }
+  },
+  "core-markdown/readme": {
+    "baseline": {
+      "median_ms": 0.013369480466149605,
+      "process_medians_ms": [
+        0.013354705613150275,
+        0.013384255319148936
+      ],
+      "process_spread_percent": 0.2212681196773314,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "destinations": {
+      "median_ms": 0.01317128232769801,
+      "process_medians_ms": [
+        0.013163396061859378,
+        0.013179168593536641
+      ],
+      "process_spread_percent": 0.11982114344308847,
+      "control_engine": "baseline",
+      "time_change_percent": -1.4824670184710231
+    }
+  },
+  "core-markdown/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.391871652411492,
+      "process_medians_ms": [
+        0.39109203350515465,
+        0.39265127131782945
+      ],
+      "process_spread_percent": 0.3986882061238095,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "destinations": {
+      "median_ms": 0.3918369504598978,
+      "process_medians_ms": [
+        0.3946646298200514,
+        0.3890092710997442
+      ],
+      "process_spread_percent": 1.4537850741498382,
+      "control_engine": "baseline",
+      "time_change_percent": -0.008855438095778378
+    }
+  },
+  "core-markdown/mixed-1m": {
+    "baseline": {
+      "median_ms": 3.9658910256410254,
+      "process_medians_ms": [
+        3.9723365384615383,
+        3.9594455128205124
+      ],
+      "process_spread_percent": 0.32557653841391865,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "destinations": {
+      "median_ms": 3.9340053589743587,
+      "process_medians_ms": [
+        3.947938051282051,
+        3.9200726666666665
+      ],
+      "process_spread_percent": 0.7108384712439353,
+      "control_engine": "baseline",
+      "time_change_percent": -0.8039975496178187
+    }
+  }
+}

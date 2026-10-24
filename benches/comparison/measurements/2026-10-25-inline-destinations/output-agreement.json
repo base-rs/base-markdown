@@ -1,0 +1,386 @@
+[
+  {
+    "document": "readme",
+    "profile": "commonmark",
+    "markdown_sha256": "e9fcb242b7ba8f45fd18b1a97b7e021755babea8825d6f3cb86bb6f89dcd2e14",
+    "core_sha256": "e4a600f81e790248aa401d761383e577ae2b59fb23cb32ce7216c7d640076e25",
+    "inkmark_sha256": "aae38fe68f839a93e0e28405020ec831343dfb2603615dfde6faddd433003cdc",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": false,
+    "inkmark_entity_decoded_equal": true,
+    "difference": {
+      "character_offset": 3736,
+      "core": "rust\">let html = core_markdown::to_html(&quot;## Hello, *world*!&quot;);\nassert_eq!(html, &quot;&lt;h2&gt;Hello, &lt;em&gt;world&lt;/em&gt;!",
+      "inkmark": "rust\">let html = core_markdown::to_html(\"## Hello, *world*!\");\nassert_eq!(html, \"&lt;h2&gt;Hello, &lt;em&gt;world&lt;/em&gt;!&lt;/h2&gt;\");\n"
+    }
+  },
+  {
+    "document": "mixed-100k",
+    "profile": "commonmark",
+    "markdown_sha256": "a9b31b8c20db1c4469a87e788ae77c98155cb4371738d291826abc94cfb12021",
+    "core_sha256": "2906a9c276936b616283e21049523f53da43d1aa82c22f6c442a34444dfa4c45",
+    "inkmark_sha256": "39f1cef1f002794304ea4af8d5cc70131c8d1f983452027c23a2a9d4b10f6222",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": false,
+    "inkmark_entity_decoded_equal": true,
+    "difference": {
+      "character_offset": 531,
+      "core": "ss=\"language-rust\">fn main() { println!(&quot;hello&quot;); }\n</code></pre>\n<h2>Section 1</h2>\n<p>Markdown parsing includes <strong>strong e",
+      "inkmark": "ss=\"language-rust\">fn main() { println!(\"hello\"); }\n</code></pre>\n<h2>Section 1</h2>\n<p>Markdown parsing includes <strong>strong emphasis</s"
+    }
+  },
+  {
+    "document": "mixed-1m",
+    "profile": "commonmark",
+    "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "core_sha256": "2fa9d192e5e9db657ed474b47927cc05579b0b3b871910bb1858a15c47cfa5bd",
+    "inkmark_sha256": "a02e3513d9f2b35a3c57dfa43145bc29813e455ba3be28cdad16a69a68b67d9c",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": false,
+    "inkmark_entity_decoded_equal": true,
+    "difference": {
+      "character_offset": 531,
+      "core": "ss=\"language-rust\">fn main() { println!(&quot;hello&quot;); }\n</code></pre>\n<h2>Section 1</h2>\n<p>Markdown parsing includes <strong>strong e",
+      "inkmark": "ss=\"language-rust\">fn main() { println!(\"hello\"); }\n</code></pre>\n<h2>Section 1</h2>\n<p>Markdown parsing includes <strong>strong emphasis</s"
+    }
+  },
+  {
+    "document": "gfm-100k",
+    "profile": "gfm",
+    "markdown_sha256": "6c7091f969014c4396cbb98e6c3358d3d6d2c64e4dd6b7f35af273c15cb11c5d",
+    "core_sha256": "4926cff0b336eef7546732fe634f78b0d3484acb9a6fb5da09c2ecce52c12ba7",
+    "inkmark_sha256": "00052b8a000cc9a9b627863a427f93630a86331f72b81db2b5ff1d3795977897",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": false,
+    "inkmark_entity_decoded_equal": false,
+    "difference": {
+      "character_offset": 531,
+      "core": "ss=\"language-rust\">fn main() { println!(&quot;hello&quot;); }\n</code></pre>\n<table>\n<thead>\n<tr>\n<th align=\"left\">Feature</th>\n<th align=\"ri",
+      "inkmark": "ss=\"language-rust\">fn main() { println!(\"hello\"); }\n</code></pre>\n<table><thead><tr><th style=\"text-align: left\">Feature</th><th style=\"text"
+    }
+  },
+  {
+    "document": "references",
+    "profile": "commonmark",
+    "markdown_sha256": "f5d995fc94efcc42927c9274759866fc60699865dd9cd1504b3f0e9380edc4cf",
+    "core_sha256": "3aaeee76d28590427d122cf7a392cb917e66b503e8bfeb5ca90731bfcaded9fc",
+    "inkmark_sha256": "3aaeee76d28590427d122cf7a392cb917e66b503e8bfeb5ca90731bfcaded9fc",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "long-lines-1m",
+    "profile": "commonmark",
+    "markdown_sha256": "4edbe39e17d6254bc1d33654c36e1e3c0473c10c08817cce6d1fd2f24f79b261",
+    "core_sha256": "1311a2c92057704d7eed452d1ff24954df7b8bf98ef8865b7b4bb09435ebddaa",
+    "inkmark_sha256": "1311a2c92057704d7eed452d1ff24954df7b8bf98ef8865b7b4bb09435ebddaa",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "code-1m",
+    "profile": "commonmark",
+    "markdown_sha256": "9614745b8b4188bcf96a751410cd0f9b3841f0adc3bdfde4f0685849e80d6e2e",
+    "core_sha256": "3ae1737728401d83dc0157c1c997916a83fd59ea0f0c8a6ba4ff3bcc89152833",
+    "inkmark_sha256": "3ae1737728401d83dc0157c1c997916a83fd59ea0f0c8a6ba4ff3bcc89152833",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "definitions-256",
+    "profile": "commonmark",
+    "markdown_sha256": "5018cdfdf81690b0503e58ab5c2a47800c7d15d4e1f7b9f4887b14d0d5044ba9",
+    "core_sha256": "6399f2acc88b8d9b9bd78ebcec30d5341c25b7d79a9d638f307138fe8b15135f",
+    "inkmark_sha256": "6399f2acc88b8d9b9bd78ebcec30d5341c25b7d79a9d638f307138fe8b15135f",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "definitions-1024",
+    "profile": "commonmark",
+    "markdown_sha256": "e0e0786ff62f122cf27bb30ea84f658c365c8c599f29b481827c874114c42ecf",
+    "core_sha256": "d9b586fe86b999ae14e0c7a514526a484e970dee525977faa761ec42b50c2810",
+    "inkmark_sha256": "d9b586fe86b999ae14e0c7a514526a484e970dee525977faa761ec42b50c2810",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "definitions-4096",
+    "profile": "commonmark",
+    "markdown_sha256": "589b9c546dd20166efc74b1b199ad2866e619eb61e57b435302c4a3ddfea9a65",
+    "core_sha256": "5d322f4fe09051c29f5c8f70dd42dd826aec20e676e9c9b4ff588e456ab2f589",
+    "inkmark_sha256": "5d322f4fe09051c29f5c8f70dd42dd826aec20e676e9c9b4ff588e456ab2f589",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "multiline-small",
+    "profile": "commonmark",
+    "markdown_sha256": "295a8dcb817a6e3282bac5f9c0fac9394d7441ecfe53b6fd8291edf480f60e5b",
+    "core_sha256": "edc2789960ac19b71b49784f2cc0ddf21f5e6cbd6bde88d13a683ac51c996f46",
+    "inkmark_sha256": "edc2789960ac19b71b49784f2cc0ddf21f5e6cbd6bde88d13a683ac51c996f46",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "multiline-100k",
+    "profile": "commonmark",
+    "markdown_sha256": "79d640f33c0b2b82e87fd82461320786a55044e39d14312e9c962e53e9cc7242",
+    "core_sha256": "b48f8f2215fcd6d36ae723d9fa47cb9a0462678b64e7aa9d99c8940b53abcb12",
+    "inkmark_sha256": "b48f8f2215fcd6d36ae723d9fa47cb9a0462678b64e7aa9d99c8940b53abcb12",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "keys-uppercase-1024",
+    "profile": "commonmark",
+    "markdown_sha256": "d9cc1088262d59fd072a6787440c710919b1c10ed17670e0ef31889745f4389d",
+    "core_sha256": "b6a742169806c9f649834aa940a552896955da0b819bfd0c529909d540fbdd8e",
+    "inkmark_sha256": "b6a742169806c9f649834aa940a552896955da0b819bfd0c529909d540fbdd8e",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "keys-unicode-1024",
+    "profile": "commonmark",
+    "markdown_sha256": "e959daaaea33d90cd634d36d06aaff9224e3675b0ea6c46c19800dedf1ca448b",
+    "core_sha256": "bffb30ea0ce570425a98f1b6dab93eb527494f8494d127ba993d71fda7629408",
+    "inkmark_sha256": "bffb30ea0ce570425a98f1b6dab93eb527494f8494d127ba993d71fda7629408",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "keys-spaced-1024",
+    "profile": "commonmark",
+    "markdown_sha256": "fe3b64689e4746a6f918e47ceb02bdbc06f5162aa071c160ad6b45dee83f6183",
+    "core_sha256": "8f1b8db0dc579b096879ec29a69ef326a9d9db50508377d6707cb71d1b4e496a",
+    "inkmark_sha256": "8f1b8db0dc579b096879ec29a69ef326a9d9db50508377d6707cb71d1b4e496a",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "keys-random-1024",
+    "profile": "commonmark",
+    "markdown_sha256": "23e5ad97e8fe502ddf2db6aec4523876e55a96635b025d0e0e0a24a2c201d500",
+    "core_sha256": "37301a124556db0ee9cbc0e7510634cf55c41c89af4c9589e63104228e6f6c5b",
+    "inkmark_sha256": "37301a124556db0ee9cbc0e7510634cf55c41c89af4c9589e63104228e6f6c5b",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "keys-long-uppercase-1024",
+    "profile": "commonmark",
+    "markdown_sha256": "464207a9f58ba84fe2e596b251cf3e880312d27f8adfef97fc670a618011aa30",
+    "core_sha256": "2db2403ce25f0ce11dc0ff54bb80b791c684f7903f343199c16a35b9c505ab73",
+    "inkmark_sha256": "2db2403ce25f0ce11dc0ff54bb80b791c684f7903f343199c16a35b9c505ab73",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "keys-long-spaced-1024",
+    "profile": "commonmark",
+    "markdown_sha256": "fe1eee2a4b48d454f798889d64f30fdf29fed352d9bee28f76d3a9e3aa7139d5",
+    "core_sha256": "968668bbd95318b2c51804963fdd4222ef4e9b3bddeb7c81a631f811eab944e6",
+    "inkmark_sha256": "968668bbd95318b2c51804963fdd4222ef4e9b3bddeb7c81a631f811eab944e6",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "keys-unicode-dense-1024",
+    "profile": "commonmark",
+    "markdown_sha256": "df52d99cc413b56a2e3969e4ea9255ad62be100aad39bbe8c10ca9bf287fb892",
+    "core_sha256": "8280e703ac022a2bfe9f1ff3cc4eca62a294a1dffad6a6d4db4a60e39982378b",
+    "inkmark_sha256": "8280e703ac022a2bfe9f1ff3cc4eca62a294a1dffad6a6d4db4a60e39982378b",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "keys-unicode-long-1024",
+    "profile": "commonmark",
+    "markdown_sha256": "6ad49d3a1a9e1197a2d956e231f367856a7128f7d98b187c4e01db5853070c14",
+    "core_sha256": "9caead95bd1613b8db3429171cab3d2b2239ecce5e9dec644a6c1843485786d8",
+    "inkmark_sha256": "9caead95bd1613b8db3429171cab3d2b2239ecce5e9dec644a6c1843485786d8",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "keys-unicode-upper-long-1024",
+    "profile": "commonmark",
+    "markdown_sha256": "a222aee4caa06d8b4c2ef5276ff7d47b05d2c2bb9b47e00e5e5f33baadfa3e7b",
+    "core_sha256": "d469d4b23645f19bee21f7cd16824a4ee56cef535fd6b80e19f31c0228bd8787",
+    "inkmark_sha256": "d469d4b23645f19bee21f7cd16824a4ee56cef535fd6b80e19f31c0228bd8787",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "keys-unicode-lower-long-1024",
+    "profile": "commonmark",
+    "markdown_sha256": "55ac8b8937a431f59d998e7294e0c9cecdba73c4d94e5413def2ad84ed86d6b3",
+    "core_sha256": "cc29e08cd8e33ba5ad461dc5732e776dbdf4fd4653a712fa41033b8e4f366cb1",
+    "inkmark_sha256": "cc29e08cd8e33ba5ad461dc5732e776dbdf4fd4653a712fa41033b8e4f366cb1",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "keys-unicode-upper-tail-1024",
+    "profile": "commonmark",
+    "markdown_sha256": "83437034f56592320fef382d07784a0085a53446e67529b22b2188d301d59394",
+    "core_sha256": "316b653c181b847d00d304f7085061abc5a81cd3d18a87e7a64c41d4f59d911a",
+    "inkmark_sha256": "316b653c181b847d00d304f7085061abc5a81cd3d18a87e7a64c41d4f59d911a",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "rust-readme",
+    "profile": "gfm",
+    "markdown_sha256": "b3f6ef2fef88b98cb9ec013a5c86213095e53e40eb228679574e4d06517f33c8",
+    "core_sha256": "c973cfefaa8cfac1a52bdc7fd1f79f04ed601af0ec4e62a4d353df62f59ab15d",
+    "inkmark_sha256": "01367758c3c86ce16ac0c8b22c91c275ca0fa47c8303fb177e1e93c619597ac1",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": false,
+    "inkmark_entity_decoded_equal": true,
+    "difference": {
+      "character_offset": 2060,
+      "core": "ang.org/book/ch01-01-installation.html\">&quot;Installation&quot;</a> from <a href=\"https://doc.rust-lang.org/book/index.html\">The Book</a>.<",
+      "inkmark": "ang.org/book/ch01-01-installation.html\">\"Installation\"</a> from <a href=\"https://doc.rust-lang.org/book/index.html\">The Book</a>.</p>\n<h2>In"
+    }
+  },
+  {
+    "document": "clap-readme",
+    "profile": "gfm",
+    "markdown_sha256": "803041260cb12bb14ae91ebb115eadd3212373cde5a969d81f7c02b0817b7fdf",
+    "core_sha256": "b61f3dee054b1dd86f44fe173e56fca9840fb641461379d283c91878d2f5d86b",
+    "inkmark_sha256": "b61f3dee054b1dd86f44fe173e56fca9840fb641461379d283c91878d2f5d86b",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": true,
+    "inkmark_entity_decoded_equal": true,
+    "difference": null
+  },
+  {
+    "document": "tokio-changelog",
+    "profile": "gfm",
+    "markdown_sha256": "fdab3584e5e1b76f89ae5ebfd1be1a69b938bd27537af422c9154b27cbf9aa17",
+    "core_sha256": "efeeb004c6d693a6505100fed3410751746de64a0f945f00b1e4c86a62e57005",
+    "inkmark_sha256": "531c873033455829b5d4d4e3d13e6a2c6f0fee9ad29a572c7f301caa40380fcf",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": false,
+    "inkmark_entity_decoded_equal": true,
+    "difference": {
+      "character_offset": 74,
+      "core": "1>\n<h3>Fixed</h3>\n<ul>\n<li>time: revert &quot;remove the runtime handle from timers&quot; (<a href=\"https://github.com/tokio-rs/tokio/pull/8",
+      "inkmark": "1>\n<h3>Fixed</h3>\n<ul>\n<li>time: revert \"remove the runtime handle from timers\" (<a href=\"https://github.com/tokio-rs/tokio/pull/8692\">#8692"
+    }
+  },
+  {
+    "document": "rust-nll-rfc",
+    "profile": "gfm",
+    "markdown_sha256": "bb7e4770cee4aca69af685382f50a5b24f24713f240ec163ed85c8f4ba81478d",
+    "core_sha256": "61743136466b095054c443ab6d91cd1cb24b8fd6c7166d1833d74893a7c6a897",
+    "inkmark_sha256": "185e24119350e12c9cc2358bb19e0294f102e36fc321787e4570466c40acb1f0",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": false,
+    "inkmark_entity_decoded_equal": true,
+    "difference": {
+      "character_offset": 14704,
+      "core": "n,\nsince it avoids extra lookups on the &quot;not present&quot; path as well:</p>\n<pre><code class=\"language-rust\">fn get_default3&lt;'r,K:H",
+      "inkmark": "n,\nsince it avoids extra lookups on the \"not present\" path as well:</p>\n<pre><code class=\"language-rust\">fn get_default3&lt;'r,K:Hash+Eq,V:D"
+    }
+  },
+  {
+    "document": "awesome-rust-readme",
+    "profile": "gfm",
+    "markdown_sha256": "fce034a67f6b343ff923ec4058a56d80ce343708b999af57fa3bfb4589bb0137",
+    "core_sha256": "d899581457e2e384c4e8e63d0a09f2653b0ee5adc20f080b718ceaf32f0c5efb",
+    "inkmark_sha256": "2eabd539fe815a60a90fe44266fc1857f7cc84dbf1a5f4fee62316e16d757e1d",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": false,
+    "inkmark_entity_decoded_equal": true,
+    "difference": {
+      "character_offset": 42398,
+      "core": "/a> - Zcash is an implementation of the &quot;Zerocash&quot; protocol.</li>\n</ul>\n<h3>Database</h3>\n<ul>\n<li><a href=\"https://github.com/aim",
+      "inkmark": "/a> - Zcash is an implementation of the \"Zerocash\" protocol.</li>\n</ul>\n<h3>Database</h3>\n<ul>\n<li><a href=\"https://github.com/aimdb-dev/aim"
+    }
+  },
+  {
+    "document": "commonmark-spec",
+    "profile": "commonmark",
+    "markdown_sha256": "bfef4ddc97276b6ab6c2a28ace48478e35b1c50e60cde9f517ab8ab030aa3b82",
+    "core_sha256": "5e1c05dcd5cbed20a26f9ac4613d3fd04bc8f1ffc3e4cca0c42062e8b547bb7c",
+    "inkmark_sha256": "76f0497f485a00c49757a6b10873c6bb3ae6a9e3ceb0add2bd1df0f1ff2a35d5",
+    "baseline_candidate_equal": true,
+    "core_consumers_equal": true,
+    "inkmark_byte_equal": false,
+    "inkmark_entity_decoded_equal": true,
+    "difference": {
+      "character_offset": 3660,
+      "core": "oes\nnot require that.  This is hardly a &quot;corner case,&quot; and divergences\nbetween implementations on this issue often lead to surpris",
+      "inkmark": "oes\nnot require that.  This is hardly a \"corner case,\" and divergences\nbetween implementations on this issue often lead to surprises for\nuse"
+    }
+  }
+]
