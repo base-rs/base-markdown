@@ -1049,10 +1049,19 @@ fn record_line_indent(tokenizer: &mut Tokenizer) {
 #[cfg(test)]
 mod tests {
     use super::{record_line_indent, BASIC, COMMENT, COMPLETE};
-    use crate::{event::Point, parser::parse, tokenizer::Tokenizer, ParseOptions};
+    use crate::{
+        event::Point, grammar_parser::GrammarParser, parser::ParseState, tokenizer::Tokenizer,
+        ParseOptions,
+    };
+
+    fn parse(source: &str, options: &ParseOptions) {
+        GrammarParser::new(source, options).for_each(|event| {
+            event.unwrap();
+        });
+    }
 
     fn with_tokenizer(source: &str, options: &ParseOptions, run: impl FnOnce(&mut Tokenizer<'_>)) {
-        let (_, parse_state) = parse(source, options);
+        let parse_state = ParseState::new(source.as_bytes(), options);
         let mut tokenizer = Tokenizer::new(
             Point {
                 line: 1,
@@ -1072,8 +1081,8 @@ mod tests {
             ..ParseOptions::default()
         };
 
-        crate::parser::parse("<div>\n\n  content\n\n</div>", &options);
-        crate::parser::parse("<widget>\n\n  content\n\n</widget>", &options);
+        parse("<div>\n\n  content\n\n</div>", &options);
+        parse("<widget>\n\n  content\n\n</widget>", &options);
     }
 
     #[test]

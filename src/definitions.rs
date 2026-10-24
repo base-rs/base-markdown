@@ -63,12 +63,6 @@ impl Definitions {
             .ok()
             .map(|index| self.ordered[index])
     }
-
-    pub fn keys(&self) -> impl Iterator<Item = &String> {
-        self.ordered
-            .iter()
-            .map(move |&index| &self.entries[index].key)
-    }
 }
 
 /// Scan a single-line full-reference label. The grammar producer handles multiline labels.

@@ -26,10 +26,9 @@ use crate::{
 };
 use alloc::{
     borrow::Cow,
-    format,
     string::{String, ToString},
 };
-use core::mem;
+use core::{fmt::Write, mem};
 
 impl State<'_> {
     pub(super) fn blockquote<S: AsRef<str>>(
@@ -575,30 +574,37 @@ impl State<'_> {
         document: &Document<S>,
         node: NodeId,
     ) -> Result<(), Message> {
-        let mut bullet = self
-            .bullet_current
-            .unwrap_or(check_bullet(self)?)
-            .to_string();
+        let mut bullet = self.bullet_current.unwrap_or(check_bullet(self)?);
+        let prefix_start = self.output.len();
         let parent = document.node(node).unwrap().parent();
         if let Some(parent) = parent {
             if let EventKind::Start(Tag::List {
                 start: Some(start), ..
             }) = document.node(parent).unwrap().kind
             {
+                if self.bullet_current.is_none() {
+                    bullet = check_bullet_ordered(self)?;
+                }
                 let position = if self.options.increment_list_marker {
-                    flow_children(document, parent)
-                        .position(|id| id == node)
-                        .expect("item belongs to its parent list")
+                    self.index_stack.last().copied().unwrap_or_else(|| {
+                        // A directly serialized item retains its position in the source list.
+                        flow_children(document, parent)
+                            .position(|id| id == node)
+                            .expect("item belongs to its parent list")
+                    })
                 } else {
                     0
                 };
-                bullet = format!("{}{}", start as usize + position, bullet);
+                write!(self.output, "{}", start as usize + position)
+                    .expect("writing to a String cannot fail");
             }
         }
+        self.output.push(bullet);
         if let Some((_, checked)) = item_task(document, node) {
-            bullet.push_str(if checked { " [x]" } else { " [ ]" });
+            self.output.push_str(if checked { " [x]" } else { " [ ]" });
         }
-        let mut size = bullet.len() + 1;
+        let prefix_size = self.output.len() - prefix_start;
+        let mut size = prefix_size + 1;
         let expand = match self.options.list_item_indent {
             IndentOptions::Mixed => {
                 self.item_spread(document, node)
@@ -619,13 +625,9 @@ impl State<'_> {
         let start = self.output.len();
         self.container_flow(document, node)?;
         self.indent_lines(start, |line, index, blank, output| {
-            if index == 0 {
-                output.push_str(&bullet);
-                if !blank {
-                    output.extend(core::iter::repeat(' ').take(size - bullet.len()));
-                }
-            } else if !blank {
-                output.extend(core::iter::repeat(' ').take(size));
+            if !blank {
+                let indent = if index == 0 { size - prefix_size } else { size };
+                output.extend(core::iter::repeat(' ').take(indent));
             }
             output.push_str(line);
         });

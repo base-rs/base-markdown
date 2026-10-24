@@ -233,8 +233,6 @@ pub struct TokenizeState<'a> {
     /// Used when tokenizing [text content][crate::construct::text].
     pub labels: Vec<Label>,
 
-    /// List of defined definition identifiers.
-    pub definitions: Vec<String>,
     /// List of defined GFM footnote definition identifiers.
     pub gfm_footnote_definitions: Vec<String>,
 
@@ -345,7 +343,6 @@ pub(crate) struct TokenizerBuffers {
     label_starts: Vec<LabelStart>,
     label_starts_loose: Vec<LabelStart>,
     labels: Vec<Label>,
-    definitions: Vec<String>,
     footnotes: Vec<String>,
     map: EditMap,
 }
@@ -361,7 +358,6 @@ impl Default for TokenizerBuffers {
             label_starts: Vec::new(),
             label_starts_loose: Vec::new(),
             labels: Vec::new(),
-            definitions: Vec::new(),
             footnotes: Vec::new(),
             map: EditMap::new(),
         }
@@ -394,7 +390,6 @@ impl<'a> Tokenizer<'a> {
                 document_child_state: None,
                 document_child: None,
                 document_at_first_paragraph_of_list_item: false,
-                definitions: vec![],
                 gfm_footnote_definitions: vec![],
 
                 end: 0,
@@ -460,7 +455,6 @@ impl<'a> Tokenizer<'a> {
         restore!(label_starts, tokenize_state.label_starts);
         restore!(label_starts_loose, tokenize_state.label_starts_loose);
         restore!(labels, tokenize_state.labels);
-        restore!(definitions, tokenize_state.definitions);
         restore!(footnotes, tokenize_state.gfm_footnote_definitions);
         tokenizer.map = buffers.map;
         tokenizer
@@ -477,7 +471,6 @@ impl<'a> Tokenizer<'a> {
             label_starts: self.tokenize_state.label_starts,
             label_starts_loose: self.tokenize_state.label_starts_loose,
             labels: self.tokenize_state.labels,
-            definitions: self.tokenize_state.definitions,
             footnotes: self.tokenize_state.gfm_footnote_definitions,
             map: self.map,
         }
@@ -500,7 +493,6 @@ impl<'a> Tokenizer<'a> {
         reuse!(tokenize_state.label_starts);
         reuse!(tokenize_state.label_starts_loose);
         reuse!(tokenize_state.labels);
-        reuse!(tokenize_state.definitions);
         reuse!(tokenize_state.gfm_footnote_definitions);
         // A flushed tokenizer has consumed all pending edits.
         core::mem::swap(&mut self.map, &mut next.map);
@@ -774,20 +766,16 @@ impl<'a> Tokenizer<'a> {
         state.assert_ok();
 
         let mut value = Subresult {
-            done: false,
             gfm_footnote_definitions: self.tokenize_state.gfm_footnote_definitions.split_off(0),
-            definitions: self.tokenize_state.definitions.split_off(0),
         };
 
         if resolve {
             let resolvers = self.resolvers.split_off(0);
             let mut index = 0;
-            let defs = &mut value.definitions;
             let fn_defs = &mut value.gfm_footnote_definitions;
             while index < resolvers.len() {
                 if let Some(mut result) = call_resolve(self, resolvers[index]) {
                     fn_defs.append(&mut result.gfm_footnote_definitions);
-                    defs.append(&mut result.definitions);
                 }
                 index += 1;
             }
@@ -1021,7 +1009,7 @@ mod tests {
         construct::frontmatter,
         construct::html_flow::{blank_line_before, blank_lines_end_data, blank_lines_end_start},
         event::{Name, Point},
-        parser::{parse, ParseState},
+        parser::ParseState,
         state::{Name as StateName, State},
         ParseOptions,
     };
@@ -1040,7 +1028,7 @@ mod tests {
     #[test]
     fn scans_data_runs_within_chunk_and_virtual_space_boundaries() {
         let options = ParseOptions::default();
-        let (_events, parse_state) = parse("ab\tdef\r\nxyz", &options);
+        let parse_state = ParseState::new("ab\tdef\r\nxyz".as_bytes(), &options);
         let mut tokenizer = make_tokenizer(&parse_state);
         tokenizer.tokenize_state.markers = 1 << b'*';
         tokenizer.enter(Name::Data);
@@ -1069,7 +1057,10 @@ mod tests {
             .expect("install test logger");
 
         let options = ParseOptions::default();
-        let (events, parse_state) = parse("first paragraph\nsecond line", &options);
+        let parse_state = ParseState::new(b"first paragraph\nsecond line", &options);
+        let events: alloc::vec::Vec<_> =
+            crate::grammar_parser::GrammarParser::new("first paragraph\nsecond line", &options)
+                .collect();
 
         assert!(!events.is_empty());
         assert_eq!(parse_state.bytes, b"first paragraph\nsecond line");
@@ -1082,7 +1073,7 @@ mod tests {
             ..ParseOptions::default()
         };
 
-        let (_events, parse_state) = parse(" \n", &options);
+        let parse_state = ParseState::new(" \n".as_bytes(), &options);
         let mut tokenizer = make_tokenizer(&parse_state);
         tokenizer.enter(Name::HtmlFlowData);
         tokenizer.current = Some(b' ');
@@ -1098,7 +1089,7 @@ mod tests {
         );
         assert_eq!(tokenizer.tokenize_state.html_flow_blank_lines, 0);
 
-        let (_events, parse_state) = parse(" x", &options);
+        let parse_state = ParseState::new(" x".as_bytes(), &options);
         let mut tokenizer = make_tokenizer(&parse_state);
         tokenizer.enter(Name::HtmlFlowData);
         tokenizer.current = Some(b' ');
@@ -1114,7 +1105,7 @@ mod tests {
         );
         assert_eq!(tokenizer.tokenize_state.html_flow_blank_lines, 0);
 
-        let (_events, parse_state) = parse("x", &options);
+        let parse_state = ParseState::new("x".as_bytes(), &options);
         let mut tokenizer = make_tokenizer(&parse_state);
         tokenizer.current = Some(b'x');
         tokenizer.tokenize_state.html_flow_blank_lines = 1;
@@ -1142,7 +1133,7 @@ mod tests {
             (COMPLETE, State::Next(StateName::HtmlFlowBlankLinesCheck)),
             (COMMENT, State::Next(StateName::BlankLineStart)),
         ] {
-            let (_events, parse_state) = parse("\n", &options);
+            let parse_state = ParseState::new("\n".as_bytes(), &options);
             let mut tokenizer = make_tokenizer(&parse_state);
             tokenizer.current = Some(b'\n');
             tokenizer.consumed = false;
@@ -1155,7 +1146,7 @@ mod tests {
     #[test]
     fn frontmatter_after_accepts_eof() {
         let options = ParseOptions::default();
-        let (_events, parse_state) = parse("\n", &options);
+        let parse_state = ParseState::new("\n".as_bytes(), &options);
         let mut tokenizer = make_tokenizer(&parse_state);
         tokenizer.current = Some(b'\n');
         tokenizer.expect(Some(b'\n'));

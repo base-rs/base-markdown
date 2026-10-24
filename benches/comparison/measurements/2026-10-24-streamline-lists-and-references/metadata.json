@@ -1,0 +1,91 @@
+{
+  "baseline_commit": "bb6f198ae1a4e289c369e059591c10b2472e6867",
+  "baseline_provenance": "../2026-10-24-inline-html-and-escaping/metadata.json final binaries, exact merged src tree",
+  "source_head": "96e62fc53871331b115f3df4b4c2d647f7428b4a",
+  "source_tree": "bbcb6bf7b1a916bc06b323f26764f5ec2f8e51f0",
+  "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.3",
+  "validation_compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "build_command": "cargo build --manifest-path benches/comparison/Cargo.toml --release --locked --bins",
+  "machine": "Apple M4 Pro",
+  "system": "Darwin Kusanagi.local 27.0.0 Darwin Kernel Version 27.0.0: Tue Aug 11 21:05:48 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T6041 arm64",
+  "ruby": "ruby 4.0.9 (2026-10-23 revision 3e93b23afc) +PRISM [arm64-darwin25]",
+  "python": "Python 3.13.12",
+  "inkmark_version": "0.2.1",
+  "gem_lock_sha256": "b65055f3d64957fe2f81f5bfc3e7ffe00a3695b0ad5dbc7924657e25c207c94c",
+  "comparison_lock_sha256": "f5e800843ee0953d706b17e637b17645604493bc2f331190518fd12989b169a2",
+  "binaries": {
+    "baseline": {
+      "commit": "bb6f198ae1a4e289c369e059591c10b2472e6867",
+      "source_tree": "fbbb17b4584f9da0537f9020756552f20ee1e0ee",
+      "sha256": "b11c90ebf2d683ff2fcf7716a6187677c275b1fbe1d62e54666f55da8d6b4b7a",
+      "bytes": 3389360
+    },
+    "baseline-allocations": {
+      "commit": "bb6f198ae1a4e289c369e059591c10b2472e6867",
+      "source_tree": "fbbb17b4584f9da0537f9020756552f20ee1e0ee",
+      "sha256": "39285650f72f9e7f0010a5976a55da020537d1bad9ceb277d09d3d16300cb947",
+      "bytes": 1784592
+    },
+    "lists": {
+      "commit": "89becd948c204d1bf694babd066ebc9ece9ab1e9",
+      "source_tree": "a90b64c5f0251da6985f0efe037520c69991da38",
+      "sha256": "220798c613132bae03d93e5bd4119352d2ec5850f53da90088260b2f44d25862",
+      "bytes": 3389120
+    },
+    "lists-allocations": {
+      "commit": "89becd948c204d1bf694babd066ebc9ece9ab1e9",
+      "source_tree": "a90b64c5f0251da6985f0efe037520c69991da38",
+      "sha256": "08b04f69a57746a3deb1033455673fbd2faa772d02e5305254d46e94c2eb58a3",
+      "bytes": 1784384
+    },
+    "references": {
+      "commit": "cfd9b17ddf5818a984da78334ca50503c8d0362a",
+      "source_tree": "492956f9e6a1310d417b524c95826a13fc27aecf",
+      "sha256": "547bb5764c62a32c0911dd7b221803b3c73fa18a1ee97f6b4cef5834fa7995af",
+      "bytes": 3390304
+    },
+    "references-allocations": {
+      "commit": "cfd9b17ddf5818a984da78334ca50503c8d0362a",
+      "source_tree": "492956f9e6a1310d417b524c95826a13fc27aecf",
+      "sha256": "8c2e89aa93325e586b644ac44fc4db4083d25343435544ea4ab34a0f75ffa272",
+      "bytes": 1785664
+    },
+    "workspace": {
+      "commit": "930e04c9f4b885cd4984dc52913c11626dce8035",
+      "source_tree": "28b0aaf089f332d978a579a9c21882dd7ce52b24",
+      "sha256": "7e8e78a2c766d2d34a0b5d7dd64623b3b504e003095bcf81443636f4e6950c66",
+      "bytes": 3390304
+    },
+    "workspace-allocations": {
+      "commit": "930e04c9f4b885cd4984dc52913c11626dce8035",
+      "source_tree": "28b0aaf089f332d978a579a9c21882dd7ce52b24",
+      "sha256": "e73e587819556d69fb5403ea91badb74c7d9d1358c6bc42176ef31c987a13f2c",
+      "bytes": 1785664
+    },
+    "pre-removal": {
+      "commit": "2aa26ac6491ea5e115eb3bceff7ff702d6bada1d",
+      "source_tree": "12c7b3930470d2ad127dcc89ccb6dcd6a077e3aa",
+      "sha256": "41b9ff9a069110524e0ebe0f5a7c0b9f76e00e4085460aab50ddc604ab78172a",
+      "bytes": 3391408
+    },
+    "pre-removal-allocations": {
+      "commit": "2aa26ac6491ea5e115eb3bceff7ff702d6bada1d",
+      "source_tree": "12c7b3930470d2ad127dcc89ccb6dcd6a077e3aa",
+      "sha256": "81a0faba01c5722bb00cac4287b8307901064919a20f92b271a3f36f2289571c",
+      "bytes": 1786720
+    },
+    "final": {
+      "commit": "96e62fc53871331b115f3df4b4c2d647f7428b4a",
+      "source_tree": "bbcb6bf7b1a916bc06b323f26764f5ec2f8e51f0",
+      "sha256": "b0ffcecfad1dbd124972d5ff9b517bac388b506717db91d2af70b4d45dcccb7f",
+      "bytes": 3372160
+    },
+    "final-allocations": {
+      "commit": "96e62fc53871331b115f3df4b4c2d647f7428b4a",
+      "source_tree": "bbcb6bf7b1a916bc06b323f26764f5ec2f8e51f0",
+      "sha256": "add9fb59f4f6478527abfc09b533a2a33bc1c725eb4a080eab168fa507ecbd09",
+      "bytes": 1767648
+    }
+  },
+  "sampling": "Three alternating rounds, seven calibrated samples/process after 200 ms warmup. Fresh inode at same native launch path. Sequential timing; local validation, review, builds, profiling and allocation diagnostics must be idle. Shared machine without CPU affinity. Repeated matrix monitors competing compiler/Cargo processes every 0.5 s, waits before launching, and terminates/retries interrupted conversions; first unmonitored attempt is archived separately."
+}

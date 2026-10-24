@@ -112,3 +112,46 @@ fn grammar_fences_preserve_info_metadata_and_reject_embedded_markers() {
         assert_fallback_html(source, expected, false);
     }
 }
+
+#[test]
+fn repeated_inline_fallback_preserves_one_document_lifecycle() {
+    use core_markdown::{
+        stream::{EventKind, Tag, TagKind},
+        EventParser,
+    };
+    let source =
+        "first <i\n title='x'> [a]\n\ncompact [a]\n\nlast <b\n title='x'> [a]\n\n[a]: /a\n";
+    for full_grammar in [false, true] {
+        let mut options = Options::default();
+        options.parse.html_tag_namespaces = full_grammar;
+        options.parse.inline_code_info = full_grammar;
+        let mut parser = EventParser::new(source, &options.parse).unwrap();
+        let events: Vec<_> = parser.by_ref().map(Result::unwrap).collect();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event.kind, EventKind::Start(Tag::Document(_))))
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event.kind, EventKind::End(TagKind::Document)))
+                .count(),
+            1
+        );
+        for _ in 0..3 {
+            assert!(parser.next().is_none());
+        }
+        let mut checked = String::new();
+        core_markdown::render_events(
+            source,
+            events.into_iter().map(Ok),
+            &options.compile,
+            &mut checked,
+        )
+        .unwrap();
+        assert_eq!(checked, to_html_with_options(source, &options).unwrap());
+    }
+}

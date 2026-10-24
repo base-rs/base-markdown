@@ -1,0 +1,31 @@
+{
+  "core-markdown/entities-100k": {
+    "baseline": {
+      "median_ms": 0.8129453440860215,
+      "process_medians_ms": [
+        0.8095405483870968,
+        0.8129453440860215,
+        0.820526554945055
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "lists": {
+      "median_ms": 0.8332405055555555,
+      "process_medians_ms": [
+        0.8322081,
+        0.84133356424581,
+        0.8332405055555555
+      ],
+      "time_reduction_percent": -2.4964976572135367
+    },
+    "final": {
+      "median_ms": 0.8401084254143647,
+      "process_medians_ms": [
+        0.8374384222222223,
+        0.8424011555555555,
+        0.8401084254143647
+      ],
+      "time_reduction_percent": -3.341317042522962
+    }
+  }
+}

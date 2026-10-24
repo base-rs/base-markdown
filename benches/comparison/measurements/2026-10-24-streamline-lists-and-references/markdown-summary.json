@@ -1,0 +1,118 @@
+{
+  "core-markdown-output/readme": {
+    "baseline": {
+      "median_ms": 0.1066702404692082,
+      "process_medians_ms": [
+        0.10663853561046513,
+        0.10684440622737149,
+        0.1066702404692082
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "lists": {
+      "median_ms": 0.10645093457943924,
+      "process_medians_ms": [
+        0.10615455758962623,
+        0.10695015294117648,
+        0.10645093457943924
+      ],
+      "time_reduction_percent": 0.20559238340919217
+    },
+    "final": {
+      "median_ms": 0.10689142335766423,
+      "process_medians_ms": [
+        0.10734735396825397,
+        0.10689142335766423,
+        0.10651532442196532
+      ],
+      "time_reduction_percent": -0.20735201072306086
+    }
+  },
+  "core-markdown-output/mixed-100k": {
+    "baseline": {
+      "median_ms": 2.8080270185185188,
+      "process_medians_ms": [
+        2.811074074074074,
+        2.8025169629629625,
+        2.8080270185185188
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "lists": {
+      "median_ms": 2.788162814814815,
+      "process_medians_ms": [
+        2.787159854545455,
+        2.788162814814815,
+        2.807373462962963
+      ],
+      "time_reduction_percent": 0.7074078551489116
+    },
+    "final": {
+      "median_ms": 2.805861111111111,
+      "process_medians_ms": [
+        2.805861111111111,
+        2.8163024629629634,
+        2.784183327272727
+      ],
+      "time_reduction_percent": 0.0771327125103749
+    }
+  },
+  "core-markdown-output/mixed-1m": {
+    "baseline": {
+      "median_ms": 28.806882,
+      "process_medians_ms": [
+        28.3793125,
+        28.9054375,
+        28.806882
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "lists": {
+      "median_ms": 28.603111000000002,
+      "process_medians_ms": [
+        28.673083333333334,
+        28.379895833333336,
+        28.603111000000002
+      ],
+      "time_reduction_percent": 0.7073691626882761
+    },
+    "final": {
+      "median_ms": 28.512673666666668,
+      "process_medians_ms": [
+        28.700264,
+        28.512673666666668,
+        28.450076333333335
+      ],
+      "time_reduction_percent": 1.0213126617914847
+    }
+  },
+  "core-markdown-output/gfm-100k": {
+    "baseline": {
+      "median_ms": 3.266432422222222,
+      "process_medians_ms": [
+        3.266432422222222,
+        3.265952891304348,
+        3.283183333333333
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "lists": {
+      "median_ms": 3.2562176,
+      "process_medians_ms": [
+        3.2562176,
+        3.2527833333333334,
+        3.272636111111111
+      ],
+      "time_reduction_percent": 0.3127210638961597
+    },
+    "final": {
+      "median_ms": 3.259875,
+      "process_medians_ms": [
+        3.2240434782608696,
+        3.259875,
+        3.276413956521739
+      ],
+      "time_reduction_percent": 0.20075181037301215
+    }
+  }
+}

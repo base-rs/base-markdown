@@ -7,7 +7,8 @@ use crate::{
         partial_data,
     },
     event::Point,
-    parser::{parse, ParseState},
+    grammar_parser::GrammarParser,
+    parser::ParseState,
     state::{Name as StateName, State},
     tokenizer::Tokenizer,
     Constructs, ParseOptions,
@@ -19,7 +20,7 @@ fn with_tokenizer<T>(
     current: Option<u8>,
     run: impl FnOnce(&mut Tokenizer<'_>) -> T,
 ) -> T {
-    let (_events, parse_state): (_, ParseState<'_>) = parse(source, options);
+    let parse_state = ParseState::new(source.as_bytes(), options);
     let mut tokenizer = Tokenizer::new(
         Point {
             line: 1,
@@ -31,6 +32,12 @@ fn with_tokenizer<T>(
     );
     tokenizer.current = current;
     run(&mut tokenizer)
+}
+
+fn parse(source: &str, options: &ParseOptions) {
+    GrammarParser::new(source, options).for_each(|event| {
+        event.unwrap();
+    });
 }
 
 #[test]
@@ -46,7 +53,10 @@ fn partial_data_retries_when_there_is_no_initial_marker() {
 #[test]
 fn content_resolver_subtokenizes_even_an_empty_event_stream() {
     with_tokenizer("", &ParseOptions::default(), None, |tokenizer| {
-        assert!(content::resolve(tokenizer).done);
+        assert_eq!(
+            content::resolve(tokenizer).gfm_footnote_definitions,
+            [] as [alloc::string::String; 0]
+        );
     });
 }
 

@@ -1,0 +1,26 @@
+{
+  "seed": 604,
+  "input_sha256": "8f462abec76bede69f5e2384862462c2d5e48eb82fb9ac7e336785dcd5cf9dda",
+  "records": [
+    {
+      "mode": "core-markdown",
+      "cases": 12000,
+      "output_sha256": "0464c5fc6b3896a985bf61d3d289c0e30e1c257211729a15141665651b8dcb12"
+    },
+    {
+      "mode": "core-stream",
+      "cases": 12000,
+      "output_sha256": "0464c5fc6b3896a985bf61d3d289c0e30e1c257211729a15141665651b8dcb12"
+    },
+    {
+      "mode": "core-arena",
+      "cases": 12000,
+      "output_sha256": "0464c5fc6b3896a985bf61d3d289c0e30e1c257211729a15141665651b8dcb12"
+    },
+    {
+      "mode": "core-markdown-output",
+      "cases": 12000,
+      "output_sha256": "c9165c26dcb5b5fdac380320c47e1cfc87a94ca8832e290953b7eddfb782e146"
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "core-markdown-output/ordered-list-256": {
+    "baseline": {
+      "median_ms": 0.16334190371991247,
+      "process_medians_ms": [
+        0.1627309368191721,
+        0.16363966338797814,
+        0.16334190371991247
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "lists": {
+      "median_ms": 0.07930200633579725,
+      "process_medians_ms": [
+        0.07912698412698412,
+        0.07930200633579725,
+        0.07966748099260823
+      ],
+      "time_reduction_percent": 51.45029871099158
+    },
+    "final": {
+      "median_ms": 0.08100087932900432,
+      "process_medians_ms": [
+        0.08100087932900432,
+        0.08144086794520548,
+        0.08060666022544283
+      ],
+      "time_reduction_percent": 50.410226963009386
+    }
+  },
+  "core-markdown-output/ordered-list-2048": {
+    "baseline": {
+      "median_ms": 12.017073692307692,
+      "process_medians_ms": [
+        11.77407376923077,
+        12.186746846153847,
+        12.017073692307692
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "lists": {
+      "median_ms": 0.6247754834710744,
+      "process_medians_ms": [
+        0.6246241475409836,
+        0.6295305541666667,
+        0.6247754834710744
+      ],
+      "time_reduction_percent": 94.8009349075474
+    },
+    "final": {
+      "median_ms": 0.6368287234042553,
+      "process_medians_ms": [
+        0.6368287234042553,
+        0.6377578781512605,
+        0.6296710590717299
+      ],
+      "time_reduction_percent": 94.70063395041092
+    }
+  },
+  "core-markdown-output/ordered-list-8192": {
+    "baseline": {
+      "median_ms": 246.646791,
+      "process_medians_ms": [
+        243.982041,
+        246.716042,
+        246.646791
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "lists": {
+      "median_ms": 2.5351222166666667,
+      "process_medians_ms": [
+        2.5218474576271186,
+        2.5366412372881353,
+        2.5351222166666667
+      ],
+      "time_reduction_percent": 98.97216493010579
+    },
+    "final": {
+      "median_ms": 2.582129949152542,
+      "process_medians_ms": [
+        2.5811320508474576,
+        2.590695627118644,
+        2.582129949152542
+      ],
+      "time_reduction_percent": 98.95310620556481
+    }
+  }
+}

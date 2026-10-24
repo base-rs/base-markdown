@@ -658,3 +658,30 @@ fn definition() -> Result<(), message::Message> {
 
     Ok(())
 }
+
+#[test]
+fn grammar_regions_share_prepared_references_without_changing_precedence() {
+    use core_markdown::{render_events, Document, EventParser};
+    let source = "[MiXeD]: /first\n[mixed]: /ignored\n[STRASSE]: /unicode\n\nbefore <i\n title=\"x\"> [a][mixed] and [b][straße] ![alt][MIXED] [missing]\n\nnext [MiXeD]\n";
+    let expected = "<p>before <i\ntitle=\"x\"> <a href=\"/first\">a</a> and <a href=\"/unicode\">b</a> <img src=\"/first\" alt=\"alt\" /> [missing]</p>\n<p>next <a href=\"/first\">MiXeD</a></p>\n";
+    for full_grammar in [false, true] {
+        let mut options = Options::default();
+        options.compile.allow_dangerous_html = true;
+        options.parse.html_tag_namespaces = full_grammar;
+        options.parse.inline_code_info = full_grammar;
+        assert_eq!(to_html_with_options(source, &options).unwrap(), expected);
+        let mut checked = String::new();
+        render_events(
+            source,
+            EventParser::new(source, &options.parse).unwrap(),
+            &options.compile,
+            &mut checked,
+        )
+        .unwrap();
+        assert_eq!(checked, expected);
+        let document = Document::parse(source, &options.parse).unwrap();
+        let mut arena = String::new();
+        document.render_html(&options.compile, &mut arena).unwrap();
+        assert_eq!(arena, expected);
+    }
+}

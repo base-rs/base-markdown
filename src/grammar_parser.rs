@@ -18,16 +18,15 @@ use crate::value_builder::ValueBuilder;
 use crate::{
     LineEnding, ParseOptions, {AlignKind, CodeFence},
 };
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::{convert::TryFrom, ops::Range};
 
 /// A pull producer of resolved semantic events.
 ///
 /// The constructor prepares block structure and definitions. Inline regions are resolved on demand as events are pulled, reusing scratch allocations without materializing document-wide inline tokens. Ordinary text stays source-backed. The semantic stream is never collected internally.
-#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct GrammarParser<'a> {
     source: &'a str,
-    parse_state: ParseState<'a>,
+    footnote_definitions: Vec<String>,
     block_tokens: Option<(Vec<Token>, Vec<usize>, usize)>,
     buffers: TokenizerBuffers,
     inline_matching: Vec<usize>,
@@ -39,8 +38,7 @@ pub(crate) struct GrammarParser<'a> {
     matching: Vec<usize>,
     definitions: Definitions,
     index: usize,
-    started: bool,
-    ended: bool,
+    phase: Phase,
     slurp: bool,
     tight: Vec<bool>,
     containers: Vec<TagKind>,
@@ -53,6 +51,14 @@ pub(crate) struct GrammarParser<'a> {
     padding_end: Option<usize>,
 }
 
+/// Inline workspaces deliver only their region; full producers surround it with document events.
+enum Phase {
+    Start,
+    Document,
+    Inline,
+    Done,
+}
+
 impl<'a> GrammarParser<'a> {
     pub(crate) fn source(&self) -> &'a str {
         self.source
@@ -63,33 +69,31 @@ impl<'a> GrammarParser<'a> {
 
     /// Prepare Markdown for pull consumption.
     pub fn new(source: &'a str, options: &'a ParseOptions) -> Self {
-        let (mut tokens, parse_state) = crate::parser::prepare(source, options);
+        let (mut tokens, footnote_definitions) = crate::parser::prepare(source, options);
+        let parse_state = ParseState::new(source.as_bytes(), options);
         // Definition destinations and code-info strings are small and needed before their opening semantic events.
         crate::subtokenize::subtokenize(&mut tokens, &parse_state, Some(&Content::String));
-        Self::from_tokens(source, options, tokens, parse_state)
+        Self::from_tokens(source, options, tokens, footnote_definitions, Phase::Start)
     }
 
     fn from_tokens(
         source: &'a str,
         options: &'a ParseOptions,
         tokens: Vec<Token>,
-        parse_state: ParseState<'a>,
+        footnote_definitions: Vec<String>,
+        phase: Phase,
     ) -> Self {
         let mut matching = Vec::new();
         let mut stack = Vec::new();
         pair_tokens(&tokens, &mut matching, &mut stack);
-        let line_ending = source.find(['\r', '\n']).map(|index| {
-            if source.as_bytes()[index] == b'\n' {
-                LineEnding::LineFeed
-            } else if source.as_bytes().get(index + 1) == Some(&b'\n') {
-                LineEnding::CarriageReturnLineFeed
-            } else {
-                LineEnding::CarriageReturn
-            }
-        });
+        let line_ending = if matches!(phase, Phase::Start) {
+            LineEnding::from_source(source)
+        } else {
+            None
+        };
         let mut parser = Self {
             source,
-            parse_state,
+            footnote_definitions,
             block_tokens: None,
             buffers: TokenizerBuffers::default(),
             inline_matching: Vec::new(),
@@ -101,8 +105,7 @@ impl<'a> GrammarParser<'a> {
             matching,
             definitions: Definitions::default(),
             index: 0,
-            started: false,
-            ended: false,
+            phase,
             slurp: false,
             tight: Vec::new(),
             containers: Vec::new(),
@@ -132,17 +135,7 @@ impl<'a> GrammarParser<'a> {
         definitions: Definitions,
         compact_inline: crate::inline_parser::InlineParser,
     ) -> Self {
-        let mut parser = Self::from_tokens(
-            source,
-            options,
-            Vec::new(),
-            ParseState {
-                options,
-                bytes: source.as_bytes(),
-                definitions: Vec::new(),
-                gfm_footnote_definitions: Vec::new(),
-            },
-        );
+        let mut parser = Self::from_tokens(source, options, Vec::new(), Vec::new(), Phase::Inline);
         parser.definitions = definitions;
         parser.compact_inline = compact_inline;
         parser
@@ -198,16 +191,9 @@ impl<'a> GrammarParser<'a> {
         fragments: impl Iterator<Item = Range<usize>>,
         task: bool,
     ) {
-        // Only compatibility inline tokenization needs an owning list of normalized keys. Ordinary compact events share the prepared definition table directly.
-        if self.parse_state.definitions.is_empty() {
-            self.parse_state
-                .definitions
-                .extend(self.definitions.keys().cloned());
-        }
         self.buffers.events = core::mem::take(&mut self.tokens);
         self.index = 0;
-        self.started = true;
-        self.ended = true;
+        self.phase = Phase::Inline;
         let mut fragments = fragments.enumerate();
         let Some((_, first)) = fragments.next() else {
             return;
@@ -232,9 +218,15 @@ impl<'a> GrammarParser<'a> {
                 vs: 0,
             }
         };
+        let parse_state = ParseState::inline(
+            self.source.as_bytes(),
+            self.options,
+            &self.definitions,
+            &self.footnote_definitions,
+        );
         let mut tokenizer = Tokenizer::with_buffers(
             point(first.start, 1),
-            &self.parse_state,
+            &parse_state,
             core::mem::take(&mut self.buffers),
         );
         tokenizer
@@ -250,13 +242,11 @@ impl<'a> GrammarParser<'a> {
             state = tokenizer.push((fragment.start, 0), (fragment.end, 0), state);
         }
         tokenizer.flush(state, true);
-        crate::subtokenize::subtokenize(&mut tokenizer.events, &self.parse_state, None);
+        crate::subtokenize::subtokenize(&mut tokenizer.events, &parse_state, None);
         self.buffers = tokenizer.into_buffers();
         self.tokens = core::mem::take(&mut self.buffers.events);
         pair_tokens(&self.tokens, &mut self.matching, &mut self.matching_stack);
         self.index = 0;
-        self.started = true;
-        self.ended = true;
         self.containers.clear();
         self.containers.push(TagKind::Paragraph);
     }
@@ -322,9 +312,15 @@ impl<'a> GrammarParser<'a> {
                 return;
             }
         }
+        let parse_state = ParseState::inline(
+            self.source.as_bytes(),
+            self.options,
+            &self.definitions,
+            &self.footnote_definitions,
+        );
         let mut tokenizer = Tokenizer::with_buffers(
             self.tokens[index].point.clone(),
-            &self.parse_state,
+            &parse_state,
             core::mem::take(&mut self.buffers),
         );
         tokenizer
@@ -348,7 +344,7 @@ impl<'a> GrammarParser<'a> {
         }
         tokenizer.flush(state, true);
         // Resolve only the active inline region, never splice it into the block buffer.
-        crate::subtokenize::subtokenize(&mut tokenizer.events, &self.parse_state, None);
+        crate::subtokenize::subtokenize(&mut tokenizer.events, &parse_state, None);
         self.buffers = tokenizer.into_buffers();
         let tokens = core::mem::take(&mut self.buffers.events);
         let mut matching = core::mem::take(&mut self.inline_matching);
@@ -1005,8 +1001,8 @@ impl Iterator for GrammarParser<'_> {
                 span: end..end,
             }));
         }
-        if !self.started {
-            self.started = true;
+        if matches!(self.phase, Phase::Start) {
+            self.phase = Phase::Document;
             return Some(Ok(Event {
                 kind: EventKind::Start(Tag::Document(self.line_ending.clone())),
                 span: 0..self.source.len(),
@@ -1081,15 +1077,15 @@ impl Iterator for GrammarParser<'_> {
                 }));
             }
         }
-        if self.ended {
-            None
-        } else {
-            self.ended = true;
+        if matches!(self.phase, Phase::Document) {
+            self.phase = Phase::Done;
             let end = self.source.len();
             Some(Ok(Event {
                 kind: EventKind::End(TagKind::Document),
                 span: end..end,
             }))
+        } else {
+            None
         }
     }
 }
