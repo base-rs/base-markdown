@@ -47,9 +47,24 @@ The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,
 
 **GFM is not an equal-output throughput comparison:** Inkmark leaves `www.example.com` unlinked in this workload even with autolinking enabled. Its table alignment attributes and empty table bodies also differ. Comrak and Commonmarker do not expose the same independent GFM tag filter as the other adapters. Read GFM timings alongside the output agreement results.
 
+## MDX removal and shared parser context follow-up
+
+This pass removes roughly 5,400 production lines of MDX recognizers, AST variants, callbacks, and parser error machinery. It also shares source and options with the reusable inline workspace, reducing `EventParser` from 1,152 to 1,104 bytes on arm64. MDX configuration and AST APIs are deliberately removed; CommonMark, GFM, math, and frontmatter remain. Public result-returning APIs remain compatible. The separate legacy mdast compiler remains.
+
+Three alternating rounds compare merged main `2e4b627` with final production source `8e5c47e`:
+
+| Workload | Main (ms) | Final (ms) | Inkmark 0.2.1 (ms) |
+| --- | ---: | ---: | ---: |
+| README 9 KB | 0.01365 | 0.01365 | 0.01889 |
+| Mixed 100 KB | 0.39744 | 0.40443 | 0.40422 |
+| Mixed 1 MB | 3.95598 | 4.04696 | 4.38189 |
+| GFM 100 KB | 0.60167 | 0.60883 | 0.70980 |
+
+This is primarily a simplification; the final report records the remaining small mixed-input regression against main. Event, node, and allocation counts are unchanged across all 13 measured fixtures, and all 2,117 saved outputs remain byte-identical through direct HTML, checked events, and arena traversal. GFM remains an unequal-output comparison with Inkmark. The [full report](measurements/2026-10-24-remove-mdx/readme.md) records all timings, rejected controls, allocation measurements, API removals, and validation evidence.
+
 ## Event and storage simplification follow-up
 
-The latest pass keeps the active child cursor in the AST builder instead of every node, uses explicit compact document phases, shares bounded character-reference scanning without a decoded-value vector, and streams GFM tag filtering directly into the shared HTML writer. On arm64, arena nodes shrink from 128 to 120 bytes and `EventParser` from 1,176 to 1,152 bytes. Public APIs, event semantics, features, and dependencies are unchanged.
+The preceding pass keeps the active child cursor in the AST builder instead of every node, uses explicit compact document phases, shares bounded character-reference scanning without a decoded-value vector, and streams GFM tag filtering directly into the shared HTML writer. On arm64, arena nodes shrink from 128 to 120 bytes and `EventParser` from 1,176 to 1,152 bytes. Public APIs, event semantics, features, and dependencies are unchanged.
 
 Three alternating runs compare merged main `49a38ba` with final production source `bdf9d9c`, in milliseconds:
 

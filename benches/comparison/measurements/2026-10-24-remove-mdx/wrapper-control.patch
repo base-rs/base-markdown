@@ -1,0 +1,33 @@
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index f1e1b6e..f8a337e 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -24,11 +24,6 @@ impl<'a> EventParser<'a> {
+     /// # Errors
+     /// Markdown preparation is currently infallible; the result is retained for API compatibility.
+     pub fn new(source: &'a str, options: &'a ParseOptions) -> Result<Self, StreamError> {
+-        Ok(Self::prepare(source, options))
+-    }
+-
+-    /// Built-in Markdown preparation has no syntax errors.
+-    pub(crate) fn prepare(source: &'a str, options: &'a ParseOptions) -> Self {
+         let producer = if let Some((blocks, definitions)) = Blocks::parse(source, options) {
+             Producer::Compact(CompactParser {
+                 blocks,
+@@ -45,7 +40,15 @@ impl<'a> EventParser<'a> {
+         } else {
+             Producer::Compatibility(Box::new(GrammarParser::new(source, options)))
+         };
+-        Self { producer }
++        Ok(Self { producer })
++    }
++
++    /// Built-in Markdown preparation has no syntax errors.
++    pub(crate) fn prepare(source: &'a str, options: &'a ParseOptions) -> Self {
++        match Self::new(source, options) {
++            Ok(parser) => parser,
++            Err(_) => unreachable!("Markdown preparation has no syntax errors"),
++        }
+     }
+ }
+ impl Iterator for EventParser<'_> {

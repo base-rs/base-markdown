@@ -1,0 +1,259 @@
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index f1e1b6e..0fa28ea 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -9,6 +9,7 @@ use crate::{LineEnding, ParseOptions};
+ use alloc::boxed::Box;
+ 
+ /// A pull producer of resolved semantic events. Preparation records block structure; inline syntax is scanned only when its containing block is consumed.
++#[repr(align(64))]
+ pub struct EventParser<'a> {
+     producer: Producer<'a>,
+ }
+@@ -58,6 +59,7 @@ impl Iterator for EventParser<'_> {
+             Producer::Compact(parser) => parser.next(),
+             Producer::Compatibility(parser) => parser.next(),
+         }
++        .map(Ok)
+     }
+ }
+ enum Phase {
+@@ -130,7 +132,7 @@ impl CompactParser<'_> {
+     }
+     // Document bookends are infrequent; keep their state transitions out of the hot body loop.
+     #[cold]
+-    fn document_boundary(&mut self) -> Option<Result<Event<'static>, StreamError>> {
++    fn document_boundary(&mut self) -> Option<Event<'static>> {
+         match self.phase {
+             Phase::Start => {
+                 self.phase = Phase::Body;
+@@ -145,12 +147,12 @@ impl CompactParser<'_> {
+                         LineEnding::CarriageReturn
+                     }
+                 });
+-                Some(Ok(Event {
++                Some(Event {
+                     kind: EventKind::Start(Tag::Document(line_ending)),
+                     span: 0..self.source.len(),
+-                }))
++                })
+             }
+-            Phase::DocumentEnd => Some(Ok(self.end_document())),
++            Phase::DocumentEnd => Some(self.end_document()),
+             Phase::Done => None,
+             Phase::Body => unreachable!("body delivery bypasses document boundary handling"),
+         }
+@@ -158,12 +160,12 @@ impl CompactParser<'_> {
+     // Paired mixed-document benchmarks justify inlining this event boundary.
+     #[allow(clippy::inline_always)]
+     #[inline(always)]
+-    fn next(&mut self) -> Option<Result<Event<'static>, StreamError>> {
++    fn next(&mut self) -> Option<Event<'static>> {
+         if !matches!(self.phase, Phase::Body) {
+             return self.document_boundary();
+         }
+         if let Some(end) = self.separator.take() {
+-            return Some(Ok(self.separator(end)));
++            return Some(self.separator(end));
+         }
+         if self.inlines {
+             if let Some(event) = self.inline.next_region() {
+@@ -222,7 +224,7 @@ impl CompactParser<'_> {
+                             .ends_with(['\r', '\n']))
+             {
+                 // Populated containers retain their final semantic line ending. Empty containers and lists followed by blank lines use the document style.
+-                return Some(Ok(
++                return Some(
+                     if !populated
+                         || matches!(last.body, Body::List { .. }) && leaf.end != self.source.len()
+                         || leaf.body == Body::Table && last.end > leaf.end
+@@ -237,9 +239,9 @@ impl CompactParser<'_> {
+                     } else {
+                         self.separator(leaf.end)
+                     },
+-                ));
++                );
+             }
+-            return Some(Ok(self.end_document()));
++            return Some(self.end_document());
+         }
+         let index = self.cursor;
+         let node = self.blocks.nodes[index];
+@@ -273,10 +275,10 @@ impl CompactParser<'_> {
+             }
+             self.advance();
+             let end = node.span_end(self.source);
+-            return Some(Ok(Event {
++            return Some(Event {
+                 kind: EventKind::End(tag),
+                 span: end..end,
+-            }));
++            });
+         }
+         let kind = match node.body {
+             Body::Paragraph | Body::Heading(_) | Body::TableCell { .. } => {
+@@ -371,10 +373,10 @@ impl CompactParser<'_> {
+                 if self.source.as_bytes().get(end - 1) == Some(&b'\r') {
+                     end -= 1;
+                 }
+-                return Some(Ok(Event {
++                return Some(Event {
+                     kind,
+                     span: node.start..end,
+-                }));
++                });
+             }
+             Body::Html(end) => {
+                 let kind = EventKind::Html {
+@@ -385,10 +387,10 @@ impl CompactParser<'_> {
+                     self.separator = Some(node.end);
+                 }
+                 self.advance();
+-                return Some(Ok(Event {
++                return Some(Event {
+                     kind,
+                     span: node.start..end,
+-                }));
++                });
+             }
+             Body::Code(metadata) => {
+                 let code = &self.blocks.codes[metadata];
+@@ -434,9 +436,9 @@ impl CompactParser<'_> {
+                 self.cursor = node.child;
+             }
+         }
+-        Some(Ok(Event {
++        Some(Event {
+             kind,
+             span: node.start..node.span_end(self.source),
+-        }))
++        })
+     }
+ }
+diff --git a/src/grammar_parser.rs b/src/grammar_parser.rs
+index 98e5470..077682b 100644
+--- a/src/grammar_parser.rs
++++ b/src/grammar_parser.rs
+@@ -6,7 +6,7 @@ use crate::definitions::Definitions;
+ use crate::event::{Content, Event as Token, Kind, Name};
+ use crate::parser::ParseState;
+ use crate::state::{Name as StateName, State};
+-use crate::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
++use crate::stream::{Event, EventKind, Tag, TagKind, Text};
+ use crate::tokenizer::{Tokenizer, TokenizerBuffers};
+ use crate::util::{
+     constant::CHARACTER_REFERENCES,
+@@ -177,11 +177,9 @@ impl<'a> GrammarParser<'a> {
+     // Compact block preparation shares the compatibility producer's reusable inline workspace.
+     #[allow(clippy::inline_always)]
+     #[inline(always)]
+-    pub(crate) fn next_region(&mut self) -> Option<Result<Event<'static>, StreamError>> {
++    pub(crate) fn next_region(&mut self) -> Option<Event<'static>> {
+         if self.direct_inline {
+-            self.compact_inline
+-                .next(self.source, &self.definitions)
+-                .map(Ok)
++            self.compact_inline.next(self.source, &self.definitions)
+         } else {
+             self.next()
+         }
+@@ -977,35 +975,35 @@ impl<'a> GrammarParser<'a> {
+ }
+ 
+ impl Iterator for GrammarParser<'_> {
+-    type Item = Result<Event<'static>, StreamError>;
++    type Item = Event<'static>;
+     fn next(&mut self) -> Option<Self::Item> {
+         if let Some(end) = self.padding_end.take() {
+-            return Some(Ok(Event {
++            return Some(Event {
+                 kind: EventKind::End(TagKind::TableCell),
+                 span: end..end,
+-            }));
++            });
+         }
+         if let Some(event) = self.pending.take() {
+-            return Some(Ok(event));
++            return Some(event);
+         }
+         if let Some(end) = self.synthetic_end.take() {
+             self.containers.pop();
+-            return Some(Ok(Event {
++            return Some(Event {
+                 kind: EventKind::End(TagKind::Link),
+                 span: end..end,
+-            }));
++            });
+         }
+         if !self.started {
+             self.started = true;
+-            return Some(Ok(Event {
++            return Some(Event {
+                 kind: EventKind::Start(Tag::Document(self.line_ending.clone())),
+                 span: 0..self.source.len(),
+-            }));
++            });
+         }
+         loop {
+             if self.direct_inline {
+                 if let Some(event) = self.compact_inline.next(self.source, &self.definitions) {
+-                    return Some(Ok(event));
++                    return Some(event);
+                 }
+                 self.direct_inline = false;
+             }
+@@ -1026,13 +1024,13 @@ impl Iterator for GrammarParser<'_> {
+                 let alignment = self.align[self.column];
+                 self.column += 1;
+                 self.padding_end = Some(end);
+-                return Some(Ok(Event {
++                return Some(Event {
+                     kind: EventKind::Start(Tag::TableCell {
+                         alignment,
+                         header: self.header,
+                     }),
+                     span: end..end,
+-                }));
++                });
+             }
+             let index = self.index;
+             self.index += 1;
+@@ -1055,20 +1053,20 @@ impl Iterator for GrammarParser<'_> {
+                 let span = self.span(index);
+                 if let Some(tag) = self.start(index) {
+                     self.containers.push(tag.kind());
+-                    return Some(Ok(Event {
++                    return Some(Event {
+                         kind: EventKind::Start(tag),
+                         span,
+-                    }));
++                    });
+                 }
+                 if let Some(kind) = self.leaf(index) {
+-                    return Some(Ok(Event { kind, span }));
++                    return Some(Event { kind, span });
+                 }
+             } else if let Some(kind) = self.end(index) {
+                 let end = self.tokens[index].point.index;
+-                return Some(Ok(Event {
++                return Some(Event {
+                     kind: EventKind::End(kind),
+                     span: end..end,
+-                }));
++                });
+             }
+         }
+         if self.ended {
+@@ -1076,10 +1074,10 @@ impl Iterator for GrammarParser<'_> {
+         } else {
+             self.ended = true;
+             let end = self.source.len();
+-            Some(Ok(Event {
++            Some(Event {
+                 kind: EventKind::End(TagKind::Document),
+                 span: end..end,
+-            }))
++            })
+         }
+     }
+ }
