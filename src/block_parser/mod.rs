@@ -102,6 +102,20 @@ struct Builder<'a> {
 }
 
 impl Blocks {
+    /// Walk authored children in source order without collecting their indexes.
+    pub fn children(&self, index: usize) -> impl Iterator<Item = usize> + Clone + '_ {
+        let mut next = self.nodes[index].child;
+        core::iter::from_fn(move || {
+            if next == 0 {
+                None
+            } else {
+                let index = next;
+                next = self.nodes[index].next;
+                Some(index)
+            }
+        })
+    }
+
     /// Only paragraphs directly inside a tight list item omit their own tags.
     #[inline]
     pub fn tight_paragraph(&self, node: &Node) -> bool {

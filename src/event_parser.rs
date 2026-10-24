@@ -78,8 +78,7 @@ impl EventParser<'_> {
     }
     fn value(&self, index: usize) -> Text<'static> {
         let mut value = ValueBuilder::new(self.source);
-        let mut child = self.blocks.nodes[index].child;
-        while child != 0 {
+        for child in self.blocks.children(index) {
             let node = self.blocks.nodes[child];
             let Body::Fragment(spaces) = node.body else {
                 unreachable!("literal block children are source fragments");
@@ -88,7 +87,6 @@ impl EventParser<'_> {
                 value.append(Text::Literal(&"   "[..spaces]));
             }
             value.append(Text::Source(node.start..node.end));
-            child = node.next;
         }
         value.finish()
     }
@@ -133,21 +131,19 @@ impl EventParser<'_> {
             Phase::Done => None,
             Phase::Body => {
                 self.phase = Phase::DocumentEnd;
-                let mut last = self.blocks.nodes[0].child;
-                while self.blocks.nodes[last].next != 0 {
-                    last = self.blocks.nodes[last].next;
+                let last = self.blocks.children(0).last().unwrap_or(0);
+                let mut leaf = last;
+                while matches!(
+                    self.blocks.nodes[leaf].body,
+                    Body::Quote | Body::List { .. } | Body::Item(_)
+                ) {
+                    let Some(child) = self.blocks.children(leaf).last() else {
+                        break;
+                    };
+                    leaf = child;
                 }
                 let last = self.blocks.nodes[last];
-                let mut leaf = last;
-                while matches!(leaf.body, Body::Quote | Body::List { .. } | Body::Item(_))
-                    && leaf.child != 0
-                {
-                    let mut child = leaf.child;
-                    while self.blocks.nodes[child].next != 0 {
-                        child = self.blocks.nodes[child].next;
-                    }
-                    leaf = self.blocks.nodes[child];
-                }
+                let leaf = self.blocks.nodes[leaf];
                 let populated = matches!(
                     leaf.body,
                     Body::Paragraph
@@ -276,36 +272,23 @@ impl EventParser<'_> {
         let kind = match node.body {
             Body::Paragraph | Body::Heading(_) | Body::TableCell { .. } => {
                 let nodes = &self.blocks.nodes;
-                let fragments = || {
-                    let mut child = node.child;
-                    core::iter::from_fn(move || {
-                        if child == 0 {
-                            None
-                        } else {
-                            let node = nodes[child];
-                            child = node.next;
-                            Some(node.start..node.end)
-                        }
-                    })
-                };
-                let mut task = self.options.constructs.task_list_item
+                let fragments = self.blocks.children(index).map(|child| {
+                    let node = nodes[child];
+                    node.start..node.end
+                });
+                let task = self.options.constructs.task_list_item
                     && matches!(node.body, Body::Paragraph)
                     && matches!(nodes[node.parent].body, Body::Item(_))
-                    && self.source[node.start..node.end].starts_with('[');
-                if task {
-                    let mut before = nodes[node.parent].child;
-                    while before != index {
-                        if !matches!(nodes[before].body, Body::Definition(_)) {
-                            task = false;
-                            break;
-                        }
-                        before = nodes[before].next;
-                    }
-                }
+                    && self.source[node.start..node.end].starts_with('[')
+                    && self
+                        .blocks
+                        .children(node.parent)
+                        .take_while(|&before| before != index)
+                        .all(|before| matches!(nodes[before].body, Body::Definition(_)));
                 if self.extensions {
                     self.inline.prepare::<true>(
                         self.source,
-                        fragments(),
+                        fragments,
                         &self.definitions,
                         self.options,
                         task,
@@ -314,7 +297,7 @@ impl EventParser<'_> {
                 } else {
                     self.inline.prepare::<false>(
                         self.source,
-                        fragments(),
+                        fragments,
                         &self.definitions,
                         self.options,
                         task,
@@ -357,17 +340,17 @@ impl EventParser<'_> {
                 start: matches!(marker, b'.' | b')').then_some(start),
             }),
             Body::Item(_) => {
-                let mut child = node.child;
-                let mut last = 0;
-                while child != 0 {
-                    if !matches!(
-                        self.blocks.nodes[child].body,
-                        Body::Definition(_) | Body::Footnote(_)
-                    ) {
-                        last = child;
-                    }
-                    child = self.blocks.nodes[child].next;
-                }
+                let last = self
+                    .blocks
+                    .children(index)
+                    .filter(|&child| {
+                        !matches!(
+                            self.blocks.nodes[child].body,
+                            Body::Definition(_) | Body::Footnote(_)
+                        )
+                    })
+                    .last()
+                    .unwrap_or(0);
                 let block_end = last != 0 && !self.blocks.tight_paragraph(&self.blocks.nodes[last]);
                 EventKind::Start(Tag::Item { block_end })
             }
