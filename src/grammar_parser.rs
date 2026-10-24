@@ -57,6 +57,13 @@ pub(crate) struct GrammarParser<'a> {
 }
 
 impl<'a> GrammarParser<'a> {
+    pub(crate) fn source(&self) -> &'a str {
+        self.source
+    }
+    pub(crate) fn options(&self) -> &'a ParseOptions {
+        self.options
+    }
+
     /// Prepare Markdown for pull consumption.
     pub fn new(source: &'a str, options: &'a ParseOptions) -> Self {
         let (mut tokens, parse_state) = crate::parser::prepare(source, options);
