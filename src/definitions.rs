@@ -110,17 +110,26 @@ fn owned_reference_key(value: &str) -> String {
 }
 
 fn reference_key(value: &str) -> Cow<'_, str> {
-    if !value.starts_with(' ')
-        && !value.ends_with(' ')
-        && value.bytes().all(|byte| {
-            byte.is_ascii() && !byte.is_ascii_uppercase() && !matches!(byte, b'\t' | b'\r' | b'\n')
-        })
-        && !value.contains("  ")
-    {
+    if is_canonical_reference_key(value) {
         Cow::Borrowed(value)
     } else {
         Cow::Owned(owned_reference_key(value))
     }
+}
+
+fn is_canonical_reference_key(value: &str) -> bool {
+    let mut previous = b' ';
+    for byte in value.bytes() {
+        if !byte.is_ascii()
+            || byte.is_ascii_uppercase()
+            || matches!(byte, b'\t' | b'\r' | b'\n')
+            || byte == b' ' && previous == b' '
+        {
+            return false;
+        }
+        previous = byte;
+    }
+    value.is_empty() || previous != b' '
 }
 
 #[cfg(test)]
