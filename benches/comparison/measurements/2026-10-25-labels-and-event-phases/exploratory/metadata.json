@@ -1,0 +1,17 @@
+{
+  "baseline_binary": {
+    "sha256": "6e4f91c00bae10319ff82665b4d94dcd81060c346bfdd495c6eccc822753c403",
+    "bytes": 3217936
+  },
+  "normalization_only_binary": {
+    "sha256": "558eeafa427dbee57a52cfa0f35ca69047cfe53f33cf76c20cf38fe80ccd88d9",
+    "bytes": 3218112
+  },
+  "normalization_and_phase_binary": {
+    "sha256": "7a095b72cc14116cc2d7b3b39cc01fc88170776aed1bf88017f3bdbf9cd046a9",
+    "bytes": 3218112
+  },
+  "normalization_source_commit": "aec0fa940eb81bd679534a51bddd451b4e6226d4",
+  "phase_source_commit": "e464f3b71122c91c1c3a44052dd52bc496bced05",
+  "note": "Two-round screening; not the final three-round comparison. All samples retained. Test/doc additions do not affect release code. Inline-phase binary SHA256 equals final candidate. Phase-only comparison uses normalization-only as control."
+}

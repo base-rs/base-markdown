@@ -16,7 +16,6 @@ pub struct EventParser<'a> {
     extensions: bool,
     cursor: usize,
     closing: bool,
-    inlines: bool,
     phase: Phase,
     separator: Option<usize>,
 }
@@ -38,7 +37,6 @@ impl<'a> EventParser<'a> {
             extensions: options.constructs != crate::Constructs::default(),
             cursor: 0,
             closing: false,
-            inlines: false,
             phase: Phase::Start,
             separator: None,
         }
@@ -56,6 +54,7 @@ impl Iterator for EventParser<'_> {
 enum Phase {
     Start,
     Body,
+    Inline,
     DocumentEnd,
     Done,
 }
@@ -125,25 +124,28 @@ impl EventParser<'_> {
             }
             Phase::DocumentEnd => Some(Ok(self.end_document())),
             Phase::Done => None,
-            Phase::Body => unreachable!("body delivery bypasses document boundary handling"),
+            Phase::Body | Phase::Inline => {
+                unreachable!("body delivery bypasses document boundary handling")
+            }
         }
     }
     // Paired mixed-document benchmarks justify inlining this event boundary.
     #[allow(clippy::inline_always)]
     #[inline(always)]
     fn next_event(&mut self) -> Option<Result<Event<'static>, StreamError>> {
-        if !matches!(self.phase, Phase::Body) {
-            return self.document_boundary();
-        }
         if let Some(end) = self.separator.take() {
             return Some(Ok(self.separator(end)));
         }
-        if self.inlines {
-            if let Some(event) = self.inline.next_region() {
-                return Some(event);
+        match self.phase {
+            Phase::Inline => {
+                if let Some(event) = self.inline.next_region() {
+                    return Some(event);
+                }
+                self.phase = Phase::Body;
+                self.closing = true;
             }
-            self.inlines = false;
-            self.closing = true;
+            Phase::Body => {}
+            _ => return self.document_boundary(),
         }
         if self.cursor == 0 {
             self.phase = Phase::DocumentEnd;
@@ -299,7 +301,7 @@ impl EventParser<'_> {
                         matches!(node.body, Body::TableCell { .. }),
                     );
                 }
-                self.inlines = true;
+                self.phase = Phase::Inline;
                 match node.body {
                     Body::Heading(level) => EventKind::Start(Tag::Heading(level)),
                     Body::Paragraph => EventKind::Start(Tag::Paragraph {

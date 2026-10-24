@@ -1,0 +1,15 @@
+{
+  "source_commit": "2e98603951e19b929738d1d0da95ca2259c36208",
+  "binary_sha256": "6e4f91c00bae10319ff82665b4d94dcd81060c346bfdd495c6eccc822753c403",
+  "sampling": "macOS sample, 5 seconds at 1 ms intervals; run separately from final benchmark timings.",
+  "operation": "Frozen adapter profile MODE commonmark INPUT.json; input contains only the named workload.",
+  "inputs": {
+    "definitions-4096": {
+      "sha256": "ad6afffb6b75c70177a4ebcda0a5e03bb3747a29cd467aefc24bf19864ac68fd"
+    },
+    "mixed-1m": {
+      "sha256": "630331bbdd3120e7386febe4f976265c0869d7458b5201a34069df607f8ede13"
+    }
+  },
+  "caveat": "Self samples and inlined-symbol attribution are exploratory; no speedup is inferred from profile counts."
+}

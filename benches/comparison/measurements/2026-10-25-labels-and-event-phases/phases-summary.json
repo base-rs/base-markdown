@@ -1,0 +1,162 @@
+{
+  "core-prepare/readme": {
+    "baseline": {
+      "median_ms": 0.0031249788488287374,
+      "process_medians_ms": [
+        0.003094073234506007,
+        0.0031462091012315484,
+        0.0031249788488287374
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.0031054922319874506,
+      "process_medians_ms": [
+        0.0031054922319874506,
+        0.0031202162213984403,
+        0.003093753000645779
+      ],
+      "time_change_percent": -0.6235759595169865
+    }
+  },
+  "core-prepare/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.08072065517241378,
+      "process_medians_ms": [
+        0.0805246817447496,
+        0.08072065517241378,
+        0.08083870877944324
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.07931526725941423,
+      "process_medians_ms": [
+        0.07931526725941423,
+        0.07910064068339562,
+        0.08027800527983105
+      ],
+      "time_change_percent": -1.7410511720918675
+    }
+  },
+  "core-prepare/mixed-1m": {
+    "baseline": {
+      "median_ms": 0.8204341032608695,
+      "process_medians_ms": [
+        0.8204341032608695,
+        0.8109927248677249,
+        0.8305225409836067
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.8136261555555554,
+      "process_medians_ms": [
+        0.8136261555555554,
+        0.813617635359116,
+        0.8251983048128341
+      ],
+      "time_change_percent": -0.8297982346486377
+    }
+  },
+  "core-prepare/gfm-100k": {
+    "baseline": {
+      "median_ms": 0.13426217216117214,
+      "process_medians_ms": [
+        0.13426217216117214,
+        0.13357614655942807,
+        0.1348141088372093
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.13448212659380693,
+      "process_medians_ms": [
+        0.13458165599268068,
+        0.13448212659380693,
+        0.13440878651685392
+      ],
+      "time_change_percent": 0.16382457478101298
+    }
+  },
+  "core-events/readme": {
+    "baseline": {
+      "median_ms": 0.010327375354210565,
+      "process_medians_ms": [
+        0.010386988459319098,
+        0.010327375354210565,
+        0.010285687628714329
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.010302925511162488,
+      "process_medians_ms": [
+        0.01031986226563057,
+        0.010302925511162488,
+        0.010264373790235858
+      ],
+      "time_change_percent": -0.23674788810796876
+    }
+  },
+  "core-events/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.319249203821656,
+      "process_medians_ms": [
+        0.3175845711252654,
+        0.319249203821656,
+        0.3213303305084746
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.31949085074626865,
+      "process_medians_ms": [
+        0.319141898089172,
+        0.31949085074626865,
+        0.3214924659574468
+      ],
+      "time_change_percent": 0.07569225599310947
+    }
+  },
+  "core-events/mixed-1m": {
+    "baseline": {
+      "median_ms": 3.1693888958333334,
+      "process_medians_ms": [
+        3.200124127659574,
+        3.163309404255319,
+        3.1693888958333334
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 3.23089185106383,
+      "process_medians_ms": [
+        3.23089185106383,
+        3.2216249999999995,
+        3.2479069148936173
+      ],
+      "time_change_percent": 1.9405304067087403
+    }
+  },
+  "core-events/gfm-100k": {
+    "baseline": {
+      "median_ms": 0.49510702054794525,
+      "process_medians_ms": [
+        0.49510702054794525,
+        0.49333706896551727,
+        0.4984653724137932
+      ],
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.4991563559322035,
+      "process_medians_ms": [
+        0.49923344444444445,
+        0.4991563559322035,
+        0.49629790940766555
+      ],
+      "time_change_percent": 0.8178707261667917
+    }
+  }
+}
