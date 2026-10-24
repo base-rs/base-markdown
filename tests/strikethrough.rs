@@ -440,14 +440,14 @@ u ~**xxx**~ zzz
 }
 
 #[test]
-fn compact_strikethrough_matches_grammar_across_delimiter_boundaries() {
+fn strikethrough_is_invariant_under_unrelated_options() {
     use core_markdown::{render_events, Document, EventParser};
     for single in [false, true] {
         let mut options = Options::gfm();
         options.parse.strikethrough_single_tilde = single;
-        let mut grammar = Options::gfm();
-        grammar.parse.strikethrough_single_tilde = single;
-        grammar.parse.constructs.math_flow = true;
+        let mut configured = Options::gfm();
+        configured.parse.strikethrough_single_tilde = single;
+        configured.parse.constructs.math_flow = true;
         for open in ["~", "~~", "~~~", "~~~~"] {
             for close in ["~", "~~", "~~~", "~~~~"] {
                 for content in [
@@ -470,7 +470,7 @@ fn compact_strikethrough_matches_grammar_across_delimiter_boundaries() {
                         let direct = to_html_with_options(&source, &options).unwrap();
                         assert_eq!(
                             direct,
-                            to_html_with_options(&source, &grammar).unwrap(),
+                            to_html_with_options(&source, &configured).unwrap(),
                             "{source:?}, single={single}"
                         );
                         let mut checked = String::new();

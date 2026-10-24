@@ -129,4 +129,50 @@ fn failed_escape_writes_retain_the_last_successfully_written_byte() {
             .unwrap();
         assert_eq!(writer.output, expected, "{value:?}, fail_on={fail_on:?}");
     }
+    let mut writer = Writer {
+        output: String::new(),
+        fail_on: Some("\n"),
+    };
+    let options = Options::default();
+    let mut renderer = EventHtmlRenderer::new("", &options.compile, &mut writer);
+    renderer
+        .event(event(EventKind::Start(Tag::Document(None))))
+        .unwrap();
+    renderer
+        .event(event(EventKind::Text(Text::Literal("prefix"))))
+        .unwrap();
+    assert!(matches!(
+        renderer.event(event(EventKind::Rule)),
+        Err(StreamError::Write(_))
+    ));
+    renderer.event(event(EventKind::Rule)).unwrap();
+    renderer
+        .event(event(EventKind::End(TagKind::Document)))
+        .unwrap();
+    assert_eq!(writer.output, "prefix\n<hr />");
+}
+
+#[test]
+fn custom_image_alternative_text_suppresses_rule_markup() {
+    let events = [
+        event(EventKind::Start(Tag::Document(None))),
+        event(EventKind::Start(Tag::Image {
+            destination: Text::Literal("image.png"),
+            title: None,
+        })),
+        event(EventKind::Text(Text::Literal("before"))),
+        event(EventKind::Rule),
+        event(EventKind::Text(Text::Literal("after"))),
+        event(EventKind::End(TagKind::Image)),
+        event(EventKind::End(TagKind::Document)),
+    ];
+    let mut output = String::new();
+    render_events(
+        "",
+        IntoIterator::into_iter(events).map(Ok),
+        &Options::default().compile,
+        &mut output,
+    )
+    .unwrap();
+    assert_eq!(output, "<img src=\"image.png\" alt=\"beforeafter\" />");
 }

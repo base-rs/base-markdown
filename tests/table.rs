@@ -2020,8 +2020,8 @@ fn compact_tables_preserve_cells_spans_and_rendering_paths() {
         "- x\na|b\n  --|--",
     ];
     let options = Options::gfm();
-    let mut grammar = Options::gfm();
-    grammar.parse.constructs.math_flow = true;
+    let mut configured = Options::gfm();
+    configured.parse.constructs.math_flow = true;
     for case in cases {
         for ending in ["", "\n", "\n\n", "\r\n"] {
             let case = format!("{case}{ending}");
@@ -2033,10 +2033,9 @@ fn compact_tables_preserve_cells_spans_and_rendering_paths() {
                 format!(">\t{}", case.replace('\n', "\n>\t")),
             ] {
                 let direct = to_html_with_options(&source, &options).unwrap();
-                let expected = to_html_with_options(&source, &grammar).unwrap();
-                // Surrounding common blocks share the compact producer's existing
-                // list-tightness and literal-line-ending corrections. Compare table
-                // output independently, and check full rendering-path parity below.
+                let expected = to_html_with_options(&source, &configured).unwrap();
+                // Enabling unrelated math must preserve table output. Full
+                // rendering-path parity is checked below.
                 let table_html = |html: &str| {
                     html.split("<table>")
                         .skip(1)
@@ -2072,7 +2071,7 @@ fn compact_tables_preserve_cells_spans_and_rendering_paths() {
                 };
                 assert_eq!(
                     tables(&options.parse),
-                    tables(&grammar.parse),
+                    tables(&configured.parse),
                     "table metadata: {source:?}"
                 );
                 let mut checked = String::new();

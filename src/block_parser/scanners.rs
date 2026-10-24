@@ -114,12 +114,13 @@ impl LineStart<'_> {
     pub(crate) fn scan_list_marker_with_indent(
         &mut self,
         indent: usize,
+        thematic: bool,
     ) -> Option<(u8, u64, usize)> {
         let save = self.clone();
         if self.ix < self.bytes.len() {
             let c = self.bytes[self.ix];
             if c == b'-' || c == b'+' || c == b'*' {
-                if self.ix >= self.min_hrule_offset {
+                if thematic && self.ix >= self.min_hrule_offset {
                     // there could be an hrule here
                     if let Err(min_offset) = scan_hrule(&self.bytes[self.ix..]) {
                         self.min_hrule_offset = self.ix + min_offset;
@@ -176,6 +177,10 @@ impl LineStart<'_> {
             *self = save;
         }
         (c, start, indent)
+    }
+
+    pub(crate) fn advance(&mut self, bytes: usize) {
+        self.ix += bytes;
     }
 
     pub(crate) fn bytes_scanned(&self) -> usize {

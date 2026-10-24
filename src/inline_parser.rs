@@ -2,30 +2,23 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Compact inline candidates, resolved in reusable storage for the active block.
-use crate::definitions::{scan_label, Definitions};
+use crate::definitions::Definitions;
 use crate::stream::{Event, EventKind, Tag, TagKind, Text};
 use crate::util::char::{classify_opt, Kind as CharacterKind};
 use crate::util::character_reference::{scan as scan_character_reference, Reference};
 use crate::util::normalize_identifier::normalize_identifier_into;
-use crate::value_builder::decode_string;
-use alloc::{string::String, vec::Vec};
+use crate::value_builder::decode_string_with_options;
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{convert::TryFrom, ops::Range};
+
+mod autolink;
 
 static MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!");
 static EXTENSION_MARKERS: crate::byte_scan::AsciiSet =
-    crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!~@.:");
-
-/// `CommonMark` with independently enabled extensions can share ordinary inline scanning.
-pub(crate) fn supported_options(options: &crate::ParseOptions) -> bool {
-    let mut common = options.constructs.clone();
-    common.autolink_literal = false;
-    common.strikethrough = false;
-    common.table = false;
-    common.task_list_item = false;
-    common.footnote_definition = false;
-    common.label_start_footnote = false;
-    common == crate::Constructs::default()
-}
+    crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!~@.:$");
 
 // Keep fixed prefixes compact: a fat string pointer would enlarge every inline record.
 #[derive(Clone, Copy)]
@@ -47,9 +40,13 @@ impl AutolinkPrefix {
 #[derive(Clone, Copy)]
 enum Kind {
     Text,
+    EscapedText,
     NamedEntity(usize),
     NumericEntity(char),
     Code(usize),
+    CodeInfo(usize),
+    Math(usize),
+    Footnote(usize),
     Html,
     AngleLink(bool),
     SoftBreak,
@@ -72,6 +69,7 @@ struct Delimiter {
     node: usize,
     marker: u8,
     run_modulo: u8,
+    mixed: bool,
     open: bool,
     close: bool,
 }
@@ -86,6 +84,14 @@ struct Tick {
     end: usize,
     next: usize,
 }
+struct CodeInfo {
+    count: usize,
+    language: Range<usize>,
+}
+struct Segment {
+    logical: Range<usize>,
+    source: Range<usize>,
+}
 struct Link {
     destination: Range<usize>,
     title: Option<Range<usize>>,
@@ -98,8 +104,14 @@ pub(crate) struct InlineParser {
     attention_stack: Vec<usize>,
     links: Vec<Link>,
     tick_heads: Vec<usize>,
+    math_heads: Vec<usize>,
     ticks: Vec<Tick>,
     reference_key: String,
+    logical: String,
+    segments: Vec<Segment>,
+    code_info: Vec<CodeInfo>,
+    normalized: bool,
+    table: bool,
     last: usize,
     cursor: usize,
     link_bottom: usize,
@@ -118,7 +130,7 @@ impl InlineParser {
         self.last = index;
         index
     }
-    fn insert_after(&mut self, previous: usize, start: usize, end: usize, kind: Kind) {
+    fn insert_after(&mut self, previous: usize, start: usize, end: usize, kind: Kind) -> usize {
         let next = self.nodes[previous].next;
         let index = self.nodes.len();
         self.nodes.push(Node {
@@ -129,7 +141,12 @@ impl InlineParser {
             kind,
         });
         self.nodes[previous].next = index;
-        self.nodes[next].previous = index;
+        if next == 0 {
+            self.last = index;
+        } else {
+            self.nodes[next].previous = index;
+        }
+        index
     }
     fn attention<const EXTENSIONS: bool>(&mut self, bottom: usize) {
         if bottom == self.delimiters.len() {
@@ -165,9 +182,10 @@ impl InlineParser {
                                 || self.nodes[candidate.node].end
                                     - self.nodes[candidate.node].start
                                     == size)
-                            && !((candidate.close || self.delimiters[close].open)
-                                && (candidate.run_modulo + closer_modulo) % 3 == 0
-                                && (candidate.run_modulo != 0 || closer_modulo != 0))
+                            && (marker == b'~'
+                                || !((candidate.close || self.delimiters[close].open)
+                                    && (candidate.run_modulo + closer_modulo) % 3 == 0
+                                    && (candidate.run_modulo != 0 || closer_modulo != 0)))
                         {
                             found = Some((slot, open));
                             break;
@@ -192,6 +210,18 @@ impl InlineParser {
                     let end = self.nodes[closer].start + take;
                     self.nodes[opener].end -= take;
                     self.nodes[closer].start += take;
+                    // Mixed strike/emphasis resolution retries the remaining
+                    // run, so its modulo changes after a partial match.
+                    if self.delimiters[open].mixed {
+                        self.delimiters[open].run_modulo =
+                            u8::try_from((self.nodes[opener].end - self.nodes[opener].start) % 3)
+                                .unwrap();
+                    }
+                    if self.delimiters[close].mixed {
+                        self.delimiters[close].run_modulo =
+                            u8::try_from((self.nodes[closer].end - self.nodes[closer].start) % 3)
+                                .unwrap();
+                    }
                     self.insert_after(opener, start, end, Kind::Start(tag, 0));
                     self.insert_after(self.nodes[closer].previous, end, end, Kind::End(tag));
                     let remaining =
@@ -208,34 +238,50 @@ impl InlineParser {
         }
         self.delimiters.truncate(bottom);
     }
-    fn index_ticks(&mut self, bytes: &[u8], range: Range<usize>) {
+    fn index_ticks(&mut self, bytes: &[u8], range: Range<usize>, math: bool) {
         self.tick_heads.clear();
+        self.math_heads.clear();
         self.ticks.clear();
         let mut at = range.end;
-        while let Some(index) = memchr::memrchr(b'`', &bytes[range.start..at]) {
+        while let Some(index) = if math {
+            memchr::memrchr2(b'`', b'$', &bytes[range.start..at])
+        } else {
+            memchr::memrchr(b'`', &bytes[range.start..at])
+        } {
             let end = range.start + index + 1;
             at = end - 1;
-            while at > range.start && bytes[at - 1] == b'`' {
+            let marker = bytes[at];
+            while at > range.start && bytes[at - 1] == marker {
                 at -= 1;
             }
             let count = end - at;
-            if self.tick_heads.len() <= count {
-                self.tick_heads.resize(count + 1, 0);
+            let heads = if marker == b'$' {
+                &mut self.math_heads
+            } else {
+                &mut self.tick_heads
+            };
+            if heads.len() <= count {
+                heads.resize(count + 1, 0);
             }
             self.ticks.push(Tick {
                 start: at,
                 end,
-                next: self.tick_heads[count],
+                next: heads[count],
             });
-            self.tick_heads[count] = self.ticks.len();
+            heads[count] = self.ticks.len();
         }
     }
-    fn closing_tick(&mut self, opening: usize, count: usize) -> Option<usize> {
+    fn closing_tick(&mut self, opening: usize, count: usize, marker: u8) -> Option<usize> {
         // Every candidate run (including an escaped run's shorter suffix) is bounded by the longest indexed raw run.
-        let mut index = self.tick_heads[count];
+        let heads = if marker == b'$' {
+            &mut self.math_heads
+        } else {
+            &mut self.tick_heads
+        };
+        let mut index = heads[count];
         while index != 0 {
             let tick = &self.ticks[index - 1];
-            self.tick_heads[count] = tick.next;
+            heads[count] = tick.next;
             if tick.start > opening {
                 return Some(tick.end);
             }
@@ -243,10 +289,79 @@ impl InlineParser {
         }
         None
     }
-    /// Each fragment contains one physical source line. Returns false when a region needs a compatibility construct; no events have escaped yet.
-    // Specialize reference-free and CommonMark regions so unused extension checks compile out.
+    /// Ordinary lines keep their original source ranges. Only a construct that
+    /// crosses stripped container prefixes needs a logical view, scanned by the
+    /// same parser and mapped back to source coordinates when events are pulled.
     pub(crate) fn prepare<const REFERENCES: bool, const EXTENSIONS: bool>(
         &mut self,
+        source: &str,
+        fragments: impl Iterator<Item = Range<usize>> + Clone,
+        definitions: &Definitions,
+        options: &crate::ParseOptions,
+        task: bool,
+        table: bool,
+    ) {
+        self.table = table;
+        self.normalized = false;
+        if self.scan::<REFERENCES, EXTENSIONS>(
+            source,
+            source,
+            fragments.clone(),
+            definitions,
+            options,
+            task,
+        ) {
+            return;
+        }
+        let mut combined: Option<Range<usize>> = None;
+        let mut contiguous = true;
+        for fragment in fragments.clone() {
+            match &mut combined {
+                None => combined = Some(fragment),
+                Some(range) => {
+                    contiguous &= range.end == fragment.start;
+                    range.end = fragment.end;
+                }
+            }
+        }
+        if contiguous {
+            let fragment = combined.unwrap_or(0..0);
+            self.scan::<REFERENCES, EXTENSIONS>(
+                source,
+                source,
+                core::iter::once(fragment),
+                definitions,
+                options,
+                task,
+            );
+            return;
+        }
+        let mut logical = core::mem::take(&mut self.logical);
+        logical.clear();
+        self.segments.clear();
+        for fragment in fragments {
+            let start = logical.len();
+            logical.push_str(&source[fragment.clone()]);
+            self.segments.push(Segment {
+                logical: start..logical.len(),
+                source: fragment,
+            });
+        }
+        self.normalized = true;
+        self.scan::<REFERENCES, EXTENSIONS>(
+            source,
+            &logical,
+            core::iter::once(0..logical.len()),
+            definitions,
+            options,
+            task,
+        );
+        self.logical = logical;
+    }
+
+    fn scan<const REFERENCES: bool, const EXTENSIONS: bool>(
+        &mut self,
+        original_source: &str,
         source: &str,
         fragments: impl Iterator<Item = Range<usize>>,
         definitions: &Definitions,
@@ -257,6 +372,7 @@ impl InlineParser {
         self.delimiters.clear();
         self.brackets.clear();
         self.links.clear();
+        self.code_info.clear();
         self.last = 0;
         self.cursor = 0;
         self.link_bottom = 0;
@@ -274,43 +390,50 @@ impl InlineParser {
             &MARKERS
         };
         let mut fragments = fragments.peekable();
-        while let Some(mut range) = fragments.next() {
+        let mut saw_email = false;
+        while let Some(range) = fragments.next() {
+            let mut autolink_trail = autolink::Trail::default();
             let mut indexed_ticks = false;
             let mut at = range.start;
-            // Grammar-backed text chunks include paragraph padding; compact block fragments usually already omit it. Neither padding nor container indentation is inline content.
+            // Paragraph padding and stripped container prefixes are not inline data.
             while at < range.end && matches!(bytes[at], b' ' | b'\t') {
                 at += 1;
             }
-            if fragments.peek().is_none() {
-                while range.end > at && matches!(bytes[range.end - 1], b' ' | b'\t') {
-                    range.end -= 1;
-                }
-            }
+            // Block producers already trim trailing padding from the final range.
             let inline_start = at;
-            if EXTENSIONS && task && self.nodes.len() == 1 && bytes.get(at) == Some(&b'[') {
-                // Keep multiline markers and tab-expanded whitespace on the grammar path.
-                if matches!(bytes.get(at + 1), Some(b' ' | b'x' | b'X'))
-                    && bytes.get(at + 2) == Some(&b']')
-                    && bytes.get(at + 3) == Some(&b' ')
-                    && bytes[at + 3..range.end]
-                        .iter()
-                        .any(|byte| !matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
-                {
-                    self.append(at, at + 3, Kind::Task(bytes[at + 1] != b' '));
-                    at += 3;
-                } else {
+            if EXTENSIONS
+                && task
+                && options.constructs.task_list_item
+                && self.nodes.len() == 1
+                && bytes.get(at) == Some(&b'[')
+            {
+                if let Some((end, checked)) = task_marker(bytes, at, range.end) {
+                    self.append(at, end, Kind::Task(checked));
+                    at = end;
+                } else if fragments.peek().is_some() && range.end.saturating_sub(at) < 5 {
                     return false;
                 }
             }
             while at < range.end {
                 let start = at;
                 match bytes[at] {
-                    0 => return false,
-                    b'<' => {
-                        let Some((end, kind)) =
-                            angle(bytes, at, range.end, options.html_tag_namespaces)
+                    0 => {
+                        at += 1;
+                        at += markers.find(&bytes[at..range.end]);
+                        self.append(start, at, Kind::Text);
+                    }
+                    b'<' if !EXTENSIONS
+                        || options.constructs.autolink
+                        || options.constructs.html_text =>
+                    {
+                        let Some((end, kind)) = angle::<EXTENSIONS>(bytes, at, range.end, options)
                         else {
-                            return false;
+                            if fragments.peek().is_some() {
+                                return false;
+                            }
+                            self.append(at, at + 1, Kind::Text);
+                            at += 1;
+                            continue;
                         };
                         self.append(at, end, kind);
                         if matches!(kind, Kind::AngleLink(_)) {
@@ -322,40 +445,48 @@ impl InlineParser {
                     marker
                         if EXTENSIONS
                             && options.constructs.autolink_literal
-                            && (matches!(marker, b'@' | b':')
-                                || (marker == b'.'
-                                    && bytes[at.saturating_sub(3)..at]
-                                        .eq_ignore_ascii_case(b"www"))) =>
+                            && matches!(marker, b':' | b'.') =>
                     {
-                        // A pending label can change link precedence. Complex addresses retain the grammar's complete literal-autolink rules.
-                        if !self.brackets.is_empty()
-                            || !matches!(self.nodes[self.last].kind, Kind::Text)
+                        if let Some(found) =
+                            autolink::web(source, inline_start, at, range.end, &mut autolink_trail)
                         {
-                            return false;
+                            // The prefix is ordinary source text immediately before this marker.
+                            // Escapes and character references form separate runs and cannot be reinterpreted.
+                            let previous = self.nodes[self.last];
+                            if matches!(previous.kind, Kind::Text | Kind::EscapedText)
+                                && found.start
+                                    >= previous.start
+                                        + usize::from(matches!(previous.kind, Kind::EscapedText))
+                            {
+                                self.nodes[self.last].end = found.start;
+                                self.append(found.start, found.end, Kind::Autolink(found.prefix));
+                                self.append(found.start, found.end, Kind::Text);
+                                self.append(found.end, found.end, Kind::End(TagKind::Link));
+                                at = found.end;
+                                continue;
+                            }
                         }
-                        let Some((start, end, prefix)) = simple_autolink(
-                            bytes,
-                            inline_start,
-                            self.nodes[self.last].start,
-                            at,
-                            range.end,
-                        ) else {
-                            return false;
-                        };
-                        self.nodes[self.last].end = start;
-                        self.append(start, end, Kind::Autolink(prefix));
-                        self.append(start, end, Kind::Text);
-                        self.append(end, end, Kind::End(TagKind::Link));
-                        at = end;
+                        at += 1;
+                        at += markers.find(&bytes[at..range.end]);
+                        self.append(start, at, Kind::Text);
                     }
-                    b'\\' if at + 1 < range.end && bytes[at + 1].is_ascii_punctuation() => {
+                    b'\\'
+                        if at + 1 < range.end
+                            && (((!EXTENSIONS || options.constructs.character_escape)
+                                && bytes[at + 1].is_ascii_punctuation())
+                                || (self.table && bytes[at + 1] == b'|')) =>
+                    {
                         let text_start = at + 1;
                         at += 2;
                         // The escaped byte and the following ordinary run share one source slice. Stop before syntax candidates so delimiter and bracket nodes remain distinct.
                         at += markers.find(&bytes[at..range.end]);
-                        self.append(text_start, at, Kind::Text);
+                        self.append(text_start, at, Kind::EscapedText);
                     }
-                    b'\\' if at + 1 < range.end && matches!(bytes[at + 1], b'\r' | b'\n') => {
+                    b'\\'
+                        if (!EXTENSIONS || options.constructs.hard_break_escape)
+                            && at + 1 < range.end
+                            && matches!(bytes[at + 1], b'\r' | b'\n') =>
+                    {
                         self.append(at, at + 1, Kind::HardBreak);
                         at += 1;
                     }
@@ -363,13 +494,14 @@ impl InlineParser {
                         at += 1 + usize::from(
                             bytes[start] == b'\r' && bytes.get(start + 1) == Some(&b'\n'),
                         );
-                        if matches!(self.nodes[self.last].kind, Kind::Text) {
+                        if matches!(self.nodes[self.last].kind, Kind::Text | Kind::EscapedText) {
                             let node = &mut self.nodes[self.last];
                             let mut spaces = node.end;
                             while spaces > node.start && bytes[spaces - 1] == b' ' {
                                 spaces -= 1;
                             }
-                            let hard = node.end - spaces >= 2
+                            let hard = (!EXTENSIONS || options.constructs.hard_break_trailing)
+                                && node.end - spaces >= 2
                                 && (spaces == node.start || bytes[spaces - 1] != b'\t');
                             while node.end > node.start
                                 && matches!(bytes[node.end - 1], b' ' | b'\t')
@@ -381,8 +513,13 @@ impl InlineParser {
                             }
                         }
                         self.append(start, at, Kind::SoftBreak);
+                        // Paragraph padding belongs to the line prefix, except inside
+                        // raw spans and HTML, which scan their complete range at once.
+                        while at < range.end && matches!(bytes[at], b' ' | b'\t') {
+                            at += 1;
+                        }
                     }
-                    b'&' => {
+                    b'&' if !EXTENSIONS || options.constructs.character_reference => {
                         if let Some((end, value)) = scan_character_reference(source, at, range.end)
                         {
                             let kind = match value {
@@ -396,21 +533,50 @@ impl InlineParser {
                             at += 1;
                         }
                     }
-                    b'`' => {
-                        while at < range.end && bytes[at] == b'`' {
+                    marker
+                        if (marker == b'`' && (!EXTENSIONS || options.constructs.code_text))
+                            || (EXTENSIONS && marker == b'$' && options.constructs.math_text) =>
+                    {
+                        while at < range.end && bytes[at] == marker {
                             at += 1;
                         }
                         let count = at - start;
+                        if marker == b'$' && count == 1 && !options.math_text_single_dollar {
+                            self.append(start, at, Kind::Text);
+                            continue;
+                        }
                         if !indexed_ticks {
-                            self.index_ticks(bytes, range.clone());
+                            self.index_ticks(
+                                bytes,
+                                range.clone(),
+                                EXTENSIONS && options.constructs.math_text,
+                            );
                             indexed_ticks = true;
                         }
-                        let found = self.closing_tick(start, count);
-                        if let Some(end) = found {
-                            self.append(start, end, Kind::Code(count));
+                        if let Some(end) = self.closing_tick(start, count, marker) {
+                            let mut kind = if marker == b'$' {
+                                Kind::Math(count)
+                            } else {
+                                Kind::Code(count)
+                            };
+                            let mut event_start = start;
+                            if marker == b'`' && options.inline_code_info {
+                                if let Some((prefix_start, info)) =
+                                    crate::util::inline_code_info::before(bytes, start)
+                                {
+                                    self.trim_text_suffix(prefix_start);
+                                    let index = self.code_info.len();
+                                    self.code_info.push(CodeInfo {
+                                        count,
+                                        language: prefix_start..prefix_start + info.len(),
+                                    });
+                                    kind = Kind::CodeInfo(index);
+                                    event_start = prefix_start;
+                                }
+                            }
+                            self.append(event_start, end, kind);
                             at = end;
                         } else {
-                            // A code span can cross source fragments; let the compatibility engine resolve it.
                             if fragments.peek().is_some() {
                                 return false;
                             }
@@ -418,7 +584,8 @@ impl InlineParser {
                         }
                     }
                     marker
-                        if matches!(marker, b'*' | b'_')
+                        if ((!EXTENSIONS || options.constructs.attention)
+                            && matches!(marker, b'*' | b'_'))
                             || (EXTENSIONS
                                 && marker == b'~'
                                 && options.constructs.strikethrough) =>
@@ -431,21 +598,20 @@ impl InlineParser {
                         let after_char = source[at..range.end].chars().next();
                         let before = classify_opt(before_char);
                         let after = classify_opt(after_char);
-                        // Mixed adjacent emphasis/strike runs have grammar-specific partial-match rules.
-                        // Keep those regions together on the compatibility path.
-                        if EXTENSIONS
-                            && options.constructs.strikethrough
-                            && marker != b'~'
-                            && (before_char == Some('~') || after_char == Some('~'))
-                        {
-                            return false;
-                        }
                         let left = after != CharacterKind::Whitespace
                             && (after != CharacterKind::Punctuation
-                                || before != CharacterKind::Other);
+                                || before != CharacterKind::Other)
+                            || (marker != b'~'
+                                && EXTENSIONS
+                                && options.constructs.strikethrough
+                                && after_char == Some('~'));
                         let right = before != CharacterKind::Whitespace
                             && (before != CharacterKind::Punctuation
-                                || after != CharacterKind::Other);
+                                || after != CharacterKind::Other)
+                            || (marker != b'~'
+                                && EXTENSIONS
+                                && options.constructs.strikethrough
+                                && before_char == Some('~'));
                         let node = self.append(start, at, Kind::Text);
                         if EXTENSIONS
                             && marker == b'~'
@@ -459,23 +625,54 @@ impl InlineParser {
                             marker,
                             // Rule three uses the original run length, even after a partial match consumes delimiters.
                             run_modulo: u8::try_from((at - start) % 3).unwrap(),
+                            mixed: EXTENSIONS
+                                && options.constructs.strikethrough
+                                && marker != b'~'
+                                && (before_char == Some('~') || after_char == Some('~')),
                             open: left
-                                && (marker != b'_'
-                                    || !right
-                                    || before == CharacterKind::Punctuation),
+                                && (marker != b'_' || !right || before != CharacterKind::Other),
                             close: right
-                                && (marker != b'_' || !left || after == CharacterKind::Punctuation),
+                                && (marker != b'_' || !left || after != CharacterKind::Other),
                         });
                     }
                     b'[' | b'!' => {
-                        if EXTENSIONS
-                            && options.constructs.label_start_footnote
-                            && (bytes[at..].starts_with(b"[^") || bytes[at..].starts_with(b"![^"))
-                        {
-                            return false;
-                        }
                         let image = bytes[at] == b'!';
-                        if image && bytes.get(at + 1) != Some(&b'[') {
+                        let footnote_start = at + usize::from(image);
+                        let footnote = EXTENSIONS
+                            && options.constructs.label_start_footnote
+                            && bytes.get(footnote_start..footnote_start + 2) == Some(b"[^");
+                        if footnote && options.constructs.label_end {
+                            if let Some((end, label)) =
+                                label(bytes, footnote_start + 1, range.end, |at| {
+                                    self.column(original_source, at)
+                                })
+                            {
+                                normalize_identifier_into(&source[label], &mut self.reference_key);
+                                if let Some(index) = definitions.find_footnote(&self.reference_key)
+                                {
+                                    if image {
+                                        self.append(at, at + 1, Kind::Text);
+                                    }
+                                    self.append(footnote_start, end, Kind::Footnote(index));
+                                    at = end;
+                                    self.link_bottom = self.nodes.len();
+                                    continue;
+                                }
+                            } else if fragments.peek().is_some() {
+                                return false;
+                            }
+                        }
+                        if (image
+                            && ((EXTENSIONS && !options.constructs.label_start_image)
+                                || (EXTENSIONS
+                                    && options.constructs.label_start_footnote
+                                    && bytes.get(at + 2) == Some(&b'^'))
+                                || bytes.get(at + 1) != Some(&b'[')))
+                            || (!image
+                                && EXTENSIONS
+                                && !options.constructs.label_start_link
+                                && !footnote)
+                        {
                             at += 1;
                             at += markers.find(&bytes[at..range.end]);
                             self.append(start, at, Kind::Text);
@@ -496,7 +693,7 @@ impl InlineParser {
                             label: true,
                         });
                     }
-                    b']' => {
+                    b']' if !EXTENSIONS || options.constructs.label_end => {
                         at += 1;
                         let Some(bracket) = self.brackets.pop() else {
                             self.append(start, at, Kind::Text);
@@ -511,47 +708,48 @@ impl InlineParser {
                         } else {
                             TagKind::Link
                         };
-                        let resolved = if bytes.get(at) == Some(&b'(') {
-                            let Some((end, link)) = resource(bytes, at, range.end) else {
+                        let mut resolved = None;
+                        if bytes.get(at) == Some(&b'(') {
+                            if let Some((end, link)) = resource(bytes, at, range.end) {
+                                let index = self.links.len();
+                                self.links.push(link);
+                                resolved = Some((end, Kind::Start(tag, index)));
+                            } else if fragments.peek().is_some() {
                                 return false;
-                            };
-                            let index = self.links.len();
-                            self.links.push(link);
-                            Some((end, Kind::Start(tag, index)))
-                        } else if !REFERENCES || definitions.is_empty() {
-                            None
-                        } else {
+                            }
+                        }
+                        if resolved.is_none() && REFERENCES && !definitions.is_empty() {
                             let label_start =
                                 self.nodes[bracket.node].start + 1 + usize::from(bracket.image);
-                            let (end, label) = if bytes.get(at) == Some(&b'[') {
+                            let mut reference = bracket.label.then_some((at, label_start..start));
+                            if bytes.get(at) == Some(&b'[') {
                                 if bytes.get(at + 1) == Some(&b']') {
-                                    (at + 2, bracket.label.then_some(label_start..start))
+                                    reference =
+                                        bracket.label.then_some((at + 2, label_start..start));
                                 } else {
-                                    let Some((end, label)) = scan_label(bytes, at, range.end)
-                                    else {
-                                        // Multiline labels and malformed full references retain the grammar's fallback rules.
+                                    reference = label(bytes, at, range.end, |at| {
+                                        self.column(original_source, at)
+                                    });
+                                    if reference.is_none() && fragments.peek().is_some() {
                                         return false;
-                                    };
-                                    (end, Some(label))
+                                    }
                                 }
-                            } else {
-                                (at, bracket.label.then_some(label_start..start))
-                            };
-                            if let Some(label) = label {
+                            }
+                            if let Some((end, label)) = reference {
                                 if label.start < range.start {
-                                    // Earlier fragments can contain stripped container prefixes.
                                     return false;
                                 }
                                 normalize_identifier_into(&source[label], &mut self.reference_key);
-                                definitions
+                                resolved = definitions
                                     .find(&self.reference_key)
-                                    .map(|index| (end, Kind::Reference(tag, index)))
-                            } else {
-                                None
+                                    .map(|index| (end, Kind::Reference(tag, index)));
                             }
-                        };
+                        }
                         if let Some((end, kind)) = resolved {
                             self.attention::<EXTENSIONS>(bracket.delimiters);
+                            if !bracket.image {
+                                self.suppress_autolinks(bracket.node);
+                            }
                             self.nodes[bracket.node].kind = kind;
                             self.nodes[bracket.node].end = end;
                             self.append(end, end, Kind::End(tag));
@@ -565,6 +763,9 @@ impl InlineParser {
                         self.append(start, at, Kind::Text);
                     }
                     _ => {
+                        if EXTENSIONS && bytes[at] == b'@' {
+                            saw_email = true;
+                        }
                         at += 1;
                         at += markers.find(&bytes[at..range.end]);
                         self.append(start, at, Kind::Text);
@@ -573,9 +774,298 @@ impl InlineParser {
             }
         }
         self.attention::<EXTENSIONS>(0);
+        if EXTENSIONS && options.constructs.autolink_literal && saw_email {
+            self.resolve_email(source);
+        }
         self.cursor = self.nodes[0].next;
         true
     }
+    /// Remove a language prefix from contiguous text candidates. Literal-link
+    /// marker scanning may have split the prefix without changing its bytes.
+    fn trim_text_suffix(&mut self, start: usize) {
+        let mut cursor = self.last;
+        // A language token consists only of ordinary text and unresolved `_`,
+        // `.` and `:` candidates. Syntax that would have resolved these nodes
+        // cannot occur within the accepted token alphabet.
+        while self.nodes[cursor].start > start {
+            self.nodes[cursor].end = self.nodes[cursor].start;
+            cursor = self.nodes[cursor].previous;
+        }
+        self.nodes[cursor].end = start;
+    }
+
+    fn suppress_autolinks(&mut self, opener: usize) {
+        let mut cursor = self.nodes[opener].next;
+        while cursor != 0 {
+            if matches!(self.nodes[cursor].kind, Kind::Autolink(_)) {
+                self.nodes[cursor].end = self.nodes[cursor].start;
+                self.nodes[cursor].kind = Kind::Text;
+                let text = self.nodes[cursor].next;
+                let close = self.nodes[text].next;
+                self.nodes[close].kind = Kind::Text;
+            }
+            cursor = self.nodes[cursor].next;
+        }
+    }
+
+    /// Email syntax is resolved after attention so unmatched underscores remain
+    /// part of an address, while escapes, entities, and links bound each run.
+    fn resolve_email(&mut self, source: &str) {
+        let mut cursor = self.nodes[0].next;
+        let mut links = 0;
+        while cursor != 0 {
+            let node = self.nodes[cursor];
+            match node.kind {
+                Kind::Start(TagKind::Link, _)
+                | Kind::Reference(TagKind::Link, _)
+                | Kind::AngleLink(_)
+                | Kind::Autolink(_) => links += 1,
+                Kind::End(TagKind::Link) => links -= 1,
+                Kind::Text | Kind::EscapedText if links == 0 && node.start < node.end => {
+                    let run_start =
+                        node.start + usize::from(matches!(node.kind, Kind::EscapedText));
+                    let mut end = node.end;
+                    let mut next = node.next;
+                    while next != 0
+                        && matches!(self.nodes[next].kind, Kind::Text)
+                        && self.nodes[next].start == end
+                    {
+                        end = self.nodes[next].end;
+                        next = self.nodes[next].next;
+                    }
+                    if !source.as_bytes()[run_start..end].contains(&b'@') {
+                        cursor = next;
+                        continue;
+                    }
+                    // Keep the escaped punctuation outside the data run without
+                    // adding another candidate for ordinary escaped prose.
+                    if run_start != node.start {
+                        self.nodes[cursor].end = run_start;
+                        let escaped = cursor;
+                        cursor = self.insert_after(escaped, run_start, end, Kind::Text);
+                    }
+                    // Coalesce candidate pieces without joining or allocating their text.
+                    self.nodes[cursor].end = end;
+                    self.nodes[cursor].next = next;
+                    if next == 0 {
+                        self.last = cursor;
+                    } else {
+                        self.nodes[next].previous = cursor;
+                    }
+                    let mut at = run_start;
+                    let mut min = at;
+                    let mut tail = cursor;
+                    while let Some(offset) = memchr::memchr(b'@', &source.as_bytes()[at..end]) {
+                        let marker = at + offset;
+                        if let Some(found) = autolink::email(source, min, marker, end) {
+                            self.nodes[tail].end = found.start;
+                            let open = self.insert_after(
+                                tail,
+                                found.start,
+                                found.end,
+                                Kind::Autolink(found.prefix),
+                            );
+                            let text = self.insert_after(open, found.start, found.end, Kind::Text);
+                            let close = self.insert_after(
+                                text,
+                                found.end,
+                                found.end,
+                                Kind::End(TagKind::Link),
+                            );
+                            tail = self.insert_after(close, found.end, end, Kind::Text);
+                            min = found.end;
+                            at = found.end;
+                        } else {
+                            at = marker + 1;
+                        }
+                    }
+                    cursor = next;
+                    continue;
+                }
+                _ => {}
+            }
+            cursor = node.next;
+        }
+    }
+
+    fn column(&self, source: &str, at: usize) -> usize {
+        let at = self.source_range(at..at).start;
+        let bytes = source.as_bytes();
+        let line_start = memchr::memrchr2(b'\r', b'\n', &bytes[..at]).map_or(0, |index| index + 1);
+        bytes[line_start..at].iter().fold(1, |column, byte| {
+            column
+                + if *byte == b'\t' {
+                    4 - (column - 1) % 4
+                } else {
+                    1
+                }
+        })
+    }
+
+    #[inline]
+    fn source_range(&self, range: Range<usize>) -> Range<usize> {
+        if self.normalized {
+            self.mapped_source_range(range)
+        } else {
+            range
+        }
+    }
+
+    #[inline(never)]
+    fn mapped_source_range(&self, range: Range<usize>) -> Range<usize> {
+        let start_segment = self
+            .segments
+            .partition_point(|segment| segment.logical.end <= range.start);
+        let end_segment = self
+            .segments
+            .partition_point(|segment| segment.logical.end < range.end);
+        let start = self.segments.get(start_segment).map_or_else(
+            || self.segments.last().map_or(0, |segment| segment.source.end),
+            |segment| {
+                segment.source.start
+                    + (range.start - segment.logical.start).min(segment.source.len())
+            },
+        );
+        let end = self.segments.get(end_segment).map_or(start, |segment| {
+            segment.source.start + (range.end - segment.logical.start).min(segment.source.len())
+        });
+        start..end.max(start)
+    }
+
+    #[inline]
+    fn text(&self, source: &str, range: Range<usize>) -> Text<'static> {
+        if self.normalized {
+            self.mapped_text(source, range)
+        } else {
+            Text::Source(range)
+        }
+    }
+
+    #[inline(never)]
+    fn mapped_text(&self, source: &str, range: Range<usize>) -> Text<'static> {
+        let mapped = self.mapped_source_range(range.clone());
+        if mapped.len() == range.len() {
+            return Text::Source(mapped);
+        }
+        Text::from(source[range].to_string())
+    }
+
+    fn decoded(
+        &self,
+        source: &str,
+        range: Range<usize>,
+        options: &crate::ParseOptions,
+    ) -> Text<'static> {
+        match decode_string_with_options(source, range, options) {
+            Text::Source(range) => self.text(source, range),
+            value => value,
+        }
+    }
+
+    /// Inline HTML and title continuations omit paragraph prefix whitespace.
+    /// This operates on the active source view before ranges map back to source.
+    fn unpadded_text(source: &str, range: Range<usize>) -> Text<'static> {
+        let bytes = source.as_bytes();
+        let mut builder = crate::value_builder::ValueBuilder::new(source);
+        let mut start = range.start;
+        let mut at = start;
+        while at < range.end {
+            if bytes[at] == 0 {
+                builder.append(Text::Source(start..at));
+                builder.append(Text::Literal("�"));
+                at += 1;
+                start = at;
+            } else if matches!(bytes[at], b'\r' | b'\n') {
+                at += 1 + usize::from(bytes[at] == b'\r' && bytes.get(at + 1) == Some(&b'\n'));
+                let end = at;
+                while at < range.end && matches!(bytes[at], b' ' | b'\t') {
+                    at += 1;
+                }
+                if end != at {
+                    builder.append(Text::Source(start..end));
+                    start = at;
+                }
+            } else {
+                at += 1;
+            }
+        }
+        builder.append(Text::Source(start..range.end));
+        builder.finish()
+    }
+
+    fn html_text(&self, source: &str, range: Range<usize>) -> Text<'static> {
+        match Self::unpadded_text(source, range) {
+            Text::Source(range) => self.text(source, range),
+            value => value,
+        }
+    }
+
+    fn title(
+        &self,
+        source: &str,
+        range: Range<usize>,
+        options: &crate::ParseOptions,
+    ) -> Text<'static> {
+        match Self::unpadded_text(source, range) {
+            Text::Source(range) => self.decoded(source, range, options),
+            value => {
+                let resolved = value.resolve(source).expect("normalized title is owned");
+                match decode_string_with_options(resolved, 0..resolved.len(), options) {
+                    Text::Source(_) => value,
+                    decoded => decoded,
+                }
+            }
+        }
+    }
+
+    fn raw_text(&self, source: &str, mut range: Range<usize>) -> Text<'static> {
+        let bytes = source.as_bytes();
+        let needs_normalization = bytes[range.clone()]
+            .iter()
+            .any(|byte| matches!(byte, 0 | b'\r' | b'\n'))
+            || (self.table && source[range.clone()].contains("\\|"));
+        if !needs_normalization {
+            let value = &source[range.clone()];
+            if value.starts_with(' ')
+                && value.ends_with(' ')
+                && value.bytes().any(|byte| byte != b' ')
+            {
+                range.start += 1;
+                range.end -= 1;
+            }
+            return self.text(source, range);
+        }
+        let mut value = String::with_capacity(range.len());
+        let mut at = range.start;
+        let mut start = at;
+        while at < range.end {
+            let replacement = match bytes[at] {
+                0 => Some("�"),
+                b'\r' | b'\n' => Some(" "),
+                b'\\' if self.table && bytes.get(at + 1) == Some(&b'|') => Some(""),
+                _ => None,
+            };
+            if let Some(replacement) = replacement {
+                value.push_str(&source[start..at]);
+                value.push_str(replacement);
+                if bytes[at] == b'\r' && bytes.get(at + 1) == Some(&b'\n') {
+                    at += 1;
+                }
+                at += 1;
+                start = at;
+            } else {
+                at += 1;
+            }
+        }
+        value.push_str(&source[start..range.end]);
+        if value.starts_with(' ') && value.ends_with(' ') && value.bytes().any(|byte| byte != b' ')
+        {
+            value.pop();
+            value.remove(0);
+        }
+        Text::from(value)
+    }
+
     // Paired mixed-document benchmarks justify inlining this event boundary.
     #[allow(clippy::inline_always)]
     #[inline(always)]
@@ -583,27 +1073,38 @@ impl InlineParser {
         &mut self,
         source: &str,
         definitions: &Definitions,
+        options: &crate::ParseOptions,
     ) -> Option<Event<'static>> {
+        let source = if self.normalized {
+            &self.logical
+        } else {
+            source
+        };
         while self.cursor != 0 {
             let node = self.nodes[self.cursor];
             self.cursor = node.next;
             let kind = match node.kind {
-                Kind::Text if node.start == node.end => continue,
-                Kind::Text => EventKind::Text(Text::Source(node.start..node.end)),
+                Kind::Text | Kind::EscapedText if node.start == node.end => continue,
+                Kind::Text | Kind::EscapedText => {
+                    EventKind::Text(self.text(source, node.start..node.end))
+                }
+                Kind::Footnote(index) => EventKind::FootnoteReference(Text::from(
+                    definitions.footnote_key(index).to_string(),
+                )),
                 Kind::NamedEntity(index) => EventKind::Text(Text::Literal(
                     crate::util::constant::CHARACTER_REFERENCES[index].1,
                 )),
                 Kind::NumericEntity(character) => {
                     EventKind::Text(Text::from(String::from(character)))
                 }
-                Kind::SoftBreak => EventKind::SoftBreak(Text::Source(node.start..node.end)),
+                Kind::SoftBreak => EventKind::SoftBreak(self.text(source, node.start..node.end)),
                 Kind::HardBreak => EventKind::HardBreak,
                 Kind::Task(checked) => EventKind::TaskMarker(checked),
                 Kind::Autolink(prefix) => {
                     let prefix = prefix.as_str();
                     EventKind::Start(Tag::Link {
                         destination: if prefix.is_empty() {
-                            Text::Source(node.start..node.end)
+                            self.text(source, node.start..node.end)
                         } else {
                             Text::from(alloc::format!("{prefix}{}", &source[node.start..node.end]))
                         },
@@ -611,7 +1112,7 @@ impl InlineParser {
                     })
                 }
                 Kind::Html => EventKind::Html {
-                    value: Text::Source(node.start..node.end),
+                    value: self.html_text(source, node.start..node.end),
                     block: false,
                 },
                 Kind::AngleLink(email) => EventKind::Start(Tag::Link {
@@ -621,23 +1122,28 @@ impl InlineParser {
                             &source[node.start + 1..node.end - 1]
                         ))
                     } else {
-                        Text::Source(node.start + 1..node.end - 1)
+                        self.text(source, node.start + 1..node.end - 1)
                     },
                     title: None,
                 }),
-                Kind::Code(count) => {
-                    let mut range = node.start + count..node.end - count;
-                    let value = &source[range.clone()];
-                    if value.starts_with(' ')
-                        && value.ends_with(' ')
-                        && value.bytes().any(|b| b != b' ')
-                    {
-                        range.start += 1;
-                        range.end -= 1;
-                    }
-                    EventKind::Code {
-                        value: Text::Source(range),
-                        language: None,
+                Kind::Code(_) | Kind::Math(_) | Kind::CodeInfo(_) => {
+                    let (count, start, language) = match node.kind {
+                        Kind::CodeInfo(index) => {
+                            let info = &self.code_info[index];
+                            (
+                                info.count,
+                                info.language.end + 1,
+                                Some(self.text(source, info.language.clone())),
+                            )
+                        }
+                        Kind::Code(count) | Kind::Math(count) => (count, node.start, None),
+                        _ => unreachable!("raw inline candidates have raw metadata"),
+                    };
+                    let value = self.raw_text(source, start + count..node.end - count);
+                    if matches!(node.kind, Kind::Math(_)) {
+                        EventKind::Math(value)
+                    } else {
+                        EventKind::Code { value, language }
                     }
                 }
                 Kind::Start(tag, index) => EventKind::Start(match tag {
@@ -646,8 +1152,11 @@ impl InlineParser {
                     TagKind::Delete => Tag::Delete,
                     TagKind::Link | TagKind::Image => {
                         let link = &self.links[index];
-                        let destination = decode_string(source, link.destination.clone());
-                        let title = link.title.clone().map(|range| decode_string(source, range));
+                        let destination = self.decoded(source, link.destination.clone(), options);
+                        let title = link
+                            .title
+                            .clone()
+                            .map(|range| self.title(source, range, options));
                         if tag == TagKind::Link {
                             Tag::Link { destination, title }
                         } else {
@@ -670,7 +1179,7 @@ impl InlineParser {
             };
             return Some(Event {
                 kind,
-                span: node.start..node.end,
+                span: self.source_range(node.start..node.end),
             });
         }
         None
@@ -679,7 +1188,7 @@ impl InlineParser {
 
 fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
     let mut at = start + 1;
-    while at < end && matches!(bytes[at], b' ' | b'\t') {
+    while at < end && matches!(bytes[at], b' ' | b'\t' | b'\r' | b'\n') {
         at += 1;
     }
     let destination;
@@ -687,7 +1196,7 @@ fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
         at += 1;
         let begin = at;
         while at < end && bytes[at] != b'>' {
-            if matches!(bytes[at], 0 | b'<' | b'\r' | b'\n') {
+            if matches!(bytes[at], b'<' | b'\r' | b'\n') {
                 return None;
             }
             if bytes[at] == b'\\' && at + 1 < end && bytes[at + 1].is_ascii_punctuation() {
@@ -716,7 +1225,7 @@ fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
                 }
                 b')' if depth == 0 => break,
                 b')' => depth -= 1,
-                b'\x00'..=b'\x1f' | b'\x7f' => return None,
+                b'\x01'..=b'\x1f' | b'\x7f' => return None,
                 _ => {}
             }
             at += 1;
@@ -727,7 +1236,7 @@ fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
         destination = begin..at;
     }
     let whitespace = at;
-    while at < end && matches!(bytes[at], b' ' | b'\t') {
+    while at < end && matches!(bytes[at], b' ' | b'\t' | b'\r' | b'\n') {
         at += 1;
     }
     let mut title = None;
@@ -736,17 +1245,17 @@ fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
         at += 1;
         let begin = at;
         while at < end && bytes[at] != marker {
-            if matches!(bytes[at], 0 | b'\r' | b'\n') || (marker == b')' && bytes[at] == b'(') {
-                return None;
-            }
             if bytes[at] == b'\\' && at + 1 < end && bytes[at + 1].is_ascii_punctuation() {
                 at += 1;
             }
             at += 1;
         }
+        if at == end {
+            return None;
+        }
         title = (begin < at).then_some(begin..at);
         at += 1;
-        while at < end && matches!(bytes[at], b' ' | b'\t') {
+        while at < end && matches!(bytes[at], b' ' | b'\t' | b'\r' | b'\n') {
             at += 1;
         }
     }
@@ -759,80 +1268,102 @@ fn resource(bytes: &[u8], start: usize, end: usize) -> Option<(usize, Link)> {
 
 /// Keep angle recognition shared across the compact parser's inline configurations.
 #[inline(never)]
-fn angle(bytes: &[u8], start: usize, limit: usize, namespaces: bool) -> Option<(usize, Kind)> {
-    let mut link = crate::util::autolink::Autolink::default();
-    for (offset, &byte) in bytes[start + 1..limit].iter().enumerate() {
-        match link.advance(byte) {
-            None => break,
-            Some(true) => return Some((start + offset + 2, Kind::AngleLink(link.email()))),
-            Some(false) => {}
+fn angle<const CONFIGURED: bool>(
+    bytes: &[u8],
+    start: usize,
+    limit: usize,
+    options: &crate::ParseOptions,
+) -> Option<(usize, Kind)> {
+    if !CONFIGURED || options.constructs.autolink {
+        let mut link = crate::util::autolink::Autolink::default();
+        for (offset, &byte) in bytes[start + 1..limit].iter().enumerate() {
+            match link.advance(byte) {
+                None => break,
+                Some(true) => return Some((start + offset + 2, Kind::AngleLink(link.email()))),
+                Some(false) => {}
+            }
         }
     }
-    let mut html = crate::util::html_text::HtmlText::default();
-    for (offset, &byte) in bytes[start + 1..limit].iter().enumerate() {
-        let byte = if byte == b'\r' { b'\n' } else { byte };
-        match html.advance(byte, namespaces)? {
-            true => return Some((start + offset + 2, Kind::Html)),
-            false if byte == b'\n' => return None,
-            false => {}
+    if !CONFIGURED || options.constructs.html_text {
+        let mut html = crate::util::html_text::HtmlText::default();
+        for (offset, &byte) in bytes[start + 1..limit].iter().enumerate() {
+            let byte = if byte == b'\r' { b'\n' } else { byte };
+            if html.advance(byte, options.html_tag_namespaces)? {
+                return Some((start + offset + 2, Kind::Html));
+            }
         }
     }
-    // Rejected angles can interact with grammar delimiter resolution.
-    // Keep malformed, incomplete, and cross-fragment syntax on that path.
     None
 }
 
-/// Recognize whitespace-delimited ASCII addresses without path or delimiter ambiguity.
-/// More general literal autolinks (Unicode, balanced paths, escaped punctuation, and label nesting) use the grammar parser.
-fn simple_autolink(
+fn task_marker(bytes: &[u8], start: usize, end: usize) -> Option<(usize, bool)> {
+    let value = *bytes.get(start + 1)?;
+    if !matches!(value, b' ' | b'\t' | b'\r' | b'\n' | b'x' | b'X') {
+        return None;
+    }
+    let close = start + 2 + usize::from(value == b'\r' && bytes.get(start + 2) == Some(&b'\n'));
+    if bytes.get(close) != Some(&b']') || close + 1 >= end {
+        return None;
+    }
+    let after = bytes[close + 1];
+    if !matches!(after, b' ' | b'\t' | b'\r' | b'\n') {
+        return None;
+    }
+    Some((close + 1, matches!(value, b'x' | b'X')))
+}
+
+/// Labels count authored data, but not line endings or continuation padding.
+fn label(
     bytes: &[u8],
-    inline_start: usize,
-    text_start: usize,
-    at: usize,
-    limit: usize,
-) -> Option<(usize, usize, AutolinkPrefix)> {
-    let mut start = at;
-    while start > text_start && bytes[start - 1].is_ascii_alphanumeric() {
-        start -= 1;
-    }
-    if start != inline_start && !matches!(bytes.get(start.wrapping_sub(1)), Some(b' ' | b'\t')) {
-        return None;
-    }
-    let (domain, prefix) = match bytes[at] {
-        b':' if (bytes[start..at].eq_ignore_ascii_case(b"http")
-            || bytes[start..at].eq_ignore_ascii_case(b"https"))
-            && bytes.get(at + 1..at + 3) == Some(b"//") =>
-        {
-            (at + 3, AutolinkPrefix::None)
+    start: usize,
+    end: usize,
+    mut column_at: impl FnMut(usize) -> usize,
+) -> Option<(usize, Range<usize>)> {
+    let begin = start + 1;
+    let mut at = begin;
+    let mut size = 0;
+    let mut content = false;
+    let mut column = None;
+    while at < end && size <= crate::util::constant::LINK_REFERENCE_SIZE_MAX {
+        match bytes[at] {
+            b']' => return content.then_some((at + 1, begin..at)),
+            b'[' => return None,
+            b'\r' | b'\n' => {
+                at += 1 + usize::from(bytes[at] == b'\r' && bytes.get(at + 1) == Some(&b'\n'));
+                while at < end && matches!(bytes[at], b' ' | b'\t') {
+                    at += 1;
+                }
+                // Block regions never contain blank lines.
+                if at == end {
+                    return None;
+                }
+                column = None;
+                continue;
+            }
+            b'\\' if at + 1 < end && matches!(bytes[at + 1], b'[' | b'\\' | b']') => {
+                size += 1;
+                if let Some(column) = &mut column {
+                    *column += 1;
+                }
+                at += 1;
+                content = true;
+            }
+            b'\t' => {
+                // Most labels have no tabs: only calculate the physical column
+                // when expanded whitespace can affect the 999-character bound.
+                let column = column.get_or_insert_with(|| column_at(at));
+                let width = 4 - (*column - 1) % 4;
+                size += width - 1;
+                *column += width - 1;
+            }
+            b' ' => {}
+            _ => content = true,
         }
-        b'@' if start < at => (at + 1, AutolinkPrefix::Mailto),
-        b'.' if bytes[start..at].eq_ignore_ascii_case(b"www") => (start, AutolinkPrefix::Http),
-        _ => return None,
-    };
-    let mut end = domain;
-    while end < limit && (bytes[end].is_ascii_alphanumeric() || matches!(bytes[end], b'-' | b'.')) {
-        end += 1;
+        size += 1;
+        if let Some(column) = &mut column {
+            *column += 1;
+        }
+        at += 1;
     }
-    if end < limit && !matches!(bytes[end], b' ' | b'\t' | b'\r' | b'\n') {
-        return None;
-    }
-    while end > domain && bytes[end - 1] == b'.' {
-        end -= 1;
-    }
-    // Requiring nonempty alphanumeric labels deliberately leaves unusual but valid literal-autolink domains to the grammar.
-    if end == domain
-        || bytes[domain..end].split(|byte| *byte == b'.').any(|label| {
-            label.is_empty()
-                || !label[0].is_ascii_alphanumeric()
-                || !label[label.len() - 1].is_ascii_alphanumeric()
-        })
-    {
-        return None;
-    }
-    if bytes[at] == b'@'
-        && (!bytes[domain..end].contains(&b'.') || !bytes[end - 1].is_ascii_alphabetic())
-    {
-        return None;
-    }
-    Some((start, end, prefix))
+    None
 }

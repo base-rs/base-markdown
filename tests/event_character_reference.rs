@@ -36,13 +36,13 @@ fn references_keep_their_meaning_across_regions_and_rendering_paths() {
         ),
     ] {
         for mut options in [Options::default(), Options::gfm()] {
-            // Also exercise the grammar inline producer, with the same semantic values.
-            for grammar in [false, true] {
-                options.parse.inline_code_info = grammar;
+            // Unrelated code metadata options preserve the same semantic values.
+            for configured in [false, true] {
+                options.parse.inline_code_info = configured;
                 assert_eq!(
                     core_markdown::to_html_with_options(source, &options).unwrap(),
                     expected,
-                    "source={source:?}, grammar={grammar}"
+                    "source={source:?}, configured={configured}"
                 );
                 let mut checked = String::new();
                 render_events(

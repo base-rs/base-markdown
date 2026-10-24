@@ -2,7 +2,7 @@
 // Copyright, 2022-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-//! The raw inline HTML recognizer shared by compact and grammar producers.
+//! Byte recognition for raw inline HTML and complete HTML block tags.
 //! Input starts immediately after `<`. Grammar callers supply normalized bytes;
 //! compact callers stop at physical line boundaries and retain source ranges.
 

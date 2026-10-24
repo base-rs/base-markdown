@@ -24,10 +24,9 @@ fn reference_paragraphs_resolve_emphasis_like_other_compact_inlines() {
 fn compact_references_preserve_resolution_and_event_roundtrips() {
     use core_markdown::{render_events, Document, EventParser};
     let options = Options::default();
-    let grammar = Options {
+    let configured = Options {
         parse: ParseOptions {
-            // These fixtures contain no language prefixes. This keeps the established
-            // grammar inline resolver available as an independent comparison path.
+            // Enabling code metadata must not change references without language prefixes.
             inline_code_info: true,
             ..ParseOptions::default()
         },
@@ -64,7 +63,7 @@ fn compact_references_preserve_resolution_and_event_roundtrips() {
         }
     }
     for source in sources {
-        let expected = to_html_with_options(&source, &grammar).unwrap();
+        let expected = to_html_with_options(&source, &configured).unwrap();
         assert_eq!(to_html(&source), expected, "{source:?}");
         let mut checked = String::new();
         render_events(

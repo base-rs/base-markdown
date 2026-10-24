@@ -15,6 +15,10 @@ use support::fixture::{Definition, Node, Root};
 #[test]
 fn definitions_use_the_same_compact_container_rules_as_other_blocks() {
     assert_eq!(
+        to_html("[a]:\n    ```\n\n[a]"),
+        "<p><a href=\"%60%60%60\">a</a></p>"
+    );
+    assert_eq!(
         to_html("[a]: /a\n- item\n\n\n[a]"),
         "<ul>\n<li>item</li>\n</ul>\n<p><a href=\"/a\">a</a></p>"
     );
@@ -25,13 +29,13 @@ fn definitions_use_the_same_compact_container_rules_as_other_blocks() {
 }
 
 #[test]
-fn compact_definitions_preserve_values_and_inline_fallback() {
+fn definitions_preserve_values_across_parser_options() {
     use core_markdown::{render_events, stream::EventKind, Document, EventParser};
 
     let options = Options::default();
-    let grammar = Options {
+    let configured = Options {
         parse: ParseOptions {
-            // These inputs contain no retained HTML blocks. This forces independent grammar block preparation without changing their interpretation.
+            // Retaining HTML blank lines must not change inputs without HTML blocks.
             html_block_blank_lines: true,
             ..ParseOptions::default()
         },
@@ -94,7 +98,7 @@ fn compact_definitions_preserve_values_and_inline_fallback() {
     many.push_str("[REF0]: /ignored\n");
     sources.push(many);
     for source in sources {
-        let expected = to_html_with_options(&source, &grammar).unwrap();
+        let expected = to_html_with_options(&source, &configured).unwrap();
         assert_eq!(to_html(&source), expected, "{source:?}");
         let definitions = |parse: &ParseOptions| {
             EventParser::new(&source, parse)
@@ -121,7 +125,7 @@ fn compact_definitions_preserve_values_and_inline_fallback() {
         };
         assert_eq!(
             definitions(&options.parse),
-            definitions(&grammar.parse),
+            definitions(&configured.parse),
             "definitions: {source:?}"
         );
         let mut checked = String::new();
@@ -660,15 +664,15 @@ fn definition() -> Result<(), message::Message> {
 }
 
 #[test]
-fn grammar_regions_share_prepared_references_without_changing_precedence() {
+fn inline_regions_share_prepared_references_across_options() {
     use core_markdown::{render_events, Document, EventParser};
     let source = "[MiXeD]: /first\n[mixed]: /ignored\n[STRASSE]: /unicode\n\nbefore <i\n title=\"x\"> [a][mixed] and [b][straße] ![alt][MIXED] [missing]\n\nnext [MiXeD]\n";
     let expected = "<p>before <i\ntitle=\"x\"> <a href=\"/first\">a</a> and <a href=\"/unicode\">b</a> <img src=\"/first\" alt=\"alt\" /> [missing]</p>\n<p>next <a href=\"/first\">MiXeD</a></p>\n";
-    for full_grammar in [false, true] {
+    for extended_options in [false, true] {
         let mut options = Options::default();
         options.compile.allow_dangerous_html = true;
-        options.parse.html_tag_namespaces = full_grammar;
-        options.parse.inline_code_info = full_grammar;
+        options.parse.html_tag_namespaces = extended_options;
+        options.parse.inline_code_info = extended_options;
         assert_eq!(to_html_with_options(source, &options).unwrap(), expected);
         let mut checked = String::new();
         render_events(

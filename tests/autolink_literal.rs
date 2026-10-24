@@ -2848,8 +2848,8 @@ fn compact_literal_links_preserve_destinations_and_boundaries() {
         Document, EventParser, Options,
     };
     let options = Options::gfm();
-    let mut grammar = Options::gfm();
-    grammar.parse.constructs.math_flow = true;
+    let mut configured = Options::gfm();
+    configured.parse.constructs.math_flow = true;
     for address in [
         "https://example.com",
         "HTTP://localhost",
@@ -2899,7 +2899,7 @@ fn compact_literal_links_preserve_destinations_and_boundaries() {
             let direct = core_markdown::to_html_with_options(&source, &options).unwrap();
             assert_eq!(
                 direct,
-                core_markdown::to_html_with_options(&source, &grammar).unwrap(),
+                core_markdown::to_html_with_options(&source, &configured).unwrap(),
                 "{source:?}"
             );
             let links = |parse: &core_markdown::ParseOptions| {
@@ -2914,7 +2914,11 @@ fn compact_literal_links_preserve_destinations_and_boundaries() {
                     })
                     .collect::<Vec<_>>()
             };
-            assert_eq!(links(&options.parse), links(&grammar.parse), "{source:?}");
+            assert_eq!(
+                links(&options.parse),
+                links(&configured.parse),
+                "{source:?}"
+            );
             let mut checked = String::new();
             render_events(
                 &source,

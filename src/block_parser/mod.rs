@@ -5,12 +5,12 @@
 
 //! Compact block preparation with source fragments and deferred inline scanning.
 mod definition;
+mod frontmatter;
 mod html;
 mod scanners;
 mod table;
 use crate::definitions::Definitions;
 use crate::stream::Text;
-use crate::value_builder::decode_string;
 use crate::ParseOptions;
 use crate::{AlignKind, CodeFence};
 use alloc::vec;
@@ -28,6 +28,8 @@ pub(super) enum Body {
     Paragraph,
     Heading(u8),
     Quote,
+    Footnote(usize),
+    Opaque,
     List {
         tight: bool,
         marker: u8,
@@ -78,6 +80,7 @@ pub(super) struct Code {
     pub info: Range<usize>,
     pub fence: Option<CodeFence>,
     pub unclosed: bool,
+    pub math: bool,
 }
 
 pub(super) struct Blocks {
@@ -93,9 +96,9 @@ struct Builder<'a> {
     current: usize,
     blank: bool,
     empty_item: Option<usize>,
-    unsupported: bool,
     definitions: Definitions,
     alignments: Vec<AlignKind>,
+    definition_context: bool,
 }
 
 impl Blocks {
@@ -112,14 +115,7 @@ impl Blocks {
                 Body::List { tight: true, .. }
             )
     }
-    pub fn parse(source: &str, options: &ParseOptions) -> Option<(Self, Definitions)> {
-        // The compatibility producer handles extension grammars and individually disabled CommonMark constructs during migration.
-        if !crate::inline_parser::supported_options(options)
-            || options.html_block_blank_lines
-            || options.html_tag_namespaces
-        {
-            return None;
-        }
+    pub fn parse(source: &str, options: &ParseOptions) -> (Self, Definitions) {
         let mut builder = Builder {
             source,
             options,
@@ -131,9 +127,9 @@ impl Blocks {
             current: 0,
             blank: false,
             empty_item: None,
-            unsupported: false,
             definitions: Definitions::default(),
             alignments: Vec::new(),
+            definition_context: false,
         };
         builder.blocks.nodes.push(Node {
             start: 0,
@@ -144,17 +140,20 @@ impl Blocks {
             body: Body::Root,
         });
         let mut index = usize::from(source.starts_with('\u{feff}')) * 3;
-        while index < source.len() && !builder.unsupported {
-            index = builder.block(index);
+        if options.constructs.frontmatter {
+            if let Some((end, next)) = frontmatter::scan(source.as_bytes(), index) {
+                builder.append(index, end, Body::Opaque);
+                index = next;
+            }
         }
-        if builder.unsupported {
-            return None;
+        while index < source.len() {
+            index = builder.block(index);
         }
         while builder.open.len() > 1 {
             builder.pop(index);
         }
         builder.definitions.finish();
-        Some((builder.blocks, builder.definitions))
+        (builder.blocks, builder.definitions)
     }
 }
 
@@ -197,20 +196,28 @@ impl Builder<'_> {
         // The document root is always open and never consumes a line prefix.
         let mut count = 1;
         for &index in &self.open[1..] {
-            let save = line.clone();
-            match self.blocks.nodes[index].body {
+            let indent = match self.blocks.nodes[index].body {
                 Body::Quote => {
+                    let save = line.clone();
                     line.scan_space(3);
                     if !line.scan_blockquote_marker() {
                         *line = save;
                         break;
                     }
+                    count += 1;
+                    continue;
                 }
-                Body::Item(indent) if !line.scan_space(indent) && !line.is_at_eol() => {
-                    *line = save;
-                    break;
+                Body::Footnote(_) => 4,
+                Body::Item(indent) => indent,
+                _ => {
+                    count += 1;
+                    continue;
                 }
-                _ => {}
+            };
+            let save = line.clone();
+            if !line.scan_space(indent) && !line.is_at_eol() {
+                *line = save;
+                break;
             }
             count += 1;
         }
@@ -284,20 +291,64 @@ impl Builder<'_> {
     fn block(&mut self, start: usize) -> usize {
         let bytes = self.source.as_bytes();
         let mut line = LineStart::new(&bytes[start..]);
-        let continued = self.containers(&mut line);
-        let continuation_end = start + line.bytes_scanned();
+        let content_context = self.definition_context;
+        let mut continued = self.containers(&mut line);
+        if content_context && continued < self.open.len() {
+            let mut probe = line.clone();
+            probe.scan_all_space();
+            if !probe.is_at_eol()
+                && !self.interrupts(&bytes[start + probe.bytes_scanned()..], false)
+            {
+                continued = self.open.len();
+            }
+        }
+        self.definition_context = false;
         while self.open.len() > continued {
             self.pop(start);
         }
         let (definition_start, indent) = loop {
             let definition_start =
                 start + line.bytes_scanned() - usize::from(line.remaining_space() > 0);
-            let indent = line.scan_space_upto(4);
-            if indent == 4 {
+            let mut indent = line.scan_space_upto(4);
+            if !self.options.constructs.code_indented {
+                indent += line.scan_space_upto(usize::MAX);
+            }
+            if indent == 4 && self.options.constructs.code_indented {
+                if content_context {
+                    line.scan_all_space();
+                }
                 break (definition_start, indent);
             }
             let at = start + line.bytes_scanned();
-            if let Some((marker, number, width)) = line.scan_list_marker_with_indent(indent) {
+            if bytes.get(at) == Some(&b'[') && self.options.constructs.footnote_definition {
+                if let Some((label, end)) = footnote_prefix(bytes, at) {
+                    self.finish_list(start);
+                    line.advance(end - at);
+                    line.scan_all_space();
+                    let content = start + line.bytes_scanned();
+                    let index = self
+                        .definitions
+                        .push_footnote(self.source, &Text::Source(label));
+                    self.append(at, content, Body::Footnote(index));
+                    self.push();
+                    if let Some(length) = scan_blank_line(&bytes[content..]) {
+                        return content + length;
+                    }
+                    continue;
+                }
+            }
+            let marker = self
+                .options
+                .constructs
+                .list_item
+                .then(|| {
+                    line.scan_list_marker_with_indent(
+                        indent,
+                        self.options.constructs.thematic_break,
+                    )
+                })
+                .flatten();
+            if let Some((marker, number, width)) = marker {
                 let content = start + line.bytes_scanned();
                 self.list(at - indent, marker, number, start);
                 self.append(at - indent, content, Body::Item(width));
@@ -306,7 +357,7 @@ impl Builder<'_> {
                     self.empty_item = Some(content + length);
                     return content + length;
                 }
-            } else if line.scan_blockquote_marker() {
+            } else if self.options.constructs.block_quote && line.scan_blockquote_marker() {
                 self.finish_list(start);
                 self.append(at, at, Body::Quote);
                 self.push();
@@ -328,124 +379,142 @@ impl Builder<'_> {
             }
             return at + length;
         }
-        if indent == 4 {
+        if indent == 4 && self.options.constructs.code_indented && !content_context {
             self.finish_list(start);
             return self.indented(at, line.remaining_space());
         }
-        if bytes[at] == b'[' && possible_definition(&bytes[at..]) {
-            if self.options.constructs.table && self.table_head(definition_start).is_some() {
-                // Table heads can take precedence over definitions in the grammar.
-                self.unsupported = true;
-                return bytes.len();
-            }
-            if self.options.constructs.footnote_definition && bytes[at..].starts_with(b"[^") {
-                self.unsupported = true;
-                return bytes.len();
-            }
-            // A continuation tab can be shared by several containers. Retain the grammar's virtual-space provenance instead of inferring it from the remaining indentation alone.
-            if bytes[start..continuation_end].contains(&b'\t') {
-                self.unsupported = true;
-                return bytes.len();
-            }
-            let next = at + scan_nextline(&bytes[at..]);
-            let Some(metadata) = definition::scan(bytes, at, next) else {
-                self.unsupported = true;
-                return bytes.len();
-            };
-            // A following title or arbitrary content indentation can belong to this same grammar content block.
-            let mut continuation = LineStart::new(&bytes[next..]);
-            let continued = self.containers(&mut continuation) == self.open.len();
-            let indentation = continuation.scan_space_upto(4);
-            let following = next + continuation.bytes_scanned();
-            let nonblank = scan_blank_line(&bytes[following..]).is_none();
-            if (indentation == 4 && nonblank)
-                || scan_setext_heading(&bytes[following..]).is_some()
-                || metadata.title.is_none()
-                    && matches!(bytes.get(following), Some(b'"' | b'\'' | b'('))
-                // Definition content can continue lazily inside a container even before its first paragraph. Setext underlines also retain that content-block context.
-                || !continued && nonblank && !self.interrupts(&bytes[following..], false)
-            {
-                self.unsupported = true;
-                return bytes.len();
-            }
-            self.finish_list(start);
-            let index = self.definitions.push(
-                self.source,
-                Text::Source(metadata.label),
-                decode_string(self.source, metadata.destination),
-                metadata
-                    .title
-                    .map(|range| decode_string(self.source, range)),
-            );
-            self.append(definition_start, next, Body::Definition(index));
-            return next;
+        if content_context
+            && self.options.constructs.heading_setext
+            && scan_setext_heading(&bytes[at..]).is_some()
+        {
+            return self.paragraph(at, start);
         }
-        if bytes[at] == b'<' {
-            if let Some(html) = html::Html::start(&bytes[at..]) {
-                // Shared container tabs need the grammar's virtual-space provenance.
-                if !bytes[start..at].contains(&b'\t') {
+        if bytes[at] == b'['
+            && self.options.constructs.definition
+            && possible_definition(&bytes[at..])
+        {
+            if self.options.constructs.table {
+                if let Some(end) = self.table_head(definition_start) {
                     self.finish_list(start);
-                    return self.html(definition_start, html);
+                    return self.table(definition_start, end);
                 }
             }
-            self.unsupported = true;
-            return bytes.len();
+            let metadata =
+                definition::scan(self.source, self.definition_fragments(at), self.options);
+            if let Some(metadata) = metadata {
+                self.finish_list(start);
+                let index = self.definitions.push(
+                    self.source,
+                    metadata.label,
+                    metadata.destination,
+                    metadata.title,
+                );
+                self.append(definition_start, metadata.end, Body::Definition(index));
+                self.definition_context = true;
+                return metadata.end;
+            }
+        }
+        if indent == 4 && self.options.constructs.code_indented && content_context {
+            return self.paragraph(at, start);
+        }
+        if bytes[at] == b'<' && self.options.constructs.html_flow {
+            if let Some(html) =
+                html::Html::start(&bytes[at..], self.options.html_tag_namespaces, true)
+            {
+                self.finish_list(start);
+                let html_start = if bytes.get(definition_start) == Some(&b'\t') {
+                    at
+                } else {
+                    definition_start
+                };
+                return self.html(html_start, html);
+            }
         }
         match bytes[at] {
-            b'*' | b'_' | b'-' => {
+            b'*' | b'_' | b'-' if self.options.constructs.thematic_break => {
                 if let Ok(length) = scan_hrule(&bytes[at..]) {
                     self.finish_list(start);
                     self.append(at, at + length, Body::Rule);
                     return at + length;
                 }
             }
-            b'#' => {
+            b'#' if self.options.constructs.heading_atx => {
                 if let Some(level) = scan_atx_heading(&bytes[at..]) {
                     self.finish_list(start);
                     return self.heading(at, level);
                 }
             }
-            b'`' | b'~' => {
+            b'`' | b'~' if self.options.constructs.code_fenced => {
                 if let Some((length, marker)) = scan_code_fence(&bytes[at..]) {
                     self.finish_list(start);
                     return self.fenced(at, indent, marker, length);
+                }
+            }
+            b'$' if self.options.constructs.math_flow => {
+                if let Some(length) = math_fence(&bytes[at..]) {
+                    self.finish_list(start);
+                    return self.fenced(at, indent, b'$', length);
                 }
             }
             _ => {}
         }
         if self.options.constructs.table {
             if let Some(delimiter_end) = self.table_head(definition_start) {
-                if bytes[start..at].contains(&b'\t') {
-                    self.unsupported = true;
-                    return bytes.len();
-                }
                 self.finish_list(start);
                 return self.table(definition_start, delimiter_end);
             }
         }
         self.paragraph(at, start)
     }
-    fn interrupts(&mut self, bytes: &[u8], current_container: bool) -> bool {
-        // Dispatch on the opening byte instead of trying every block scanner on ordinary continuation text.
+    fn definition_fragments(
+        &self,
+        start: usize,
+    ) -> impl Iterator<Item = Range<usize>> + Clone + '_ {
+        let bytes = self.source.as_bytes();
+        let mut at = Some(start);
+        core::iter::from_fn(move || {
+            let current = at.take()?;
+            let end = current + scan_nextline(&bytes[current..]);
+            if end < bytes.len() {
+                let mut line = LineStart::new(&bytes[end..]);
+                self.containers(&mut line);
+                let candidate = end + line.bytes_scanned();
+                let indented = line.scan_space(4) && self.options.constructs.code_indented;
+                line.scan_all_space();
+                let content = end + line.bytes_scanned();
+                let interrupted = !indented
+                    && ((self.options.constructs.heading_setext
+                        && scan_setext_heading(&bytes[content..]).is_some())
+                        || self.interrupts(&bytes[content..], false)
+                        || (self.options.constructs.table
+                            && self.table_delimiter(candidate).is_some()));
+                if !(line.is_at_eol() || interrupted) {
+                    at = Some(candidate);
+                }
+            }
+            Some(current..end)
+        })
+    }
+
+    fn interrupts(&self, bytes: &[u8], current_container: bool) -> bool {
+        let constructs = &self.options.constructs;
         match bytes.first().copied() {
-            None | Some(b'\r' | b'\n' | b'>') => true,
+            None | Some(b'\r' | b'\n') => true,
+            Some(b'>') => constructs.block_quote,
             Some(b'<') => {
-                // HTML can interrupt paragraphs even after lazy container continuations.
-                self.unsupported |= html::Html::start(bytes).is_none();
+                constructs.html_flow
+                    && html::Html::start(bytes, self.options.html_tag_namespaces, false).is_some()
+            }
+            Some(b'[') => constructs.footnote_definition && footnote_prefix(bytes, 0).is_some(),
+            Some(b'#') => constructs.heading_atx && scan_atx_heading(bytes).is_some(),
+            Some(b'`' | b'~') => constructs.code_fenced && scan_code_fence(bytes).is_some(),
+            Some(b'$') => constructs.math_flow && math_fence(bytes).is_some(),
+            Some(b'*' | b'_' | b'-') if constructs.thematic_break && scan_hrule(bytes).is_ok() => {
                 true
             }
-            Some(b'[') => {
-                let footnote =
-                    self.options.constructs.footnote_definition && bytes.starts_with(b"[^");
-                self.unsupported |= footnote;
-                footnote
-            }
-            Some(b'#') => scan_atx_heading(bytes).is_some(),
-            Some(b'`' | b'~') => scan_code_fence(bytes).is_some(),
-            Some(b'*' | b'_' | b'-') if scan_hrule(bytes).is_ok() => true,
-            Some(b'*' | b'-' | b'+' | b'0'..=b'9') => {
+            Some(b'*' | b'-' | b'+' | b'0'..=b'9') if constructs.list_item => {
                 let mut line = LineStart::new(bytes);
-                line.scan_list_marker_with_indent(0)
+                line.scan_list_marker_with_indent(0, constructs.thematic_break)
                     .is_some_and(|(marker, number, _)| {
                         !current_container
                             || ((matches!(marker, b'*' | b'-' | b'+') || number == 1)
@@ -467,19 +536,19 @@ impl Builder<'_> {
             let mut line = LineStart::new(&bytes[next..]);
             let continued = self.containers(&mut line) == self.open.len();
             let content_start = next + line.bytes_scanned();
-            if !line.scan_space(4) {
+            let indented = line.scan_space(4);
+            if !self.options.constructs.code_indented {
+                line.scan_all_space();
+            }
+            if !indented || !self.options.constructs.code_indented {
                 let content = next + line.bytes_scanned();
-                if self.options.constructs.table && self.table_head(content_start).is_some() {
-                    // A lazy header can become a table when its delimiter resumes the
-                    // container prefix. Preserve the grammar's context-sensitive boundary.
-                    if !continued || bytes[next..content_start].contains(&b'\t') {
-                        self.unsupported = true;
-                    }
+                if self.options.constructs.table && self.table_delimiter(content_start).is_some() {
+                    self.definition_context = true;
                     self.trim_fragment();
                     self.pop(next);
                     return next;
                 }
-                if continued {
+                if continued && self.options.constructs.heading_setext {
                     if let Some((length, level)) = scan_setext_heading(&bytes[content..]) {
                         self.trim_fragment();
                         self.blocks.nodes[paragraph].body = Body::Heading(level);
@@ -487,7 +556,16 @@ impl Builder<'_> {
                         return content + length;
                     }
                 }
-                if self.interrupts(&bytes[content..], continued) {
+                if self.interrupts(&bytes[content..], continued)
+                    || !continued
+                        && self.options.constructs.html_flow
+                        && html::Html::start(
+                            &bytes[content..],
+                            self.options.html_tag_namespaces,
+                            true,
+                        )
+                        .is_some()
+                {
                     self.trim_fragment();
                     self.pop(next);
                     return next;
@@ -514,17 +592,22 @@ impl Builder<'_> {
         }
     }
     /// Recognize the delimiter row before allocating any table nodes.
-    fn table_head(&mut self, start: usize) -> Option<usize> {
+    fn table_delimiter(&self, start: usize) -> Option<(usize, Range<usize>)> {
         let bytes = self.source.as_bytes();
         let next = start + scan_nextline(&bytes[start..]);
         let mut line = LineStart::new(&bytes[next..]);
-        if self.containers(&mut line) != self.open.len() || line.scan_space(4) {
+        if self.containers(&mut line) != self.open.len()
+            || (self.options.constructs.code_indented && line.scan_space(4))
+        {
             return None;
+        }
+        if !self.options.constructs.code_indented {
+            line.scan_all_space();
         }
         let at = next + line.bytes_scanned();
         if !matches!(bytes.get(at), Some(b'|' | b'-' | b':'))
             || LineStart::new(&bytes[at..])
-                .scan_list_marker_with_indent(0)
+                .scan_list_marker_with_indent(0, self.options.constructs.thematic_break)
                 .is_some()
         {
             return None;
@@ -535,23 +618,27 @@ impl Builder<'_> {
         if !delimiter.contains(&b'|') && !delimiter.contains(&b':') {
             return None;
         }
-        self.alignments.clear();
+        let mut columns = 0;
         for (_, content) in table::Cells::new(bytes, at..delimiter_end) {
-            self.alignments.push(table::alignment(&bytes[content])?);
+            table::alignment(&bytes[content])?;
+            columns += 1;
         }
         let header_end = table::line_end(bytes, next);
-        // Escaped pipes and virtual container spaces retain grammar provenance.
-        if table::grammar_dispatch(bytes[start])
-            || bytes[start..header_end].contains(&b'\\')
-            || bytes[next..at].contains(&b'\t')
+        if &bytes[table::trim(bytes, start..header_end)] == b"|"
+            || table::Cells::new(bytes, start..header_end).count() != columns
         {
-            self.unsupported = true;
             return None;
         }
-        if &bytes[table::trim(bytes, start..header_end)] == b"|"
-            || table::Cells::new(bytes, start..header_end).count() != self.alignments.len()
-        {
-            return None;
+        Some((end, at..delimiter_end))
+    }
+    fn table_head(&mut self, start: usize) -> Option<usize> {
+        let (end, delimiter) = self.table_delimiter(start)?;
+        self.alignments.clear();
+        for (_, content) in table::Cells::new(self.source.as_bytes(), delimiter) {
+            self.alignments.push(
+                table::alignment(&self.source.as_bytes()[content])
+                    .expect("delimiter alignment was validated"),
+            );
         }
         Some(end)
     }
@@ -594,22 +681,21 @@ impl Builder<'_> {
                 break;
             }
             let row = at + line.bytes_scanned();
-            if bytes[at..row].contains(&b'\t') {
-                self.unsupported = true;
-                return bytes.len();
-            }
-            if line.scan_space(4) {
+            if self.options.constructs.code_indented && line.scan_space(4) {
                 break;
             }
+            if !self.options.constructs.code_indented {
+                line.scan_all_space();
+            }
             let content = at + line.bytes_scanned();
-            if self.interrupts(&bytes[content..], false) {
+            if self.interrupts(&bytes[content..], false)
+                || self.options.constructs.html_flow
+                    && html::Html::start(&bytes[content..], self.options.html_tag_namespaces, true)
+                        .is_some()
+            {
                 break;
             }
             let next = content + scan_nextline(&bytes[content..]);
-            if table::grammar_dispatch(bytes[row]) || bytes[row..next].contains(&b'\\') {
-                self.unsupported = true;
-                return bytes.len();
-            }
             if !body {
                 self.append(row, row, Body::TableBody);
                 self.push();
@@ -628,53 +714,84 @@ impl Builder<'_> {
         self.append(start, start, Body::Html(start));
         self.push();
         let bytes = self.source.as_bytes();
+        let retain_blanks = kind.blank_terminated() && self.options.html_block_blank_lines;
+        let mut minimum_indent = 0;
         let mut at = start;
+        let mut spaces = 0;
         loop {
             let next = at + scan_nextline(&bytes[at..]);
-            if bytes[at..next].contains(&0) {
-                self.unsupported = true;
-                return bytes.len();
+            if retain_blanks {
+                let mut indent = LineStart::new(&bytes[at..]);
+                let width = indent.scan_space_upto(usize::MAX) + spaces;
+                if !indent.is_at_eol()
+                    && width > 0
+                    && (minimum_indent == 0 || width < minimum_indent)
+                {
+                    minimum_indent = width;
+                }
             }
-            self.fragment(at, next, 0);
+            self.fragment(at, next, spaces);
+            let closed = kind.closed(&bytes[at..next]);
             let mut line = LineStart::new(&bytes[next..]);
             let continued = self.containers(&mut line) == self.open.len();
             let content = next + line.bytes_scanned();
-            let closed = kind.closed(&bytes[at..next]);
-            if !closed
-                && !kind.blank_terminated()
-                && ((!continued && next < bytes.len()) || (at == start && next == bytes.len()))
-            {
-                // Unclosed HTML has context-sensitive terminal line ownership when
-                // interrupted by containers, or when its opening line ends at EOF.
-                self.unsupported = true;
-                return bytes.len();
+            if closed || next == bytes.len() || !continued {
+                return self.finish_html(
+                    next,
+                    retain_blanks || next == bytes.len() && !closed && !kind.blank_terminated(),
+                );
             }
-            if closed
-                || next == bytes.len()
-                || !continued
-                || kind.blank_terminated() && scan_blank_line(&bytes[content..]).is_some()
-            {
-                let last = &mut self.blocks.nodes[self.current];
-                let retain_ending = next == bytes.len() && !closed && !kind.blank_terminated();
-                if !retain_ending {
-                    if bytes.get(last.end - 1) == Some(&b'\n') {
-                        last.end -= 1;
-                    }
-                    if bytes.get(last.end - 1) == Some(&b'\r') {
-                        last.end -= 1;
-                    }
+            if kind.blank_terminated() && scan_blank_line(&bytes[content..]).is_some() {
+                if !retain_blanks {
+                    return self.finish_html(next, false);
                 }
-                let end = last.end;
-                self.pop(next);
-                self.blocks.nodes[self.current].body = Body::Html(end);
-                return next;
+                let mut blank = next;
+                let mut prefix = line;
+                loop {
+                    let begin = blank + prefix.bytes_scanned();
+                    let end = begin + scan_nextline(&bytes[begin..]);
+                    self.fragment(begin, end, prefix.remaining_space());
+                    if end == bytes.len() {
+                        return self.finish_html(end, true);
+                    }
+                    prefix = LineStart::new(&bytes[end..]);
+                    if self.containers(&mut prefix) != self.open.len() {
+                        return self.finish_html(end, true);
+                    }
+                    let begin = end + prefix.bytes_scanned();
+                    let mut indentation = prefix.clone();
+                    let width = indentation.scan_space_upto(usize::MAX);
+                    if !indentation.is_at_eol() {
+                        if width == 0 || (minimum_indent > 0 && width < minimum_indent) {
+                            return self.finish_html(end, true);
+                        }
+                        at = begin;
+                        spaces = 0;
+                        break;
+                    }
+                    blank = end;
+                }
+            } else {
+                at = content;
+                spaces = 0;
             }
-            if bytes[next..content].contains(&b'\t') {
-                self.unsupported = true;
-                return bytes.len();
-            }
-            at = content;
         }
+    }
+    fn finish_html(&mut self, next: usize, retain_ending: bool) -> usize {
+        let last = &mut self.blocks.nodes[self.current];
+        let bytes = self.source.as_bytes();
+        if !retain_ending {
+            if bytes.get(last.end.wrapping_sub(1)) == Some(&b'\n') {
+                last.end -= 1;
+            }
+            if bytes.get(last.end.wrapping_sub(1)) == Some(&b'\r') {
+                last.end -= 1;
+            }
+        }
+        let end = last.end;
+        self.pop(next);
+        self.blocks.nodes[self.current].body = Body::Html(end);
+        next
     }
     fn heading(&mut self, start: usize, level: u8) -> usize {
         let bytes = self.source.as_bytes();
@@ -713,13 +830,18 @@ impl Builder<'_> {
                 .unwrap_or(at - info);
         let code = self.blocks.codes.len();
         self.blocks.codes.push(Code {
-            info: info..info_end,
+            info: if marker == b'$' {
+                info..info
+            } else {
+                info..info_end
+            },
             fence: Some(CodeFence {
                 character: char::from(marker),
                 length,
                 indent,
             }),
             unclosed: true,
+            math: marker == b'$',
         });
         self.append(start, start, Body::Code(code));
         self.push();
@@ -735,7 +857,13 @@ impl Builder<'_> {
             }
             line.scan_space(indent);
             let mut closer = line.clone();
-            if !closer.scan_space(4 - indent) {
+            let closing_allowed = if self.options.constructs.code_indented {
+                !closer.scan_space(4usize.saturating_sub(indent))
+            } else {
+                closer.scan_all_space();
+                true
+            };
+            if closing_allowed {
                 let close = at + closer.bytes_scanned();
                 if let Some(length) = scan_closing_code_fence(&bytes[close..], marker, length) {
                     let end = close + length;
@@ -761,6 +889,7 @@ impl Builder<'_> {
             info: start..start,
             fence: None,
             unclosed: false,
+            math: false,
         });
         self.append(start, start, Body::Code(code));
         self.push();
@@ -798,7 +927,7 @@ impl Builder<'_> {
 }
 
 /// Reject obvious inline brackets without scanning beyond the first physical line.
-/// Multiline labels conservatively use the grammar producer, which understands container prefixes and the label length limit.
+/// The definition scanner handles candidate labels that continue across source fragments.
 fn possible_definition(bytes: &[u8]) -> bool {
     let mut at = 1;
     while at < bytes.len() {
@@ -812,4 +941,30 @@ fn possible_definition(bytes: &[u8]) -> bool {
         at += 1;
     }
     false
+}
+
+fn math_fence(bytes: &[u8]) -> Option<usize> {
+    let length = bytes.iter().take_while(|&&byte| byte == b'$').count();
+    let end = scan_nextline(bytes);
+    (length >= 2 && !bytes[length..end].contains(&b'$')).then_some(length)
+}
+
+fn footnote_prefix(bytes: &[u8], start: usize) -> Option<(Range<usize>, usize)> {
+    if !bytes[start..].starts_with(b"[^") {
+        return None;
+    }
+    let begin = start + 2;
+    let mut at = begin;
+    while at < bytes.len() && at - begin <= crate::util::constant::LINK_REFERENCE_SIZE_MAX {
+        match bytes[at] {
+            b']' if at > begin && bytes.get(at + 1) == Some(&b':') => {
+                return Some((begin..at, at + 2))
+            }
+            b']' | b'[' | b' ' | b'\t' | b'\r' | b'\n' => return None,
+            b'\\' if matches!(bytes.get(at + 1), Some(b'[' | b']' | b'\\')) => at += 1,
+            _ => {}
+        }
+        at += 1;
+    }
+    None
 }

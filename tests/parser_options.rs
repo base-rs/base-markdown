@@ -3,14 +3,13 @@
 
 use core_markdown::{to_html_with_options, Document, Options};
 
-fn assert_fallback_html(source: &str, expected: &str, gfm: bool) {
+fn assert_configured_html(source: &str, expected: &str, gfm: bool) {
     let mut options = if gfm {
         Options::gfm()
     } else {
         Options::default()
     };
-    // Namespaced HTML requires the grammar block producer; inline code metadata
-    // also exercises its region tokenizer rather than compact inline scanning.
+    // Exercise optional HTML names and inline code metadata through the same parser.
     options.parse.html_tag_namespaces = true;
     options.parse.inline_code_info = true;
     assert_eq!(
@@ -25,7 +24,7 @@ fn assert_fallback_html(source: &str, expected: &str, gfm: bool) {
 }
 
 #[test]
-fn grammar_headings_preserve_closers_empty_headings_and_literal_underlines() {
+fn configured_headings_preserve_closers_empty_headings_and_literal_underlines() {
     for (source, expected) in [
         ("#", "<h1></h1>"),
         ("####### a", "<p>####### a</p>"),
@@ -42,12 +41,12 @@ fn grammar_headings_preserve_closers_empty_headings_and_literal_underlines() {
             "<h1>a</h1>\n<h1>=\na</h1>\n<h1>=\nb</h1>",
         ),
     ] {
-        assert_fallback_html(source, expected, false);
+        assert_configured_html(source, expected, false);
     }
 }
 
 #[test]
-fn grammar_lists_preserve_interruptions_empty_items_and_quote_boundaries() {
+fn configured_lists_preserve_interruptions_empty_items_and_quote_boundaries() {
     for (source, expected) in [
         ("a\n10. b", "<p>a\n10. b</p>"),
         (
@@ -78,12 +77,12 @@ fn grammar_lists_preserve_interruptions_empty_items_and_quote_boundaries() {
         ("- a\n\n  b", "<ul>\n<li>\n<p>a</p>\n<p>b</p>\n</li>\n</ul>"),
         ("- \n  \n  a", "<ul>\n<li></li>\n</ul>\n<p>a</p>"),
     ] {
-        assert_fallback_html(source, expected, true);
+        assert_configured_html(source, expected, true);
     }
 }
 
 #[test]
-fn grammar_fences_preserve_info_metadata_and_reject_embedded_markers() {
+fn configured_fences_preserve_info_metadata_and_reject_embedded_markers() {
     for (source, expected) in [
         (
             "```rust \tmetadata\nx\n```",
@@ -109,22 +108,22 @@ fn grammar_fences_preserve_info_metadata_and_reject_embedded_markers() {
             "<pre><code class=\"language-rust\">x\n</code></pre>",
         ),
     ] {
-        assert_fallback_html(source, expected, false);
+        assert_configured_html(source, expected, false);
     }
 }
 
 #[test]
-fn repeated_inline_fallback_preserves_one_document_lifecycle() {
+fn mixed_inline_regions_preserve_one_document_lifecycle() {
     use core_markdown::{
         stream::{EventKind, Tag, TagKind},
         EventParser,
     };
     let source =
         "first <i\n title='x'> [a]\n\ncompact [a]\n\nlast <b\n title='x'> [a]\n\n[a]: /a\n";
-    for full_grammar in [false, true] {
+    for extended_options in [false, true] {
         let mut options = Options::default();
-        options.parse.html_tag_namespaces = full_grammar;
-        options.parse.inline_code_info = full_grammar;
+        options.parse.html_tag_namespaces = extended_options;
+        options.parse.inline_code_info = extended_options;
         let mut parser = EventParser::new(source, &options.parse).unwrap();
         let events: Vec<_> = parser.by_ref().map(Result::unwrap).collect();
         assert_eq!(

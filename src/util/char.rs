@@ -5,11 +5,6 @@
 
 //! Deal with bytes, chars, and kinds.
 use crate::util::unicode::PUNCTUATION;
-#[cfg(any(feature = "log", test))]
-use alloc::format;
-use alloc::string::String;
-#[cfg(any(feature = "log", test))]
-use core::str;
 
 /// Character kinds.
 #[derive(Debug, PartialEq, Eq)]
@@ -43,48 +38,6 @@ pub enum Kind {
     Other,
 }
 
-/// Get a [`char`][] right before `index` in bytes (`&[u8]`).
-///
-/// In most cases, markdown operates on ASCII bytes.
-/// In a few cases, it is unicode aware, so we need to find an actual char.
-pub fn before_index(bytes: &[u8], index: usize) -> Option<char> {
-    let start = index.saturating_sub(4);
-    String::from_utf8_lossy(&bytes[start..index]).chars().last()
-}
-
-/// Get a [`char`][] right at `index` in bytes (`&[u8]`).
-///
-/// In most cases, markdown operates on ASCII bytes.
-/// In a few cases, it is unicode aware, so we need to find an actual char.
-pub fn after_index(bytes: &[u8], index: usize) -> Option<char> {
-    let end = if index + 4 > bytes.len() {
-        bytes.len()
-    } else {
-        index + 4
-    };
-    String::from_utf8_lossy(&bytes[index..end]).chars().next()
-}
-
-/// Classify a char at `index` in bytes (`&[u8]`).
-pub fn kind_after_index(bytes: &[u8], index: usize) -> Kind {
-    if index == bytes.len() {
-        Kind::Whitespace
-    } else {
-        let byte = bytes[index];
-        if byte.is_ascii_whitespace() {
-            Kind::Whitespace
-        } else if byte.is_ascii_punctuation() {
-            Kind::Punctuation
-        } else if byte.is_ascii_alphanumeric() {
-            Kind::Other
-        } else {
-            // Otherwise: seems to be an ASCII control, so it seems to be a
-            // non-ASCII `char`.
-            classify_opt(after_index(bytes, index))
-        }
-    }
-}
-
 /// Classify whether a `char` represents whitespace, punctuation, or something
 /// else.
 ///
@@ -116,35 +69,9 @@ pub fn classify_opt(char_opt: Option<char>) -> Kind {
     char_opt.map_or(Kind::Whitespace, classify)
 }
 
-/// Format an optional `byte` (`none` means eof).
-#[cfg(feature = "log")]
-pub fn format_byte_opt(byte: Option<u8>) -> String {
-    byte.map_or("end of file".into(), |byte| {
-        format!("byte {}", format_byte(byte))
-    })
-}
-
-/// Format a byte (`u8`).
-#[cfg(any(feature = "log", test))]
-pub fn format_byte(byte: u8) -> String {
-    let representation = format!("U+{byte:>04X}");
-    let printable = match byte {
-        b'`' => Some("`` ` ``".into()),
-        b'!'..=b'~' => Some(format!("`{}`", str::from_utf8(&[byte]).unwrap())),
-        _ => None,
-    };
-
-    if let Some(char) = printable {
-        format!("{char} ({representation})")
-    } else {
-        representation
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::string::ToString;
 
     #[test]
     fn test_classify() {
@@ -172,42 +99,5 @@ mod tests {
         assert_eq!(classify('界'), Kind::Other);
         assert_eq!(classify('\u{2003}'), Kind::Whitespace);
         assert_eq!(classify('\0'), Kind::Other);
-    }
-
-    #[test]
-    #[cfg(feature = "log")]
-    fn test_format_byte_opt() {
-        assert_eq!(
-            format_byte_opt(None),
-            "end of file".to_string(),
-            "should format an optional byte: none -> eof"
-        );
-
-        assert_eq!(
-            format_byte_opt(Some(b'!')),
-            "byte `!` (U+0021)".to_string(),
-            "should format an optional byte: char -> pretty"
-        );
-    }
-
-    #[test]
-    fn test_format_byte() {
-        assert_eq!(
-            format_byte(b'`'),
-            "`` ` `` (U+0060)".to_string(),
-            "should format a byte: grave accent"
-        );
-
-        assert_eq!(
-            format_byte(b'!'),
-            "`!` (U+0021)".to_string(),
-            "should format a byte: regular"
-        );
-
-        assert_eq!(
-            format_byte(b' '),
-            "U+0020".to_string(),
-            "should format a byte: unprintable"
-        );
     }
 }

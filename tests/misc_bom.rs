@@ -18,7 +18,7 @@ fn bom() {
 }
 
 #[test]
-fn grammar_preserves_bom_like_unicode() {
+fn options_preserve_bom_like_unicode() {
     let mut options = core_markdown::Options::default();
     options.parse.constructs.math_flow = true;
     for source in ["\u{fffd}", "\u{fec0}"] {
