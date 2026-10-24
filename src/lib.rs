@@ -36,6 +36,7 @@ mod event_parser;
 mod grammar_parser;
 mod headings;
 mod inline_parser;
+mod inline_workspace;
 pub mod markdown;
 mod node_syntax;
 mod parser;
@@ -46,6 +47,7 @@ pub mod stream;
 mod subtokenize;
 mod tokenizer;
 mod util;
+mod value_builder;
 
 pub mod message; // To do: externalize.
 pub mod unist; // To do: externalize.

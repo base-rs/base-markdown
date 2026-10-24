@@ -14,13 +14,11 @@ use crate::util::{
     normalize_identifier::normalize_identifier,
     slice::{Position, Slice},
 };
+use crate::value_builder::ValueBuilder;
 use crate::{
     LineEnding, ParseOptions, {AlignKind, CodeFence},
 };
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::vec::Vec;
 use core::{convert::TryFrom, ops::Range};
 
 /// A pull producer of resolved semantic events.
@@ -132,6 +130,7 @@ impl<'a> GrammarParser<'a> {
         source: &'a str,
         options: &'a ParseOptions,
         definitions: Definitions,
+        compact_inline: crate::inline_parser::InlineParser,
     ) -> Self {
         let mut parser = Self::from_tokens(
             source,
@@ -145,6 +144,7 @@ impl<'a> GrammarParser<'a> {
             },
         );
         parser.definitions = definitions;
+        parser.compact_inline = compact_inline;
         parser
     }
 
@@ -193,7 +193,11 @@ impl<'a> GrammarParser<'a> {
         }
     }
 
-    fn grammar_region(&mut self, fragments: impl Iterator<Item = Range<usize>>, task: bool) {
+    pub(crate) fn grammar_region(
+        &mut self,
+        fragments: impl Iterator<Item = Range<usize>>,
+        task: bool,
+    ) {
         // Only compatibility inline tokenization needs an owning list of normalized keys. Ordinary compact events share the prepared definition table directly.
         if self.parse_state.definitions.is_empty() {
             self.parse_state
@@ -1090,57 +1094,6 @@ impl Iterator for GrammarParser<'_> {
     }
 }
 
-/// Keep a contiguous source range until normalization actually requires an owned string.
-pub(crate) struct ValueBuilder<'a> {
-    source: &'a str,
-    range: Option<Range<usize>>,
-    owned: Option<String>,
-}
-impl<'a> ValueBuilder<'a> {
-    pub(crate) fn new(source: &'a str) -> Self {
-        Self {
-            source,
-            range: None,
-            owned: None,
-        }
-    }
-    pub(crate) fn append(&mut self, text: Text<'_>) {
-        if self.range.is_none() && self.owned.is_none() {
-            if let Text::Value(alloc::borrow::Cow::Owned(value)) = text {
-                self.owned = Some(value);
-                return;
-            }
-        }
-        if let Some(owned) = &mut self.owned {
-            owned.push_str(text.resolve(self.source).unwrap());
-            return;
-        }
-        if let Text::Source(range) = &text {
-            if let Some(previous) = &mut self.range {
-                if previous.end == range.start {
-                    previous.end = range.end;
-                    return;
-                }
-            } else {
-                self.range = Some(range.clone());
-                return;
-            }
-        }
-        let mut owned = self
-            .range
-            .take()
-            .map_or_else(String::new, |range| self.source[range].to_string());
-        owned.push_str(text.resolve(self.source).unwrap());
-        self.owned = Some(owned);
-    }
-    pub(crate) fn finish(self) -> Text<'static> {
-        match self.owned {
-            Some(owned) => Text::from(owned),
-            None => self.range.map_or(Text::Literal(""), Text::Source),
-        }
-    }
-}
-
 fn pair_tokens(tokens: &[Token], matching: &mut Vec<usize>, stack: &mut Vec<usize>) {
     matching.resize(tokens.len(), 0);
     stack.clear();
@@ -1157,38 +1110,4 @@ fn pair_tokens(tokens: &[Token], matching: &mut Vec<usize>, stack: &mut Vec<usiz
         stack.is_empty(),
         "grammar containers are closed before pairing"
     );
-}
-
-pub(crate) fn decode_string(source: &str, range: Range<usize>) -> Text<'static> {
-    use crate::util::character_reference::{scan, Reference};
-    let bytes = source.as_bytes();
-    let mut value = ValueBuilder::new(source);
-    let mut start = range.start;
-    let mut index = start;
-    while index < range.end {
-        if bytes[index] == b'\\' && index + 1 < range.end && bytes[index + 1].is_ascii_punctuation()
-        {
-            value.append(Text::Source(start..index));
-            index += 1;
-            start = index;
-            index += 1;
-            continue;
-        }
-        if bytes[index] == b'&' {
-            if let Some((end, reference)) = scan(source, index, range.end) {
-                let decoded = match reference {
-                    Reference::Named(index) => Text::Literal(CHARACTER_REFERENCES[index].1),
-                    Reference::Numeric(character) => Text::from(String::from(character)),
-                };
-                value.append(Text::Source(start..index));
-                value.append(decoded);
-                index = end;
-                start = index;
-                continue;
-            }
-        }
-        index += 1;
-    }
-    value.append(Text::Source(start..range.end));
-    value.finish()
 }
