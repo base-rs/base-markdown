@@ -1,0 +1,90 @@
+{
+  "core-markdown/keys-uppercase-1024": {
+    "unicode-once": {
+      "median_ms": 0.13385565679069605,
+      "process_medians_ms": [
+        0.1350053339517625,
+        0.13270597962962963
+      ],
+      "process_spread_percent": 1.7326682102420499,
+      "control_engine": "unicode-once",
+      "time_change_percent": 0.0
+    },
+    "fused": {
+      "median_ms": 0.13456499886470374,
+      "process_medians_ms": [
+        0.13489252092050208,
+        0.1342374768089054
+      ],
+      "process_spread_percent": 0.4879740942457911,
+      "control_engine": "unicode-once",
+      "time_change_percent": 0.5299305916647734
+    }
+  },
+  "core-markdown/keys-unicode-1024": {
+    "unicode-once": {
+      "median_ms": 0.1645379899648651,
+      "process_medians_ms": [
+        0.16526039387308533,
+        0.16381558605664487
+      ],
+      "process_spread_percent": 0.8819721317243179,
+      "control_engine": "unicode-once",
+      "time_change_percent": 0.0
+    },
+    "fused": {
+      "median_ms": 0.1641359778820521,
+      "process_medians_ms": [
+        0.16439425466520308,
+        0.1638777010989011
+      ],
+      "process_spread_percent": 0.31520674432101714,
+      "control_engine": "unicode-once",
+      "time_change_percent": -0.2443278193071774
+    }
+  },
+  "core-markdown/keys-spaced-1024": {
+    "unicode-once": {
+      "median_ms": 0.15164339950119943,
+      "process_medians_ms": [
+        0.15274596367305754,
+        0.15054083532934132
+      ],
+      "process_spread_percent": 1.4648041103877407,
+      "control_engine": "unicode-once",
+      "time_change_percent": 0.0
+    },
+    "fused": {
+      "median_ms": 0.15171576633165829,
+      "process_medians_ms": [
+        0.1519207286432161,
+        0.1515108040201005
+      ],
+      "process_spread_percent": 0.2705580145038411,
+      "control_engine": "unicode-once",
+      "time_change_percent": 0.047721714691761896
+    }
+  },
+  "core-markdown/keys-random-1024": {
+    "unicode-once": {
+      "median_ms": 0.12152405657167445,
+      "process_medians_ms": [
+        0.1217634364820847,
+        0.12128467666126419
+      ],
+      "process_spread_percent": 0.39474056739883245,
+      "control_engine": "unicode-once",
+      "time_change_percent": 0.0
+    },
+    "fused": {
+      "median_ms": 0.12274990095398955,
+      "process_medians_ms": [
+        0.12307791021416803,
+        0.12242189169381107
+      ],
+      "process_spread_percent": 0.5358670016288647,
+      "control_engine": "unicode-once",
+      "time_change_percent": 1.0087256934120603
+    }
+  }
+}

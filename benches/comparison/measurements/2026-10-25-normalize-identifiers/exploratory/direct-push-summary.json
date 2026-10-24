@@ -1,0 +1,178 @@
+{
+  "core-markdown/keys-long-uppercase-1024": {
+    "baseline": {
+      "median_ms": 0.5962643023234389,
+      "process_medians_ms": [
+        0.5906339126637554,
+        0.6018946919831223
+      ],
+      "process_spread_percent": 1.9065582043165774,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.6026754562746152,
+      "process_medians_ms": [
+        0.5990289081632654,
+        0.606322004385965
+      ],
+      "process_spread_percent": 1.2174865224888087,
+      "control_engine": "baseline",
+      "time_change_percent": 1.0752201542494122
+    }
+  },
+  "core-markdown/keys-long-spaced-1024": {
+    "baseline": {
+      "median_ms": 0.6408132200296247,
+      "process_medians_ms": [
+        0.6488823951612902,
+        0.6327440448979592
+      ],
+      "process_spread_percent": 2.5505337258343586,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.6139401409863945,
+      "process_medians_ms": [
+        0.6153420166666665,
+        0.6125382653061224
+      ],
+      "process_spread_percent": 0.4577267281649533,
+      "control_engine": "baseline",
+      "time_change_percent": -4.193589988981172
+    }
+  },
+  "core-markdown/keys-unicode-dense-1024": {
+    "baseline": {
+      "median_ms": 0.39156617368421054,
+      "process_medians_ms": [
+        0.39253059210526314,
+        0.3906017552631579
+      ],
+      "process_spread_percent": 0.4938116165928985,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.3494069298450569,
+      "process_medians_ms": [
+        0.3508714079254079,
+        0.3479424517647059
+      ],
+      "process_spread_percent": 0.8417932752519341,
+      "control_engine": "baseline",
+      "time_change_percent": -10.766824785318185
+    }
+  },
+  "core-markdown/keys-unicode-long-1024": {
+    "baseline": {
+      "median_ms": 4.139600111111111,
+      "process_medians_ms": [
+        4.1176516111111106,
+        4.161548611111111
+      ],
+      "process_spread_percent": 1.0660688214017,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 4.13495327027027,
+      "process_medians_ms": [
+        4.112558567567567,
+        4.157347972972973
+      ],
+      "process_spread_percent": 1.0890885727105282,
+      "control_engine": "baseline",
+      "time_change_percent": -0.11225337511149291
+    }
+  },
+  "core-markdown/keys-uppercase-1024": {
+    "baseline": {
+      "median_ms": 0.13404350731863596,
+      "process_medians_ms": [
+        0.13349219713261648,
+        0.13459481750465546
+      ],
+      "process_spread_percent": 0.825981140263643,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.13134119224612079,
+      "process_medians_ms": [
+        0.1316076329113924,
+        0.13107475158084914
+      ],
+      "process_spread_percent": 0.4065476562925774,
+      "control_engine": "baseline",
+      "time_change_percent": -2.015998481814918
+    }
+  },
+  "core-markdown/keys-unicode-1024": {
+    "baseline": {
+      "median_ms": 0.19041142354666618,
+      "process_medians_ms": [
+        0.19005283438685208,
+        0.19077001270648028
+      ],
+      "process_spread_percent": 0.37735733957451334,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.15162918666878689,
+      "process_medians_ms": [
+        0.15127738250254325,
+        0.15198099083503055
+      ],
+      "process_spread_percent": 0.4651113873387347,
+      "control_engine": "baseline",
+      "time_change_percent": -20.367599882143892
+    }
+  },
+  "core-markdown/keys-spaced-1024": {
+    "baseline": {
+      "median_ms": 0.15275198090838343,
+      "process_medians_ms": [
+        0.15215874796747966,
+        0.15334521384928718
+      ],
+      "process_spread_percent": 0.7797552869330149,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.14998632043130802,
+      "process_medians_ms": [
+        0.14936310149253731,
+        0.15060953937007873
+      ],
+      "process_spread_percent": 0.8345018716712227,
+      "control_engine": "baseline",
+      "time_change_percent": -1.8105562105503403
+    }
+  },
+  "core-markdown/keys-random-1024": {
+    "baseline": {
+      "median_ms": 0.11957795227149837,
+      "process_medians_ms": [
+        0.11886560127084989,
+        0.12029030327214685
+      ],
+      "process_spread_percent": 1.1985822526153767,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.1194404170689666,
+      "process_medians_ms": [
+        0.11935287955625991,
+        0.11952795458167331
+      ],
+      "process_spread_percent": 0.1466868885479089,
+      "control_engine": "baseline",
+      "time_change_percent": -0.11501719164708213
+    }
+  }
+}

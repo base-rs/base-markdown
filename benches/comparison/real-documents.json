@@ -1,0 +1,82 @@
+[
+  {
+    "name": "rust-readme",
+    "profile": "gfm",
+    "repository": "https://github.com/rust-lang/rust",
+    "revision": "12433c307b5a497388ffe2f4e49dbf1ab8c71fa0",
+    "path": "README.md",
+    "url": "https://raw.githubusercontent.com/rust-lang/rust/12433c307b5a497388ffe2f4e49dbf1ab8c71fa0/README.md",
+    "sha256": "b3f6ef2fef88b98cb9ec013a5c86213095e53e40eb228679574e4d06517f33c8",
+    "bytes": 3304,
+    "license": "MIT OR Apache-2.0",
+    "license_url": "https://raw.githubusercontent.com/rust-lang/rust/12433c307b5a497388ffe2f4e49dbf1ab8c71fa0/COPYRIGHT",
+    "license_sha256": "172020dbfd5b53a226dfde77616190a48dcff519b0bc0e6deb91a8450782c4af",
+    "attribution": "rust-lang/rust contributors"
+  },
+  {
+    "name": "clap-readme",
+    "profile": "gfm",
+    "repository": "https://github.com/clap-rs/clap",
+    "revision": "ccc89b83875474399e9d9d70841163f6319d1a41",
+    "path": "README.md",
+    "url": "https://raw.githubusercontent.com/clap-rs/clap/ccc89b83875474399e9d9d70841163f6319d1a41/README.md",
+    "sha256": "803041260cb12bb14ae91ebb115eadd3212373cde5a969d81f7c02b0817b7fdf",
+    "bytes": 1819,
+    "license": "MIT OR Apache-2.0",
+    "license_url": "https://raw.githubusercontent.com/clap-rs/clap/ccc89b83875474399e9d9d70841163f6319d1a41/LICENSE-MIT",
+    "license_sha256": "6efb0476a1cc085077ed49357026d8c173bf33017278ef440f222fb9cbcb66e6",
+    "attribution": "clap-rs/clap contributors"
+  },
+  {
+    "name": "tokio-changelog",
+    "profile": "gfm",
+    "repository": "https://github.com/tokio-rs/tokio",
+    "revision": "8a2408edcfa2b7f19c00428a9d3a8ea6652a083f",
+    "path": "tokio/CHANGELOG.md",
+    "url": "https://raw.githubusercontent.com/tokio-rs/tokio/8a2408edcfa2b7f19c00428a9d3a8ea6652a083f/tokio/CHANGELOG.md",
+    "sha256": "fdab3584e5e1b76f89ae5ebfd1be1a69b938bd27537af422c9154b27cbf9aa17",
+    "bytes": 195299,
+    "license": "MIT",
+    "license_url": "https://raw.githubusercontent.com/tokio-rs/tokio/8a2408edcfa2b7f19c00428a9d3a8ea6652a083f/LICENSE",
+    "license_sha256": "253cd04c6714889df2d32f3f64d669179a1c95c76ac43c40882c52eb06bc3552",
+    "attribution": "tokio-rs/tokio contributors"
+  },
+  {
+    "name": "rust-nll-rfc",
+    "profile": "gfm",
+    "repository": "https://github.com/rust-lang/rfcs",
+    "revision": "f148c94986feb17b3954ee620c848c96a9b41166",
+    "path": "text/2094-nll.md",
+    "url": "https://raw.githubusercontent.com/rust-lang/rfcs/f148c94986feb17b3954ee620c848c96a9b41166/text/2094-nll.md",
+    "sha256": "bb7e4770cee4aca69af685382f50a5b24f24713f240ec163ed85c8f4ba81478d",
+    "bytes": 83823,
+    "license": "MIT OR Apache-2.0",
+    "license_url": "https://raw.githubusercontent.com/rust-lang/rfcs/f148c94986feb17b3954ee620c848c96a9b41166/LICENSE-MIT",
+    "license_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "attribution": "rust-lang/rfcs contributors"
+  },
+  {
+    "name": "awesome-rust-readme",
+    "profile": "gfm",
+    "repository": "https://github.com/rust-unofficial/awesome-rust",
+    "revision": "1f5be68b3f6affb78bf3580f4000d9c841d7a90e",
+    "path": "README.md",
+    "url": "https://raw.githubusercontent.com/rust-unofficial/awesome-rust/1f5be68b3f6affb78bf3580f4000d9c841d7a90e/README.md",
+    "sha256": "fce034a67f6b343ff923ec4058a56d80ce343708b999af57fa3bfb4589bb0137",
+    "bytes": 412502,
+    "license": "CC0-1.0",
+    "license_url": "https://raw.githubusercontent.com/rust-unofficial/awesome-rust/1f5be68b3f6affb78bf3580f4000d9c841d7a90e/LICENSE.txt",
+    "license_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+    "attribution": "rust-unofficial/awesome-rust contributors"
+  },
+  {
+    "name": "commonmark-spec",
+    "profile": "commonmark",
+    "url": "https://spec.commonmark.org/0.31.2/spec.txt",
+    "sha256": "bfef4ddc97276b6ab6c2a28ace48478e35b1c50e60cde9f517ab8ab030aa3b82",
+    "bytes": 204857,
+    "license": "CC-BY-SA-4.0",
+    "license_url": "https://spec.commonmark.org/0.31.2/#license",
+    "attribution": "John MacFarlane and contributors"
+  }
+]

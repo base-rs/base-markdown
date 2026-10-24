@@ -1,0 +1,82 @@
+{
+  "core-markdown/keys-long-uppercase-1024": {
+    "baseline": {
+      "median_ms": 0.583245951417004,
+      "process_medians_ms": [
+        0.583245951417004
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.5839061638655462,
+      "process_medians_ms": [
+        0.5839061638655462
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.11319623341374818
+    }
+  },
+  "core-markdown/keys-long-spaced-1024": {
+    "baseline": {
+      "median_ms": 0.6029017290836653,
+      "process_medians_ms": [
+        0.6029017290836653
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.6038324979919679,
+      "process_medians_ms": [
+        0.6038324979919679
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.15438152909550418
+    }
+  },
+  "core-markdown/keys-unicode-dense-1024": {
+    "baseline": {
+      "median_ms": 0.3813779897435898,
+      "process_medians_ms": [
+        0.3813779897435898
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.42244809322033894,
+      "process_medians_ms": [
+        0.42244809322033894
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 10.76887093152954
+    }
+  },
+  "core-markdown/keys-unicode-long-1024": {
+    "baseline": {
+      "median_ms": 4.084209447368421,
+      "process_medians_ms": [
+        4.084209447368421
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 5.634115384615385,
+      "process_medians_ms": [
+        5.634115384615385
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 37.94873787008195
+    }
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "binaries": {
+    "baseline": {
+      "sha256": "a59d3021b6fc98590b96107ae410e3c150c11160e2b141cb325eda90f8349ed6",
+      "bytes": 3218128
+    },
+    "unicode": {
+      "sha256": "d5ff9794626125aa8a4197bbadd8ba7c78c9773b4f5a8689a0b61d70f7654f49",
+      "bytes": 3237216
+    },
+    "unicode-ascii": {
+      "sha256": "db1afe5f68611ea9fcf2f50ebe5ca36864d89d0aecaac34adf8e0b04b67f6b1c",
+      "bytes": 3237248
+    },
+    "unicode-once": {
+      "sha256": "5520780e4dcf35f12f0ac4402da538cdecd2839d9e9798556e8b2ee8a7801f3c",
+      "bytes": 3237216
+    },
+    "fused": {
+      "sha256": "d24181cd057b316abf86d13ca84d180e97730076245f8477cbf42eb220e35e4c",
+      "bytes": 3237248
+    },
+    "shared": {
+      "sha256": "9880ffdb5c2b026205b67e06e38646ab2f45b6e9ef1cf8c6db2523d63bf2166c",
+      "bytes": 3218608
+    },
+    "push": {
+      "sha256": "4dd0cc1a3adfb18de9c1c4f3ced63d403aaaff02fdd8f86006506185e3a51143",
+      "bytes": 3219568
+    },
+    "upper-property": {
+      "sha256": "00be878549cd9df2ec94e995bac3d2f92a73088945a5f9bc0609e592e9ef1823",
+      "bytes": 3237568
+    },
+    "direct-push": {
+      "sha256": "5226d54c85c006a3744325205a492edb5670b515b1fac18b792757691ea93fe1",
+      "bytes": 3238128
+    },
+    "word-iterator": {
+      "sha256": "e8943c23c75f453ce0948db53089b821084b293c6d4d40c280eb8c74a5b91213",
+      "bytes": 3220544
+    },
+    "string-fold": {
+      "sha256": "fa598c1f07b73476d8a28cb91e78f0934af84dc55a94b29a1ebbd5de7ff0c815",
+      "bytes": 3218736
+    },
+    "outline-fold": {
+      "sha256": "0c50e8b5c2995adfdf4c478a9f899941b26bdecb155afa0ad602dbc079b540dd",
+      "bytes": 3218720
+    },
+    "candidate-initial": {
+      "sha256": "5520780e4dcf35f12f0ac4402da538cdecd2839d9e9798556e8b2ee8a7801f3c",
+      "bytes": 3237216
+    },
+    "candidate-final": {
+      "sha256": "de33163b5a867286b3a1c2a9d42b9b8c1f603811a6a2e799f37aceaf79a00746",
+      "bytes": 3218720
+    }
+  },
+  "base": "d0d0a821badba7719a583a4a52691205b3523bda",
+  "fused_and_shared_patch_base": "c984e3b",
+  "sampling": "Exploratory screening, one or two alternating rounds; distinct from final three-round cohort. Every raw process row retained.",
+  "notes": {
+    "unicode": "Redundant initial whitespace scan; slower Unicode case.",
+    "unicode-ascii": "Built but not timed separately; added ASCII shortcut before next experiment.",
+    "unicode-once": "Candidate at c984e3b, Unicode scan once, final build also 1d9699a (test-only change). Dense controls later exposed regression.",
+    "fused": "Resumed normalization after canonical prefix; no useful gain. Test-only assertion corrected after build; the archive patch contains that assertion correction.",
+    "shared": "Shared scalar whitespace scanner; nearly doubles long ASCII fallback controls.",
+    "dense-screen": "1d9699a reveals dense/long Unicode regressions.",
+    "push": "Explicit nested pushes for all Unicode folding; rejected.",
+    "upper-property": "Skip lowercasing non-uppercase scalars, still extends uppercase iterator.",
+    "direct-push": "Rejected: long all-uppercase Unicode control exposed ~36% regression. Mixed-case and lowercase controls alone had hidden this.",
+    "word-iterator": "Rejected: word-sized iterator folding also regressed dense/long uppercase Unicode.",
+    "string-fold": "Skip lowercase string conversion when no uppercase scalar exists. This screening did not yet exempt ASCII uppercase. Shared host activity caused substantial spread; all records retained. Final algorithm at 7663402 exempts ASCII uppercase too.",
+    "outline-fold": "Rejected: inline(never) generated identical __text bytes and identical disassembly (excluding path header). Shared helper was already called out of line. Screening retained as code-equivalent variability control."
+  },
+  "host_observation": "During string-fold screening an unrelated process used roughly one CPU core; no thermal/power warning was reported. Shared-host variability affects timings; final cohort is separate.",
+  "selected_commit": "7663402ac2a9f0414e99f71f98f0d226b35b0504",
+  "outline_fold_patch_base": "7663402ac2a9f0414e99f71f98f0d226b35b0504",
+  "cohort_binaries": {
+    "unicode": {
+      "baseline": "baseline",
+      "unicode": "unicode"
+    },
+    "shared": {
+      "unicode-once": "unicode-once",
+      "shared": "shared"
+    },
+    "direct-push": {
+      "baseline": "baseline",
+      "direct-push": "direct-push"
+    },
+    "fused": {
+      "unicode-once": "unicode-once",
+      "fused": "fused"
+    },
+    "dense-screen": {
+      "baseline": "baseline",
+      "candidate": "candidate-initial"
+    },
+    "upper-property": {
+      "baseline": "baseline",
+      "upper-property": "upper-property"
+    },
+    "push": {
+      "baseline": "baseline",
+      "push": "push"
+    },
+    "string-fold": {
+      "baseline": "baseline",
+      "string-fold": "string-fold"
+    },
+    "unicode-once": {
+      "baseline": "baseline",
+      "unicode-once": "unicode-once"
+    },
+    "word-iterator": {
+      "baseline": "baseline",
+      "direct-push": "direct-push",
+      "word-iterator": "word-iterator"
+    },
+    "outline-fold": {
+      "candidate": "candidate-final",
+      "outline-fold": "outline-fold"
+    }
+  },
+  "candidate_alias_note": "dense-screen uses candidate-initial (early c984/1d9699a body); outline-fold uses candidate-final, matching ../metadata.json and approved7663402. Raw rows retain their exact hashes; aliases are scoped per cohort."
+}

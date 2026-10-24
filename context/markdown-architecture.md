@@ -22,6 +22,8 @@ Reference and footnote indexes normalize raw identifiers before inline resolutio
 
 Reference keys borrow contiguous canonical ASCII labels from source; other forms use owned normalized storage. Their ASCII letters use lowercase internally after Unicode folding; footnote keys retain uppercase because they appear in rendered IDs. Pending block separators are explicit delivery phases rather than independent parser state.
 
+Unicode identifier folding shares a helper that skips the intermediate lowercase string when the label contains no non-ASCII uppercase character. Labels containing those characters retain the full string lower-then-upper conversion, including contextual casing and expansions. Exhaustive scalar and contextual tests preserve the existing matching rules.
+
 The Markdown serializer writes recursively into one output string. Output ranges
 provide preceding context without copying parent strings; reusable scratch handles
 indentation and table escaping. Formatting and escaping use byte scanners and static scope rules; regex is a test-only dependency. The escape matcher retains non-overlapping neighbor consumption and uses ASCII digits for ordered-list markers.

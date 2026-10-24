@@ -1,0 +1,19 @@
+{
+  "source_commit": "7663402ac2a9f0414e99f71f98f0d226b35b0504",
+  "source_src_tree": "d980bef94cd839e92d6fe623238e66c671eca7bf",
+  "coverage": {
+    "covered_regions": 13528,
+    "measured_regions": 13528,
+    "excluded_invariant_unreachable_regions": 22,
+    "target": "aarch64-apple-darwin",
+    "features": "all"
+  },
+  "all_feature_all_target_clippy": "pass",
+  "default_workspace_tests": "pass",
+  "formatting": "pass",
+  "x86_64_linux_all_feature_library_compile": "pass (compile-only)",
+  "saved_corpus_outputs_unchanged": 8468,
+  "diagnostic_results_unchanged": 24276,
+  "timed_documents_preserved": 29,
+  "independent_source_review": "Approved 7663402; final evidence head will be reviewed separately."
+}

@@ -60,7 +60,7 @@ pub(crate) fn normalize_identifier_into(value: &str, result: &mut String) {
     if result.is_ascii() {
         result.make_ascii_uppercase();
     } else {
-        *result = result.to_lowercase().to_uppercase();
+        *result = fold_unicode_identifier(result);
     }
 }
 
@@ -71,8 +71,20 @@ pub(crate) fn normalize_reference_identifier_into(value: &str, result: &mut Stri
     if result.is_ascii() {
         result.make_ascii_lowercase();
     } else {
-        *result = result.to_lowercase().to_uppercase();
+        *result = fold_unicode_identifier(result);
         result.make_ascii_lowercase();
+    }
+}
+
+fn fold_unicode_identifier(value: &str) -> String {
+    // Only non-ASCII uppercase scalars can change the composed uppercase result when lowercased first. Other scalars can uppercase directly.
+    if value
+        .chars()
+        .any(|character| !character.is_ascii() && character.is_uppercase())
+    {
+        value.to_lowercase().to_uppercase()
+    } else {
+        value.to_uppercase()
     }
 }
 
@@ -98,6 +110,57 @@ fn collapse_whitespace_into(value: &str, result: &mut String) {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::String;
+
+    #[test]
+    fn unicode_folding_matches_string_casing_for_every_scalar() {
+        let mut value = String::new();
+        let mut result = String::new();
+        for character in '\0'..=char::MAX {
+            value.clear();
+            value.push(character);
+            let expected = if matches!(character, ' ' | '\t' | '\r' | '\n') {
+                String::new()
+            } else {
+                value.to_lowercase().to_uppercase()
+            };
+            super::normalize_identifier_into(&value, &mut result);
+            assert_eq!(result, expected, "{character:?}");
+            super::normalize_reference_identifier_into(&value, &mut result);
+            assert_eq!(result, expected.to_ascii_lowercase());
+        }
+    }
+
+    #[test]
+    fn contextual_casing_and_expansion() {
+        let mut result = String::from("stale scratch");
+        for value in [
+            "ΟΣ",
+            "ΟΣΑ",
+            "ΟΣ\u{301}",
+            "ΣΣ",
+            "Σ\u{345}Σ",
+            "Σ'Σ",
+            " Σ\tΣ\r\nΣ ",
+            "ẞ ß SS",
+            "İ ı I i",
+            "ϴ θ Θ",
+            "ﬃ ǰ ΐ",
+            "a\u{a0}B\u{2003}Σ",
+        ] {
+            let collapsed = value
+                .split([' ', '\t', '\r', '\n'])
+                .filter(|part| !part.is_empty())
+                .collect::<alloc::vec::Vec<_>>()
+                .join(" ");
+            let expected = collapsed.to_lowercase().to_uppercase();
+            super::normalize_identifier_into(value, &mut result);
+            assert_eq!(result, expected);
+            super::normalize_reference_identifier_into(value, &mut result);
+            assert_eq!(result, expected.to_ascii_lowercase());
+        }
+    }
+
     #[test]
     fn labels_preserve_collapsed_spaces_and_unicode_folding() {
         assert_eq!(super::normalize_identifier(" a\tb\r\nc "), "A B C");

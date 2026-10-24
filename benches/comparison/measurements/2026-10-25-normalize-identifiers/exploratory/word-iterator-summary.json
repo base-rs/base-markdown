@@ -1,0 +1,292 @@
+{
+  "core-markdown/keys-long-uppercase-1024": {
+    "baseline": {
+      "median_ms": 0.5869664502164502,
+      "process_medians_ms": [
+        0.5869664502164502
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.6703197478260869,
+      "process_medians_ms": [
+        0.6703197478260869
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 14.200691978033708
+    },
+    "word-iterator": {
+      "median_ms": 0.6106007130044844,
+      "process_medians_ms": [
+        0.6106007130044844
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 4.026509995472272
+    }
+  },
+  "core-markdown/keys-long-spaced-1024": {
+    "baseline": {
+      "median_ms": 0.6113412298387096,
+      "process_medians_ms": [
+        0.6113412298387096
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.7243206967213115,
+      "process_medians_ms": [
+        0.7243206967213115
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 18.480590113709372
+    },
+    "word-iterator": {
+      "median_ms": 0.6277831904761904,
+      "process_medians_ms": [
+        0.6277831904761904
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 2.6894899010522444
+    }
+  },
+  "core-markdown/keys-unicode-dense-1024": {
+    "baseline": {
+      "median_ms": 0.3890406815789474,
+      "process_medians_ms": [
+        0.3890406815789474
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.36937600481927707,
+      "process_medians_ms": [
+        0.36937600481927707
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -5.054658212056362
+    },
+    "word-iterator": {
+      "median_ms": 0.43369661739130433,
+      "process_medians_ms": [
+        0.43369661739130433
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 11.478474598367928
+    }
+  },
+  "core-markdown/keys-unicode-long-1024": {
+    "baseline": {
+      "median_ms": 4.161583333333333,
+      "process_medians_ms": [
+        4.161583333333333
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 4.3305988,
+      "process_medians_ms": [
+        4.3305988
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 4.061326017741651
+    },
+    "word-iterator": {
+      "median_ms": 5.338174107142858,
+      "process_medians_ms": [
+        5.338174107142858
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 28.272671230329593
+    }
+  },
+  "core-markdown/keys-unicode-upper-long-1024": {
+    "baseline": {
+      "median_ms": 4.887139774193548,
+      "process_medians_ms": [
+        4.887139774193548
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 6.6409836956521735,
+      "process_medians_ms": [
+        6.6409836956521735
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 35.88691959906214
+    },
+    "word-iterator": {
+      "median_ms": 6.446791666666667,
+      "process_medians_ms": [
+        6.446791666666667
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 31.913388291221633
+    }
+  },
+  "core-markdown/keys-unicode-lower-long-1024": {
+    "baseline": {
+      "median_ms": 4.179976861111111,
+      "process_medians_ms": [
+        4.179976861111111
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 3.219443020408163,
+      "process_medians_ms": [
+        3.219443020408163
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -22.979405690959286
+    },
+    "word-iterator": {
+      "median_ms": 4.457197294117647,
+      "process_medians_ms": [
+        4.457197294117647
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 6.632104488081936
+    }
+  },
+  "core-markdown/keys-uppercase-1024": {
+    "baseline": {
+      "median_ms": 0.15500491821561338,
+      "process_medians_ms": [
+        0.15500491821561338
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.13433631805157592,
+      "process_medians_ms": [
+        0.13433631805157592
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -13.33415765252508
+    },
+    "word-iterator": {
+      "median_ms": 0.13381158976744187,
+      "process_medians_ms": [
+        0.13381158976744187
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -13.672681287887512
+    }
+  },
+  "core-markdown/keys-unicode-1024": {
+    "baseline": {
+      "median_ms": 0.2652230230642504,
+      "process_medians_ms": [
+        0.2652230230642504
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.15547421009268794,
+      "process_medians_ms": [
+        0.15547421009268794
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -41.37982129288065
+    },
+    "word-iterator": {
+      "median_ms": 0.19290304504504505,
+      "process_medians_ms": [
+        0.19290304504504505
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -27.26760941929457
+    }
+  },
+  "core-markdown/keys-spaced-1024": {
+    "baseline": {
+      "median_ms": 0.1616975667752443,
+      "process_medians_ms": [
+        0.1616975667752443
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.1531018853305785,
+      "process_medians_ms": [
+        0.1531018853305785
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -5.315900304556587
+    },
+    "word-iterator": {
+      "median_ms": 0.1521512263959391,
+      "process_medians_ms": [
+        0.1521512263959391
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -5.903824386284295
+    }
+  },
+  "core-markdown/keys-random-1024": {
+    "baseline": {
+      "median_ms": 0.12544353681710216,
+      "process_medians_ms": [
+        0.12544353681710216
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "direct-push": {
+      "median_ms": 0.12174495694557272,
+      "process_medians_ms": [
+        0.12174495694557272
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -2.9484020981662917
+    },
+    "word-iterator": {
+      "median_ms": 0.12247514262428688,
+      "process_medians_ms": [
+        0.12247514262428688
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -2.3663189576225263
+    }
+  }
+}

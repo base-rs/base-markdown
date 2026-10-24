@@ -1,0 +1,162 @@
+{
+  "core-markdown/keys-long-uppercase-1024": {
+    "baseline": {
+      "median_ms": 0.6134844146341463,
+      "process_medians_ms": [
+        0.6134844146341463
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "push": {
+      "median_ms": 0.6943048894230768,
+      "process_medians_ms": [
+        0.6943048894230768
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 13.174006194945974
+    }
+  },
+  "core-markdown/keys-long-spaced-1024": {
+    "baseline": {
+      "median_ms": 0.6339055907172997,
+      "process_medians_ms": [
+        0.6339055907172997
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "push": {
+      "median_ms": 0.6673948317307692,
+      "process_medians_ms": [
+        0.6673948317307692
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 5.283001365483231
+    }
+  },
+  "core-markdown/keys-unicode-dense-1024": {
+    "baseline": {
+      "median_ms": 0.39738505570291777,
+      "process_medians_ms": [
+        0.39738505570291777
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "push": {
+      "median_ms": 0.5016795302013424,
+      "process_medians_ms": [
+        0.5016795302013424
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 26.245192918476135
+    }
+  },
+  "core-markdown/keys-unicode-long-1024": {
+    "baseline": {
+      "median_ms": 4.249026611111112,
+      "process_medians_ms": [
+        4.249026611111112
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "push": {
+      "median_ms": 7.112627,
+      "process_medians_ms": [
+        7.112627
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 67.39426816957643
+    }
+  },
+  "core-markdown/keys-uppercase-1024": {
+    "baseline": {
+      "median_ms": 0.13713849169741696,
+      "process_medians_ms": [
+        0.13713849169741696
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "push": {
+      "median_ms": 0.1348354028906956,
+      "process_medians_ms": [
+        0.1348354028906956
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -1.6793890454934512
+    }
+  },
+  "core-markdown/keys-unicode-1024": {
+    "baseline": {
+      "median_ms": 0.19354765013054828,
+      "process_medians_ms": [
+        0.19354765013054828
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "push": {
+      "median_ms": 0.1609752247311828,
+      "process_medians_ms": [
+        0.1609752247311828
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -16.829150536002537
+    }
+  },
+  "core-markdown/keys-spaced-1024": {
+    "baseline": {
+      "median_ms": 0.15668086163522013,
+      "process_medians_ms": [
+        0.15668086163522013
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "push": {
+      "median_ms": 0.1541525076765609,
+      "process_medians_ms": [
+        0.1541525076765609
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -1.6136967414346115
+    }
+  },
+  "core-markdown/keys-random-1024": {
+    "baseline": {
+      "median_ms": 0.12330858654634948,
+      "process_medians_ms": [
+        0.12330858654634948
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "push": {
+      "median_ms": 0.12269962530612245,
+      "process_medians_ms": [
+        0.12269962530612245
+      ],
+      "process_spread_percent": 0.0,
+      "control_engine": "baseline",
+      "time_change_percent": -0.49385144804828807
+    }
+  }
+}

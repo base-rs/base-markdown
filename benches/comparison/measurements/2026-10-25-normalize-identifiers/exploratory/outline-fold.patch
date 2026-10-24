@@ -1,0 +1,4 @@
+--- a/src/util/normalize_identifier.rs
++++ b/src/util/normalize_identifier.rs
+@@ -78,0 +79 @@
++#[inline(never)]
