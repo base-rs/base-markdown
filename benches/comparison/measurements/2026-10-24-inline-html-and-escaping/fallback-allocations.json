@@ -1,0 +1,204 @@
+[
+  {
+    "engine": "baseline",
+    "input_sha256": "3505eed8b2c86e5465f23d8d8ac62b0f62d49ee459c3767bcad36d05a58422a9",
+    "binary_sha256": "58c2436c503a42e6eefbbcaa011a65f227c6bf49cd6b901ae55ac8c250de9734",
+    "results": [
+      {
+        "arena_total": {
+          "allocations": 46,
+          "reallocations": 14,
+          "requested_bytes": 21804
+        },
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "ast_html": {
+          "allocations": 2,
+          "reallocations": 5,
+          "requested_bytes": 568
+        },
+        "ast_markdown": {
+          "allocations": 8202,
+          "reallocations": 1355,
+          "requested_bytes": 2415308
+        },
+        "bytes": 87,
+        "document": "inline-fallback-small",
+        "events": 39,
+        "html_reserved_output": {
+          "allocations": 45,
+          "reallocations": 11,
+          "requested_bytes": 14636
+        },
+        "html_total": {
+          "allocations": 46,
+          "reallocations": 12,
+          "requested_bytes": 14897
+        },
+        "node_bytes": 120,
+        "nodes": 30,
+        "prepare": {
+          "allocations": 5,
+          "reallocations": 4,
+          "requested_bytes": 2137
+        },
+        "pull_after_prepare": {
+          "allocations": 39,
+          "reallocations": 7,
+          "requested_bytes": 12435
+        }
+      },
+      {
+        "arena_total": {
+          "allocations": 27854,
+          "reallocations": 2553,
+          "requested_bytes": 23881292
+        },
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "ast_html": {
+          "allocations": 2,
+          "reallocations": 15,
+          "requested_bytes": 524344
+        },
+        "ast_markdown": {
+          "allocations": 718569,
+          "reallocations": 1365,
+          "requested_bytes": 20636100
+        },
+        "bytes": 99943,
+        "document": "inline-fallback-100k",
+        "events": 45543,
+        "html_reserved_output": {
+          "allocations": 27853,
+          "reallocations": 2539,
+          "requested_bytes": 8153164
+        },
+        "html_total": {
+          "allocations": 27854,
+          "reallocations": 2545,
+          "requested_bytes": 8673356
+        },
+        "node_bytes": 120,
+        "nodes": 35422,
+        "prepare": {
+          "allocations": 5,
+          "reallocations": 4,
+          "requested_bytes": 1312537
+        },
+        "pull_after_prepare": {
+          "allocations": 27847,
+          "reallocations": 2535,
+          "requested_bytes": 6840563
+        }
+      }
+    ]
+  },
+  {
+    "engine": "final",
+    "input_sha256": "3505eed8b2c86e5465f23d8d8ac62b0f62d49ee459c3767bcad36d05a58422a9",
+    "binary_sha256": "39285650f72f9e7f0010a5976a55da020537d1bad9ceb277d09d3d16300cb947",
+    "results": [
+      {
+        "arena_total": {
+          "allocations": 10,
+          "reallocations": 9,
+          "requested_bytes": 10817
+        },
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "ast_html": {
+          "allocations": 2,
+          "reallocations": 5,
+          "requested_bytes": 568
+        },
+        "ast_markdown": {
+          "allocations": 12,
+          "reallocations": 6,
+          "requested_bytes": 817
+        },
+        "bytes": 87,
+        "document": "inline-fallback-small",
+        "events": 39,
+        "html_reserved_output": {
+          "allocations": 9,
+          "reallocations": 6,
+          "requested_bytes": 3649
+        },
+        "html_total": {
+          "allocations": 10,
+          "reallocations": 7,
+          "requested_bytes": 3910
+        },
+        "node_bytes": 120,
+        "nodes": 30,
+        "prepare": {
+          "allocations": 5,
+          "reallocations": 4,
+          "requested_bytes": 2137
+        },
+        "pull_after_prepare": {
+          "allocations": 3,
+          "reallocations": 2,
+          "requested_bytes": 1448
+        }
+      },
+      {
+        "arena_total": {
+          "allocations": 10,
+          "reallocations": 20,
+          "requested_bytes": 17042177
+        },
+        "arena_traversal": {
+          "allocations": 0,
+          "reallocations": 0,
+          "requested_bytes": 0
+        },
+        "ast_html": {
+          "allocations": 2,
+          "reallocations": 15,
+          "requested_bytes": 524344
+        },
+        "ast_markdown": {
+          "allocations": 5068,
+          "reallocations": 16,
+          "requested_bytes": 303153
+        },
+        "bytes": 99943,
+        "document": "inline-fallback-100k",
+        "events": 45543,
+        "html_reserved_output": {
+          "allocations": 9,
+          "reallocations": 6,
+          "requested_bytes": 1314049
+        },
+        "html_total": {
+          "allocations": 10,
+          "reallocations": 12,
+          "requested_bytes": 1834241
+        },
+        "node_bytes": 120,
+        "nodes": 35422,
+        "prepare": {
+          "allocations": 5,
+          "reallocations": 4,
+          "requested_bytes": 1312537
+        },
+        "pull_after_prepare": {
+          "allocations": 3,
+          "reallocations": 2,
+          "requested_bytes": 1448
+        }
+      }
+    ]
+  }
+]

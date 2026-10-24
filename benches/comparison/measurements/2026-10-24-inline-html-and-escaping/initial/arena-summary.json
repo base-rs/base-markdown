@@ -1,0 +1,82 @@
+{
+  "core-arena/readme": {
+    "baseline": {
+      "median_ms": 0.027766194522079374,
+      "process_medians_ms": [
+        0.02712307882150373,
+        0.031243668224299068,
+        0.027766194522079374
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "final": {
+      "median_ms": 0.027187165046728967,
+      "process_medians_ms": [
+        0.02716298023642408,
+        0.027187165046728967,
+        0.027675500000000002
+      ],
+      "time_reduction_percent": 2.085375707102999
+    }
+  },
+  "core-arena/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.8597459310344828,
+      "process_medians_ms": [
+        0.8525790960451978,
+        0.8674910056818183,
+        0.8597459310344828
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "final": {
+      "median_ms": 0.8591278409090909,
+      "process_medians_ms": [
+        0.856629,
+        0.8634514659090909,
+        0.8591278409090909
+      ],
+      "time_reduction_percent": 0.07189218385112994
+    }
+  },
+  "core-arena/mixed-1m": {
+    "baseline": {
+      "median_ms": 9.47228125,
+      "process_medians_ms": [
+        9.122620117647058,
+        9.47228125,
+        9.497801470588236
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "final": {
+      "median_ms": 9.48920575,
+      "process_medians_ms": [
+        9.136838235294118,
+        9.6011745,
+        9.48920575
+      ],
+      "time_reduction_percent": -0.17867395987634094
+    }
+  },
+  "core-arena/gfm-100k": {
+    "baseline": {
+      "median_ms": 1.291780036036036,
+      "process_medians_ms": [
+        1.291780036036036,
+        1.2917798103448275,
+        1.3043797043478262
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "final": {
+      "median_ms": 1.3157386666666666,
+      "process_medians_ms": [
+        1.292847956140351,
+        1.3294697610619468,
+        1.3157386666666666
+      ],
+      "time_reduction_percent": -1.8546989396236668
+    }
+  }
+}
