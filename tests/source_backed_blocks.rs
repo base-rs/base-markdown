@@ -125,6 +125,24 @@ fn tables_accept_inline_syntax_and_ordinary_header_opening_bytes() {
 }
 
 #[test]
+fn indented_table_headers_after_definitions_keep_paragraph_precedence() {
+    for (header, expected) in [
+        ("[x]|y", "<p>[x]|y\n-|-</p>\n"),
+        ("x|y", "<p>x|y\n-|-</p>\n"),
+        (
+            "[x]: /x|y",
+            "<table>\n<thead>\n<tr>\n<th>[x]: /x</th>\n<th>y</th>\n</tr>\n</thead>\n</table>\n",
+        ),
+    ] {
+        assert_html(
+            &format!("[d]: /d\n    {header}\n-|-\n"),
+            &Options::gfm(),
+            expected,
+        );
+    }
+}
+
+#[test]
 fn complete_html_ends_a_lazy_container_but_not_an_ordinary_paragraph() {
     let mut options = Options::default();
     options.compile.allow_dangerous_html = true;

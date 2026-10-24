@@ -390,7 +390,7 @@ impl Builder<'_> {
             return self.paragraph(at, start);
         }
         if bytes[at] == b'[' && self.options.constructs.definition {
-            if self.options.constructs.table {
+            if self.options.constructs.table && table_definition_header(&bytes[at..]) {
                 if let Some(end) = self.table_head(definition_start) {
                     self.finish_list(start);
                     return self.table(definition_start, end);
@@ -930,6 +930,22 @@ impl Builder<'_> {
         self.pop(end);
         at
     }
+}
+
+/// Definition-looking table headers take precedence over definitions; other headers follow ordinary paragraph indentation rules.
+fn table_definition_header(bytes: &[u8]) -> bool {
+    let mut at = 1;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'\\' if bytes.get(at + 1).is_some_and(u8::is_ascii_punctuation) => at += 1,
+            b'[' => return false,
+            b']' => return bytes.get(at + 1) == Some(&b':'),
+            b'\r' | b'\n' => return true,
+            _ => {}
+        }
+        at += 1;
+    }
+    false
 }
 
 fn math_fence(bytes: &[u8]) -> Option<usize> {
