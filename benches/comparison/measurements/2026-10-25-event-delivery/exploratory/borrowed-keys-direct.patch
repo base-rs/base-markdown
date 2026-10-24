@@ -1,7 +1,6 @@
 --- a/src/definitions.rs
 +++ b/src/definitions.rs
-@@ -3,42 +3,47 @@
- 
+@@ -4,11 +4,13 @@
  //! Authored definitions with a sorted, first-definition-wins lookup index.
  use crate::stream::Text;
 -use crate::util::normalize_identifier::normalize_identifier;
@@ -19,7 +18,7 @@
 +    pub key: Cow<'a, str>,
      pub destination: Text<'static>,
      pub title: Option<Text<'static>>,
- }
+@@ -16,6 +18,6 @@
  
  #[derive(Debug, Default)]
 -pub(crate) struct Definitions {
@@ -28,15 +27,14 @@
 +    pub entries: Vec<Definition<'a>>,
      ordered: Vec<usize>,
      footnotes: Vec<String>,
-     footnote_order: Vec<usize>,
+@@ -23,5 +25,5 @@
  }
  
 -impl Definitions {
 +impl<'a> Definitions<'a> {
      pub fn is_empty(&self) -> bool {
          self.entries.is_empty()
-     }
- 
+@@ -30,14 +32,17 @@
      pub fn push(
          &mut self,
 -        source: &str,
@@ -60,18 +58,14 @@
 +        };
          let index = self.entries.len();
          self.entries.push(Definition {
-             label,
-@@ -68,7 +73,7 @@
- 
+@@ -69,5 +74,5 @@
      pub fn find(&self, key: &str) -> Option<usize> {
          self.ordered
 -            .binary_search_by(|&index| self.entries[index].key.as_str().cmp(key))
 +            .binary_search_by(|&index| self.entries[index].key.as_ref().cmp(key))
              .ok()
              .map(|index| self.ordered[index])
-     }
-@@ -94,3 +99,63 @@
-             .map(|index| self.footnote_order[index])
+@@ -95,2 +100,62 @@
      }
  }
 +
@@ -136,8 +130,7 @@
 +}
 --- a/src/inline_parser.rs
 +++ b/src/inline_parser.rs
-@@ -6,7 +6,9 @@
- use crate::stream::{Event, EventKind, Tag, TagKind, Text};
+@@ -7,5 +7,7 @@
  use crate::util::char::{classify_opt, Kind as CharacterKind};
  use crate::util::character_reference::{scan as scan_character_reference, Reference};
 -use crate::util::normalize_identifier::normalize_identifier_into;
@@ -146,27 +139,21 @@
 +};
  use crate::value_builder::decode_string_with_options;
  use alloc::{
-     string::{String, ToString},
-@@ -296,7 +298,7 @@
-         &mut self,
+@@ -297,5 +299,5 @@
          source: &str,
          fragments: impl Iterator<Item = Range<usize>> + Clone,
 -        definitions: &Definitions,
 +        definitions: &Definitions<'_>,
          options: &crate::ParseOptions,
          task: bool,
-         table: bool,
-@@ -364,7 +366,7 @@
-         original_source: &str,
+@@ -365,5 +367,5 @@
          source: &str,
          fragments: impl Iterator<Item = Range<usize>>,
 -        definitions: &Definitions,
 +        definitions: &Definitions<'_>,
          options: &crate::ParseOptions,
          task: bool,
-     ) -> bool {
-@@ -739,7 +741,10 @@
-                                 if label.start < range.start {
+@@ -740,5 +742,8 @@
                                      return false;
                                  }
 -                                normalize_identifier_into(&source[label], &mut self.reference_key);
@@ -176,20 +163,16 @@
 +                                );
                                  resolved = definitions
                                      .find(&self.reference_key)
-                                     .map(|index| (end, Kind::Reference(tag, index)));
-@@ -1074,7 +1079,7 @@
-     pub(crate) fn next(
+@@ -1075,5 +1080,5 @@
          &mut self,
          source: &str,
 -        definitions: &Definitions,
 +        definitions: &Definitions<'_>,
          options: &crate::ParseOptions,
      ) -> Option<Event<'static>> {
-         let source = if self.normalized {
 --- a/src/inline_workspace.rs
 +++ b/src/inline_workspace.rs
-@@ -13,12 +13,12 @@
- pub(crate) struct InlineWorkspace<'a> {
+@@ -14,10 +14,10 @@
      source: &'a str,
      options: &'a ParseOptions,
 -    definitions: Definitions,
@@ -202,40 +185,32 @@
 +    pub fn new(source: &'a str, options: &'a ParseOptions, definitions: Definitions<'a>) -> Self {
          Self {
              source,
-             options,
-@@ -32,7 +32,7 @@
-     pub fn options(&self) -> &'a ParseOptions {
+@@ -33,5 +33,5 @@
          self.options
      }
 -    pub fn definitions(&self) -> &Definitions {
 +    pub fn definitions(&self) -> &Definitions<'a> {
          &self.definitions
      }
- 
 --- a/src/block_parser/mod.rs
 +++ b/src/block_parser/mod.rs
-@@ -96,7 +96,7 @@
-     current: usize,
+@@ -97,5 +97,5 @@
      blank: bool,
      empty_item: Option<usize>,
 -    definitions: Definitions,
 +    definitions: Definitions<'a>,
      alignments: Vec<AlignKind>,
      definition_context: bool,
- }
-@@ -115,7 +115,7 @@
-                 Body::List { tight: true, .. }
+@@ -116,5 +116,5 @@
              )
      }
 -    pub fn parse(source: &str, options: &ParseOptions) -> (Self, Definitions) {
 +    pub fn parse<'a>(source: &'a str, options: &'a ParseOptions) -> (Self, Definitions<'a>) {
          let mut builder = Builder {
              source,
-             options,
 --- a/src/util/normalize_identifier.rs
 +++ b/src/util/normalize_identifier.rs
-@@ -56,6 +56,27 @@
- 
+@@ -57,4 +57,25 @@
  /// Normalize into reusable storage. ASCII labels need no allocation after capacity is established.
  pub(crate) fn normalize_identifier_into(value: &str, result: &mut String) {
 +    collapse_whitespace_into(value, result);
@@ -261,9 +236,7 @@
 +fn collapse_whitespace_into(value: &str, result: &mut String) {
      result.clear();
      let mut remaining = value;
-     while !remaining.is_empty() {
-@@ -72,12 +93,6 @@
-             .take_while(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
+@@ -73,10 +94,4 @@
              .count();
          remaining = &remaining[padding..];
 -    }
@@ -274,4 +247,3 @@
 -        *result = result.to_lowercase().to_uppercase();
      }
  }
- 
