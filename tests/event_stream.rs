@@ -399,3 +399,25 @@ fn task_checkbox_attributes_preserve_checkability_and_state() {
         assert_eq!(traversed, expected);
     }
 }
+
+#[test]
+fn inline_workspace_switches_between_compact_and_grammar_regions() {
+    let source = "before `a\nb` &amp; *first*.\n\n[compact][ref] **second**.\n\nraw <span>third</span>.\n\n| a | b |\n| - | - |\n| | |\n\n`x\ny` [last][ref].\n\n[ref]: /target \"title\"\n";
+    for (mut options, table) in [
+        (Options::default(), "<p>| a | b |\n| - | - |\n| | |</p>\n"),
+        (Options::gfm(), "<table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td></td>\n<td></td>\n</tr>\n</tbody>\n</table>\n"),
+    ] {
+        options.compile.allow_dangerous_html = true;
+        let expected = format!(
+            "<p>before <code>a b</code> &amp; <em>first</em>.</p>\n<p><a href=\"/target\" title=\"title\">compact</a> <strong>second</strong>.</p>\n<p>raw <span>third</span>.</p>\n{table}<p><code>x y</code> <a href=\"/target\" title=\"title\">last</a>.</p>\n"
+        );
+        assert_eq!(core_markdown::to_html_with_options(source, &options).unwrap(), expected);
+        let mut rendered = String::new();
+        render_events(source, EventParser::new(source, &options.parse).unwrap(), &options.compile, &mut rendered).unwrap();
+        assert_eq!(rendered, expected);
+        let document = Document::parse(source, &options.parse).unwrap();
+        rendered.clear();
+        render_events(source, document.events(), &options.compile, &mut rendered).unwrap();
+        assert_eq!(rendered, expected);
+    }
+}

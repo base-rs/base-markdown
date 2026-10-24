@@ -151,7 +151,48 @@ impl<'a> GrammarParser<'a> {
         &self.definitions
     }
 
-    pub(crate) fn region(&mut self, fragments: impl Iterator<Item = Range<usize>>, task: bool) {
+    pub(crate) fn region<const GFM: bool>(
+        &mut self,
+        fragments: impl Iterator<Item = Range<usize>> + Clone,
+        task: bool,
+    ) {
+        self.direct_inline = !self.options.inline_code_info
+            && if self.definitions.is_empty() {
+                self.compact_inline.prepare::<false, GFM>(
+                    self.source,
+                    fragments.clone(),
+                    &self.definitions,
+                    self.options,
+                    task,
+                )
+            } else {
+                self.compact_inline.prepare::<true, GFM>(
+                    self.source,
+                    fragments.clone(),
+                    &self.definitions,
+                    self.options,
+                    task,
+                )
+            };
+        if !self.direct_inline {
+            self.grammar_region(fragments, task);
+        }
+    }
+
+    // Compact block preparation shares the compatibility producer's reusable inline workspace.
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
+    pub(crate) fn next_region(&mut self) -> Option<Result<Event<'static>, StreamError>> {
+        if self.direct_inline {
+            self.compact_inline
+                .next(self.source, &self.definitions)
+                .map(Ok)
+        } else {
+            self.next()
+        }
+    }
+
+    fn grammar_region(&mut self, fragments: impl Iterator<Item = Range<usize>>, task: bool) {
         // Only compatibility inline tokenization needs an owning list of normalized keys. Ordinary compact events share the prepared definition table directly.
         if self.parse_state.definitions.is_empty() {
             self.parse_state
