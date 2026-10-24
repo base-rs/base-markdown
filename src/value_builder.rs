@@ -6,6 +6,8 @@ use crate::{stream::Text, util::constant::CHARACTER_REFERENCES};
 use alloc::string::{String, ToString};
 use core::ops::Range;
 
+static STRING_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\\&\0");
+
 /// Keep a contiguous source range until normalization actually requires an owned string.
 pub(crate) struct ValueBuilder<'a> {
     source: &'a str,
@@ -88,6 +90,10 @@ fn decode(
     let mut start = range.start;
     let mut index = start;
     while index < range.end {
+        index += STRING_MARKERS.find(&bytes[index..range.end]);
+        if index == range.end {
+            break;
+        }
         if escapes
             && bytes[index] == b'\\'
             && index + 1 < range.end
