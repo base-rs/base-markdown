@@ -1,0 +1,96 @@
+{
+  "core-markdown/no-line-ending-100k": {
+    "baseline": {
+      "median_ms": 0.05586408890549122,
+      "process_medians_ms": [
+        0.05586408890549122,
+        0.05585742990654206,
+        0.05587826005961252
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "references": {
+      "median_ms": 0.05582057505601195,
+      "process_medians_ms": [
+        0.05578792396571003,
+        0.05582057505601195,
+        0.0558923858797161
+      ],
+      "time_reduction_percent": 0.07789234610607876
+    },
+    "workspace": {
+      "median_ms": 0.0558838776119403,
+      "process_medians_ms": [
+        0.05591283202394314,
+        0.0558838776119403,
+        0.05583466989929131
+      ],
+      "time_reduction_percent": -0.03542294672085333
+    },
+    "pre-removal": {
+      "median_ms": 0.010653560312119694,
+      "process_medians_ms": [
+        0.010666007374525669,
+        0.010634456478310503,
+        0.010653560312119694
+      ],
+      "time_reduction_percent": 80.92950136510238
+    },
+    "final": {
+      "median_ms": 0.010638944460328805,
+      "process_medians_ms": [
+        0.010638944460328805,
+        0.010638503078905915,
+        0.010640786926147705
+      ],
+      "time_reduction_percent": 80.9556645981869
+    }
+  },
+  "core-markdown/late-inline-fallback-100k": {
+    "baseline": {
+      "median_ms": 0.1610846792249731,
+      "process_medians_ms": [
+        0.1658845137211855,
+        0.1604790778251599,
+        0.1610846792249731
+      ],
+      "time_reduction_percent": 0.0
+    },
+    "references": {
+      "median_ms": 0.16057938829787233,
+      "process_medians_ms": [
+        0.16035083693304536,
+        0.16057938829787233,
+        0.16086384017278618
+      ],
+      "time_reduction_percent": 0.31368031369083393
+    },
+    "workspace": {
+      "median_ms": 0.11381467072243347,
+      "process_medians_ms": [
+        0.11381467072243347,
+        0.11529737559055118,
+        0.11372544242424243
+      ],
+      "time_reduction_percent": 29.344819588038963
+    },
+    "pre-removal": {
+      "median_ms": 0.06887410878470643,
+      "process_medians_ms": [
+        0.06887410878470643,
+        0.06911753605442177,
+        0.06845296515359926
+      ],
+      "time_reduction_percent": 57.243538543776786
+    },
+    "final": {
+      "median_ms": 0.06845745387792565,
+      "process_medians_ms": [
+        0.06874253559944879,
+        0.0681951,
+        0.06845745387792565
+      ],
+      "time_reduction_percent": 57.50219436926276
+    }
+  }
+}

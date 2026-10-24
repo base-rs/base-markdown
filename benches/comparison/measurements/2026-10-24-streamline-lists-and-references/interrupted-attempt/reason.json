@@ -1,0 +1,5 @@
+{
+  "reason": "Independent core-scheduler coverage/test drivers started on this shared machine during the first matrix. Stopped our timing process tree. Entire first attempt excluded from reported tables and retained here; no sample-level selection by speed. Repeats monitor competing drivers before and throughout conversions.",
+  "competing_driver_local_start": "2026-10-24 22:34:48 Pacific/Auckland",
+  "competing_workspace": "/Users/samuel/.cache/core-scheduler-interface-cleanup"
+}

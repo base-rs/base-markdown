@@ -1,0 +1,10 @@
+{
+  "accepted_process_records": 141,
+  "document_process_medians": 333,
+  "calibrated_samples": 2331,
+  "monitored_interruptions": {
+    "markdown.interrupted.jsonl": 4,
+    "html.interrupted.jsonl": 3
+  },
+  "excluded_first_attempt": "interrupted-attempt/reason.json"
+}

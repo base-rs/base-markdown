@@ -1,0 +1,16 @@
+{
+  "processes": [
+    "76723 182.7 /System/Library/PrivateFrameworks/MediaAnalysis.framework/Versions/A/mediaanalysisd",
+    "13438 100.7 target/debug/fantail-observe",
+    "58081  71.3 /usr/libexec/spotlightknowledged.updater",
+    "  870  28.3 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/corespotlightd",
+    "  445  13.9 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+    "  770  13.7 /usr/sbin/cfprefsd",
+    "10160   9.0 /nix/store/br6vcyafw6xlj41789ag9467apgnkzgq-yugabyte-2025.2.5.2/install/bin/yb-tserver",
+    "  593   8.3 /Library/SystemExtensions/E8F017D6-4437-48D9-BB90-D48AB64DCFD6/com.northpolesec.santa.daemon.systemextension/Contents/MacOS/com.northpolesec.santa.daemon",
+    "  818   5.9 /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+    "  582   5.5 /Applications/Cloudflare WARP.app/Contents/Resources/CloudflareWARP",
+    "  788   5.1 /System/Library/CoreServices/WindowManager.app/Contents/MacOS/WindowManager",
+    "15157   5.1 python3"
+  ]
+}

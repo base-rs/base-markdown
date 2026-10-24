@@ -1,0 +1,61 @@
+{
+  "source_head": "96e62fc53871331b115f3df4b4c2d647f7428b4a",
+  "source_tree": "bbcb6bf7b1a916bc06b323f26764f5ec2f8e51f0",
+  "coverage": {
+    "covered": 20984,
+    "measured": 20984,
+    "invariant_unreachable_exclusions": 38
+  },
+  "results": {
+    "coverage_all_features_all_targets": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-streamline-20261024/cleanup-reviewed-coverage.log",
+      "log_sha256": "699bc01ca66a6ecb40649452b9a2fda0d25e90d126a8d4791f0b9c62bf9b3f17"
+    },
+    "clippy_all_features_all_targets": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-streamline-20261024/cleanup-reviewed-clippy.log",
+      "log_sha256": "7c2358297b1e91430c589a19f64eb6eec694c824a5d88b318b43a8e3f80d65d8"
+    },
+    "clippy_default_all_targets": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-streamline-20261024/cleanup-reviewed-default-clippy.log",
+      "log_sha256": "96d0b9ebb8b59db9d2a7ceb040cdc4baded7c83d7441a65638904da3268f253e"
+    },
+    "workspace_default": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-streamline-20261024/cleanup-reviewed-workspace.log",
+      "log_sha256": "a9f32e74aa87a7faef207e01557bb391c6da3e6373ba14da118c2bf9fc0c9aa1"
+    },
+    "linux_all_features_library_check": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-streamline-20261024/cleanup-reviewed-linux.log",
+      "log_sha256": "4cf86278c1e6d659943a46a3d7e3da429ac15be90f0f17742e24ef85228e7d3e"
+    },
+    "format": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-streamline-20261024/cleanup-reviewed-fmt.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "preservation": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-streamline-20261024/cleanup-preservation.log",
+      "log_sha256": "6a5712c127e596ec1cf3a1aed1860af18985ee56659cd130fc58056027e52044"
+    },
+    "generated_angle_preservation": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-streamline-20261024/cleanup-angles.log",
+      "log_sha256": "a797805c0e0fc2cb7b09de2e430f2ebf105878d4b63a74a617188a3c7a0a6ed0"
+    },
+    "diagnostic_preservation": {
+      "status": "passed",
+      "log": "/tmp/core-markdown-streamline-20261024/cleanup-diagnostics.log",
+      "log_sha256": "d5b2466e70b1f4149396fa7fcc68becd31f2c5aeaf546ec64a6726b5bde8be55"
+    }
+  },
+  "source_review": {
+    "commit": "96e62fc53871331b115f3df4b4c2d647f7428b4a",
+    "result": "Independent adversarial source review approved after reference ownership and eager-text cleanup followups."
+  },
+  "limits": "Native arm64 macOS runtime coverage/default workspace tests. Linux locally compile-only; CI supplies Linux runtime coverage."
+}

@@ -1,0 +1,14 @@
+{
+  "baseline": {
+    "grammar_parser::GrammarParser<'_>": 1024,
+    "event_parser::EventParser<'_>": 368,
+    "parser::ParseState<'_>": 72,
+    "document::AstBuilder": 64
+  },
+  "final": {
+    "grammar_parser::GrammarParser<'_>": 952,
+    "event_parser::EventParser<'_>": 368,
+    "parser::ParseState<'_>": 48,
+    "document::AstBuilder": 64
+  }
+}

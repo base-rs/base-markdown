@@ -1,0 +1,17 @@
+{
+  "processes": [
+    "94214  95.3 target/debug/fantail-observe",
+    "  445  38.0 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+    "10160  33.9 /nix/store/br6vcyafw6xlj41789ag9467apgnkzgq-yugabyte-2025.2.5.2/install/bin/yb-tserver",
+    "  818  18.9 /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+    " 5027   8.8 python3",
+    "  788   8.6 /System/Library/CoreServices/WindowManager.app/Contents/MacOS/WindowManager",
+    " 5026   4.0 /bin/zsh",
+    "88722   3.8 /Users/samuel/.codex/packages/app-server-daemon/releases/0.164.0-aarch64-apple-darwin/bin/codex",
+    "  582   3.7 /Applications/Cloudflare WARP.app/Contents/Resources/CloudflareWARP",
+    "  593   3.7 /Library/SystemExtensions/E8F017D6-4437-48D9-BB90-D48AB64DCFD6/com.northpolesec.santa.daemon.systemextension/Contents/MacOS/com.northpolesec.santa.daemon",
+    "96088   3.7 /nix/store/cs3w50knxqkj3qhq2ckggiz9b2i1kgy1-codex-0.163.0/lib/codex/node_modules/.pnpm/@openai+codex@0.163.0-darwin-arm64/node_modules/@openai/codex/vendor/aarch64-apple-darwin/bin/codex",
+    "10367   3.4 /nix/store/62qxq43vkkrlzg47xgqw1kdy891xiw5y-codex-0.163.0/lib/codex/node_modules/.pnpm/@openai+codex@0.163.0-darwin-arm64/node_modules/@openai/codex/vendor/aarch64-apple-darwin/bin/codex"
+  ],
+  "note": "Persistent shared-machine workloads are not stopped; no local builds/tests/review/profiling/allocation diagnostics overlap timings."
+}
