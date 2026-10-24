@@ -66,6 +66,32 @@ enum Phase {
     Done,
 }
 impl EventParser<'_> {
+    fn prepare_inline<const EXTENSIONS: bool>(&mut self, index: usize, task: bool, table: bool) {
+        let nodes = &self.blocks.nodes;
+        let fragments = self.blocks.children(index).map(|child| {
+            let node = nodes[child];
+            node.start..node.end
+        });
+        if self.definitions.is_empty() {
+            self.inline.prepare::<false, EXTENSIONS>(
+                self.source,
+                fragments,
+                &self.definitions,
+                self.options,
+                task,
+                table,
+            );
+        } else {
+            self.inline.prepare::<true, EXTENSIONS>(
+                self.source,
+                fragments,
+                &self.definitions,
+                self.options,
+                task,
+                table,
+            );
+        }
+    }
     fn advance(&mut self) {
         let node = self.blocks.nodes[self.cursor];
         if node.next != 0 {
@@ -272,10 +298,6 @@ impl EventParser<'_> {
         let kind = match node.body {
             Body::Paragraph | Body::Heading(_) | Body::TableCell { .. } => {
                 let nodes = &self.blocks.nodes;
-                let fragments = self.blocks.children(index).map(|child| {
-                    let node = nodes[child];
-                    node.start..node.end
-                });
                 let task = self.options.constructs.task_list_item
                     && matches!(node.body, Body::Paragraph)
                     && matches!(nodes[node.parent].body, Body::Item(_))
@@ -285,24 +307,11 @@ impl EventParser<'_> {
                         .children(node.parent)
                         .take_while(|&before| before != index)
                         .all(|before| matches!(nodes[before].body, Body::Definition(_)));
+                let table = matches!(node.body, Body::TableCell { .. });
                 if self.extensions {
-                    self.inline.prepare::<true>(
-                        self.source,
-                        fragments,
-                        &self.definitions,
-                        self.options,
-                        task,
-                        matches!(node.body, Body::TableCell { .. }),
-                    );
+                    self.prepare_inline::<true>(index, task, table);
                 } else {
-                    self.inline.prepare::<false>(
-                        self.source,
-                        fragments,
-                        &self.definitions,
-                        self.options,
-                        task,
-                        matches!(node.body, Body::TableCell { .. }),
-                    );
+                    self.prepare_inline::<false>(index, task, table);
                 }
                 self.phase = Phase::Inline;
                 match node.body {
