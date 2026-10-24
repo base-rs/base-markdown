@@ -2,7 +2,7 @@
 
 Block opening and paragraph interruption now select the applicable scanner from the first content byte. Ordinary text avoids unrelated rule, heading, fence, and list probes. The fence scanner no longer repeats the marker check enforced by both callers. Empty inline delimiter scopes skip the emphasis resolver's setup and scan. No parser state, allocations, public API, feature, dependency, or semantic event representation changes are introduced.
 
-The baseline is merged #42 (`9b707b1`), after MDX removal. Merged #41 (`2e4b627`) separately measures performance before that removal. The final library source is `5f3f83e`; [metadata](metadata.json) records exact trees, immutable executables, hashes, toolchains, adapters, and environment.
+The baseline is merged #42 (`9b707b1`), after MDX removal. Merged #41 (`2e4b627`) separately measures performance before that removal. Retained baseline executables were built before their squash merges from identical source trees; metadata records both build and merged identities. The final library source is `5f3f83e`; [metadata](metadata.json) records exact trees, immutable executables, hashes, toolchains, adapters, and environment.
 
 ## Final comparison
 
