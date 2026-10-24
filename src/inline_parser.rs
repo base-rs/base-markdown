@@ -747,7 +747,7 @@ impl InlineParser {
                         }
                         if let Some((end, kind)) = resolved {
                             self.attention::<EXTENSIONS>(bracket.delimiters);
-                            if !bracket.image {
+                            if EXTENSIONS && options.constructs.autolink_literal && !bracket.image {
                                 self.suppress_autolinks(bracket.node);
                             }
                             self.nodes[bracket.node].kind = kind;
