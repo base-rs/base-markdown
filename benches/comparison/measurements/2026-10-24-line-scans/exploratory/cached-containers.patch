@@ -1,0 +1,82 @@
+diff --git a/src/block_parser/mod.rs b/src/block_parser/mod.rs
+index 502e207..9a34f3a 100644
+--- a/src/block_parser/mod.rs
++++ b/src/block_parser/mod.rs
+@@ -96,6 +96,8 @@ struct Builder<'a> {
+     unsupported: bool,
+     definitions: Definitions,
+     alignments: Vec<AlignKind>,
++    // A paragraph's terminating line, with its container prefixes already consumed. The count excludes the paragraph that closed before this line is resumed.
++    next_line: Option<(LineStart<'a>, usize)>,
+ }
+ 
+ impl Blocks {
+@@ -121,6 +123,7 @@ impl Blocks {
+             unsupported: false,
+             definitions: Definitions::default(),
+             alignments: Vec::new(),
++            next_line: None,
+         };
+         builder.blocks.nodes.push(Node {
+             start: 0,
+@@ -192,8 +195,9 @@ impl Builder<'_> {
+         }
+     }
+     fn containers(&self, line: &mut LineStart<'_>) -> usize {
+-        let mut count = 0;
+-        for &index in &self.open {
++        // The document root is always open and never consumes a line prefix.
++        let mut count = 1;
++        for &index in &self.open[1..] {
+             let save = line.clone();
+             match self.blocks.nodes[index].body {
+                 Body::Quote => {
+@@ -280,8 +284,11 @@ impl Builder<'_> {
+     }
+     fn block(&mut self, start: usize) -> usize {
+         let bytes = self.source.as_bytes();
+-        let mut line = LineStart::new(&bytes[start..]);
+-        let continued = self.containers(&mut line);
++        let (mut line, continued) = self.next_line.take().unwrap_or_else(|| {
++            let mut line = LineStart::new(&bytes[start..]);
++            let continued = self.containers(&mut line);
++            (line, continued)
++        });
+         let continuation_end = start + line.bytes_scanned();
+         while self.open.len() > continued {
+             self.pop(start);
+@@ -452,7 +459,9 @@ impl Builder<'_> {
+             let next = at + scan_nextline(&bytes[at..]);
+             self.fragment(at, next, 0);
+             let mut line = LineStart::new(&bytes[next..]);
+-            let continued = self.containers(&mut line) == self.open.len();
++            let matched = self.containers(&mut line);
++            let continued = matched == self.open.len();
++            let next_line = (line.clone(), matched.min(self.open.len() - 1));
+             let content_start = next + line.bytes_scanned();
+             if !line.scan_space(4) {
+                 let content = next + line.bytes_scanned();
+@@ -464,6 +473,7 @@ impl Builder<'_> {
+                     }
+                     self.trim_fragment();
+                     self.pop(next);
++                    self.next_line = Some(next_line);
+                     return next;
+                 }
+                 if continued {
+@@ -477,6 +487,7 @@ impl Builder<'_> {
+                 if self.interrupts(&bytes[content..], continued) {
+                     self.trim_fragment();
+                     self.pop(next);
++                    self.next_line = Some(next_line);
+                     return next;
+                 }
+             }
+@@ -484,6 +495,7 @@ impl Builder<'_> {
+             if line.is_at_eol() {
+                 self.trim_fragment();
+                 self.pop(next);
++                self.next_line = Some(next_line);
+                 return next;
+             }
+             at = content_start;

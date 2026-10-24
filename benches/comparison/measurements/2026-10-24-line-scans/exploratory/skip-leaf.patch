@@ -1,0 +1,124 @@
+diff --git a/src/block_parser/mod.rs b/src/block_parser/mod.rs
+index 502e207..e2a6f9f 100644
+--- a/src/block_parser/mod.rs
++++ b/src/block_parser/mod.rs
+@@ -191,9 +191,10 @@ impl Builder<'_> {
+             self.empty_item = None;
+         }
+     }
+-    fn containers(&self, line: &mut LineStart<'_>) -> usize {
+-        let mut count = 0;
+-        for &index in &self.open {
++    fn containers(&self, line: &mut LineStart<'_>, depth: usize) -> usize {
++        // The document root is always open and never consumes a line prefix.
++        let mut count = 1;
++        for &index in &self.open[1..depth] {
+             let save = line.clone();
+             match self.blocks.nodes[index].body {
+                 Body::Quote => {
+@@ -281,7 +282,7 @@ impl Builder<'_> {
+     fn block(&mut self, start: usize) -> usize {
+         let bytes = self.source.as_bytes();
+         let mut line = LineStart::new(&bytes[start..]);
+-        let continued = self.containers(&mut line);
++        let continued = self.containers(&mut line, self.open.len());
+         let continuation_end = start + line.bytes_scanned();
+         while self.open.len() > continued {
+             self.pop(start);
+@@ -355,7 +356,7 @@ impl Builder<'_> {
+             };
+             // A following title or arbitrary content indentation can belong to this same grammar content block.
+             let mut continuation = LineStart::new(&bytes[next..]);
+-            let continued = self.containers(&mut continuation) == self.open.len();
++            let continued = self.containers(&mut continuation, self.open.len()) == self.open.len();
+             let indentation = continuation.scan_space_upto(4);
+             let following = next + continuation.bytes_scanned();
+             let nonblank = scan_blank_line(&bytes[following..]).is_none();
+@@ -446,13 +447,15 @@ impl Builder<'_> {
+         self.finish_list(line_start);
+         let paragraph = self.append(start, start, Body::Paragraph(false));
+         self.push();
++        // The active leaf has no continuation prefix; only its ancestors can consume one.
++        let depth = self.open.len() - 1;
+         let bytes = self.source.as_bytes();
+         let mut at = start;
+         loop {
+             let next = at + scan_nextline(&bytes[at..]);
+             self.fragment(at, next, 0);
+             let mut line = LineStart::new(&bytes[next..]);
+-            let continued = self.containers(&mut line) == self.open.len();
++            let continued = self.containers(&mut line, depth) == depth;
+             let content_start = next + line.bytes_scanned();
+             if !line.scan_space(4) {
+                 let content = next + line.bytes_scanned();
+@@ -505,7 +508,7 @@ impl Builder<'_> {
+         let bytes = self.source.as_bytes();
+         let next = start + scan_nextline(&bytes[start..]);
+         let mut line = LineStart::new(&bytes[next..]);
+-        if self.containers(&mut line) != self.open.len() || line.scan_space(4) {
++        if self.containers(&mut line, self.open.len()) != self.open.len() || line.scan_space(4) {
+             return None;
+         }
+         let at = next + line.bytes_scanned();
+@@ -577,7 +580,7 @@ impl Builder<'_> {
+         let mut body = false;
+         while at < bytes.len() {
+             let mut line = LineStart::new(&bytes[at..]);
+-            if self.containers(&mut line) != self.open.len() {
++            if self.containers(&mut line, self.open.len()) != self.open.len() {
+                 break;
+             }
+             let row = at + line.bytes_scanned();
+@@ -614,6 +617,8 @@ impl Builder<'_> {
+     fn html(&mut self, start: usize, kind: html::Html) -> usize {
+         self.append(start, start, Body::Html(start));
+         self.push();
++        // The active leaf has no continuation prefix; only its ancestors can consume one.
++        let depth = self.open.len() - 1;
+         let bytes = self.source.as_bytes();
+         let mut at = start;
+         loop {
+@@ -624,7 +629,7 @@ impl Builder<'_> {
+             }
+             self.fragment(at, next, 0);
+             let mut line = LineStart::new(&bytes[next..]);
+-            let continued = self.containers(&mut line) == self.open.len();
++            let continued = self.containers(&mut line, depth) == depth;
+             let content = next + line.bytes_scanned();
+             let closed = kind.closed(&bytes[at..next]);
+             if !closed
+@@ -710,13 +715,15 @@ impl Builder<'_> {
+         });
+         self.append(start, start, Body::Code(code));
+         self.push();
++        // The active leaf has no continuation prefix; only its ancestors can consume one.
++        let depth = self.open.len() - 1;
+         loop {
+             if at == bytes.len() {
+                 self.pop(at);
+                 return at;
+             }
+             let mut line = LineStart::new(&bytes[at..]);
+-            if self.containers(&mut line) != self.open.len() {
++            if self.containers(&mut line, depth) != depth {
+                 self.pop(at);
+                 return at;
+             }
+@@ -751,6 +758,8 @@ impl Builder<'_> {
+         });
+         self.append(start, start, Body::Code(code));
+         self.push();
++        // The active leaf has no continuation prefix; only its ancestors can consume one.
++        let depth = self.open.len() - 1;
+         let bytes = self.source.as_bytes();
+         let mut at = start;
+         let mut last_content = 0;
+@@ -764,7 +773,7 @@ impl Builder<'_> {
+                 end = next;
+             }
+             let mut line = LineStart::new(&bytes[next..]);
+-            if self.containers(&mut line) != self.open.len()
++            if self.containers(&mut line, depth) != depth
+                 || !(line.scan_space(4) || line.is_at_eol())
+             {
+                 at = next;

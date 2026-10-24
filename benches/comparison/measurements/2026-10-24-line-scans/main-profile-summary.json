@@ -1,0 +1,60 @@
+{
+  "total_samples": 4160,
+  "self_samples": [
+    {
+      "area": "Event production + HTML loop",
+      "samples": 1357,
+      "percent": 32.62019230769231
+    },
+    {
+      "area": "HTML escaping",
+      "samples": 463,
+      "percent": 11.129807692307692
+    },
+    {
+      "area": "Inline preparation",
+      "samples": 413,
+      "percent": 9.927884615384615
+    },
+    {
+      "area": "Block preparation body",
+      "samples": 307,
+      "percent": 7.3798076923076925
+    },
+    {
+      "area": "Memory copying",
+      "samples": 251,
+      "percent": 6.033653846153846
+    },
+    {
+      "area": "Event cleanup",
+      "samples": 189,
+      "percent": 4.543269230769231
+    },
+    {
+      "area": "Container scanning",
+      "samples": 189,
+      "percent": 4.543269230769231
+    },
+    {
+      "area": "Emphasis resolution",
+      "samples": 93,
+      "percent": 2.235576923076923
+    },
+    {
+      "area": "URI sanitization",
+      "samples": 92,
+      "percent": 2.2115384615384617
+    },
+    {
+      "area": "List marker scanning",
+      "samples": 77,
+      "percent": 1.8509615384615385
+    },
+    {
+      "area": "Block record append",
+      "samples": 72,
+      "percent": 1.7307692307692308
+    }
+  ]
+}
