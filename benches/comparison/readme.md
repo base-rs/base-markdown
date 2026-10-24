@@ -47,6 +47,19 @@ The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,
 
 **GFM is not an equal-output throughput comparison:** Inkmark leaves `www.example.com` unlinked in this workload even with autolinking enabled. Its table alignment attributes and empty table bodies also differ. Comrak and Commonmarker do not expose the same independent GFM tag filter as the other adapters. Read GFM timings alongside the output agreement results.
 
+## Source-backed text coalescing follow-up
+
+The compact scanner combines escaped punctuation with following ordinary source text, preserving source ranges and existing structured link/code details. On mixed 1 MB this removes 5,134 semantic events (3.0%) and AST nodes (4.1%), with unchanged allocation measurements and output bytes. Three alternating runs compare merged main `3f633ab` with `7d853c7`:
+
+| Workload | Merged main (ms) | Candidate (ms) | Inkmark 0.2.1 (ms) |
+| --- | ---: | ---: | ---: |
+| README 9 KB | 0.0150 | 0.0147 | 0.0187 |
+| Mixed 100 KB | 0.4418 | 0.4368 | 0.4088 |
+| Mixed 1 MB | 4.4506 | 4.4128 | 4.3402 |
+| GFM 100 KB | 0.6477 | 0.6488 | 0.7082 |
+
+Mixed HTML takes 1.1% and 0.8% less time, close to ordinary measurement variation. The separate public event mode takes 3.0% and 1.8% less, and AST parsing/rendering takes 2.9% and 2.1% less. Mixed HTML remains 6.9% and 1.7% slower than Inkmark. GFM retains the output differences described above. [Full measurements](measurements/2026-10-24-text-coalescing/readme.md) retain every sample, event/node counts, allocations, output checks, and review evidence. Ruby is 4.0.9 in this run, versus 4.0.7 below; compare engines within each recorded run.
+
 ## Fixed HTML write follow-up
 
 The shared renderer now batches fixed tags and attribute delimiters. On the mixed 1 MB fixture, this reduces logical writer calls by 10.5%, with unchanged output and allocation counts. Three alternating runs on Apple M4 Pro compare merged main `3750a52` with production `aa2c98c` and focused tests `01a1a07`:

@@ -1,0 +1,90 @@
+{
+  "core-markdown/readme": {
+    "baseline": [
+      0.014948185226888861,
+      0.01492319728311207
+    ],
+    "candidate": [
+      0.014798261818181817,
+      0.015029925842466456
+    ],
+    "candidate_time_change_percent": -0.14460277939328803
+  },
+  "core-markdown/mixed-100k": {
+    "baseline": [
+      0.44020467836257304,
+      0.4443739067055394
+    ],
+    "candidate": [
+      0.43461316477272727,
+      0.43589122418879056
+    ],
+    "candidate_time_change_percent": -1.5910622689911613
+  },
+  "core-markdown/mixed-1m": {
+    "baseline": [
+      4.457717857142858,
+      4.450645852941176
+    ],
+    "candidate": [
+      4.372552371428571,
+      4.37435
+    ],
+    "candidate_time_change_percent": -1.8124690898362439
+  },
+  "core-markdown/gfm-100k": {
+    "baseline": [
+      0.6418836206896552,
+      0.6551920304347826
+    ],
+    "candidate": [
+      0.6684244115044248,
+      0.6474917370689656
+    ],
+    "candidate_time_change_percent": 1.4525365141670576
+  },
+  "core-events/mixed-1m": {
+    "baseline": [
+      3.591918642857143,
+      3.6007083488372094
+    ],
+    "candidate": [
+      3.525169522727273,
+      3.499994186046511
+    ],
+    "candidate_time_change_percent": -2.328263138265696
+  },
+  "core-markdown/references": {
+    "baseline": [
+      0.6152244485596707,
+      0.6253867066115703
+    ],
+    "candidate": [
+      0.6240595210084033,
+      0.619820020746888
+    ],
+    "candidate_time_change_percent": 0.2634497175385553
+  },
+  "core-markdown/long-lines-1m": {
+    "baseline": [
+      0.12241738714991764,
+      0.12353249172185429
+    ],
+    "candidate": [
+      0.12375540315876973,
+      0.12255918367346937
+    ],
+    "candidate_time_change_percent": 0.14828548082241877
+  },
+  "core-markdown/code-1m": {
+    "baseline": [
+      0.07389868356299213,
+      0.07396862174126907
+    ],
+    "candidate": [
+      0.07359016543937162,
+      0.07378659655172415
+    ],
+    "candidate_time_change_percent": -0.33174562298003973
+  }
+}

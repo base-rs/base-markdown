@@ -1,0 +1,264 @@
+{
+  "readme": {
+    "baseline": {
+      "median_ms": 0.014950782986650108,
+      "process_medians_ms": [
+        0.014804284730705166,
+        0.014950782986650108,
+        0.014959188575575369
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.014729904989816703,
+      "process_medians_ms": [
+        0.014677954260904685,
+        0.014729904989816703,
+        0.014895049640287771
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.018730948077554703,
+      "process_medians_ms": [
+        0.018730948077554703,
+        0.018684604468519016,
+        0.018776331358956004
+      ]
+    },
+    "baseline_over_candidate": 1.0149952085221259,
+    "inkmark_over_candidate": 1.2716272162314735
+  },
+  "mixed-100k": {
+    "baseline": {
+      "median_ms": 0.44181492151162793,
+      "process_medians_ms": [
+        0.4378757288629737,
+        0.4440247558823529,
+        0.44181492151162793
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.4368286484149856,
+      "process_medians_ms": [
+        0.4368286484149856,
+        0.4357965616045845,
+        0.4396885838150289
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.4087771740159951,
+      "process_medians_ms": [
+        0.40677111714504843,
+        0.4087771740159951,
+        0.40898633875268325
+      ]
+    },
+    "baseline_over_candidate": 1.011414711729038,
+    "inkmark_over_candidate": 0.9357838033270618
+  },
+  "mixed-1m": {
+    "baseline": {
+      "median_ms": 4.4505992647058825,
+      "process_medians_ms": [
+        4.4505992647058825,
+        4.475223029411765,
+        4.450090676470588
+      ]
+    },
+    "candidate": {
+      "median_ms": 4.412804771428571,
+      "process_medians_ms": [
+        4.3965931176470585,
+        4.412804771428571,
+        4.460479176470588
+      ]
+    },
+    "inkmark": {
+      "median_ms": 4.340228571423462,
+      "process_medians_ms": [
+        4.33583333344561,
+        4.374628572259098,
+        4.340228571423462
+      ]
+    },
+    "baseline_over_candidate": 1.0085647326892906,
+    "inkmark_over_candidate": 0.9835532719518852
+  },
+  "gfm-100k": {
+    "baseline": {
+      "median_ms": 0.6476977777777777,
+      "process_medians_ms": [
+        0.6476977777777777,
+        0.6553886412556054,
+        0.6455787860262008
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.6487902173913043,
+      "process_medians_ms": [
+        0.6487902173913043,
+        0.6428113144104803,
+        0.6500986157205241
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.708192488246383,
+      "process_medians_ms": [
+        0.708192488246383,
+        0.6998443395615432,
+        0.7097725116457985
+      ]
+    },
+    "baseline_over_candidate": 0.9983161897571158,
+    "inkmark_over_candidate": 1.0915585180891398
+  },
+  "references": {
+    "baseline": {
+      "median_ms": 0.6167345999999999,
+      "process_medians_ms": [
+        0.6138784708333334,
+        0.6167345999999999,
+        0.6218974075630253
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.616139820083682,
+      "process_medians_ms": [
+        0.616139820083682,
+        0.6176811440677966,
+        0.6146999341563786
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.8493371427591359,
+      "process_medians_ms": [
+        0.8446857140266469,
+        0.8553063582408247,
+        0.8493371427591359
+      ]
+    },
+    "baseline_over_candidate": 1.0009653327003556,
+    "inkmark_over_candidate": 1.3784811743603618
+  },
+  "definitions-256": {
+    "baseline": {
+      "median_ms": 0.04243050722125939,
+      "process_medians_ms": [
+        0.04243050722125939
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.04258498791366907,
+      "process_medians_ms": [
+        0.04258498791366907
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.043173348713120355,
+      "process_medians_ms": [
+        0.043173348713120355
+      ]
+    },
+    "baseline_over_candidate": 0.9963724143183309,
+    "inkmark_over_candidate": 1.0138161551353273
+  },
+  "definitions-1024": {
+    "baseline": {
+      "median_ms": 0.1725781070195627,
+      "process_medians_ms": [
+        0.1725781070195627
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.17455496830985917,
+      "process_medians_ms": [
+        0.17455496830985917
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.16906884879674805,
+      "process_medians_ms": [
+        0.16906884879674805
+      ]
+    },
+    "baseline_over_candidate": 0.9886748494790061,
+    "inkmark_over_candidate": 0.9685708200331915
+  },
+  "definitions-4096": {
+    "baseline": {
+      "median_ms": 0.7546254191919192,
+      "process_medians_ms": [
+        0.7546254191919192
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.7548878984771573,
+      "process_medians_ms": [
+        0.7548878984771573
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.6957373271743479,
+      "process_medians_ms": [
+        0.6957373271743479
+      ]
+    },
+    "baseline_over_candidate": 0.9996522936905365,
+    "inkmark_over_candidate": 0.9216432381256416
+  },
+  "long-lines-1m": {
+    "baseline": {
+      "median_ms": 0.12560267546848383,
+      "process_medians_ms": [
+        0.12459139273648649,
+        0.12560267546848383,
+        0.1274530042918455
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.12270556965174127,
+      "process_medians_ms": [
+        0.12168222671063479,
+        0.12270556965174127,
+        0.12274972157190635
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.5730365853041137,
+      "process_medians_ms": [
+        0.5730365853041137,
+        0.572296747951049,
+        0.5770887097065909
+      ]
+    },
+    "baseline_over_candidate": 1.0236102226244908,
+    "inkmark_over_candidate": 4.670012835851596
+  },
+  "code-1m": {
+    "baseline": {
+      "median_ms": 0.07383298472906405,
+      "process_medians_ms": [
+        0.073426329394387,
+        0.07383298472906405,
+        0.07444200603621731
+      ]
+    },
+    "candidate": {
+      "median_ms": 0.07371231707317073,
+      "process_medians_ms": [
+        0.07371231707317073,
+        0.07367495862068965,
+        0.07385931800197824
+      ]
+    },
+    "inkmark": {
+      "median_ms": 0.31241372139570683,
+      "process_medians_ms": [
+        0.31211087869862136,
+        0.31241372139570683,
+        0.31492436972853705
+      ]
+    },
+    "baseline_over_candidate": 1.0016370080426795,
+    "inkmark_over_candidate": 4.238283828272397
+  }
+}

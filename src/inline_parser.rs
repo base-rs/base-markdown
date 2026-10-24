@@ -327,8 +327,11 @@ impl InlineParser {
                         at = end;
                     }
                     b'\\' if at + 1 < range.end && bytes[at + 1].is_ascii_punctuation() => {
-                        self.append(at + 1, at + 2, Kind::Text);
+                        let text_start = at + 1;
                         at += 2;
+                        // The escaped byte and the following ordinary run share one source slice. Stop before syntax candidates so delimiter and bracket nodes remain distinct.
+                        at += markers.find(&bytes[at..range.end]);
+                        self.append(text_start, at, Kind::Text);
                     }
                     b'\\' if at + 1 < range.end && matches!(bytes[at + 1], b'\r' | b'\n') => {
                         self.append(at, at + 1, Kind::HardBreak);
