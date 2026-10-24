@@ -3,12 +3,11 @@
 
 use super::{escape_table_pipes, has_matching_ticks, Info, Join, State};
 use crate::{
-    markdown::{r#unsafe::Unsafe, util::safe::SafeConfig, Options},
+    markdown::Options,
     stream::{EventKind, Tag, Text},
     Document, NodeId, NodeSyntax, ParseOptions,
 };
-use alloc::{string::String, vec};
-use regex::Regex;
+use alloc::string::String;
 
 fn empty() -> Document<String> {
     Document::parse(String::new(), &ParseOptions::default()).unwrap()
@@ -129,60 +128,15 @@ fn joins_code_and_spread_items_consistently() {
 }
 
 #[test]
-fn inline_literal_normalization_preserves_crlf_and_nonmatches() {
+fn inline_literals_normalize_block_openers_and_preserve_other_line_endings() {
     let options = Options::default();
     let mut state = State::new(&options);
-    let mut ending = Unsafe::new('\n', None, None, vec![], vec![], true);
-    ending.set_compiled(Regex::new("\\n").unwrap());
-    state.r#unsafe = vec![ending];
+    state.inline_code("one\r\n# two", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "`one # two`");
+    state.inline_math("one\r\n> two").unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "$one > two$");
     state.inline_code("one\r\ntwo", None).unwrap();
-    assert_eq!(core::mem::take(&mut state.output), "`one two`");
-    state.inline_math("one\r\ntwo").unwrap();
-    assert_eq!(core::mem::take(&mut state.output), "$one two$");
-    state.r#unsafe = vec![Unsafe::new('#', None, None, vec![], vec![], true)];
-    state.inline_code("ordinary code", None).unwrap();
-    assert_eq!(core::mem::take(&mut state.output), "`ordinary code`");
-    state.inline_math("ordinary math").unwrap();
-    assert_eq!(core::mem::take(&mut state.output), "$ordinary math$");
-    assert_eq!(
-        state.safe("é\n# heading", &SafeConfig::new("", "", None)),
-        "é\n\\# heading"
-    );
-}
-
-#[test]
-fn merges_duplicate_unsafe_positions_and_encodes_other_markers() {
-    let options = Options::default();
-    let mut state = State::new(&options);
-    state.r#unsafe = vec![
-        Unsafe::new('*', Some(""), Some(""), vec![], vec![], false),
-        Unsafe::new('*', None, None, vec![], vec![], false),
-    ];
-    assert_eq!(state.safe("*", &SafeConfig::new("", "", None)), "\\*");
-
-    state.r#unsafe = vec![Unsafe::new('*', None, None, vec![], vec![], false)];
-    assert_eq!(state.safe("*", &SafeConfig::new("", "", Some('!'))), "\\*");
-}
-
-#[test]
-fn leaves_text_unchanged_when_no_unsafe_patterns_are_configured() {
-    let options = Options::default();
-    let mut state = State::new(&options);
-    state.r#unsafe.clear();
-
-    assert_eq!(
-        state.safe("ordinary text", &SafeConfig::new("", "", None)),
-        "ordinary text"
-    );
-}
-
-#[test]
-fn escapes_punctuation_unsafe_at_the_end_of_the_ascii_range() {
-    let options = Options::default();
-    let mut state = State::new(&options);
-    state.r#unsafe = vec![Unsafe::new('}', None, None, vec![], vec![], false)];
-
-    assert_eq!(state.safe("}", &SafeConfig::new("", "", None)), "\\}");
+    assert_eq!(core::mem::take(&mut state.output), "`one\r\ntwo`");
 }
 
 #[test]

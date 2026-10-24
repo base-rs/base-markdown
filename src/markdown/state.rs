@@ -8,12 +8,10 @@
 //! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L195.
 use crate::markdown::{
     construct_name::ConstructName,
-    r#unsafe::Unsafe,
     util::{
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::format_heading_as_setext,
-        format_link_as_auto_link::auto_link_text, pattern_in_scope::pattern_in_scope,
-        safe::EscapeInfos,
+        format_link_as_auto_link::auto_link_text, safe::EscapeInfos,
     },
     Options,
 };
@@ -24,7 +22,6 @@ use crate::{
     AlignKind, Document, NodeId, NodeSyntax,
 };
 use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
-use regex::Regex;
 
 pub struct Info<'a> {
     pub after: &'a str,
@@ -57,7 +54,6 @@ pub struct State<'a> {
     pub index_stack: Vec<usize>,
     pub options: &'a Options,
     pub stack: Vec<ConstructName>,
-    pub r#unsafe: Vec<Unsafe<'a>>,
     pub serialization_root: Option<NodeId>,
     definitions: Option<BTreeMap<String, NodeId>>,
     reference_key: String,
@@ -98,60 +94,6 @@ impl<'a> State<'a> {
             self.join_defaults(document, left, right, parent)
         };
         Self::set_between(&join, &mut self.output);
-    }
-
-    /// JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/util/compile-pattern.js>.
-    pub fn compile_pattern(pattern: &mut Unsafe) {
-        if pattern.compiled.is_none() {
-            let mut pattern_to_compile = String::new();
-
-            if let Some(pattern_before) = pattern.before {
-                pattern_to_compile.push('(');
-                if pattern.at_break {
-                    pattern_to_compile.push_str("[\\r\\n][\\t ]*");
-                }
-                pattern_to_compile.push_str("(?:");
-                pattern_to_compile.push_str(pattern_before);
-                pattern_to_compile.push(')');
-                pattern_to_compile.push(')');
-            } else if pattern.at_break {
-                pattern_to_compile.push('(');
-                pattern_to_compile.push_str("[\\r\\n][\\t ]*");
-                pattern_to_compile.push(')');
-            }
-
-            if matches!(
-                pattern.character,
-                '|' | '\\'
-                    | '{'
-                    | '}'
-                    | '('
-                    | ')'
-                    | '['
-                    | ']'
-                    | '^'
-                    | '$'
-                    | '+'
-                    | '*'
-                    | '?'
-                    | '.'
-                    | '-'
-            ) {
-                pattern_to_compile.push('\\');
-            }
-
-            pattern_to_compile.push(pattern.character);
-
-            if let Some(pattern_after) = pattern.after {
-                pattern_to_compile.push_str("(?:");
-                pattern_to_compile.push_str(pattern_after);
-                pattern_to_compile.push(')');
-            }
-
-            pattern.set_compiled(
-                Regex::new(&pattern_to_compile).expect("A valid unsafe regex pattern"),
-            );
-        }
     }
 
     pub fn container_flow<S: AsRef<str>>(
@@ -635,7 +577,6 @@ impl<'a> State<'a> {
             index_stack: Vec::new(),
             options,
             stack: Vec::new(),
-            r#unsafe: Unsafe::get_default_unsafe(options),
             serialization_root: None,
             definitions: None,
             reference_key: String::new(),
@@ -729,27 +670,12 @@ impl<'a> State<'a> {
         let value = &self.escape_context;
         let end = start + input.len();
         self.escapes.clear();
-        for pattern in &mut self.r#unsafe {
-            if !pattern_in_scope(&self.stack, pattern) {
-                continue;
-            }
-            Self::compile_pattern(pattern);
-            let regex = pattern
-                .compiled
-                .as_ref()
-                .expect("compiling an unsafe pattern sets its regex");
-            for capture in regex.captures_iter(value) {
-                let found = capture.get(0).expect("a capture contains the full match");
-                let position = found.start() + capture.get(1).map_or(0, |group| group.len());
-                self.escapes.push((
-                    position,
-                    EscapeInfos {
-                        before: pattern.before.is_some() || pattern.at_break,
-                        after: pattern.after.is_some(),
-                    },
-                ));
-            }
-        }
+        super::escape::collect(
+            value,
+            &self.stack,
+            self.options.single_dollar_text_math,
+            &mut self.escapes,
+        );
         self.escapes.sort_unstable_by_key(|entry| entry.0);
         self.escapes.dedup_by(|right, left| {
             if right.0 == left.0 {
@@ -795,16 +721,6 @@ impl<'a> State<'a> {
             }
         }
         super::util::safe::write_backslashes(&value[cursor..end], info.after, &mut self.output);
-    }
-
-    #[cfg(test)]
-    pub fn safe(&mut self, input: &str, config: &super::util::safe::SafeConfig) -> String {
-        self.write_safe(
-            input,
-            &Info::new(config.before, config.after),
-            config.encode,
-        );
-        core::mem::take(&mut self.output)
     }
 
     /// No real JS equivalent, but see:

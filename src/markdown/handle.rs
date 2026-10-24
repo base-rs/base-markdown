@@ -17,7 +17,6 @@ use super::{
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::format_heading_as_setext,
         format_link_as_auto_link::auto_link_text, longest_char_streak::longest_char_streak,
-        pattern_in_scope::pattern_in_scope,
     },
 };
 use crate::{
@@ -53,11 +52,7 @@ impl State<'_> {
     }
 
     pub(super) fn hard_break(&mut self, info: &Info) -> Result<(), Message> {
-        if self
-            .r#unsafe
-            .iter()
-            .any(|pattern| pattern.character == '\n' && pattern_in_scope(&self.stack, pattern))
-        {
+        if super::escape::unsafe_newline(&self.stack) {
             if !info
                 .before(&self.output)
                 .chars()
@@ -334,30 +329,10 @@ impl State<'_> {
             self.output.push(' ');
         }
         // Flatten a physical line ending only when a block-opening rule would become active.
-        let patterns = &mut self.r#unsafe;
         let mut scratch = core::mem::take(&mut self.scratch);
         scratch.clear();
         scratch.push_str(&self.output[start..]);
-        for pattern in patterns {
-            if !pattern.at_break {
-                continue;
-            }
-            State::compile_pattern(pattern);
-            let regex = pattern
-                .compiled
-                .as_ref()
-                .expect("compiling an unsafe pattern sets its regex");
-            while let Some(found) = regex.find(&scratch) {
-                let at = found.start();
-                let from = at
-                    - usize::from(
-                        at > 0
-                            && scratch.as_bytes()[at - 1] == b'\r'
-                            && scratch.as_bytes()[at] == b'\n',
-                    );
-                scratch.replace_range(from..at + 1, " ");
-            }
-        }
+        super::escape::normalize_inline(&mut scratch);
         self.output.truncate(start);
         self.output.push_str(&scratch);
         self.scratch = scratch;

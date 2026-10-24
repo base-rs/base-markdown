@@ -18,9 +18,9 @@ use alloc::string::String;
 extern crate alloc;
 mod configure;
 mod construct_name;
+mod escape;
 mod handle;
 mod state;
-mod r#unsafe;
 mod util;
 
 /// Serialize an arena document to Markdown.

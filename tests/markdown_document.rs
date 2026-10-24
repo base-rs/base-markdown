@@ -482,3 +482,15 @@ fn nul_language_normalization_preserves_code_metadata_for_both_producers() {
         );
     }
 }
+
+#[test]
+fn ordered_marker_escaping_uses_markdown_ascii_digits() {
+    for (source, expected) in [
+        ("١. ordinary", "١. ordinary\n"),
+        ("١) ordinary", "١) ordinary\n"),
+        ("12. ordinary", "12. ordinary\n"),
+    ] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert_eq!(to_markdown(&document).unwrap(), expected);
+    }
+}
