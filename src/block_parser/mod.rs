@@ -192,8 +192,9 @@ impl Builder<'_> {
         }
     }
     fn containers(&self, line: &mut LineStart<'_>) -> usize {
-        let mut count = 0;
-        for &index in &self.open {
+        // The document root is always open and never consumes a line prefix.
+        let mut count = 1;
+        for &index in &self.open[1..] {
             let save = line.clone();
             match self.blocks.nodes[index].body {
                 Body::Quote => {
