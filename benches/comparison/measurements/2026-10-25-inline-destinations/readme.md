@@ -8,7 +8,7 @@ Core-markdown has lower medians than Inkmark 0.2.1 on **28/29 inputs**. Dense Un
 
 Production commit **`08836d8a3474f220e60c09a90be17d8ae259d07a`**, source tree **`2d832ba5ba6c4dbdae14f11f6a8ca9d65c79479a`**, adds one static candidate set and replaces the bare-destination byte loop's advance with the existing scanner. Only escapes, parentheses, Markdown/ASCII whitespace and control bytes need scalar handling. Ordinary ASCII and UTF-8 bytes can be skipped together. NUL is deliberately excluded from the set because it is accepted as destination data and replaced during value decoding. Escaped punctuation, the 32-level nesting limit, invalid controls, titles and source bounds retain their previous handling.
 
-The existing scanner uses NEON on supported AArch64 targets and its portable scalar path elsewhere. There are no new unsafe operations, parser fields, buffers, dependencies, allocations, backend choices or APIs. Angle-enclosed destinations and titles retain their existing scanners. This small change shares established scanning code rather than introducing another implementation. The source change adds eleven net production lines; the extra static table occupies read-only storage.
+The existing scanner uses NEON on supported AArch64 targets and its portable scalar path elsewhere. There are no new unsafe operations, parser fields, buffers, dependencies, allocations, backend choices or APIs. Angle-enclosed destinations and titles retain their existing scanners. This small change shares established scanning code rather than introducing another implementation. The source change adds ten net production lines; the extra static table occupies read-only storage.
 
 ## Profiles and scope
 
