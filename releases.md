@@ -4,6 +4,10 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Locate the first matching NEON candidate directly after detection, avoiding scalar rescans while preserving the original loop for chunks without candidates.
+
+- Classify safe URL runs with a static byte lookup and skip empty replacement writes, preserving existing protocol validation and percent encoding.
+
 - Write unescaped HTML spans directly, select the output destination once for spans needing replacements, and skip empty runs around escaped characters without temporary allocations.
 
 - Skip redundant root-container checks and reuse scanned block indentation during compact preparation, preserving source ranges and HTML output.

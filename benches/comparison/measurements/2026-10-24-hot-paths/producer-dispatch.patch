@@ -1,0 +1,73 @@
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index 2d621db..6374a24 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -458,8 +458,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+         &mut self,
+         options: &crate::ParseOptions,
+     ) -> Result<(), StreamError> {
+-        let events = crate::EventParser::new(self.source, options)?;
+-        self.render_inner::<false>(events)
++        let mut events = crate::EventParser::new(self.source, options)?;
++        events.for_each_event(|event| self.event_ref::<false>(event))?;
++        self.finish()
+     }
+ 
+     fn render_inner<'e, const CHECK: bool>(
+@@ -469,6 +470,10 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+         for event in events {
+             self.event_ref::<CHECK>(&event?)?;
+         }
++        self.finish()
++    }
++
++    fn finish(&self) -> Result<(), StreamError> {
+         if !self.started || !self.ended || !self.stack.is_empty() {
+             return Err(StreamError::Unbalanced);
+         }
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index 5b664ea..c1d8ae7 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -47,6 +47,26 @@ impl<'a> EventParser<'a> {
+         };
+         Ok(Self { producer })
+     }
++
++    // Direct rendering fixes the producer for the entire document. Keep the public iterator's per-call dispatch for consumers that pull individual events.
++    pub(crate) fn for_each_event(
++        &mut self,
++        mut consume: impl FnMut(&Event<'static>) -> Result<(), StreamError>,
++    ) -> Result<(), StreamError> {
++        fn consume_events(
++            events: &mut impl Iterator<Item = Result<Event<'static>, StreamError>>,
++            consume: &mut impl FnMut(&Event<'static>) -> Result<(), StreamError>,
++        ) -> Result<(), StreamError> {
++            for event in events {
++                consume(&event?)?;
++            }
++            Ok(())
++        }
++        match &mut self.producer {
++            Producer::Compact(parser) => consume_events(parser, &mut consume),
++            Producer::Compatibility(parser) => consume_events(parser, &mut consume),
++        }
++    }
+ }
+ impl Iterator for EventParser<'_> {
+     type Item = Result<Event<'static>, StreamError>;
+@@ -121,10 +141,13 @@ impl CompactParser<'_> {
+             span: end..end,
+         }
+     }
++}
++impl Iterator for CompactParser<'_> {
++    type Item = Result<Event<'static>, StreamError>;
+     // Paired mixed-document benchmarks justify inlining this event boundary.
+     #[allow(clippy::inline_always)]
+     #[inline(always)]
+-    fn next(&mut self) -> Option<Result<Event<'static>, StreamError>> {
++    fn next(&mut self) -> Option<Self::Item> {
+         if self.ended {
+             return None;
+         }

@@ -1,0 +1,40 @@
+{
+  "baseline_commit": "4d18a71",
+  "binary_sha256": "221cd2ae571bddfe6d17787273d3015d2313772f267b4cdf192d12a1566b1c1a",
+  "samples": 4144,
+  "exclusive_categories": {
+    "event_production_and_html_loop": {
+      "samples": 1421,
+      "percent": 34.29054054054054
+    },
+    "inline_preparation": {
+      "samples": 393,
+      "percent": 9.483590733590734
+    },
+    "block_preparation_own_work": {
+      "samples": 323,
+      "percent": 7.794401544401544
+    },
+    "html_escape_wrapper_and_replacement_loop": {
+      "samples": 351,
+      "percent": 8.47007722007722
+    },
+    "memory_copy_memmove_and_memcpy_stub": {
+      "samples": 292,
+      "percent": 7.046332046332046
+    },
+    "event_kind_cleanup": {
+      "samples": 197,
+      "percent": 4.753861003861004
+    },
+    "container_scanning": {
+      "samples": 125,
+      "percent": 3.0164092664092665
+    },
+    "uri_sanitization": {
+      "samples": 106,
+      "percent": 2.557915057915058
+    }
+  },
+  "note": "Five-second macOS sample after one-second warmup; optimized merged PR38 binary. Combined event/HTML loop includes inlined producer work, not pure renderer cost. Selected exclusive categories, not a complete partition."
+}

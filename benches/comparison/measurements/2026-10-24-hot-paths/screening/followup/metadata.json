@@ -1,0 +1,11 @@
+{
+  "timestamp_utc": "2026-10-24T02:09:16.058968+00:00",
+  "binary_sha256": {
+    "baseline": "221cd2ae571bddfe6d17787273d3015d2313772f267b4cdf192d12a1566b1c1a",
+    "simd-conditional": "cc2e4afc1b4cf46c5624db8496964a5b6b4b33eea61ff52e087caebe12fc6553",
+    "uri-runs": "af91aac3c8daa893913a5a1c4caf3c3129bcbc63d40ef37b3f215e5098312930",
+    "uri-destination": "52c85edd1b011aaa44b7b85f0af202e365723ad22141306e71bb2490c314d80b"
+  },
+  "baseline_commit": "4d18a71",
+  "method": "Two alternating rounds; same Rust launch path, arguments and environment. All samples retained. No project builds/tests/profiles/reviewer workloads overlap timing."
+}

@@ -1,0 +1,121 @@
+{
+  "readme": {
+    "baseline": {
+      "process_medians_ms": [
+        0.014029502641283763,
+        0.014204080236401883
+      ],
+      "median_ms": 0.014116791438842823
+    },
+    "combined": {
+      "process_medians_ms": [
+        0.01346317048012003,
+        0.01334380894977169
+      ],
+      "median_ms": 0.01340348971494586,
+      "time_reduction_percent": 5.052860113341973
+    }
+  },
+  "mixed-100k": {
+    "baseline": {
+      "process_medians_ms": [
+        0.40923554098360654,
+        0.4113971542699724
+      ],
+      "median_ms": 0.4103163476267895
+    },
+    "combined": {
+      "process_medians_ms": [
+        0.39926414588859416,
+        0.4037407265415549
+      ],
+      "median_ms": 0.40150243621507453,
+      "time_reduction_percent": 2.1480770782576264
+    }
+  },
+  "mixed-1m": {
+    "baseline": {
+      "process_medians_ms": [
+        4.175780405405406,
+        4.170240972972973
+      ],
+      "median_ms": 4.173010689189189
+    },
+    "combined": {
+      "process_medians_ms": [
+        4.082092351351352,
+        4.102761270270269
+      ],
+      "median_ms": 4.09242681081081,
+      "time_reduction_percent": 1.9310728962938728
+    }
+  },
+  "gfm-100k": {
+    "baseline": {
+      "process_medians_ms": [
+        0.628432824489796,
+        0.6361845252100841
+      ],
+      "median_ms": 0.63230867484994
+    },
+    "combined": {
+      "process_medians_ms": [
+        0.6166492074688796,
+        0.6199821166666667
+      ],
+      "median_ms": 0.6183156620677732,
+      "time_reduction_percent": 2.213003448906914
+    }
+  },
+  "references": {
+    "baseline": {
+      "process_medians_ms": [
+        0.5888776117647059,
+        0.5908743464566929
+      ],
+      "median_ms": 0.5898759791106993
+    },
+    "combined": {
+      "process_medians_ms": [
+        0.5633112574626865,
+        0.5655257886792453
+      ],
+      "median_ms": 0.564418523070966,
+      "time_reduction_percent": 4.315730245214122
+    }
+  },
+  "long-lines-1m": {
+    "baseline": {
+      "process_medians_ms": [
+        0.11399558872810359,
+        0.11468066109422491
+      ],
+      "median_ms": 0.11433812491116424
+    },
+    "combined": {
+      "process_medians_ms": [
+        0.11383578987150417,
+        0.11305014468726451
+      ],
+      "median_ms": 0.11344296727938434,
+      "time_reduction_percent": 0.7829038935835309
+    }
+  },
+  "code-1m": {
+    "baseline": {
+      "process_medians_ms": [
+        0.06880038909426987,
+        0.06921242678405931
+      ],
+      "median_ms": 0.0690064079391646
+    },
+    "combined": {
+      "process_medians_ms": [
+        0.06864539814385151,
+        0.0688117758462946
+      ],
+      "median_ms": 0.06872858699507306,
+      "time_reduction_percent": 0.4026016603218441
+    }
+  }
+}

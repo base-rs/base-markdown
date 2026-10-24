@@ -1,0 +1,74 @@
+[
+  {
+    "document": "readme",
+    "profile": "commonmark",
+    "bytes": 9019,
+    "input_sha256": "e9fcb242b7ba8f45fd18b1a97b7e021755babea8825d6f3cb86bb6f89dcd2e14",
+    "fallback_counts": {},
+    "output_unchanged": true
+  },
+  {
+    "document": "mixed-100k",
+    "profile": "commonmark",
+    "bytes": 100252,
+    "input_sha256": "a9b31b8c20db1c4469a87e788ae77c98155cb4371738d291826abc94cfb12021",
+    "fallback_counts": {},
+    "output_unchanged": true
+  },
+  {
+    "document": "mixed-1m",
+    "profile": "commonmark",
+    "bytes": 1000020,
+    "input_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+    "fallback_counts": {},
+    "output_unchanged": true
+  },
+  {
+    "document": "gfm-100k",
+    "profile": "gfm",
+    "bytes": 100130,
+    "input_sha256": "6c7091f969014c4396cbb98e6c3358d3d6d2c64e4dd6b7f35af273c15cb11c5d",
+    "fallback_counts": {},
+    "output_unchanged": true
+  },
+  {
+    "document": "diagnostic-inline-html",
+    "profile": "commonmark",
+    "bytes": 27,
+    "input_sha256": "35ee811b6392731ac07417022e36265a8ee6238338ef3f45b626922526305737",
+    "fallback_counts": {
+      "compact-inline": 1
+    },
+    "output_unchanged": true
+  },
+  {
+    "document": "diagnostic-block-html",
+    "profile": "commonmark",
+    "bytes": 20,
+    "input_sha256": "aa89afa4b46d2f380b77d8145758511bfe6fd209edb0a430c1efea32070f1c74",
+    "fallback_counts": {
+      "block": 1
+    },
+    "output_unchanged": true
+  },
+  {
+    "document": "diagnostic-multiline-code",
+    "profile": "commonmark",
+    "bytes": 18,
+    "input_sha256": "3134d0d05a06de47b48458e2b6fa44112517034a722d10b2d658d45627f0f0bf",
+    "fallback_counts": {
+      "compact-inline": 1
+    },
+    "output_unchanged": true
+  },
+  {
+    "document": "diagnostic-gfm-path-link",
+    "profile": "gfm",
+    "bytes": 38,
+    "input_sha256": "37f20fcc51b9d9348141ca56eb370a58e3e9b8b224997437209c5c16f7896990",
+    "fallback_counts": {
+      "compact-inline": 1
+    },
+    "output_unchanged": true
+  }
+]

@@ -1,0 +1,497 @@
+Analysis of sampling baseline (pid 64353) every 1 millisecond
+Process:         baseline [64353]
+Path:            /private/tmp/*/baseline
+Load Address:    0x102734000
+Identifier:      baseline
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  python3.13 [64341]
+Target Type:     live task
+
+Date/Time:       2026-10-24 15:02:09.897 +1300
+Launch Time:     2026-10-24 15:02:08.856 +1300
+OS Version:      macOS 27.0.1 (26A434)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         14.3M
+Physical footprint (peak):  14.3M
+Idle exit:                  untracked
+----
+
+Call graph:
+    4144 Thread_39932673   DispatchQueue_1: com.apple.main-thread  (serial)
+      4144 start  (in dyld) + 6688  [0x1842f7e80]
+        4144 main  (in baseline) + 52  [0x10274f514]
+          4144 _RNvNtCs1coMeGJvsuS_3std2rt19lang_start_internal  (in baseline) + 936  [0x1028625b0]
+            4144 _RNCINvNtCs1coMeGJvsuS_3std2rt10lang_startuE0Cs6pJnOeXPT0X_19markdown_comparison  (in baseline) + 16  [0x10275a34c]
+              4144 _RINvNtNtCs1coMeGJvsuS_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs6pJnOeXPT0X_19markdown_comparison  (in baseline) + 12  [0x102758fcc]
+                4144 _RNvCs6pJnOeXPT0X_19markdown_comparison4main  (in baseline) + 1212  [0x10274d6bc]
+                  4144 _RNCNvCs6pJnOeXPT0X_19markdown_comparison8renderers_0B3_  (in baseline) + 5860  [0x10274c8c4]
+                    3249 _RNvCs382umqBb0t4_13core_markdown20to_html_with_options  (in baseline) + 308  [0x102813388]
+                    + 1421 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 976,5220,...  [0x1027f7500,0x1027f8594,...]
+                    + 770 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 4600  [0x1027f8328]
+                    + ! 391 _RINvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_13CompactParser4nexts_00EEB7_  (in baseline) + 2728,640,...  [0x1027cdea0,0x1027cd678,...]
+                    + ! 133 _RINvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_13CompactParser4nexts_00EEB7_  (in baseline) + 1872  [0x1027cdb48]
+                    + ! : 14 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 2376  [0x1027d8e48]
+                    + ! : | 13 _platform_memcmp  (in libsystem_platform.dylib) + 272,260,...  [0x1846d5280,0x1846d5274,...]
+                    + ! : | 1 DYLD-STUB$$memcmp  (in baseline) + 4  [0x10288b860]
+                    + ! : 13 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 2452,212,...  [0x1027d8e94,0x1027d85d4,...]
+                    + ! : 12 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 2420  [0x1027d8e74]
+                    + ! : | 11 _platform_memcmp  (in libsystem_platform.dylib) + 260,280,...  [0x1846d5274,0x1846d5288,...]
+                    + ! : | 1 DYLD-STUB$$memcmp  (in baseline) + 4  [0x10288b860]
+                    + ! : 11 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 2328  [0x1027d8e18]
+                    + ! : | 10 _platform_memcmp  (in libsystem_platform.dylib) + 272,0,...  [0x1846d5280,0x1846d5170,...]
+                    + ! : | 1 DYLD-STUB$$memcmp  (in baseline) + 4  [0x10288b860]
+                    + ! : 10 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 1896  [0x1027d8c68]
+                    + ! : | 8 _platform_memcmp  (in libsystem_platform.dylib) + 280,272,...  [0x1846d5288,0x1846d5280,...]
+                    + ! : | 2 DYLD-STUB$$memcmp  (in baseline) + 4  [0x10288b860]
+                    + ! : 10 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 2232  [0x1027d8db8]
+                    + ! : | 7 _platform_memcmp  (in libsystem_platform.dylib) + 140,280,...  [0x1846d51fc,0x1846d5288,...]
+                    + ! : | 3 DYLD-STUB$$memcmp  (in baseline) + 4  [0x10288b860]
+                    + ! : 9 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 1992  [0x1027d8cc8]
+                    + ! : | 5 _platform_memcmp  (in libsystem_platform.dylib) + 272,280,...  [0x1846d5280,0x1846d5288,...]
+                    + ! : | 4 DYLD-STUB$$memcmp  (in baseline) + 4  [0x10288b860]
+                    + ! : 9 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 2088  [0x1027d8d28]
+                    + ! : | 9 _platform_memcmp  (in libsystem_platform.dylib) + 272,168  [0x1846d5280,0x1846d5218]
+                    + ! : 9 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 2280  [0x1027d8de8]
+                    + ! : | 8 _platform_memcmp  (in libsystem_platform.dylib) + 140,0,...  [0x1846d51fc,0x1846d5170,...]
+                    + ! : | 1 DYLD-STUB$$memcmp  (in baseline) + 4  [0x10288b860]
+                    + ! : 8 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 2136  [0x1027d8d58]
+                    + ! : | 7 _platform_memcmp  (in libsystem_platform.dylib) + 280,272,...  [0x1846d5288,0x1846d5280,...]
+                    + ! : | 1 DYLD-STUB$$memcmp  (in baseline) + 4  [0x10288b860]
+                    + ! : 8 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 2184  [0x1027d8d88]
+                    + ! : | 6 _platform_memcmp  (in libsystem_platform.dylib) + 260,280,...  [0x1846d5274,0x1846d5288,...]
+                    + ! : | 2 DYLD-STUB$$memcmp  (in baseline) + 4  [0x10288b860]
+                    + ! : 7 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 2040  [0x1027d8cf8]
+                    + ! : | 7 _platform_memcmp  (in libsystem_platform.dylib) + 280,168,...  [0x1846d5288,0x1846d5218,...]
+                    + ! : 5 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 1944  [0x1027d8c98]
+                    + ! : | 5 _platform_memcmp  (in libsystem_platform.dylib) + 0,260,...  [0x1846d5170,0x1846d5274,...]
+                    + ! : 2 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 208  [0x1027d85d0]
+                    + ! : | 2 _RNvMs4_NtCs9nEiEE0E2Vj_4core3numh21is_ascii_alphanumeric  (in baseline) + 28  [0x1027eab44]
+                    + ! : 2 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 272  [0x1027d8610]
+                    + ! : | 2 _RNvMs4_NtCs9nEiEE0E2Vj_4core3numh21is_ascii_alphanumeric  (in baseline) + 28  [0x1027eab44]
+                    + ! : 2 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 1836  [0x1027d8c2c]
+                    + ! : | 2 _platform_memcmp  (in libsystem_platform.dylib) + 0,280  [0x1846d5170,0x1846d5288]
+                    + ! : 1 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 240  [0x1027d85f0]
+                    + ! : | 1 _RNvMs4_NtCs9nEiEE0E2Vj_4core3numh21is_ascii_alphanumeric  (in baseline) + 28  [0x1027eab44]
+                    + ! : 1 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 304  [0x1027d8630]
+                    + ! :   1 _RNvMs4_NtCs9nEiEE0E2Vj_4core3numh21is_ascii_alphanumeric  (in baseline) + 28  [0x1027eab44]
+                    + ! 95 _RINvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_13CompactParser4nexts_00EEB7_  (in baseline) + 4940  [0x1027ce744]
+                    + ! : 95 _RINvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB5_12InlineParser9attentionKb0_EB7_  (in baseline) + 884,64,...  [0x1027d7048,0x1027d6d14,...]
+                    + ! 55 _RINvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_13CompactParser4nexts_00EEB7_  (in baseline) + 2404  [0x1027cdd5c]
+                    + ! : 48 _RNvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB4_12InlineParser11index_ticks  (in baseline) + 764,388,...  [0x1027d7ae4,0x1027d796c,...]
+                    + ! : 7 _RNvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB4_12InlineParser11index_ticks  (in baseline) + 688  [0x1027d7a98]
+                    + ! :   6 _platform_memset  (in libsystem_platform.dylib) + 180,208  [0x1846d7b44,0x1846d7b60]
+                    + ! :   1 DYLD-STUB$$bzero  (in baseline) + 4  [0x10288b788]
+                    + ! 50 _RINvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_13CompactParser4nexts_00EEB7_  (in baseline) + 1256  [0x1027cd8e0]
+                    + ! : 50 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser8resource  (in baseline) + 208,276,...  [0x1027d90d4,0x1027d9118,...]
+                    + ! 20 _RINvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_13CompactParser4nexts_00EEB7_  (in baseline) + 4164  [0x1027ce43c]
+                    + ! : 20 _RNvNtNtCs382umqBb0t4_13core_markdown4util4char12classify_opt  (in baseline) + 104,28,...  [0x10282f154,0x10282f108,...]
+                    + ! 11 _RINvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_13CompactParser4nexts_00EEB7_  (in baseline) + 4152  [0x1027ce430]
+                    + ! : 11 _RNvNtNtCs382umqBb0t4_13core_markdown4util4char12classify_opt  (in baseline) + 104,40,...  [0x10282f154,0x10282f114,...]
+                    + ! 6 _RINvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB5_12InlineParser9attentionKb0_EB7_  (in baseline) + 1100,1096  [0x1027d7120,0x1027d711c]
+                    + ! 5 _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline) + 1760,1768  [0x1027d8be0,0x1027d8be8]
+                    + ! 4 _RNvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB4_12InlineParser11index_ticks  (in baseline) + 1044  [0x1027d7bfc]
+                    + 397 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 176  [0x1027f71e0]
+                    + ! 219 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline) + 136,644,...  [0x102800624,0x102800820,...]
+                    + ! 140 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline) + 628  [0x102800810]
+                    + ! : 121 _platform_memmove  (in libsystem_platform.dylib) + 452,428,...  [0x1846d7f24,0x1846d7f0c,...]
+                    + ! : 19 DYLD-STUB$$memcpy  (in baseline) + 4  [0x10288b86c]
+                    + ! 22 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline) + 828  [0x1028008d8]
+                    + ! : 12 _RINvNtCs382umqBb0t4_13core_markdown19event_html_renderer13write_escapedNtNtCs3vUkWdPtNor_5alloc6string6StringEB4_  (in baseline) + 132,24,...  [0x1027ff3bc,0x1027ff350,...]
+                    + ! : 10 _RINvNtCs382umqBb0t4_13core_markdown19event_html_renderer13write_escapedNtNtCs3vUkWdPtNor_5alloc6string6StringEB4_  (in baseline) + 320  [0x1027ff478]
+                    + ! :   9 _platform_memmove  (in libsystem_platform.dylib) + 452,12,...  [0x1846d7f24,0x1846d7d6c,...]
+                    + ! :   1 DYLD-STUB$$memcpy  (in baseline) + 4  [0x10288b86c]
+                    + ! 12 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline) + 1288  [0x102800aa4]
+                    + ! : 12 _RINvNvMs2_NtCs3vUkWdPtNor_5alloc7raw_vecINtB8_11RawVecInnerpE7reserve21do_reserve_and_handleNtNtBa_5alloc6GlobalECs382umqBb0t4_13core_markdown  (in baseline) + 108  [0x1028851ec]
+                    + ! :   12 _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs382umqBb0t4_13core_markdown  (in baseline) + 92  [0x102885920]
+                    + ! :     12 _realloc  (in libsystem_malloc.dylib) + 456  [0x1844f5358]
+                    + ! :       12 _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x1844f4b2c]
+                    + ! :         12 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 996  [0x1844e53f4]
+                    + ! :           12 _platform_memmove  (in libsystem_platform.dylib) + 88  [0x1846d7db8]
+                    + ! 4 _RINvNtCs382umqBb0t4_13core_markdown19event_html_renderer13write_escapedNtNtCs3vUkWdPtNor_5alloc6string6StringEB4_  (in baseline) + 1496,1492  [0x1027ff910,0x1027ff90c]
+                    + 155 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 196  [0x1027f71f4]
+                    + ! 155 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown6stream9EventKindEBF_  (in baseline) + 36,268,...  [0x10280013c,0x102800224,...]
+                    + 124 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 19672  [0x1027fbe08]
+                    + ! 104 _RINvNtNtCs382umqBb0t4_13core_markdown4util12sanitize_uri15write_sanitizedNtNtB6_6stream11StreamErrorNCNvMNtB6_19event_html_rendererINtB1F_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE11destination0EB6_  (in baseline) + 920,672,...  [0x10282d6e8,0x10282d5f0,...]
+                    + ! 12 _RINvNtNtCs382umqBb0t4_13core_markdown4util12sanitize_uri15write_sanitizedNtNtB6_6stream11StreamErrorNCNvMNtB6_19event_html_rendererINtB1F_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE11destination0EB6_  (in baseline) + 1424  [0x10282d8e0]
+                    + ! : 11 _platform_memmove  (in libsystem_platform.dylib) + 428,452,...  [0x1846d7f0c,0x1846d7f24,...]
+                    + ! : 1 DYLD-STUB$$memcpy  (in baseline) + 4  [0x10288b86c]
+                    + ! 8 _RINvNtNtCs382umqBb0t4_13core_markdown4util12sanitize_uri15write_sanitizedNtNtB6_6stream11StreamErrorNCNvMNtB6_19event_html_rendererINtB1F_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE11destination0EB6_  (in baseline) + 2628  [0x10282dd94]
+                    + !   5 _platform_memmove  (in libsystem_platform.dylib) + 428,452,...  [0x1846d7f0c,0x1846d7f24,...]
+                    + !   3 DYLD-STUB$$memcpy  (in baseline) + 4  [0x10288b86c]
+                    + 97 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 21200  [0x1027fc400]
+                    + ! 54 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline) + 828  [0x1028008d8]
+                    + ! : 25 _RINvNtCs382umqBb0t4_13core_markdown19event_html_renderer13write_escapedNtNtCs3vUkWdPtNor_5alloc6string6StringEB4_  (in baseline) + 484,140,...  [0x1027ff51c,0x1027ff3c4,...]
+                    + ! : 11 _RINvNtCs382umqBb0t4_13core_markdown19event_html_renderer13write_escapedNtNtCs3vUkWdPtNor_5alloc6string6StringEB4_  (in baseline) + 320  [0x1027ff478]
+                    + ! : | 10 _platform_memmove  (in libsystem_platform.dylib) + 452,0,...  [0x1846d7f24,0x1846d7d60,...]
+                    + ! : | 1 DYLD-STUB$$memcpy  (in baseline) + 4  [0x10288b86c]
+                    + ! : 8 _RINvNtCs382umqBb0t4_13core_markdown19event_html_renderer13write_escapedNtNtCs3vUkWdPtNor_5alloc6string6StringEB4_  (in baseline) + 1448  [0x1027ff8e0]
+                    + ! : | 6 _platform_memmove  (in libsystem_platform.dylib) + 452,444,...  [0x1846d7f24,0x1846d7f1c,...]
+                    + ! : | 2 DYLD-STUB$$memcpy  (in baseline) + 0,4  [0x10288b868,0x10288b86c]
+                    + ! : 7 _RINvNtCs382umqBb0t4_13core_markdown19event_html_renderer13write_escapedNtNtCs3vUkWdPtNor_5alloc6string6StringEB4_  (in baseline) + 720  [0x1027ff608]
+                    + ! : | 5 _platform_memmove  (in libsystem_platform.dylib) + 428,452,...  [0x1846d7f0c,0x1846d7f24,...]
+                    + ! : | 2 DYLD-STUB$$memcpy  (in baseline) + 4  [0x10288b86c]
+                    + ! : 3 _RINvNtCs382umqBb0t4_13core_markdown19event_html_renderer13write_escapedNtNtCs3vUkWdPtNor_5alloc6string6StringEB4_  (in baseline) + 796  [0x1027ff654]
+                    + ! :   3 _RINvNvMs2_NtCs3vUkWdPtNor_5alloc7raw_vecINtB8_11RawVecInnerpE7reserve21do_reserve_and_handleNtNtBa_5alloc6GlobalECs382umqBb0t4_13core_markdown  (in baseline) + 108  [0x1028851ec]
+                    + ! :     3 _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs382umqBb0t4_13core_markdown  (in baseline) + 92  [0x102885920]
+                    + ! :       3 _realloc  (in libsystem_malloc.dylib) + 456  [0x1844f5358]
+                    + ! :         3 _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x1844f4b2c]
+                    + ! :           3 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 996  [0x1844e53f4]
+                    + ! :             3 _platform_memmove  (in libsystem_platform.dylib) + 88  [0x1846d7db8]
+                    + ! 42 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline) + 136,144,...  [0x102800624,0x10280062c,...]
+                    + ! 1 _RINvNtCs382umqBb0t4_13core_markdown19event_html_renderer13write_escapedNtNtCs3vUkWdPtNor_5alloc6string6StringEB4_  (in baseline) + 1496  [0x1027ff910]
+                    + 42 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown6stream9EventKindEBF_  (in baseline) + 96  [0x102800178]
+                    + 36 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 1868  [0x1027f787c]
+                    + ! 32 _RNvNtCs382umqBb0t4_13core_markdown14grammar_parser13decode_string  (in baseline) + 132,168,...  [0x1027ddc60,0x1027ddc84,...]
+                    + ! 2 _RNvNtCs382umqBb0t4_13core_markdown14grammar_parser13decode_string  (in baseline) + 652  [0x1027dde68]
+                    + ! : 2 _RNvMs4_NtCs9nEiEE0E2Vj_4core3numh21is_ascii_alphanumeric  (in baseline) + 28  [0x1027eab44]
+                    + ! 1 _RNvNtCs382umqBb0t4_13core_markdown14grammar_parser13decode_string  (in baseline) + 612  [0x1027dde40]
+                    + ! : 1 _RNvMs4_NtCs9nEiEE0E2Vj_4core3numh21is_ascii_alphanumeric  (in baseline) + 28  [0x1027eab44]
+                    + ! 1 _RNvNtCs382umqBb0t4_13core_markdown14grammar_parser13decode_string  (in baseline) + 2904  [0x1027de734]
+                    + !   1 _RNvMs0_NtCs382umqBb0t4_13core_markdown14grammar_parserNtB5_12ValueBuilder6append  (in baseline) + 20  [0x1027dd550]
+                    + 30 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline) + 848,844  [0x1028008ec,0x1028008e8]
+                    + 18 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 8968  [0x1027f9438]
+                    + ! 9 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 288  [0x102803688]
+                    + ! : 6 _platform_memmove  (in libsystem_platform.dylib) + 460,0,...  [0x1846d7f2c,0x1846d7d60,...]
+                    + ! : 3 DYLD-STUB$$memcpy  (in baseline) + 4  [0x10288b86c]
+                    + ! 6 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 0,332,...  [0x102803568,0x1028036b4,...]
+                    + ! 3 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 8968  [0x1027f9438]
+                    + !   3 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 84  [0x1028035bc]
+                    + 18 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown6stream11StreamErrorEBF_  (in baseline) + 156  [0x1028000e0]
+                    + 14 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 3208  [0x1027f7db8]
+                    + ! 10 _RNvMs0_NtCs382umqBb0t4_13core_markdown12event_parserNtB5_13CompactParser5value  (in baseline) + 124,40,...  [0x102806e98,0x102806e44,...]
+                    + ! 3 _RNvMs0_NtCs382umqBb0t4_13core_markdown12event_parserNtB5_13CompactParser5value  (in baseline) + 220  [0x102806ef8]
+                    + ! : 3 _RNvMs0_NtCs382umqBb0t4_13core_markdown14grammar_parserNtB5_12ValueBuilder6append  (in baseline) + 24,48,...  [0x1027dd554,0x1027dd56c,...]
+                    + ! 1 _RNvMs0_NtCs382umqBb0t4_13core_markdown14grammar_parserNtB5_12ValueBuilder6append  (in baseline) + 832  [0x1027dd87c]
+                    + 14 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 15032  [0x1027fabe8]
+                    + ! 10 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline) + 144,136,...  [0x10280062c,0x102800624,...]
+                    + ! 4 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline) + 628  [0x102800810]
+                    + !   4 _platform_memmove  (in libsystem_platform.dylib) + 452,428  [0x1846d7f24,0x1846d7f0c]
+                    + 14 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 20996  [0x1027fc334]
+                    + ! 8 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline) + 16,136,...  [0x1028005ac,0x102800624,...]
+                    + ! 6 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline) + 628  [0x102800810]
+                    + !   4 _platform_memmove  (in libsystem_platform.dylib) + 452,428  [0x1846d7f24,0x1846d7f0c]
+                    + !   2 DYLD-STUB$$memcpy  (in baseline) + 4  [0x10288b86c]
+                    + 14 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 27672  [0x1027fdd48]
+                    + ! 14 _RINvNvMs2_NtCs3vUkWdPtNor_5alloc7raw_vecINtB8_11RawVecInnerpE7reserve21do_reserve_and_handleNtNtBa_5alloc6GlobalECs382umqBb0t4_13core_markdown  (in baseline) + 108  [0x1028851ec]
+                    + !   14 _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs382umqBb0t4_13core_markdown  (in baseline) + 92  [0x102885920]
+                    + !     14 _realloc  (in libsystem_malloc.dylib) + 456  [0x1844f5358]
+                    + !       14 _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x1844f4b2c]
+                    + !         13 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 996  [0x1844e53f4]
+                    + !         : 13 _platform_memmove  (in libsystem_platform.dylib) + 88  [0x1846d7db8]
+                    + !         1 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 896  [0x1844e5390]
+                    + !           1 _xzm_malloc_large_huge  (in libsystem_malloc.dylib) + 968  [0x1844e84ac]
+                    + !             1 xzm_segment_group_alloc_chunk  (in libsystem_malloc.dylib) + 564  [0x1844c892c]
+                    + !               1 _xzm_segment_group_find_and_allocate_chunk  (in libsystem_malloc.dylib) + 508  [0x1844c8f9c]
+                    + !                 1 _xzm_segment_group_span_mark_smaller  (in libsystem_malloc.dylib) + 220  [0x1844ca408]
+                    + !                   1 _xzm_reclaim_mark_used_locked  (in libsystem_malloc.dylib) + 60  [0x1844cae24]
+                    + !                     1 mach_vm_reclaim_try_cancel  (in libsystem_kernel.dylib) + 260  [0x18469c6b8]
+                    + !                       1 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x1846890f8]
+                    + 10 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 6508  [0x1027f8a9c]
+                    + ! 8 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 0,8,...  [0x102803568,0x102803570,...]
+                    + ! 2 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 288  [0x102803688]
+                    + !   1 DYLD-STUB$$memcpy  (in baseline) + 4  [0x10288b86c]
+                    + !   1 _platform_memmove  (in libsystem_platform.dylib) + 428  [0x1846d7f0c]
+                    + 8 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 5684  [0x1027f8764]
+                    + ! 8 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown6stream11StreamErrorEBF_  (in baseline) + 12,16  [0x102800050,0x102800054]
+                    + 6 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 4836  [0x1027f8414]
+                    + ! 6 _RNvNtCs382umqBb0t4_13core_markdown14grammar_parser13decode_string  (in baseline) + 132,168  [0x1027ddc60,0x1027ddc84]
+                    + 6 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 10636  [0x1027f9abc]
+                    + ! 3 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 288  [0x102803688]
+                    + ! : 3 _platform_memmove  (in libsystem_platform.dylib) + 0,428,...  [0x1846d7d60,0x1846d7f0c,...]
+                    + ! 2 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 36,336  [0x10280358c,0x1028036b8]
+                    + ! 1 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 10636  [0x1027f9abc]
+                    + !   1 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 84  [0x1028035bc]
+                    + 6 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 10960  [0x1027f9c00]
+                    + ! 4 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 0,8,...  [0x102803568,0x102803570,...]
+                    + ! 1 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 10960  [0x1027f9c00]
+                    + ! : 1 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 84  [0x1028035bc]
+                    + ! 1 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 288  [0x102803688]
+                    + !   1 _platform_memmove  (in libsystem_platform.dylib) + 452  [0x1846d7f24]
+                    + 6 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 22072  [0x1027fc768]
+                    + ! 6 _platform_memmove  (in libsystem_platform.dylib) + 452,12,...  [0x1846d7f24,0x1846d7d6c,...]
+                    + 5 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 12160  [0x1027fa0b0]
+                    + ! 4 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 332,8,...  [0x1028036b4,0x102803570,...]
+                    + ! 1 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 288  [0x102803688]
+                    + !   1 _platform_memmove  (in libsystem_platform.dylib) + 452  [0x1846d7f24]
+                    + 4 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 3108  [0x1027f7d54]
+                    + ! 4 _RNvXs6_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_4BodyNtNtCs9nEiEE0E2Vj_4core3cmp9PartialEq2eq  (in baseline) + 4,224  [0x1028044e8,0x1028045c4]
+                    + 3 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 16076  [0x1027faffc]
+                    + ! 3 _platform_memmove  (in libsystem_platform.dylib) + 0  [0x1846d7d60]
+                    + 3 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 21264  [0x1027fc440]
+                    + ! 3 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 0,8  [0x102803568,0x102803570]
+                    + 3 _RNvMs0_NtCs382umqBb0t4_13core_markdown12event_parserNtB5_13CompactParser5value  (in baseline) + 308,296  [0x102806f50,0x102806f44]
+                    + 2 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 4956  [0x1027f848c]
+                    + ! 2 _RNvMs0_NtCs382umqBb0t4_13core_markdown12event_parserNtB5_13CompactParser7advance  (in baseline) + 4,44  [0x1028037b0,0x1028037d8]
+                    + 2 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 8028  [0x1027f908c]
+                    + ! 2 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 0,28  [0x102803568,0x102803584]
+                    + 2 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 9148  [0x1027f94ec]
+                    + ! 2 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 0,8  [0x102803568,0x102803570]
+                    + 2 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 9500  [0x1027f964c]
+                    + ! 2 _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 0,28  [0x102803568,0x102803584]
+                    + 2 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 19612  [0x1027fbdcc]
+                    + ! 2 _RNvMNtCs382umqBb0t4_13core_markdown6streamNtB2_4Text7resolve  (in baseline) + 0,92  [0x102813658,0x1028136b4]
+                    + 2 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 20972  [0x1027fc31c]
+                    + ! 2 _RNvMNtCs9nEiEE0E2Vj_4core6resultINtB2_6ResultReNtNtCs382umqBb0t4_13core_markdown6stream11StreamErrorE6expectBN_  (in baseline) + 16,28  [0x102803740,0x10280374c]
+                    + 2 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 21172  [0x1027fc3e4]
+                    + ! 2 _RNvMNtCs9nEiEE0E2Vj_4core6resultINtB2_6ResultReNtNtCs382umqBb0t4_13core_markdown6stream11StreamErrorE6expectBN_  (in baseline) + 16  [0x102803740]
+                    + 2 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 31424  [0x1027febf0]
+                    + ! 1 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown12event_parser11EventParserEBF_  (in baseline) + 128  [0x1027ffb90]
+                    + ! : 1 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown14grammar_parser13GrammarParserEBF_  (in baseline) + 276  [0x1027ffe50]
+                    + ! :   1 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown9tokenizer16TokenizerBuffersEBF_  (in baseline) + 220  [0x10280042c]
+                    + ! 1 _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown13inline_parser12InlineParserEBF_  (in baseline) + 76  [0x1027ffc1c]
+                    + !   1 __xzm_xzone_free_to_freelist_chunk  (in libsystem_malloc.dylib) + 424  [0x1844ed82c]
+                    + !     1 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x1846890f8]
+                    + 2 _RINvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_13CompactParser4nexts_00EEB7_  (in baseline) + 4912,4916  [0x1027ce728,0x1027ce72c]
+                    + 2 _RINvNtNtCs382umqBb0t4_13core_markdown4util12sanitize_uri15write_sanitizedNtNtB6_6stream11StreamErrorNCNvMNtB6_19event_html_rendererINtB1F_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE11destination0EB6_  (in baseline) + 2552,2564  [0x10282dd48,0x10282dd54]
+                    + 1 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 20956  [0x1027fc30c]
+                    + ! 1 _RNvMNtCs382umqBb0t4_13core_markdown6streamNtB2_4Text7resolve  (in baseline) + 124  [0x1028136d4]
+                    + 1 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 21156  [0x1027fc3d4]
+                    + ! 1 _RNvMNtCs382umqBb0t4_13core_markdown6streamNtB2_4Text7resolve  (in baseline) + 20  [0x10281366c]
+                    + 1 _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline) + 22280  [0x1027fc838]
+                    + ! 1 _platform_memmove  (in libsystem_platform.dylib) + 460  [0x1846d7f2c]
+                    + 1 _RNvMNtCs9nEiEE0E2Vj_4core6resultINtB2_6ResultReNtNtCs382umqBb0t4_13core_markdown6stream11StreamErrorE6expectBN_  (in baseline) + 40  [0x102803758]
+                    + 1 _RNvNtCs382umqBb0t4_13core_markdown14grammar_parser13decode_string  (in baseline) + 2976  [0x1027de77c]
+                    895 _RNvCs382umqBb0t4_13core_markdown20to_html_with_options  (in baseline) + 204  [0x102813320]
+                      895 _RNvMNtCs382umqBb0t4_13core_markdown12event_parserNtB2_11EventParser3new  (in baseline) + 56  [0x102806174]
+                        323 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 720,872,...  [0x1027eae2c,0x1027eaec4,...]
+                        81 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 6568  [0x1027ec504]
+                        ! 34 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in baseline) + 36,84,...  [0x1027e9a18,0x1027e9a48,...]
+                        ! 31 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in baseline) + 472  [0x1027e9bcc]
+                        ! : 19 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in baseline) + 16,40,...  [0x102833a78,0x102833a90,...]
+                        ! : 12 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in baseline) + 256  [0x102833b68]
+                        ! :   12 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker  (in baseline) + 104,8,...  [0x102833964,0x102833904,...]
+                        ! 5 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in baseline) + 416  [0x1027e9b94]
+                        ! : 5 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in baseline) + 12,36  [0x102834a00,0x102834a18]
+                        ! 5 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in baseline) + 512  [0x1027e9bf4]
+                        ! : 5 _RNCNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB7_7Builder10interrupts0B9_  (in baseline) + 32,136,...  [0x1027e9678,0x1027e96e0,...]
+                        ! 3 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in baseline) + 672  [0x102833d08]
+                        ! 3 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in baseline) + 300  [0x102834b20]
+                        60 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 6148  [0x1027ec360]
+                        ! 60 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in baseline) + 420,272,...  [0x1028348ec,0x102834858,...]
+                        52 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 512  [0x1027ead5c]
+                        ! 52 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in baseline) + 12,104,...  [0x1027e974c,0x1027e97a8,...]
+                        52 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 900  [0x1027eaee0]
+                        ! 40 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in baseline) + 16,40,...  [0x102833a78,0x102833a90,...]
+                        ! 12 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in baseline) + 256  [0x102833b68]
+                        !   12 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker  (in baseline) + 132,80,...  [0x102833980,0x10283394c,...]
+                        48 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 6236  [0x1027ec3b8]
+                        ! 48 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in baseline) + 132,12,...  [0x1027e97c4,0x1027e974c,...]
+                        43 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 6192  [0x1027ec38c]
+                        ! 22 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in baseline) + 116,60,...  [0x1027ea864,0x1027ea82c,...]
+                        ! 21 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in baseline) + 76  [0x1027ea83c]
+                        !   21 _RNvMs4_NtCs3vUkWdPtNor_5alloc7raw_vecINtB5_6RawVecNtNtCs382umqBb0t4_13core_markdown12block_parser4NodeE8grow_oneBQ_  (in baseline) + 60  [0x102885414]
+                        !     21 _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs382umqBb0t4_13core_markdown  (in baseline) + 92  [0x102885920]
+                        !       21 _realloc  (in libsystem_malloc.dylib) + 456  [0x1844f5358]
+                        !         21 _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x1844f4b2c]
+                        !           20 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 996  [0x1844e53f4]
+                        !           | 20 _platform_memmove  (in libsystem_platform.dylib) + 88  [0x1846d7db8]
+                        !           1 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 1028  [0x1844e5414]
+                        !             1 xzm_segment_group_free_chunk  (in libsystem_malloc.dylib) + 624  [0x1844c96c8]
+                        !               1 _xzm_segment_group_segment_span_free_coalesce  (in libsystem_malloc.dylib) + 248  [0x1844c9ccc]
+                        !                 1 _xzm_segment_group_span_mark_used  (in libsystem_malloc.dylib) + 124  [0x1844cb718]
+                        !                   1 _xzm_reclaim_mark_used  (in libsystem_malloc.dylib) + 124  [0x1844c8318]
+                        !                     1 _xzm_reclaim_mark_used_locked  (in libsystem_malloc.dylib) + 60  [0x1844cae24]
+                        !                       1 mach_vm_reclaim_try_cancel  (in libsystem_kernel.dylib) + 260  [0x18469c6b8]
+                        !                         1 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x1846890f8]
+                        33 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 6064  [0x1027ec30c]
+                        ! 24 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in baseline) + 116,20,...  [0x1027ea864,0x1027ea804,...]
+                        ! 9 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in baseline) + 76  [0x1027ea83c]
+                        !   9 _RNvMs4_NtCs3vUkWdPtNor_5alloc7raw_vecINtB5_6RawVecNtNtCs382umqBb0t4_13core_markdown12block_parser4NodeE8grow_oneBQ_  (in baseline) + 60  [0x102885414]
+                        !     9 _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs382umqBb0t4_13core_markdown  (in baseline) + 92  [0x102885920]
+                        !       9 _realloc  (in libsystem_malloc.dylib) + 456  [0x1844f5358]
+                        !         9 _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x1844f4b2c]
+                        !           9 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 996  [0x1844e53f4]
+                        !             9 _platform_memmove  (in libsystem_platform.dylib) + 88,104  [0x1846d7db8,0x1846d7dc8]
+                        27 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in baseline) + 192,184,...  [0x1027ea8b0,0x1027ea8a8,...]
+                        24 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 5124  [0x1027ebf60]
+                        ! 21 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in baseline) + 12,232,...  [0x102834a00,0x102834adc,...]
+                        ! 3 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in baseline) + 200  [0x102834abc]
+                        !   3 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in baseline) + 88,156  [0x1028347a0,0x1028347e4]
+                        20 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in baseline) + 640  [0x1027e99c0]
+                        20 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 6040  [0x1027ec2f4]
+                        ! 20 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in baseline) + 20,156,...  [0x1027ea1a8,0x1027ea230,...]
+                        17 _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in baseline) + 672,676  [0x102833d08,0x102833d0c]
+                        14 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 6924  [0x1027ec668]
+                        ! 14 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder3pop  (in baseline) + 36,72,...  [0x1027ea304,0x1027ea328,...]
+                        10 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 6528  [0x1027ec4dc]
+                        ! 10 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners19scan_setext_heading  (in baseline) + 296,0,...  [0x102834cbc,0x102834b94,...]
+                        8 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 5868  [0x1027ec248]
+                        ! 8 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in baseline) + 120,180,...  [0x1028347c0,0x1028347fc,...]
+                        7 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 5156  [0x1027ebf80]
+                        ! 5 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in baseline) + 176  [0x1027ea244]
+                        ! : 5 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder3pop  (in baseline) + 148,116,...  [0x1027ea374,0x1027ea354,...]
+                        ! 2 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in baseline) + 112,176  [0x1027ea204,0x1027ea244]
+                        6 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in baseline) + 180  [0x1027e9aa8]
+                        6 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 8060  [0x1027ecad8]
+                        ! 6 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder3pop  (in baseline) + 8,36,...  [0x1027ea2e8,0x1027ea304,...]
+                        5 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 5248  [0x1027ebfdc]
+                        ! 5 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in baseline) + 0,88,...  [0x102834748,0x1028347a0,...]
+                        5 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 5544  [0x1027ec104]
+                        ! 5 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in baseline) + 132,12,...  [0x1027e97c4,0x1027e974c,...]
+                        5 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 5836  [0x1027ec228]
+                        ! 5 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners23scan_closing_code_fence  (in baseline) + 48,20,...  [0x102834d50,0x102834d34,...]
+                        5 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in baseline) + 300  [0x102834b20]
+                        4 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in baseline) + 256  [0x1027ea294]
+                        4 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 1440  [0x1027eb0fc]
+                        ! 4 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in baseline) + 20,60,...  [0x1027ea804,0x1027ea82c,...]
+                        3 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 4764  [0x1027ebdf8]
+                        ! 3 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in baseline) + 176,248  [0x1027ea244,0x1027ea28c]
+                        3 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 4788  [0x1027ebe10]
+                        ! 3 _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in baseline) + 0,88,...  [0x102834748,0x1028347a0,...]
+                        3 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 5348  [0x1027ec040]
+                        ! 3 _RNvMs4_NtCs3vUkWdPtNor_5alloc7raw_vecINtB5_6RawVecNtNtCs382umqBb0t4_13core_markdown12block_parser4CodeE8grow_oneBQ_  (in baseline) + 60  [0x1028853b0]
+                        !   3 _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs382umqBb0t4_13core_markdown  (in baseline) + 92  [0x102885920]
+                        !     3 _realloc  (in libsystem_malloc.dylib) + 456  [0x1844f5358]
+                        !       3 _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x1844f4b2c]
+                        !         3 xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 996  [0x1844e53f4]
+                        !           3 _platform_memmove  (in libsystem_platform.dylib) + 88  [0x1846d7db8]
+                        3 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 5916  [0x1027ec278]
+                        ! 3 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in baseline) + 12,60  [0x1027ea7fc,0x1027ea82c]
+                        2 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 5428  [0x1027ec090]
+                        ! 2 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in baseline) + 20,60  [0x1027ea804,0x1027ea82c]
+                        1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 6708  [0x1027ec590]
+                        ! 1 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in baseline) + 116  [0x1027ea864]
+                        1 _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline) + 6812  [0x1027ec5f8]
+                          1 _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder3pop  (in baseline) + 68  [0x1027ea324]
+
+Total number in stack (recursive counted multiple, when >=5):
+        23       _platform_memmove  (in libsystem_platform.dylib) + 0  [0x1846d7d60]
+        13       _platform_memcmp  (in libsystem_platform.dylib) + 0  [0x1846d5170]
+        12       _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 0  [0x102803568]
+        10       DYLD-STUB$$memcpy  (in baseline) + 0  [0x10288b868]
+        9       DYLD-STUB$$memcmp  (in baseline) + 0  [0x10288b85c]
+        7       _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in baseline) + 0  [0x1027ea7f0]
+        6       _RNvMs4_NtCs9nEiEE0E2Vj_4core3numh21is_ascii_alphanumeric  (in baseline) + 0  [0x1027eab28]
+        6       _RNvMs5_NtCs3vUkWdPtNor_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs382umqBb0t4_13core_markdown  (in baseline) + 92  [0x102885920]
+        6       _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x1844f4b2c]
+        6       _realloc  (in libsystem_malloc.dylib) + 456  [0x1844f5358]
+        6       xzm_malloc_zone_malloc_type_realloc  (in libsystem_malloc.dylib) + 996  [0x1844e53f4]
+        5       _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline) + 0  [0x10280059c]
+        5       _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline) + 288  [0x102803688]
+        5       _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in baseline) + 0  [0x102834748]
+
+Sort by top of stack, same collapsed (when >= 5):
+        _RINvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB3_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE12render_innerKb0_NtNtB5_12event_parser11EventParserEB5_  (in baseline)        1421
+        _RINvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB5_12InlineParser7prepareKb0_KB1h_INtNtNtNtCs9nEiEE0E2Vj_4core4iter7sources7from_fn6FromFnNCNCNvMs0_NtB7_12event_parserNtB2t_13CompactParser4nexts_00EEB7_  (in baseline)        393
+        _RNvMs_NtCs382umqBb0t4_13core_markdown12block_parserNtB4_6Blocks5parse  (in baseline)        323
+        _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE7escapedB4_  (in baseline)        309
+        _platform_memmove  (in libsystem_platform.dylib)        257
+        _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown6stream9EventKindEBF_  (in baseline)        197
+        _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10containers  (in baseline)        125
+        _RINvNtNtCs382umqBb0t4_13core_markdown4util12sanitize_uri15write_sanitizedNtNtB6_6stream11StreamErrorNCNvMNtB6_19event_html_rendererINtB1F_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE11destination0EB6_  (in baseline)        106
+        _RINvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB5_12InlineParser9attentionKb0_EB7_  (in baseline)        101
+        _platform_memcmp  (in libsystem_platform.dylib)        98
+        _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder6append  (in baseline)        83
+        _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart28scan_list_marker_with_indent  (in baseline)        79
+        _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners13scan_nextline  (in baseline)        79
+        _RNvMs_NtCs382umqBb0t4_13core_markdown13inline_parserNtB4_12InlineParser11index_ticks  (in baseline)        52
+        _RNvNtCs382umqBb0t4_13core_markdown13inline_parser8resource  (in baseline)        50
+        _RINvNtCs382umqBb0t4_13core_markdown19event_html_renderer13write_escapedNtNtCs3vUkWdPtNor_5alloc6string6StringEB4_  (in baseline)        42
+        _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder10interrupts  (in baseline)        40
+        _RNvNtCs382umqBb0t4_13core_markdown14grammar_parser13decode_string  (in baseline)        39
+        _RNvMNtCs382umqBb0t4_13core_markdown19event_html_rendererINtB2_17EventHtmlRendererNtNtCs3vUkWdPtNor_5alloc6string6StringE9terminateB4_  (in baseline)        38
+        DYLD-STUB$$memcpy  (in baseline)        35
+        _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners15scan_code_fence  (in baseline)        34
+        _RNvNtNtCs382umqBb0t4_13core_markdown4util4char12classify_opt  (in baseline)        31
+        _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder11finish_list  (in baseline)        29
+        _RINvNtCs9nEiEE0E2Vj_4core3ptr9drop_glueNtNtCs382umqBb0t4_13core_markdown6stream11StreamErrorEBF_  (in baseline)        26
+        _RNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB5_7Builder3pop  (in baseline)        26
+        _RNvMNtNtCs382umqBb0t4_13core_markdown12block_parser8scannersNtB2_9LineStart18finish_list_marker  (in baseline)        24
+        _RNvNtCs382umqBb0t4_13core_markdown13inline_parser6entity  (in baseline)        18
+        DYLD-STUB$$memcmp  (in baseline)        16
+        _RNvMs0_NtCs382umqBb0t4_13core_markdown12event_parserNtB5_13CompactParser5value  (in baseline)        13
+        _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners19scan_setext_heading  (in baseline)        10
+        _RNvMs4_NtCs9nEiEE0E2Vj_4core3numh21is_ascii_alphanumeric  (in baseline)        9
+        _platform_memset  (in libsystem_platform.dylib)        6
+        _RNCNvMs0_NtCs382umqBb0t4_13core_markdown12block_parserNtB7_7Builder10interrupts0B9_  (in baseline)        5
+        _RNvMNtCs9nEiEE0E2Vj_4core6resultINtB2_6ResultReNtNtCs382umqBb0t4_13core_markdown6stream11StreamErrorE6expectBN_  (in baseline)        5
+        _RNvMs0_NtCs382umqBb0t4_13core_markdown14grammar_parserNtB5_12ValueBuilder6append  (in baseline)        5
+        _RNvNtNtCs382umqBb0t4_13core_markdown12block_parser8scanners23scan_closing_code_fence  (in baseline)        5
+
+Binary Images:
+       0x102734000 -        0x10292527b +baseline (0) <8E3F645B-877F-3527-B1AF-274753F16587> /tmp/*/baseline
+       0x184244000 -        0x1842935f7  libobjc.A.dylib (973.1) <C0680DF6-9900-3C29-A071-95A031686EF8> /usr/lib/libobjc.A.dylib
+       0x184294000 -        0x18429e23f  libsharedcache.dylib (0) <BBF95357-BEBF-3D89-8900-2BBB14A667C5> /usr/lib/libsharedcache.dylib
+       0x18429f000 -        0x1842c5d3b  libdyld.dylib (27062) <62863BCA-DD60-3D32-A9DB-89099BA6F3D7> /usr/lib/system/libdyld.dylib
+       0x1842c6000 -        0x1843856e3  dyld (1.0.0 - 27062) <D341DDCB-7969-3A9C-8E03-0CF4751398A9> /usr/lib/dyld
+       0x184386000 -        0x18438901f  libsystem_blocks.dylib (98.1) <6F304731-D95D-3501-B4AD-F2934F7F2446> /usr/lib/system/libsystem_blocks.dylib
+       0x18438a000 -        0x1843df0df  libxpc.dylib (3298.1.1) <0791121F-B5FC-3F84-BF04-115E86D2D882> /usr/lib/system/libxpc.dylib
+       0x1843e0000 -        0x1843ffc13  libsystem_trace.dylib (1966.1.1) <B48A8E3E-A12A-3342-8321-428B555E965E> /usr/lib/system/libsystem_trace.dylib
+       0x184400000 -        0x1844b4f27  libcorecrypto.dylib (2109.0.22) <807AA6C9-5D8A-3CA5-B4CE-FACE5296EF6A> /usr/lib/system/libcorecrypto.dylib
+       0x1844b5000 -        0x18450ac5f  libsystem_malloc.dylib (886.0.8) <2339CB57-FE5A-3154-A206-A76059C749EB> /usr/lib/system/libsystem_malloc.dylib
+       0x18450b000 -        0x18455119f  libdispatch.dylib (1605.0.2) <022BF08F-0B3A-3225-9E65-16D1553CE90D> /usr/lib/system/libdispatch.dylib
+       0x184552000 -        0x184554d2b  libsystem_featureflags.dylib (108) <20C1CAB2-1F13-3426-8146-9CAE9FF2A33D> /usr/lib/system/libsystem_featureflags.dylib
+       0x184555000 -        0x1845d7ca3  libsystem_c.dylib (1786.0.3) <FBA7B23E-AA60-3A90-9AA4-A7A2E0AD63EE> /usr/lib/system/libsystem_c.dylib
+       0x1845d8000 -        0x18466d033  libc++.1.dylib (2200.27) <1E9BA4AA-B5DA-3CF3-80AC-4B880049573F> /usr/lib/libc++.1.dylib
+       0x18466e000 -        0x184687eff  libc++abi.dylib (2200.27) <A21743EE-6E1C-3E74-97EA-7AF793DE4BDF> /usr/lib/libc++abi.dylib
+       0x184688000 -        0x1846c69ab  libsystem_kernel.dylib (13432.1.9) <F63BF418-8F75-34A4-AAF1-8CAF2B9B6A05> /usr/lib/system/libsystem_kernel.dylib
+       0x1846c7000 -        0x1846d391b  libsystem_pthread.dylib (553.0.1) <5A1828C3-CBC2-3B85-BD07-C8ED10021A41> /usr/lib/system/libsystem_pthread.dylib
+       0x1846d4000 -        0x1846dd4f3  libsystem_platform.dylib (402.0.1.0.1) <080E4444-A0FB-3913-9756-4E470015F32F> /usr/lib/system/libsystem_platform.dylib
+       0x1846de000 -        0x18470c903  libsystem_info.dylib (603) <BC387AEB-1CEF-3513-92D7-D7F913596711> /usr/lib/system/libsystem_info.dylib
+       0x188836000 -        0x18883fb13  libsystem_darwin.dylib (1786.0.3) <4E66C888-993C-3E6A-A8DA-A949C01C5B67> /usr/lib/system/libsystem_darwin.dylib
+       0x188c90000 -        0x188ca1b8b  libsystem_notify.dylib (368) <58FD36D8-37A7-311C-80F2-8E64DD8710CF> /usr/lib/system/libsystem_notify.dylib
+       0x18aded000 -        0x18ae07d93  libsystem_networkextension.dylib (2340.1.2) <22E1D190-486F-324F-ABA4-F36AB841BFE9> /usr/lib/system/libsystem_networkextension.dylib
+       0x18ae95000 -        0x18aeac247  libsystem_asl.dylib (409) <B4D449B7-A821-3A9A-8019-E917B291F10A> /usr/lib/system/libsystem_asl.dylib
+       0x18be40000 -        0x18be40f2f  libobjcMsgSend.dylib (973.1) <41179EDE-DC97-3BBE-8848-6400D12C1436> /usr/lib/objc/libobjcMsgSend.dylib
+       0x18cf8c000 -        0x18cf93edf  libsystem_symptoms.dylib (2394.0.4) <60EE7884-9F4E-3184-A6AC-FA40A7A0297D> /usr/lib/system/libsystem_symptoms.dylib
+       0x191324000 -        0x19135eaeb  libsystem_containermanager.dylib (833.0.8.0.1) <08A57205-555D-3792-8931-9D5B585AF326> /usr/lib/system/libsystem_containermanager.dylib
+       0x192977000 -        0x19297b317  libsystem_configuration.dylib (1446) <F3EB66A7-7A24-3AE5-B6E8-9A37BB00F119> /usr/lib/system/libsystem_configuration.dylib
+       0x19297c000 -        0x192982e03  libsystem_sandbox.dylib (3051.0.52) <1E892B56-092E-3832-BDE3-DCE356D7A4FA> /usr/lib/system/libsystem_sandbox.dylib
+       0x193e40000 -        0x193e40f2f  libobjcMsgSend1.dylib (973.1) <B40D9B2A-E1EE-37ED-8004-711A1F263DE1> /usr/lib/objc/libobjcMsgSend1.dylib
+       0x194560000 -        0x194562f93  libquarantine.dylib (217.0.4) <7FD4AE22-86EF-382B-83F5-ADF9336C1160> /usr/lib/system/libquarantine.dylib
+       0x194c72000 -        0x194c781e7  libsystem_coreservices.dylib (203) <57248E07-11A5-3857-918E-4A3A63B69FE8> /usr/lib/system/libsystem_coreservices.dylib
+       0x19523a000 -        0x195277b27  libsystem_m.dylib (3326.0.1) <A3FB340F-3ED5-30F4-8B64-9D5860F64D35> /usr/lib/system/libsystem_m.dylib
+       0x195279000 -        0x19527c4f7  libmacho.dylib (27062) <50DEADEC-3E99-3519-AFC3-4A3FEB3F14C3> /usr/lib/system/libmacho.dylib
+       0x195296000 -        0x1952a2707  libcommonCrypto.dylib (600041) <41C99F45-C5E6-39DB-B1F2-A1BEA9D242A4> /usr/lib/system/libcommonCrypto.dylib
+       0x1952a3000 -        0x1952acc87  libunwind.dylib (2200.5) <3070AB81-B082-39E8-8A00-EF88DDE9AC47> /usr/lib/system/libunwind.dylib
+       0x1952b4000 -        0x1952be7eb  libcopyfile.dylib (260.0.3) <72D95AF9-BF5E-3A84-81A6-BCC5BDB99857> /usr/lib/system/libcopyfile.dylib
+       0x1952bf000 -        0x1952c28bf  libcompiler_rt.dylib (103.4) <DFB5CE7F-A36E-36AA-BECE-1392D3D43607> /usr/lib/system/libcompiler_rt.dylib
+       0x1952c3000 -        0x1952c8077  libsystem_collections.dylib (1786.0.3) <1E8022D4-5A37-3A7A-8936-603E6FA88358> /usr/lib/system/libsystem_collections.dylib
+       0x1952c9000 -        0x1952cbf1f  libsystem_secinit.dylib (182) <DE037464-4C5D-3E96-A33F-2A4557CC6A20> /usr/lib/system/libsystem_secinit.dylib
+       0x1952cc000 -        0x1952ce97f  libremovefile.dylib (96) <E6E6DFCF-6B2C-3F30-A59D-816CAB1190CE> /usr/lib/system/libremovefile.dylib
+       0x1952cf000 -        0x1952cfe27  libkeymgr.dylib (31) <5EC997EF-3ADA-360B-9FCD-5F940C83FA4E> /usr/lib/system/libkeymgr.dylib
+       0x1952d0000 -        0x1952d8af7  libsystem_dnssd.dylib (3111.0.5.0.1) <DE22096F-1E5B-3D6E-8164-771582DD6391> /usr/lib/system/libsystem_dnssd.dylib
+       0x1952d9000 -        0x1952ddf1b  libcache.dylib (95) <80BAE197-E285-3F6E-A1EE-B77FE37D7E5D> /usr/lib/system/libcache.dylib
+       0x1952de000 -        0x1952df8f3  libSystem.B.dylib (1359) <4FDC9AA6-B344-37FE-B8C6-A4C94A038F57> /usr/lib/libSystem.B.dylib
+       0x19be40000 -        0x19be40f2f  libobjcMsgSend2.dylib (973.1) <BD27A84B-C9AE-3282-BBEA-3B6119837B5A> /usr/lib/objc/libobjcMsgSend2.dylib
+       0x1a3e40000 -        0x1a3e40f2f  libobjcMsgSend3.dylib (973.1) <C0860D68-DDFC-3BD7-8B06-DB0645CBBED4> /usr/lib/objc/libobjcMsgSend3.dylib
+       0x1abe40000 -        0x1abe40f2f  libobjcMsgSend4.dylib (973.1) <A6153BF5-622B-3B01-81B6-F64A365EF613> /usr/lib/objc/libobjcMsgSend4.dylib
+       0x1b3e40000 -        0x1b3e40f2f  libobjcMsgSend5.dylib (973.1) <3913A71C-B29A-3AEA-820B-BEC40AC1861A> /usr/lib/objc/libobjcMsgSend5.dylib
+       0x1bbe40000 -        0x1bbe40f2f  libobjcMsgSend6.dylib (973.1) <9BC523A3-E167-3F6C-8CAE-0F3EBA671791> /usr/lib/objc/libobjcMsgSend6.dylib
+       0x1c3e40000 -        0x1c3e40f2f  libobjcMsgSend7.dylib (973.1) <248B7BCE-5B4C-34C7-A340-43D5228628C5> /usr/lib/objc/libobjcMsgSend7.dylib
+       0x1cbe40000 -        0x1cbe40f2f  libobjcMsgSend8.dylib (973.1) <3E041BAD-A8E8-3069-B741-78CD1A45B176> /usr/lib/objc/libobjcMsgSend8.dylib
+       0x1d3e40000 -        0x1d3e40f2f  libobjcMsgSend9.dylib (973.1) <34A67969-21A0-39D6-BB81-8FDA5A2409DB> /usr/lib/objc/libobjcMsgSend9.dylib
+       0x1dbe40000 -        0x1dbe40f2f  libobjcMsgSend10.dylib (973.1) <678186C0-8EAD-3B35-8CBB-00285B41E4A0> /usr/lib/objc/libobjcMsgSend10.dylib
+       0x1e3e40000 -        0x1e3e40f2f  libobjcMsgSend11.dylib (973.1) <E05CB08C-E956-36FA-8967-AE8E346A8D2C> /usr/lib/objc/libobjcMsgSend11.dylib
+       0x20be40000 -        0x20be40f2f  libobjcMsgSend12.dylib (973.1) <10AB03AA-FF1F-3FDC-9DFB-BFC40042C501> /usr/lib/objc/libobjcMsgSend12.dylib
+       0x213e40000 -        0x213e40f2f  libobjcMsgSend13.dylib (973.1) <ABF53427-FA6F-3D0D-8F9D-7AD795CA5C92> /usr/lib/objc/libobjcMsgSend13.dylib
+       0x21be40000 -        0x21be40f2f  libobjcMsgSend14.dylib (973.1) <9A844C46-A6DA-34D4-8EBF-2AD775C30684> /usr/lib/objc/libobjcMsgSend14.dylib
+       0x223e40000 -        0x223e40f2f  libobjcMsgSend15.dylib (973.1) <7C995666-2B2D-3284-AA0A-EBF7C922838E> /usr/lib/objc/libobjcMsgSend15.dylib
+       0x22be40000 -        0x22be40f2f  libobjcMsgSend16.dylib (973.1) <B6C0E14B-53AE-3E22-9ED5-1729C49F46F2> /usr/lib/objc/libobjcMsgSend16.dylib
+       0x233e40000 -        0x233e40f2f  libobjcMsgSend17.dylib (973.1) <07B4CF85-251B-301B-832B-20B315A59E19> /usr/lib/objc/libobjcMsgSend17.dylib
+       0x23be40000 -        0x23be40f2f  libobjcMsgSend18.dylib (973.1) <43E575B7-04DB-3999-A633-1A3B638BA6E3> /usr/lib/objc/libobjcMsgSend18.dylib
+       0x243e40000 -        0x243e40f2f  libobjcMsgSend19.dylib (973.1) <736F4D85-76F7-3B28-8D87-C07E8F7A0EF4> /usr/lib/objc/libobjcMsgSend19.dylib
+       0x24be40000 -        0x24be40f2f  libobjcMsgSend20.dylib (973.1) <74E67C8B-6BCA-3184-A18E-A97F370052C6> /usr/lib/objc/libobjcMsgSend20.dylib
+       0x253e40000 -        0x253e40f2f  libobjcMsgSend21.dylib (973.1) <CC0D732F-98E7-3888-9E15-70984DA2FB04> /usr/lib/objc/libobjcMsgSend21.dylib
+       0x25be40000 -        0x25be40f2f  libobjcMsgSend22.dylib (973.1) <85A60286-5DE3-32BA-B18C-2A498B065C88> /usr/lib/objc/libobjcMsgSend22.dylib
+       0x263e40000 -        0x263e40f2f  libobjcMsgSend23.dylib (973.1) <5452A0D2-6B19-39BE-ADDD-80B7BCDE3A98> /usr/lib/objc/libobjcMsgSend23.dylib
+       0x26be40000 -        0x26be40f2f  libobjcMsgSend24.dylib (973.1) <94BBF2D6-722B-350D-8557-4D25A8E8D53A> /usr/lib/objc/libobjcMsgSend24.dylib
+       0x273e40000 -        0x273e40f2f  libobjcMsgSend25.dylib (973.1) <35481387-5A8E-3AE4-86A6-94CEB3CC8726> /usr/lib/objc/libobjcMsgSend25.dylib
+       0x28be40000 -        0x28be40f2f  libobjcMsgSend26.dylib (973.1) <9E0C8664-E7F4-39D1-AAFC-BD92B255E4E8> /usr/lib/objc/libobjcMsgSend26.dylib
+       0x293e40000 -        0x293e40f2f  libobjcMsgSend27.dylib (973.1) <FD424935-55A9-3650-955A-EED3441A1D19> /usr/lib/objc/libobjcMsgSend27.dylib
+       0x29be40000 -        0x29be40f2f  libobjcMsgSend28.dylib (973.1) <09BA7B97-7DF7-3C7F-932A-B6847662FC49> /usr/lib/objc/libobjcMsgSend28.dylib
+       0x2a3e40000 -        0x2a3e40f2f  libobjcMsgSend29.dylib (973.1) <36D5BA3F-2139-30B0-8558-556764BE9813> /usr/lib/objc/libobjcMsgSend29.dylib
+       0x2abe40000 -        0x2abe40f2f  libobjcMsgSend30.dylib (973.1) <9F05564A-9D12-372C-98FC-E9F0E6BE4F04> /usr/lib/objc/libobjcMsgSend30.dylib
+       0x2b0b5a000 -        0x2b0b60fe5  libRosetta.dylib (385) <E359944B-D230-33F9-A04E-0C3B17C3326E> /usr/lib/libRosetta.dylib
+       0x2b1549000 -        0x2b154c75b  libsystem_darwindirectory.dylib (129.0.1) <61264923-2AA5-3658-B8C4-550C71E9D4B3> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x2b154d000 -        0x2b1557d9b  libsystem_eligibility.dylib (446.1.3) <EDDE8E9C-A2CF-3931-BBB3-321CB852EB30> /usr/lib/system/libsystem_eligibility.dylib
+       0x2b1558000 -        0x2b156142b  libsystem_sanitizers.dylib (32) <7138ED99-7AA0-34EA-B35B-20EF6ADB1EED> /usr/lib/system/libsystem_sanitizers.dylib
+       0x2b1562000 -        0x2b1562a13  libsystem_trial.dylib (511) <6AE48824-EC44-3A8C-B501-BE57DBE892E7> /usr/lib/system/libsystem_trial.dylib
+       0x2b3e40000 -        0x2b3e40f2f  libobjcMsgSend31.dylib (973.1) <0985E20F-78C3-3466-A2B2-DBB95F7104A3> /usr/lib/objc/libobjcMsgSend31.dylib
+       0x2bbe40000 -        0x2bbe40f2f  libobjcMsgSend32.dylib (973.1) <0D309D58-D576-3E5D-AD4B-6D55AB491702> /usr/lib/objc/libobjcMsgSend32.dylib
+       0x2c3e40000 -        0x2c3e40f2f  libobjcMsgSend33.dylib (973.1) <346E0484-48FA-369B-8A64-93B5F5341CFE> /usr/lib/objc/libobjcMsgSend33.dylib
+       0x2cbe40000 -        0x2cbe40f2f  libobjcMsgSend34.dylib (973.1) <6A31F809-BCBE-3E01-A367-E91FDACCE324> /usr/lib/objc/libobjcMsgSend34.dylib
