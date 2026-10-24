@@ -766,7 +766,6 @@ impl<'a> Tokenizer<'a> {
         state.assert_ok();
 
         let mut value = Subresult {
-            done: false,
             gfm_footnote_definitions: self.tokenize_state.gfm_footnote_definitions.split_off(0),
         };
 

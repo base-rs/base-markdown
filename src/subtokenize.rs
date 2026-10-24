@@ -30,7 +30,6 @@ use alloc::{string::String, vec, vec::Vec};
 
 #[derive(Debug)]
 pub struct Subresult {
-    pub done: bool,
     pub gfm_footnote_definitions: Vec<String>,
 }
 
@@ -74,9 +73,7 @@ pub fn link_to(events: &mut [Event], previous: usize, next: usize) {
     );
 }
 
-/// Parse linked events.
-///
-/// Supposed to be called repeatedly, returns `true` when done.
+/// Resolve linked block content or strings; text chunks stay deferred for the semantic producer.
 pub fn subtokenize(
     events: &mut Vec<Event>,
     parse_state: &ParseState,
@@ -85,7 +82,6 @@ pub fn subtokenize(
     let mut map = EditMap::new();
     let mut index = 0;
     let mut value = Subresult {
-        done: true,
         gfm_footnote_definitions: vec![],
     };
     let mut acc = (0, 0);
@@ -142,7 +138,6 @@ pub fn subtokenize(
                     );
                     // Later subevents are shifted by the two new paragraph boundaries.
                     acc.1 += 2;
-                    value.done = false;
                     index += 1;
                     continue;
                 }
@@ -155,15 +150,13 @@ pub fn subtokenize(
                     child = Some(Tokenizer::new(event.point.clone(), parse_state));
                 }
                 let tokenizer = child.as_mut().unwrap();
-                debug_assert!(
-                    !matches!(link.content, Content::Flow),
-                    "cannot use flow as subcontent yet"
-                );
                 // Substate.
                 let mut state = State::Next(match link.content {
                     Content::Content => StateName::ContentDefinitionBefore,
                     Content::String => StateName::StringStart,
-                    _ => StateName::TextStart,
+                    Content::Text | Content::Flow => unreachable!(
+                        "block preparation resolves content and strings; the semantic producer resolves inline text"
+                    ),
                 });
 
                 // The semantic producer sets task eligibility before tokenizing an inline region; linked subcontent has no surrounding list context.
@@ -193,7 +186,6 @@ pub fn subtokenize(
                 value
                     .gfm_footnote_definitions
                     .append(&mut result.gfm_footnote_definitions);
-                value.done = false;
 
                 acc = divide_events(&mut map, events, index, &mut tokenizer.events, acc);
             }

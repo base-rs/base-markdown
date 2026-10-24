@@ -53,7 +53,9 @@ fn partial_data_retries_when_there_is_no_initial_marker() {
 #[test]
 fn content_resolver_subtokenizes_even_an_empty_event_stream() {
     with_tokenizer("", &ParseOptions::default(), None, |tokenizer| {
-        assert!(content::resolve(tokenizer).done);
+        assert!(content::resolve(tokenizer)
+            .gfm_footnote_definitions
+            .is_empty());
     });
 }
 
