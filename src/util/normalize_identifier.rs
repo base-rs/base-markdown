@@ -3,12 +3,15 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Normalize identifiers.
+use crate::byte_scan::AsciiSet;
 use alloc::string::String;
+
+static WHITESPACE: AsciiSet = AsciiSet::new(b" \t\r\n");
 
 /// Normalize an identifier, as found in [references][label_end] and
 /// [definitions][definition], so it can be compared when matching.
 ///
-/// This collapsed whitespace found in markdown (`\t`, `\r`, `\n`, and ` `)
+/// This collapses whitespace found in markdown (`\t`, `\r`, `\n`, and ` `)
 /// into one space, trims it (as in, dropping the first and last space), and
 /// then performs unicode case folding twice: first by lowercasing uppercase
 /// characters, and then uppercasing lowercase characters.
@@ -19,7 +22,7 @@ use alloc::string::String;
 /// Hence, to get that form, we perform both lower- and uppercase.
 ///
 /// Performing these steps in that order works, but the inverse does not work.
-/// To illustrate, say the source markdown containes two identifiers
+/// To illustrate, say the source markdown contains two identifiers
 /// `SS` (U+0053 U+0053) and `ẞ` (U+1E9E), which would be lowercased to
 /// `ss` (U+0073 U+0073) and `ß` (U+00DF), and those in turn would both
 /// uppercase to `SS` (U+0053 U+0053).
@@ -31,11 +34,11 @@ use alloc::string::String;
 /// ```rust ignore
 /// core_markdown::util::normalize_identifier::normalize_identifier;
 ///
-/// assert_eq!(normalize_identifier(" a "), "a");
-/// assert_eq!(normalize_identifier("a\t\r\nb"), "a b");
-/// assert_eq!(normalize_identifier("ПРИВЕТ"), "привет");
-/// assert_eq!(normalize_identifier("Привет"), "привет");
-/// assert_eq!(normalize_identifier("привет"), "привет");
+/// assert_eq!(normalize_identifier(" a "), "A");
+/// assert_eq!(normalize_identifier("a\t\r\nb"), "A B");
+/// assert_eq!(normalize_identifier("ПРИВЕТ"), "ПРИВЕТ");
+/// assert_eq!(normalize_identifier("Привет"), "ПРИВЕТ");
+/// assert_eq!(normalize_identifier("привет"), "ПРИВЕТ");
 /// ```
 ///
 /// ## References
@@ -54,34 +57,21 @@ pub fn normalize_identifier(value: &str) -> String {
 /// Normalize into reusable storage. ASCII labels need no allocation after capacity is established.
 pub(crate) fn normalize_identifier_into(value: &str, result: &mut String) {
     result.clear();
-    let bytes = value.as_bytes();
-    let mut in_whitespace = true;
-    let mut index = 0;
-    let mut start = 0;
-
-    while index < bytes.len() {
-        if matches!(bytes[index], b'\t' | b'\n' | b'\r' | b' ') {
-            // First whitespace we see after non-whitespace.
-            if !in_whitespace {
-                result.push_str(&value[start..index]);
-                in_whitespace = true;
-            }
-        }
-        // First non-whitespace we see after whitespace.
-        else if in_whitespace {
+    let mut remaining = value;
+    while !remaining.is_empty() {
+        let end = WHITESPACE.find(remaining.as_bytes());
+        if end > 0 {
             if !result.is_empty() {
                 result.push(' ');
             }
-
-            start = index;
-            in_whitespace = false;
+            result.push_str(&remaining[..end]);
         }
-
-        index += 1;
-    }
-
-    if !in_whitespace {
-        result.push_str(&value[start..]);
+        remaining = &remaining[end..];
+        let padding = remaining
+            .bytes()
+            .take_while(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
+            .count();
+        remaining = &remaining[padding..];
     }
 
     if result.is_ascii() {
@@ -103,5 +93,27 @@ mod tests {
             super::normalize_identifier("ab")
         );
         assert_eq!(super::normalize_identifier("ẞ ϴ"), "SS Θ");
+    }
+
+    #[test]
+    fn labels_collapse_only_markdown_whitespace() {
+        assert_eq!(super::normalize_identifier(" \t\r\n "), "");
+        assert_eq!(
+            super::normalize_identifier("a\u{a0}b\u{2003}c"),
+            "A\u{a0}B\u{2003}C"
+        );
+        assert_eq!(super::normalize_identifier("İ\tẞ\nϴ"), "I\u{307} SS Θ");
+    }
+
+    #[test]
+    fn labels_scan_whole_runs_across_chunk_boundaries() {
+        for length in [15, 16, 17, 31, 32, 33, 63, 64, 65] {
+            let word = "a".repeat(length);
+            let value = alloc::format!("\t{word}\r\n  \t{word}\n");
+            let expected = alloc::format!("{} {}", word.to_uppercase(), word.to_uppercase());
+            let mut result = alloc::string::String::from("old value");
+            super::normalize_identifier_into(&value, &mut result);
+            assert_eq!(result, expected);
+        }
     }
 }
