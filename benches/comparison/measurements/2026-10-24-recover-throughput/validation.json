@@ -1,0 +1,86 @@
+{
+  "source_head": "5f3f83e86896955ffa1360a0aa87af9eda186fba",
+  "source_tree": "ed965b624e577b27daf8a9e42377b5b7d84e2f0f",
+  "native_target": "aarch64-apple-darwin",
+  "coverage": {
+    "features": "all",
+    "targets": "all",
+    "covered_regions": 24481,
+    "measured_regions": 24481,
+    "invariant_unreachable_exclusions": 64
+  },
+  "passed": [
+    "Formatting",
+    "Workspace all-target/all-feature Clippy",
+    "Default-feature library Clippy",
+    "x86_64 Linux all-feature library cross-check using Rustup toolchain",
+    "Native all-target/all-feature region coverage",
+    "Default workspace tests including Bake and generator",
+    "2117 saved outputs through direct, checked event and arena rendering",
+    "13-fixture allocation comparison",
+    "13-fixture baseline/Inkmark output comparison",
+    "Three final timing rounds and five A/A control rounds; all medians recomputed"
+  ],
+  "attempts": [
+    "Initial coverage found redundant fence-marker guard after first-byte dispatch; removed guard and documented scanner precondition before final coverage.",
+    "Homebrew cross-check lacked Linux standard libraries; final cross-check uses installed Rustup stable target."
+  ],
+  "logs": {
+    "final-fmt": {
+      "path": "/tmp/core-markdown-regain-20261024/final-fmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "final-clippy": {
+      "path": "/tmp/core-markdown-regain-20261024/final-clippy.log",
+      "sha256": "29e1f2cf12336a3e4daad37c02a98b73b85d41f20143477d25eef27983fb4fe6"
+    },
+    "final-default-clippy": {
+      "path": "/tmp/core-markdown-regain-20261024/final-default-clippy.log",
+      "sha256": "86c21b5ae522381130c395d0154b6f5fcb55aa7fedfce38049bea92f7d75c3fc"
+    },
+    "final-portable": {
+      "path": "/tmp/core-markdown-regain-20261024/final-portable.log",
+      "sha256": "30d906015a322d1394b91bd9a4b7485b6f01855315c393477d856d908f6766cb"
+    },
+    "final-coverage": {
+      "path": "/tmp/core-markdown-regain-20261024/final-coverage.log",
+      "sha256": "c3021bba6944a2b20f44fb87b81ec5115c3dd2c384d20802db8be23872046521"
+    },
+    "final-workspace": {
+      "path": "/tmp/core-markdown-regain-20261024/final-workspace.log",
+      "sha256": "263299930bdc9ebebd11fbb97414476e7b595262b0acd25f26f7bb4fbd313222"
+    },
+    "final-build": {
+      "path": "/tmp/core-markdown-regain-20261024/final-build.log",
+      "sha256": "e9337c12c5657b879da3186682d6d2f7d43edc02c16cd5083abe1bf7d890b512"
+    },
+    "preservation": {
+      "path": "/tmp/core-markdown-regain-20261024/preservation.log",
+      "sha256": "0e1a550bd098e364639d9ed9d1a522a6b25c595a9fca806e75b06876445c73e2"
+    },
+    "allocations": {
+      "path": "/tmp/core-markdown-regain-20261024/allocations.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "agreement": {
+      "path": "/tmp/core-markdown-regain-20261024/agreement.log",
+      "sha256": "2d29f43b7f49aa86d66a89ffeb690248715f444cbd1ea5cd84d6fe02a02bbfbb"
+    },
+    "html": {
+      "path": "/tmp/core-markdown-regain-20261024/html.log",
+      "sha256": "e2d43cca4149441f93f8e410b3aa77c58f6703b46225c2a332896088385ed84b"
+    },
+    "initial-coverage": {
+      "path": "/tmp/core-markdown-regain-20261024/initial-coverage.log",
+      "sha256": "8fb1aa0f5d40fe7fc7cfdcf5186c218c596f1999edb7f4aff97fddf79dbb9ecd"
+    },
+    "portable-homebrew-unavailable": {
+      "path": "/tmp/core-markdown-regain-20261024/portable-homebrew-unavailable.log",
+      "sha256": "59f1e9ad70492df69a0c359d5bea551ac08eb13193524a835ee26c10dc5426c1"
+    },
+    "block-dispatch-control": {
+      "path": "/tmp/core-markdown-regain-20261024/block-dispatch-control.log",
+      "sha256": "560c498b19b27f85f83f6ef1e7a14030fb49bbbe81099b67be900acac6cf5318"
+    }
+  }
+}

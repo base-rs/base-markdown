@@ -47,6 +47,21 @@ The saved README is 9,019 bytes. Deterministic mixed documents of 100,252 and 1,
 
 **GFM is not an equal-output throughput comparison:** Inkmark leaves `www.example.com` unlinked in this workload even with autolinking enabled. Its table alignment attributes and empty table bodies also differ. Comrak and Commonmarker do not expose the same independent GFM tag filter as the other adapters. Read GFM timings alongside the output agreement results.
 
+## Block dispatch and empty delimiter scope follow-up
+
+The latest pass dispatches block opening and paragraph interruption by first byte, removes a fence-marker check guaranteed by that dispatch, and skips emphasis resolution for empty delimiter scopes. It adds no parser state or allocations and preserves the public event contract. A five-round identical-binary control supports a small local mixed-input regression after MDX removal, while also showing variation between repeated runs.
+
+Three alternating rounds compare #41 (`2e4b627`, before MDX removal), #42 (`9b707b1`), and final library source `5f3f83e`:
+
+| Workload | #41 (ms) | #42 (ms) | Final (ms) | Inkmark 0.2.1 (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| README 9 KB | 0.01370 | 0.01372 | 0.01362 | 0.01887 |
+| Mixed 100 KB | 0.40251 | 0.40075 | 0.39938 | 0.41110 |
+| Mixed 1 MB | 4.03275 | 4.07841 | 3.95754 | 4.37337 |
+| GFM 100 KB | 0.60878 | 0.60843 | 0.59376 | 0.70582 |
+
+Mixed 1 MB takes 3.0% less time than #42 and 1.9% less than #41; mixed 100 KB improves only 0.3% against #42. Some other fixtures remain slightly slower, as recorded in the full report. These measurements are local to the Apple M4 Pro Mac, without CPU affinity or full machine isolation. GFM remains an unequal-output comparison. All 2,117 saved outputs and every allocation/event/node count remain unchanged against #42. The [full report](measurements/2026-10-24-recover-throughput/readme.md) includes the A/A control, every timing sample, source identities, allocation measurements, output agreement, and validation.
+
 ## MDX removal and shared parser context follow-up
 
 This pass removes roughly 5,400 production lines of MDX recognizers, AST variants, callbacks, and parser error machinery. It also shares source and options with the reusable inline workspace, reducing `EventParser` from 1,152 to 1,104 bytes on arm64. MDX configuration and AST APIs are deliberately removed; CommonMark, GFM, math, and frontmatter remain. Public result-returning APIs remain compatible. The separate legacy mdast compiler remains.

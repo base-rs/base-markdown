@@ -1,0 +1,64 @@
+diff --git a/src/block_parser/mod.rs b/src/block_parser/mod.rs
+index 4f1a078..8c9e2c4 100644
+--- a/src/block_parser/mod.rs
++++ b/src/block_parser/mod.rs
+@@ -18,8 +18,8 @@ use alloc::vec::Vec;
+ use core::{convert::TryFrom, ops::Range};
+ use scanners::{
+     is_ascii_whitespace, scan_atx_heading, scan_blank_line, scan_closing_code_fence,
+-    scan_code_fence, scan_eol, scan_hrule, scan_nextline, scan_setext_heading,
+-    scan_whitespace_no_nl, LineStart,
++    scan_code_fence, scan_hrule, scan_nextline, scan_setext_heading, scan_whitespace_no_nl,
++    LineStart,
+ };
+ 
+ #[derive(Clone, Copy, Debug, PartialEq)]
+@@ -417,21 +417,24 @@ impl Builder<'_> {
+         self.paragraph(at, start)
+     }
+     fn interrupts(&mut self, bytes: &[u8], current_container: bool) -> bool {
+-        if self.options.constructs.gfm_footnote_definition && bytes.starts_with(b"[^") {
+-            self.unsupported = true;
+-            return true;
+-        }
+-        // HTML can interrupt paragraphs even after lazy container continuations.
+-        if bytes.starts_with(b"<") {
+-            self.unsupported |= html::Html::start(bytes).is_none();
+-            return true;
+-        }
+-        scan_eol(bytes).is_some()
+-            || scan_hrule(bytes).is_ok()
+-            || scan_atx_heading(bytes).is_some()
+-            || scan_code_fence(bytes).is_some()
+-            || bytes.starts_with(b">")
+-            || {
++        // Dispatch on the opening byte instead of trying every block scanner on ordinary continuation text.
++        match bytes.first().copied() {
++            None | Some(b'\r' | b'\n' | b'>') => true,
++            Some(b'<') => {
++                // HTML can interrupt paragraphs even after lazy container continuations.
++                self.unsupported |= html::Html::start(bytes).is_none();
++                true
++            }
++            Some(b'[') => {
++                let footnote =
++                    self.options.constructs.gfm_footnote_definition && bytes.starts_with(b"[^");
++                self.unsupported |= footnote;
++                footnote
++            }
++            Some(b'#') => scan_atx_heading(bytes).is_some(),
++            Some(b'`' | b'~') => scan_code_fence(bytes).is_some(),
++            Some(b'*' | b'_' | b'-') if scan_hrule(bytes).is_ok() => true,
++            Some(b'*' | b'-' | b'+' | b'0'..=b'9') => {
+                 let mut line = LineStart::new(bytes);
+                 line.scan_list_marker_with_indent(0)
+                     .is_some_and(|(marker, number, _)| {
+@@ -440,6 +443,8 @@ impl Builder<'_> {
+                                 && scan_blank_line(&bytes[line.bytes_scanned()..]).is_none())
+                     })
+             }
++            _ => false,
++        }
+     }
+     fn paragraph(&mut self, start: usize, line_start: usize) -> usize {
+         self.finish_list(line_start);
