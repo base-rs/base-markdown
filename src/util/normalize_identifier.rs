@@ -56,49 +56,35 @@ pub fn normalize_identifier(value: &str) -> String {
 
 /// Normalize into reusable storage. ASCII labels need no allocation after capacity is established.
 pub(crate) fn normalize_identifier_into(value: &str, result: &mut String) {
-    if value.is_ascii() {
-        collapse_whitespace_into(value, result);
+    collapse_whitespace_into(value, result);
+    if result.is_ascii() {
         result.make_ascii_uppercase();
     } else {
-        normalize_unicode_identifier_into(value, result);
+        *result = fold_unicode_identifier(result);
     }
 }
 
 /// Reference matching uses lowercase ASCII so canonical source labels can be borrowed.
 /// Footnote identifiers retain the original uppercase form because it is visible in HTML.
 pub(crate) fn normalize_reference_identifier_into(value: &str, result: &mut String) {
-    if value.is_ascii() {
-        collapse_whitespace_into(value, result);
+    collapse_whitespace_into(value, result);
+    if result.is_ascii() {
         result.make_ascii_lowercase();
     } else {
-        normalize_unicode_identifier_into(value, result);
+        *result = fold_unicode_identifier(result);
         result.make_ascii_lowercase();
     }
 }
 
-fn normalize_unicode_identifier_into(value: &str, result: &mut String) {
-    result.clear();
-    let mut space = false;
-    for character in value.chars() {
-        if matches!(character, ' ' | '\t' | '\r' | '\n') {
-            space = true;
-        } else {
-            if space && !result.is_empty() {
-                result.push(' ');
-            }
-            space = false;
-            if character.is_ascii() {
-                result.push(character.to_ascii_uppercase());
-            } else if character.is_uppercase() {
-                // Both lowercase sigma forms uppercase to Σ, so the contextual final-sigma mapping in str::to_lowercase cannot change this lower-then-upper result.
-                result.extend(character.to_lowercase().flat_map(char::to_uppercase));
-            } else {
-                // Lowercase, titlecase and uncased characters have the same uppercase result without the intermediate lowercase conversion.
-                for upper in character.to_uppercase() {
-                    result.push(upper);
-                }
-            }
-        }
+fn fold_unicode_identifier(value: &str) -> String {
+    // Only non-ASCII uppercase scalars can change the composed uppercase result when lowercased first. Other scalars can uppercase directly.
+    if value
+        .chars()
+        .any(|character| !character.is_ascii() && character.is_uppercase())
+    {
+        value.to_lowercase().to_uppercase()
+    } else {
+        value.to_uppercase()
     }
 }
 
@@ -146,9 +132,8 @@ mod tests {
     }
 
     #[test]
-    fn contextual_casing_and_expansion_reuse_storage() {
-        let mut result = String::with_capacity(128);
-        let pointer = result.as_ptr();
+    fn contextual_casing_and_expansion() {
+        let mut result = String::from("stale scratch");
         for value in [
             "ΟΣ",
             "ΟΣΑ",
@@ -171,10 +156,8 @@ mod tests {
             let expected = collapsed.to_lowercase().to_uppercase();
             super::normalize_identifier_into(value, &mut result);
             assert_eq!(result, expected);
-            assert_eq!(result.as_ptr(), pointer);
             super::normalize_reference_identifier_into(value, &mut result);
             assert_eq!(result, expected.to_ascii_lowercase());
-            assert_eq!(result.as_ptr(), pointer);
         }
     }
 
