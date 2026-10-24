@@ -386,6 +386,9 @@ fn inline_angles_share_grammar_rules_and_preserve_authored_ranges() {
     use core_markdown::{stream::EventKind, to_html_with_options};
     let mut cases = vec![
         "plain < 3 and **bold**".to_string(),
+        "x <?a>b?> <![CDAx[broken]> <![CDATA[unfinished".to_string(),
+        "x <a\rtitle=\"a\0b\"> y </a>".to_string(),
+        "x <a title=\"a\0b\"> y <!--c\0d-->".to_string(),
         "text <i>HTML</i> [a]\n\n[a]: /a".to_string(),
         "before <x a='>' b=word c d=\"value\"/> after".to_string(),
         "x <!--> <!---> <!-- a--b --> <?a??> <![CDATA[x]]]> <!doctype x>".to_string(),

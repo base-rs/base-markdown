@@ -1,4 +1,6 @@
 // Released under the MIT License.
+// Copyright, 2024, by Bnchi.
+// Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
 //! Fixed Markdown escaping rules. Scopes and neighbor predicates are static;
@@ -50,69 +52,72 @@ struct Rule {
     include: u32,
     exclude: u32,
 }
-const fn rule(byte: u8, before: Before, after: After, include: u32, exclude: u32) -> Rule {
-    Rule {
-        byte,
-        before,
-        after,
-        include,
-        exclude,
-    }
+// These are static records, not runtime constructors.
+macro_rules! rule {
+    ($byte:expr, $before:expr, $after:expr, $include:expr, $exclude:expr $(,)?) => {
+        Rule {
+            byte: $byte,
+            before: $before,
+            after: $after,
+            include: $include,
+            exclude: $exclude,
+        }
+    };
 }
 use After::{Any as A, Set};
 use Before::{Any as B, Digits, Line, Previous};
 static RULES: &[Rule] = &[
-    rule(b'\t', B, Set(b"\r\n"), PHRASING, 0),
-    rule(b'\t', Previous(b'\n'), A, PHRASING, 0),
-    rule(b'\t', Previous(b'\r'), A, PHRASING, 0),
-    rule(b'\t', B, A, LANGUAGE, 0),
-    rule(b'\r', B, A, NEWLINES, 0),
-    rule(b'\n', B, A, NEWLINES, 0),
-    rule(b' ', B, Set(b"\r\n"), PHRASING, 0),
-    rule(b' ', Previous(b'\n'), A, PHRASING, 0),
-    rule(b' ', Previous(b'\r'), A, PHRASING, 0),
-    rule(b' ', B, A, LANGUAGE, 0),
-    rule(b'!', B, Set(b"["), PHRASING, FULL_SPANS),
-    rule(b'"', B, A, bit(TitleQuote), 0),
-    rule(b'#', Line, A, 0, 0),
-    rule(b'#', B, After::LineEnd, bit(HeadingAtx), 0),
-    rule(b'&', B, After::Entity, PHRASING, 0),
-    rule(b'\'', B, A, bit(TitleApostrophe), 0),
-    rule(b'(', B, A, bit(DestinationRaw), 0),
-    rule(b'(', Previous(b']'), A, PHRASING, FULL_SPANS),
-    rule(b')', Digits, A, 0, 0),
-    rule(b')', B, A, bit(DestinationRaw), 0),
-    rule(b'*', Line, Set(b" \t\r\n*"), 0, 0),
-    rule(b'*', B, A, PHRASING, FULL_SPANS),
-    rule(b'+', Line, Set(b" \t\r\n"), 0, 0),
-    rule(b'-', Line, Set(b" \t\r\n-"), 0, 0),
-    rule(b'.', Digits, After::SpaceOrEnd, 0, 0),
-    rule(b'<', Line, After::Html, 0, 0),
-    rule(b'<', B, After::Html, PHRASING, FULL_SPANS),
-    rule(b'<', B, A, bit(DestinationLiteral), 0),
-    rule(b'=', Line, A, 0, 0),
-    rule(b'>', Line, A, 0, 0),
-    rule(b'>', B, A, bit(DestinationLiteral), 0),
-    rule(b'[', Line, A, 0, 0),
-    rule(b'[', B, A, PHRASING, FULL_SPANS),
-    rule(b'[', B, A, bit(Label) | bit(Reference), 0),
-    rule(b'\\', B, Set(b"\r\n"), PHRASING, 0),
-    rule(b']', B, A, bit(Label) | bit(Reference), 0),
-    rule(b'_', Line, A, 0, 0),
-    rule(b'_', B, A, PHRASING, FULL_SPANS),
-    rule(b'`', Line, A, 0, 0),
-    rule(
+    rule!(b'\t', B, Set(b"\r\n"), PHRASING, 0),
+    rule!(b'\t', Previous(b'\n'), A, PHRASING, 0),
+    rule!(b'\t', Previous(b'\r'), A, PHRASING, 0),
+    rule!(b'\t', B, A, LANGUAGE, 0),
+    rule!(b'\r', B, A, NEWLINES, 0),
+    rule!(b'\n', B, A, NEWLINES, 0),
+    rule!(b' ', B, Set(b"\r\n"), PHRASING, 0),
+    rule!(b' ', Previous(b'\n'), A, PHRASING, 0),
+    rule!(b' ', Previous(b'\r'), A, PHRASING, 0),
+    rule!(b' ', B, A, LANGUAGE, 0),
+    rule!(b'!', B, Set(b"["), PHRASING, FULL_SPANS),
+    rule!(b'"', B, A, bit(TitleQuote), 0),
+    rule!(b'#', Line, A, 0, 0),
+    rule!(b'#', B, After::LineEnd, bit(HeadingAtx), 0),
+    rule!(b'&', B, After::Entity, PHRASING, 0),
+    rule!(b'\'', B, A, bit(TitleApostrophe), 0),
+    rule!(b'(', B, A, bit(DestinationRaw), 0),
+    rule!(b'(', Previous(b']'), A, PHRASING, FULL_SPANS),
+    rule!(b')', Digits, A, 0, 0),
+    rule!(b')', B, A, bit(DestinationRaw), 0),
+    rule!(b'*', Line, Set(b" \t\r\n*"), 0, 0),
+    rule!(b'*', B, A, PHRASING, FULL_SPANS),
+    rule!(b'+', Line, Set(b" \t\r\n"), 0, 0),
+    rule!(b'-', Line, Set(b" \t\r\n-"), 0, 0),
+    rule!(b'.', Digits, After::SpaceOrEnd, 0, 0),
+    rule!(b'<', Line, After::Html, 0, 0),
+    rule!(b'<', B, After::Html, PHRASING, FULL_SPANS),
+    rule!(b'<', B, A, bit(DestinationLiteral), 0),
+    rule!(b'=', Line, A, 0, 0),
+    rule!(b'>', Line, A, 0, 0),
+    rule!(b'>', B, A, bit(DestinationLiteral), 0),
+    rule!(b'[', Line, A, 0, 0),
+    rule!(b'[', B, A, PHRASING, FULL_SPANS),
+    rule!(b'[', B, A, bit(Label) | bit(Reference), 0),
+    rule!(b'\\', B, Set(b"\r\n"), PHRASING, 0),
+    rule!(b']', B, A, bit(Label) | bit(Reference), 0),
+    rule!(b'_', Line, A, 0, 0),
+    rule!(b'_', B, A, PHRASING, FULL_SPANS),
+    rule!(b'`', Line, A, 0, 0),
+    rule!(
         b'`',
         B,
         A,
         bit(CodeFencedLangGraveAccent) | bit(CodeFencedMetaGraveAccent),
         0,
     ),
-    rule(b'`', B, A, PHRASING, FULL_SPANS),
-    rule(b'~', Line, A, 0, 0),
-    rule(b'$', B, After::Math, PHRASING, 0),
-    rule(b'$', B, A, bit(MathFlowMeta), 0),
-    rule(b'$', Line, Set(b"$"), 0, 0),
+    rule!(b'`', B, A, PHRASING, FULL_SPANS),
+    rule!(b'~', Line, A, 0, 0),
+    rule!(b'$', B, After::Math, PHRASING, 0),
+    rule!(b'$', B, A, bit(MathFlowMeta), 0),
+    rule!(b'$', Line, Set(b"$"), 0, 0),
 ];
 
 fn scopes(stack: &[ConstructName]) -> u32 {
@@ -326,7 +331,7 @@ mod tests {
                                     (found.range(), position)
                                 })
                                 .collect();
-                            assert_eq!(actual, expected, "{value:?}: {}", expression.as_str());
+                            assert_eq!(actual, expected, "{value:?}");
                         }
                     }
                 }
