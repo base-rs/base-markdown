@@ -1,0 +1,40 @@
+{
+  "candidate_head": "272d4bfcd7279711c9da313200d3d5e10874b9de",
+  "native_target": "aarch64-apple-darwin",
+  "coverage": {
+    "features": "all",
+    "targets": "all",
+    "covered_regions": 26930,
+    "measured_regions": 26930,
+    "invariant_unreachable_exclusions": 68
+  },
+  "passed": [
+    "cargo fmt --all -- --check",
+    "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+    "rustup run stable cargo bake --locked test:coverage --package core-markdown --all-targets true --all-features true",
+    "cargo bake --locked test",
+    "rustup run stable cargo check --lib --target x86_64-unknown-linux-gnu --locked"
+  ],
+  "logs": {
+    "fmt.log": {
+      "path": "/tmp/core-markdown-streamline-20261024/fmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "clippy.log": {
+      "path": "/tmp/core-markdown-streamline-20261024/clippy.log",
+      "sha256": "b17a68f1c7bedc325068212b0e24ed9c8106ad15b1f71b283555f948eed9a2dc"
+    },
+    "coverage.log": {
+      "path": "/tmp/core-markdown-streamline-20261024/coverage.log",
+      "sha256": "498105443da05baadeb7b63e5a32d8f7da62d7bcea9c215c97b9acf0fa7da665"
+    },
+    "workspace-tests.log": {
+      "path": "/tmp/core-markdown-streamline-20261024/workspace-tests.log",
+      "sha256": "649541906960e7509a41d35fa4141d06e885869cdd227015a5293f28168920ce"
+    },
+    "portable-check.log": {
+      "path": "/tmp/core-markdown-streamline-20261024/portable-check.log",
+      "sha256": "16d9d8daa67d0f33822c861dd3d2adf60194c2ddd04618998eb60b4ae1fe47ff"
+    }
+  }
+}

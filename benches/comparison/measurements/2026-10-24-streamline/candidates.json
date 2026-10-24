@@ -1,0 +1,114 @@
+{
+  "baseline": {
+    "commit": "50a4300a9aea81e8d72dcd189e128b995a7d8b36",
+    "binary_sha256": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "allocation_binary_sha256": "e769ff20b7128b0169b74e710786d5f4d5479fefaf2f99d0fe2bb225ca0e929f",
+    "binary_bytes": 3470048,
+    "text_section_bytes": 1404860,
+    "source_delta": ""
+  },
+  "inline": {
+    "commit": "b7734c5620ccae5b2c89c59e55cbab1858c87c29",
+    "binary_sha256": "eaf8a9ecdd5d040e991e6452a1d126e4c8fac684c9a62503ad1de8848f1319b4",
+    "allocation_binary_sha256": "a24ec37efc2162484fd59cf1676dd880554c94ee3e8f2594285a731f72668aef",
+    "binary_bytes": 3471008,
+    "text_section_bytes": 1405372,
+    "source_delta": "2 files changed, 47 insertions(+), 50 deletions(-)"
+  },
+  "blocks": {
+    "commit": "ca3f051c797fa7026308134064979e848c348d9d",
+    "binary_sha256": "12ac9d2dee91dbf7340eb02106580ad3bf5f09ab1835c9c48ff4f4e7161336bc",
+    "allocation_binary_sha256": "a1ef461685957be8ef4222e0de6f56246c39afae46ed40b43a151e13f6641575",
+    "binary_bytes": 3470624,
+    "text_section_bytes": 1406012,
+    "source_delta": "2 files changed, 29 insertions(+), 29 deletions(-)"
+  },
+  "inlining": {
+    "commit": "40dbf8cf0cfaac72dc1a94337b7997eed83ded59",
+    "binary_sha256": "a008c8d7af3b92a7807e22276ef2621b3364c3b0499db82541347759a63d3048",
+    "allocation_binary_sha256": "aec25510f92756628305521c10e51d01f0fb5f340cd773d34348b1669f6b4809",
+    "binary_bytes": 3405296,
+    "text_section_bytes": 1349756,
+    "source_delta": "3 files changed, 5 insertions(+), 15 deletions(-)"
+  },
+  "encoding": {
+    "commit": "37235fe9a5de2e26d9a343c197b3bf3ae612afc7",
+    "binary_sha256": "a4c4f97eacf7dce7164a51d2957e070f71bc4fe32c5cc246c82213ff2fba1da3",
+    "allocation_binary_sha256": "7a713acbd7fd3d40599254ae7795ff0f5ad7881caf360cdd7a280299b6bcd401",
+    "binary_bytes": 3469248,
+    "text_section_bytes": 1404924,
+    "source_delta": "2 files changed, 73 insertions(+), 69 deletions(-)"
+  },
+  "combined": {
+    "commit": "645c53dc6791090d2133dabc3ee282c04cd4aefa",
+    "binary_sha256": "9d80124812cd1ff493a5e5d07fb2380cbbff132e5cf03dd16ba9715e40c47650",
+    "allocation_binary_sha256": "91bc748ad9960cc8585f33c9ce07c62728ccb50732e697a456868e55d9734fcc",
+    "binary_bytes": 3470800,
+    "text_section_bytes": 1405372,
+    "source_delta": "4 files changed, 120 insertions(+), 119 deletions(-)"
+  },
+  "blocks-inline": {
+    "commit": "6be2e654ffbbb707f35cdbda73e407332dcf5c11",
+    "binary_sha256": "f349c27dda424967f340ebc44c9e3274c9af0772acf8b2e5f8a7f21a56293403",
+    "allocation_binary_sha256": "a8f3d08bfb512d59231ea2368b1753235bde60f29541ad3a245183fdfae75eaa",
+    "binary_bytes": 3470080,
+    "text_section_bytes": 1406268,
+    "source_delta": "2 files changed, 32 insertions(+), 29 deletions(-)"
+  },
+  "renderer-inline": {
+    "commit": "4175f2e9a349a6dc547b0af88eb6bb62da812a75",
+    "binary_sha256": "4d0b0aa79fa6fc2184e0f8d1429bb4243b00142614ce5bb66ed5ada3cce2bb38",
+    "allocation_binary_sha256": "9fef076973b92639722451c281027398475b95787808c8d6acf4feee9efad948",
+    "binary_bytes": 3453808,
+    "text_section_bytes": 1394620,
+    "source_delta": "1 file changed, 1 insertion(+), 3 deletions(-)"
+  },
+  "pre-alignment": {
+    "commit": "272d4bfcd7279711c9da313200d3d5e10874b9de",
+    "binary_sha256": "f1b0d21c00525d207a61891045113242c8ea621bac9d91143acf17b134e69a88",
+    "allocation_binary_sha256": "bfaf0770457996ef3fa5182dcc85956185b7264335012bf483dbed2839f2f389",
+    "binary_bytes": 3470304,
+    "text_section_bytes": 1406844,
+    "source_delta": "5 files changed, 152 insertions(+), 148 deletions(-)"
+  },
+  "pop-never": {
+    "commit": "54cf8b93fdf5352ae16f15d4687997517838a6f1",
+    "binary_sha256": "aefbb461bfea4af9bbfe81f03f455b8edfce3bfa35ccdf5fa034506847b883dd",
+    "allocation_binary_sha256": "5067c03c27c0a52a7d87386ca4ad8b27693835ec8463b66728d23b5a94b65100",
+    "binary_bytes": 3470704,
+    "text_section_bytes": 1405884,
+    "patch_base": "272d4bfcd7279711c9da313200d3d5e10874b9de"
+  },
+  "line-align": {
+    "commit": "c640396e7ee0d5ef4d5a2bc151a73fd94fd27524",
+    "binary_sha256": "aff86421b9b75a6d116afd39e372b224cb7bc79de15eda91324e7abc8ca81b66",
+    "allocation_binary_sha256": "c4d70e6fa9ed6843c2418c5d854635a040709a51fe7b9c115bac055902359b69",
+    "binary_bytes": 3470560,
+    "text_section_bytes": 1406908,
+    "patch_base": "272d4bfcd7279711c9da313200d3d5e10874b9de"
+  },
+  "line-align32": {
+    "commit": "839c5bca5e94c5f2c08a48accd43d7e00cf7ccd2",
+    "binary_sha256": "eceade738c8b7bd49f3da5d31c72b37c8b30b216e2a7c5e43c360c47d6a7e6ef",
+    "allocation_binary_sha256": "0f76a73a0d99175d8ac95a5ef4de689ed581db7113239818bb212cf71a0defca",
+    "binary_bytes": 3470560,
+    "text_section_bytes": 1406972,
+    "patch_base": "272d4bfcd7279711c9da313200d3d5e10874b9de"
+  },
+  "line-align64": {
+    "commit": "a9d26203474299b5ec476f58f7423879a9b616cf",
+    "binary_sha256": "ef9323517835a968fb2a03f5784e45066c4563ebcb8a04f33b4c20ac5217c6c8",
+    "allocation_binary_sha256": "9be3b194011aff651730f103b77a9553d4be070b0e0d372bcc3f031ab2343bcb",
+    "binary_bytes": 3470560,
+    "text_section_bytes": 1406972,
+    "patch_base": "272d4bfcd7279711c9da313200d3d5e10874b9de"
+  },
+  "final": {
+    "commit": "4b53179fb94e43e469d56ed4ad5917042c5ef019",
+    "binary_sha256": "a5600cac492b703d04172eb802e37317067ece8ba213942a84eb94aba7c81533",
+    "allocation_binary_sha256": "cf71c89d771e93eb4009a9ff24ea41b90ecc7076cb545c27755c61d186560fc1",
+    "binary_bytes": 3470304,
+    "text_section_bytes": 1406908,
+    "patch_base": "50a4300a9aea81e8d72dcd189e128b995a7d8b36"
+  }
+}

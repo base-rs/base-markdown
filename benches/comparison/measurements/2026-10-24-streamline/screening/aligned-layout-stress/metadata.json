@@ -1,0 +1,7 @@
+{
+  "input_json_sha256": "6de30c0aa16d957605c30d0947e861787761b881ace3f120a8a617f034d73c35",
+  "markdown_sha256": "ebe0fa370f6749adb3769e17dbd17517f10cccec0a8d98abf2e42e2d35f46356",
+  "markdown_bytes": 1000020,
+  "document": "mixed-1m",
+  "method": "One process per baseline/candidate and padding size; diagnostic layout check, not repeated throughput ranking. Same final binary as primary comparison. Input compressed for archival; decompress input.json.gz to reproduce manifest input path."
+}

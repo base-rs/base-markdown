@@ -1,0 +1,140 @@
+diff --git a/src/event_parser.rs b/src/event_parser.rs
+index 5b664ea..d7e5536 100644
+--- a/src/event_parser.rs
++++ b/src/event_parser.rs
+@@ -29,8 +29,6 @@ impl<'a> EventParser<'a> {
+                 blocks,
+                 source,
+                 inline: GrammarParser::empty(source, options, definitions),
+-                compact_inline: crate::inline_parser::InlineParser::default(),
+-                direct_inline: false,
+                 gfm: options.constructs != crate::Constructs::default(),
+                 options,
+                 cursor: 0,
+@@ -65,8 +63,6 @@ struct CompactParser<'a> {
+     blocks: Blocks,
+     source: &'a str,
+     inline: GrammarParser<'a>,
+-    compact_inline: crate::inline_parser::InlineParser,
+-    direct_inline: bool,
+     gfm: bool,
+     options: &'a ParseOptions,
+     cursor: usize,
+@@ -132,13 +128,7 @@ impl CompactParser<'_> {
+             return Some(Ok(self.separator(end)));
+         }
+         if self.inlines {
+-            if let Some(event) = if self.direct_inline {
+-                self.compact_inline
+-                    .next(self.source, self.inline.definitions())
+-                    .map(Ok)
+-            } else {
+-                self.inline.next()
+-            } {
++            if let Some(event) = self.inline.next_region() {
+                 return Some(event);
+             }
+             self.inlines = false;
+@@ -292,44 +282,10 @@ impl CompactParser<'_> {
+                         before = nodes[before].next;
+                     }
+                 }
+-                self.direct_inline = !self.options.inline_code_info
+-                    && if self.gfm {
+-                        if self.inline.definitions().is_empty() {
+-                            self.compact_inline.prepare::<false, true>(
+-                                self.source,
+-                                fragments(),
+-                                self.inline.definitions(),
+-                                self.options,
+-                                task,
+-                            )
+-                        } else {
+-                            self.compact_inline.prepare::<true, true>(
+-                                self.source,
+-                                fragments(),
+-                                self.inline.definitions(),
+-                                self.options,
+-                                task,
+-                            )
+-                        }
+-                    } else if self.inline.definitions().is_empty() {
+-                        self.compact_inline.prepare::<false, false>(
+-                            self.source,
+-                            fragments(),
+-                            self.inline.definitions(),
+-                            self.options,
+-                            task,
+-                        )
+-                    } else {
+-                        self.compact_inline.prepare::<true, false>(
+-                            self.source,
+-                            fragments(),
+-                            self.inline.definitions(),
+-                            self.options,
+-                            task,
+-                        )
+-                    };
+-                if !self.direct_inline {
+-                    self.inline.region(fragments(), task);
++                if self.gfm {
++                    self.inline.region::<true>(fragments(), task);
++                } else {
++                    self.inline.region::<false>(fragments(), task);
+                 }
+                 self.inlines = true;
+                 match node.body {
+diff --git a/src/grammar_parser.rs b/src/grammar_parser.rs
+index 2876157..a1fb9e6 100644
+--- a/src/grammar_parser.rs
++++ b/src/grammar_parser.rs
+@@ -151,7 +151,48 @@ impl<'a> GrammarParser<'a> {
+         &self.definitions
+     }
+ 
+-    pub(crate) fn region(&mut self, fragments: impl Iterator<Item = Range<usize>>, task: bool) {
++    pub(crate) fn region<const GFM: bool>(
++        &mut self,
++        fragments: impl Iterator<Item = Range<usize>> + Clone,
++        task: bool,
++    ) {
++        self.direct_inline = !self.options.inline_code_info
++            && if self.definitions.is_empty() {
++                self.compact_inline.prepare::<false, GFM>(
++                    self.source,
++                    fragments.clone(),
++                    &self.definitions,
++                    self.options,
++                    task,
++                )
++            } else {
++                self.compact_inline.prepare::<true, GFM>(
++                    self.source,
++                    fragments.clone(),
++                    &self.definitions,
++                    self.options,
++                    task,
++                )
++            };
++        if !self.direct_inline {
++            self.grammar_region(fragments, task);
++        }
++    }
++
++    // Compact block preparation shares the compatibility producer's reusable inline workspace.
++    #[allow(clippy::inline_always)]
++    #[inline(always)]
++    pub(crate) fn next_region(&mut self) -> Option<Result<Event<'static>, StreamError>> {
++        if self.direct_inline {
++            self.compact_inline
++                .next(self.source, &self.definitions)
++                .map(Ok)
++        } else {
++            self.next()
++        }
++    }
++
++    fn grammar_region(&mut self, fragments: impl Iterator<Item = Range<usize>>, task: bool) {
+         // Only compatibility inline tokenization needs an owning list of normalized keys. Ordinary compact events share the prepared definition table directly.
+         if self.parse_state.definitions.is_empty() {
+             self.parse_state

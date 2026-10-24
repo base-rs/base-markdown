@@ -1,0 +1,12 @@
+{
+  "timestamp_utc": "2026-10-24T02:37:23.585761+00:00",
+  "binary_sha256": {
+    "baseline": "61e860b9a14273382c601a967a150a70090f23745825e975d816f3aeb9a4f941",
+    "inline": "eaf8a9ecdd5d040e991e6452a1d126e4c8fac684c9a62503ad1de8848f1319b4",
+    "blocks": "12ac9d2dee91dbf7340eb02106580ad3bf5f09ab1835c9c48ff4f4e7161336bc",
+    "inlining": "a008c8d7af3b92a7807e22276ef2621b3364c3b0499db82541347759a63d3048",
+    "encoding": "a4c4f97eacf7dce7164a51d2957e070f71bc4fe32c5cc246c82213ff2fba1da3"
+  },
+  "baseline_commit": "50a4300a9aea81e8d72dcd189e128b995a7d8b36",
+  "method": "Two alternating rounds; same Rust launch path, arguments and environment. All samples retained. No project builds/tests/profiles/reviewer workloads overlap timing."
+}

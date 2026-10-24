@@ -1,0 +1,233 @@
+{
+  "readme": {
+    "baseline": {
+      "process_medians_ms": [
+        0.013276008865586272,
+        0.01363433386401948
+      ],
+      "median_ms": 0.013455171364802876
+    },
+    "combined": {
+      "process_medians_ms": [
+        0.013475959185570843,
+        0.013679970022839742
+      ],
+      "median_ms": 0.013577964604205291,
+      "time_reduction_percent": -0.912610000074987
+    },
+    "blocks-inline": {
+      "process_medians_ms": [
+        0.013492201595290096,
+        0.013464986264784432
+      ],
+      "median_ms": 0.013478593930037263,
+      "time_reduction_percent": -0.1740785353032237
+    },
+    "renderer-inline": {
+      "process_medians_ms": [
+        0.014096058306475243,
+        0.014237363152184636
+      ],
+      "median_ms": 0.01416671072932994,
+      "time_reduction_percent": -5.288222239876972
+    }
+  },
+  "mixed-100k": {
+    "baseline": {
+      "process_medians_ms": [
+        0.40361170777479893,
+        0.4154324269340974
+      ],
+      "median_ms": 0.4095220673544482
+    },
+    "combined": {
+      "process_medians_ms": [
+        0.40138387061994607,
+        0.41038541576086957
+      ],
+      "median_ms": 0.40588464319040785,
+      "time_reduction_percent": 0.8882120046761921
+    },
+    "blocks-inline": {
+      "process_medians_ms": [
+        0.4132153162162162,
+        0.40904382288828334
+      ],
+      "median_ms": 0.4111295695522498,
+      "time_reduction_percent": -0.39253127632077334
+    },
+    "renderer-inline": {
+      "process_medians_ms": [
+        0.43939980645161286,
+        0.43766703529411766
+      ],
+      "median_ms": 0.4385334208728653,
+      "time_reduction_percent": -7.084197856743901
+    }
+  },
+  "mixed-1m": {
+    "baseline": {
+      "process_medians_ms": [
+        4.0953243243243245,
+        4.232631944444444
+      ],
+      "median_ms": 4.163978134384385
+    },
+    "combined": {
+      "process_medians_ms": [
+        4.099504486486486,
+        4.150040540540541
+      ],
+      "median_ms": 4.124772513513514,
+      "time_reduction_percent": 0.9415424290326491
+    },
+    "blocks-inline": {
+      "process_medians_ms": [
+        4.155572628571428,
+        4.202376135135135
+      ],
+      "median_ms": 4.178974381853282,
+      "time_reduction_percent": -0.36014232027454796
+    },
+    "renderer-inline": {
+      "process_medians_ms": [
+        4.441958323529412,
+        4.458046558823529
+      ],
+      "median_ms": 4.450002441176471,
+      "time_reduction_percent": -6.869015579842208
+    }
+  },
+  "gfm-100k": {
+    "baseline": {
+      "process_medians_ms": [
+        0.6067120120481928,
+        0.6196648230088496
+      ],
+      "median_ms": 0.6131884175285212
+    },
+    "combined": {
+      "process_medians_ms": [
+        0.6087011316872427,
+        0.6208813779904306
+      ],
+      "median_ms": 0.6147912548388367,
+      "time_reduction_percent": -0.2613939312121838
+    },
+    "blocks-inline": {
+      "process_medians_ms": [
+        0.6153122469635627,
+        0.6158677685950413
+      ],
+      "median_ms": 0.615590007779302,
+      "time_reduction_percent": -0.39165616670655545
+    },
+    "renderer-inline": {
+      "process_medians_ms": [
+        0.6511605879828326,
+        0.651183551724138
+      ],
+      "median_ms": 0.6511720698534853,
+      "time_reduction_percent": -6.194450390641548
+    }
+  },
+  "references": {
+    "baseline": {
+      "process_medians_ms": [
+        0.5705403931297709,
+        0.5755464182509505
+      ],
+      "median_ms": 0.5730434056903607
+    },
+    "combined": {
+      "process_medians_ms": [
+        0.5563378576779026,
+        0.5631231412639405
+      ],
+      "median_ms": 0.5597304994709216,
+      "time_reduction_percent": 2.3231933370563285
+    },
+    "blocks-inline": {
+      "process_medians_ms": [
+        0.5709039575289576,
+        0.5739222567049809
+      ],
+      "median_ms": 0.5724131071169692,
+      "time_reduction_percent": 0.10999141899767917
+    },
+    "renderer-inline": {
+      "process_medians_ms": [
+        0.6201783251028807,
+        0.6202848065843621
+      ],
+      "median_ms": 0.6202315658436215,
+      "time_reduction_percent": -8.234657215261375
+    }
+  },
+  "long-lines-1m": {
+    "baseline": {
+      "process_medians_ms": [
+        0.11388900454201362,
+        0.11759742935635793
+      ],
+      "median_ms": 0.11574321694918577
+    },
+    "combined": {
+      "process_medians_ms": [
+        0.11388070295489891,
+        0.11768718536197297
+      ],
+      "median_ms": 0.11578394415843593,
+      "time_reduction_percent": -0.03518755597404777
+    },
+    "blocks-inline": {
+      "process_medians_ms": [
+        0.1141842105263158,
+        0.11468605194805195
+      ],
+      "median_ms": 0.11443513123718388,
+      "time_reduction_percent": 1.1301618759880894
+    },
+    "renderer-inline": {
+      "process_medians_ms": [
+        0.11903572858286629,
+        0.11902712974683545
+      ],
+      "median_ms": 0.11903142916485088,
+      "time_reduction_percent": -2.84095457369975
+    }
+  },
+  "code-1m": {
+    "baseline": {
+      "process_medians_ms": [
+        0.06959213509749303,
+        0.07029244819503049
+      ],
+      "median_ms": 0.06994229164626176
+    },
+    "combined": {
+      "process_medians_ms": [
+        0.06941883856088561,
+        0.07082588688212928
+      ],
+      "median_ms": 0.07012236272150744,
+      "time_reduction_percent": -0.2574566417646196
+    },
+    "blocks-inline": {
+      "process_medians_ms": [
+        0.0697188670411985,
+        0.06974285588507878
+      ],
+      "median_ms": 0.06973086146313864,
+      "time_reduction_percent": 0.3022923300718183
+    },
+    "renderer-inline": {
+      "process_medians_ms": [
+        0.06951651183294663,
+        0.06972317813953487
+      ],
+      "median_ms": 0.06961984498624074,
+      "time_reduction_percent": 0.461018151438064
+    }
+  }
+}

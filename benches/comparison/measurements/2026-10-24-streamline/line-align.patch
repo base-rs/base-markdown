@@ -1,0 +1,12 @@
+diff --git a/src/block_parser/scanners.rs b/src/block_parser/scanners.rs
+index 0825d18..6d1f3aa 100644
+--- a/src/block_parser/scanners.rs
++++ b/src/block_parser/scanners.rs
+@@ -22,6 +22,7 @@
+ use core::convert::TryFrom;
+ use memchr::memchr2;
+ #[derive(Clone)]
++#[repr(align(16))]
+ pub(super) struct LineStart<'a> {
+     bytes: &'a [u8],
+     ix: usize,

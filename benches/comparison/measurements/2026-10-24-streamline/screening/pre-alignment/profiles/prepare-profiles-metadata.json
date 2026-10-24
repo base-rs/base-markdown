@@ -1,0 +1,38 @@
+[
+  {
+    "mode": "unset",
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "process_exit": 0,
+    "sample_exit": 0,
+    "wall_seconds_including_profiler": 4.096018166019348,
+    "children_cpu_seconds_including_profiler": 3.760322,
+    "sample_stdout": "",
+    "sample_stderr": "Sampling process 7156 for 2 seconds with 1 millisecond of run time between samples\nCouldn't find _sigtramp symbol in expected dylibs\nFound _sigtramp symbol after 6 tries\nSampling completed, processing symbols...\nSample analysis of process 7156 written to file /tmp/core-markdown-streamline-20261024/prepare-unset-profile.txt\n",
+    "benchmark_output": "{\"bytes\":9019,\"document\":\"readme\",\"iterations_per_sample\":40249,\"median_seconds\":3.525497527888891e-6,\"mib_per_second\":2439.709173422243,\"parser\":\"core-prepare\",\"profile\":\"commonmark\",\"samples_seconds\":[3.429175259012646e-6,3.4518859598996247e-6,3.4822386891599795e-6,3.525497527888891e-6,3.5702263907177816e-6,3.6591965017764416e-6,3.710730924991925e-6]}\n{\"bytes\":100252,\"document\":\"mixed-100k\",\"iterations_per_sample\":1705,\"median_seconds\":0.00008597370439882697,\"mib_per_second\":1112.0581372746321,\"parser\":\"core-prepare\",\"profile\":\"commonmark\",\"samples_seconds\":[0.00008370772258064516,0.00008513978533724341,0.00008551348973607037,0.00008597370439882697,0.00008627663753665689,0.00008710386099706745,0.0000879324046920821]}\n{\"bytes\":1000020,\"document\":\"mixed-1m\",\"iterations_per_sample\":175,\"median_seconds\":0.00086135024,\"mib_per_second\":1107.2074350296555,\"parser\":\"core-prepare\",\"profile\":\"commonmark\",\"samples_seconds\":[0.0008448088114285714,0.0008528966628571428,0.000855602857142857,0.00086135024,0.0008752516628571429,0.0008794761885714286,0.0008799502342857143]}\n",
+    "diagnostic_only": true
+  },
+  {
+    "mode": "set",
+    "command": [
+      "/tmp/core-markdown-streamline-20261024/final-runs/run",
+      "bench",
+      "core-prepare",
+      "commonmark",
+      "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/data/bench-commonmark.json"
+    ],
+    "process_exit": 0,
+    "sample_exit": 0,
+    "wall_seconds_including_profiler": 3.804462792002596,
+    "children_cpu_seconds_including_profiler": 3.882851,
+    "sample_stdout": "",
+    "sample_stderr": "Sampling process 7161 for 2 seconds with 1 millisecond of run time between samples\nSampling completed, processing symbols...\nSample analysis of process 7161 written to file /tmp/core-markdown-streamline-20261024/prepare-set-profile.txt\n",
+    "benchmark_output": "{\"bytes\":9019,\"document\":\"readme\",\"iterations_per_sample\":28058,\"median_seconds\":5.511324755862855e-6,\"mib_per_second\":1560.6390551596817,\"parser\":\"core-prepare\",\"profile\":\"commonmark\",\"samples_seconds\":[5.413542198303514e-6,5.458336303371587e-6,5.495406835840046e-6,5.511324755862855e-6,5.532037778886592e-6,5.653297027585716e-6,5.680913928291396e-6]}\n{\"bytes\":100252,\"document\":\"mixed-100k\",\"iterations_per_sample\":1054,\"median_seconds\":0.00014144485294117647,\"mib_per_second\":675.9366324069803,\"parser\":\"core-prepare\",\"profile\":\"commonmark\",\"samples_seconds\":[0.0001394549734345351,0.0001402324478178368,0.00014067971252371917,0.00014144485294117647,0.000141558665085389,0.0001429875075901328,0.00015177605123339657]}\n{\"bytes\":1000020,\"document\":\"mixed-1m\",\"iterations_per_sample\":107,\"median_seconds\":0.001412570093457944,\"mib_per_second\":675.147657669826,\"parser\":\"core-prepare\",\"profile\":\"commonmark\",\"samples_seconds\":[0.001403411214953271,0.0014066288971962616,0.0014122332523364485,0.001412570093457944,0.0014177905046728972,0.0014265572429906542,0.00142678738317757]}\n",
+    "diagnostic_only": true
+  }
+]
