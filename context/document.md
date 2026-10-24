@@ -23,6 +23,8 @@ The legacy recursive AST, its compiler and separate HTML renderer have been remo
 
 Events and AST nodes express resolved Markdown meaning. References contain their resolved URL/title; images contain semantic alternative-text children. Tables have explicit head/body containers and per-cell alignment. Task markers, soft breaks, and output separators are explicit leaves. Node boundaries follow source chunks rather than guaranteeing one text node per run. Direct-child indices, including the section helper's heading index, include separator nodes. Use IDs or filtered child traversal when source whitespace should not affect selection.
 
+Markdown serialization preserves supported Markdown structure rather than every possible custom event tree. For example, Markdown tables require a header: a manually edited table without its head is serialized with its first remaining row as the header. Use HTML rendering to preserve such custom table structure. Unsupported phrasing, list, or table child shapes return errors.
+
 ## Ownership and editing
 
 Node IDs are scoped to their document. Arena slots remain stable across edits and are not reclaimed on detachment. A detached subtree can be inspected, rendered, serialized or reattached. The arena holds parent/first-child/next-sibling links; traversal needs neither a heap stack nor cloned strings. Appending or moving children may scan sibling chains; editing avoids permanently enlarging every node with editing-only links or indices.

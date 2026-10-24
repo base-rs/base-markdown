@@ -814,7 +814,7 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
                     .and_then(|id| document.frontmatter_value(id));
                 format!(
                     "Opaque:{:?}",
-                    body.map_or_else(|| text(&value), str::to_owned)
+                    body.map_or_else(|| text(value), str::to_owned)
                 )
             }
             EventKind::FootnoteReference(v) => {

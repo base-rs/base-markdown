@@ -538,9 +538,9 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
     }
     // A custom producer can supply a body range and explicit fences without storing fenced source.
     let mut document = custom(
-        "body",
+        "prebody",
         EventKind::Opaque {
-            value: Text::Source(0..4),
+            value: Text::Source(3..7),
             block: true,
         },
     );
