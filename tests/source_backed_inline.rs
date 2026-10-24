@@ -140,6 +140,10 @@ fn reference_labels_handle_continuation_padding_tabs_and_escaped_brackets() {
             "[x][a\t\\]]\n\n[a \\]]: /url",
             "<p><a href=\"/url\">x</a></p>\n",
         ),
+        (
+            "a\t[x][b\t\\]\tc]\n\n[b \\] c]: /url",
+            "<p>a\t<a href=\"/url\">x</a></p>\n",
+        ),
     ] {
         assert_paths(source, &Options::default(), expected);
     }

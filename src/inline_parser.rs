@@ -1323,7 +1323,7 @@ fn label(
     let mut at = begin;
     let mut size = 0;
     let mut content = false;
-    let mut column = None;
+    let mut previous_tab = None;
     while at < end && size <= crate::util::constant::LINK_REFERENCE_SIZE_MAX {
         match bytes[at] {
             b']' => return content.then_some((at + 1, begin..at)),
@@ -1337,32 +1337,29 @@ fn label(
                 if at == end {
                     return None;
                 }
-                column = None;
+                previous_tab = None;
                 continue;
             }
             b'\\' if at + 1 < end && matches!(bytes[at + 1], b'[' | b'\\' | b']') => {
                 size += 1;
-                if let Some(column) = &mut column {
-                    *column += 1;
-                }
                 at += 1;
                 content = true;
             }
             b'\t' => {
                 // Most labels have no tabs: only calculate the physical column
                 // when expanded whitespace can affect the 999-character bound.
-                let column = column.get_or_insert_with(|| column_at(at));
-                let width = 4 - (*column - 1) % 4;
+                let column = previous_tab.map_or_else(
+                    || column_at(at),
+                    |(position, column)| column + at - position,
+                );
+                let width = 4 - (column - 1) % 4;
                 size += width - 1;
-                *column += width - 1;
+                previous_tab = Some((at + 1, column + width));
             }
             b' ' => {}
             _ => content = true,
         }
         size += 1;
-        if let Some(column) = &mut column {
-            *column += 1;
-        }
         at += 1;
     }
     None
