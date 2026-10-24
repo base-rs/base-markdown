@@ -9,7 +9,7 @@ The [reference-label and event-phase study](measurements/2026-10-25-labels-and-e
 The original four workloads, in milliseconds per complete conversion; lower is faster:
 
 | Workload | Input bytes | core-markdown ms | Inkmark ms |
-| --- | ---: | ---: | ---: | ---: |
+| --- | ---: | ---: | ---: |
 | README | 9,019 | 0.013592 | 0.018943 |
 | Mixed 100 KB | 100,252 | 0.397763 | 0.409984 |
 | Mixed 1 MB | 1,000,020 | 3.950691 | 4.349333 |
