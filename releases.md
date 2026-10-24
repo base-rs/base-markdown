@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Dispatch compact block recognition and paragraph interruption by opening byte, and skip delimiter resolution for empty inline scopes, preserving output and allocation counts.
+
 - Share source and configuration references between compact block delivery and its reusable inline workspace, removing duplicate parser fields without additional allocations.
 
 - Remove MDX support, including the `Constructs::mdx` and `ParseOptions::mdx` presets, MDX construct fields, parser callbacks and exports, hidden MDX identifier/source-map helpers, and JSX/expression/ESM AST variants. Braces and JavaScript import/export statements are ordinary Markdown; angle-bracket syntax follows CommonMark HTML rules. This is a breaking API change. Remove the JavaScript parser test dependency and tokenizer error machinery used only by MDX.

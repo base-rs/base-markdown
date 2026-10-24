@@ -1,0 +1,192 @@
+{
+  "readme": {
+    "current": {
+      "median_ms": 0.013758691333708495,
+      "process_medians_ms": [
+        0.013521137760910816,
+        0.013764442711737792,
+        0.013758691333708495
+      ],
+      "time_change_percent_vs_current": 0.0
+    },
+    "dispatch": {
+      "median_ms": 0.013576697372112596,
+      "process_medians_ms": [
+        0.013551165987297374,
+        0.013639910213556174,
+        0.013576697372112596
+      ],
+      "time_change_percent_vs_current": -1.3227563376614015
+    },
+    "attention": {
+      "median_ms": 0.013739540863602668,
+      "process_medians_ms": [
+        0.013605855391239234,
+        0.013739540863602668,
+        0.013866834692920767
+      ],
+      "time_change_percent_vs_current": -0.13918816580257287
+    },
+    "previous": {
+      "median_ms": 0.013575299387300406,
+      "process_medians_ms": [
+        0.013467065584355687,
+        0.013575299387300406,
+        0.01366252197223552
+      ],
+      "time_change_percent_vs_current": -1.3329170773588195
+    }
+  },
+  "mixed-100k": {
+    "current": {
+      "median_ms": 0.40492405026455025,
+      "process_medians_ms": [
+        0.402830246031746,
+        0.40492405026455025,
+        0.4073342318059299
+      ],
+      "time_change_percent_vs_current": 0.0
+    },
+    "dispatch": {
+      "median_ms": 0.40055632804232805,
+      "process_medians_ms": [
+        0.3968166226912929,
+        0.40055632804232805,
+        0.4008070978835979
+      ],
+      "time_change_percent_vs_current": -1.0786522112896546
+    },
+    "attention": {
+      "median_ms": 0.4006241236842105,
+      "process_medians_ms": [
+        0.4006241236842105,
+        0.40116371391076117,
+        0.3986462189973614
+      ],
+      "time_change_percent_vs_current": -1.0619094068456625
+    },
+    "previous": {
+      "median_ms": 0.39793033595800525,
+      "process_medians_ms": [
+        0.3975117034120735,
+        0.39793033595800525,
+        0.40126182493368706
+      ],
+      "time_change_percent_vs_current": -1.7271669346327512
+    }
+  },
+  "mixed-1m": {
+    "current": {
+      "median_ms": 4.028609216216216,
+      "process_medians_ms": [
+        4.015569078947369,
+        4.028609216216216,
+        4.079982447368421
+      ],
+      "time_change_percent_vs_current": 0.0
+    },
+    "dispatch": {
+      "median_ms": 3.9920675675675668,
+      "process_medians_ms": [
+        3.9920675675675668,
+        4.033242315789474,
+        3.9920186578947368
+      ],
+      "time_change_percent_vs_current": -0.9070536924147277
+    },
+    "attention": {
+      "median_ms": 3.9739725789473686,
+      "process_medians_ms": [
+        3.969288368421052,
+        4.0218146842105265,
+        3.9739725789473686
+      ],
+      "time_change_percent_vs_current": -1.3562158635024857
+    },
+    "previous": {
+      "median_ms": 3.959125,
+      "process_medians_ms": [
+        3.959125,
+        3.949879394736842,
+        3.9791370526315792
+      ],
+      "time_change_percent_vs_current": -1.7247693307289258
+    }
+  },
+  "gfm-100k": {
+    "current": {
+      "median_ms": 0.6039413943089431,
+      "process_medians_ms": [
+        0.6039413943089431,
+        0.6116496239669421,
+        0.6038954917355371
+      ],
+      "time_change_percent_vs_current": 0.0
+    },
+    "dispatch": {
+      "median_ms": 0.603467951417004,
+      "process_medians_ms": [
+        0.5991639798387097,
+        0.6055110441767068,
+        0.603467951417004
+      ],
+      "time_change_percent_vs_current": -0.07839219109675444
+    },
+    "attention": {
+      "median_ms": 0.5955941707317074,
+      "process_medians_ms": [
+        0.5990695551181102,
+        0.5951639798387096,
+        0.5955941707317074
+      ],
+      "time_change_percent_vs_current": -1.3821247650671498
+    },
+    "previous": {
+      "median_ms": 0.6016790967741935,
+      "process_medians_ms": [
+        0.5948733117408906,
+        0.6016790967741935,
+        0.6046121164658634
+      ],
+      "time_change_percent_vs_current": -0.37458891807511385
+    }
+  },
+  "references": {
+    "current": {
+      "median_ms": 0.5432673088235294,
+      "process_medians_ms": [
+        0.5430290437956204,
+        0.5438681318681319,
+        0.5432673088235294
+      ],
+      "time_change_percent_vs_current": 0.0
+    },
+    "dispatch": {
+      "median_ms": 0.5445611313868612,
+      "process_medians_ms": [
+        0.5445611313868612,
+        0.5428877870036101,
+        0.5472335471014492
+      ],
+      "time_change_percent_vs_current": 0.2381557922441102
+    },
+    "attention": {
+      "median_ms": 0.5387486363636363,
+      "process_medians_ms": [
+        0.5442968571428572,
+        0.5387486363636363,
+        0.5374513913043478
+      ],
+      "time_change_percent_vs_current": -0.8317585811814077
+    },
+    "previous": {
+      "median_ms": 0.5564227781954887,
+      "process_medians_ms": [
+        0.5570623421052632,
+        0.5564227781954887,
+        0.5535273619402985
+      ],
+      "time_change_percent_vs_current": 2.4215462919070285
+    }
+  }
+}

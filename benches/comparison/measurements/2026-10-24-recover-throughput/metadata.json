@@ -1,0 +1,112 @@
+{
+  "source_head": "5f3f83e86896955ffa1360a0aa87af9eda186fba",
+  "source_tree": "ed965b624e577b27daf8a9e42377b5b7d84e2f0f",
+  "binaries": {
+    "previous": {
+      "path": "/tmp/core-markdown-simplify-20261024/final",
+      "sha256": "bbc3279016084dba15569872afe3fb2176618bbde01970e69edf04583d0be70f",
+      "bytes": 3486784,
+      "source_head": "2e4b627cadfd146f0c9f344f429498f13cf49a48",
+      "source_src_tree": "4a9ca460436bee1a55336901fd8f9b68467d6d98",
+      "built_from_head": "bdf9d9c0f4e74b6fbe2e77651fbdc7a3cff8c9a3"
+    },
+    "current": {
+      "path": "/tmp/core-markdown-unify-20261024/selected",
+      "sha256": "b33f77acde4d661dec49dafe6adef1384418637060ec38c6ff1b8bc31019da4e",
+      "bytes": 3388464,
+      "source_head": "9b707b10dd400d5b317be7edcef58e162dd587b7",
+      "source_src_tree": "9207e39eb4c2728d16d362805214699fb618a862",
+      "built_from_head": "8e5c47e610dc94c5863a96307e22bf3ce678eedb"
+    },
+    "candidate": {
+      "path": "/tmp/core-markdown-regain-20261024/final",
+      "sha256": "49dc9d92bbb335f0c189e52918def7f2925301c0a0d063140e88b4a990be6b3f",
+      "bytes": 3388208,
+      "source_head": "5f3f83e86896955ffa1360a0aa87af9eda186fba",
+      "source_src_tree": "8efeb7b09f2309eff7e42834c679c6ab788bec6f",
+      "built_from_head": "5f3f83e86896955ffa1360a0aa87af9eda186fba"
+    },
+    "previous_allocations": {
+      "path": "/tmp/core-markdown-simplify-20261024/final-allocations",
+      "sha256": "29861ba475f35d9a4d0575f0d647486384d0b974a15456cbce8ecd9fc96295a1",
+      "bytes": 1788848,
+      "source_head": "2e4b627cadfd146f0c9f344f429498f13cf49a48",
+      "source_src_tree": "4a9ca460436bee1a55336901fd8f9b68467d6d98",
+      "built_from_head": "bdf9d9c0f4e74b6fbe2e77651fbdc7a3cff8c9a3"
+    },
+    "current_allocations": {
+      "path": "/tmp/core-markdown-unify-20261024/selected-allocations",
+      "sha256": "a487eda45d9c49f0b7c496316f64847e69fb9d8c493a3166ae5257c2a4193e39",
+      "bytes": 1690912,
+      "source_head": "9b707b10dd400d5b317be7edcef58e162dd587b7",
+      "source_src_tree": "9207e39eb4c2728d16d362805214699fb618a862",
+      "built_from_head": "8e5c47e610dc94c5863a96307e22bf3ce678eedb"
+    },
+    "candidate_allocations": {
+      "path": "/tmp/core-markdown-regain-20261024/final-allocations",
+      "sha256": "ab417dbf49548c15a7eb10f7d869084b9d944cc178a49297a043b266291f7e31",
+      "bytes": 1690304,
+      "source_head": "5f3f83e86896955ffa1360a0aa87af9eda186fba",
+      "source_src_tree": "8efeb7b09f2309eff7e42834c679c6ab788bec6f",
+      "built_from_head": "5f3f83e86896955ffa1360a0aa87af9eda186fba"
+    }
+  },
+  "machine": "Apple M4 Pro",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0.1\nBuildVersion:\t\t26A434",
+  "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.3",
+  "coverage_and_cross_check_rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "ruby": "ruby 4.0.9 (2026-10-23 revision 3e93b23afc) +PRISM [arm64-darwin25]",
+  "compiler_environment": {},
+  "helpers": {
+    "measure.py": {
+      "path": "benches/comparison/measurements/2026-10-24-simplify-events/measure.py",
+      "sha256": "a827de414dce392db37b9beb50d00f4bb7dc327d6efbe65e5cf7caa2edece59e"
+    },
+    "verify.py": {
+      "path": "benches/comparison/measurements/2026-10-24-simplify-events/verify.py",
+      "sha256": "c093f3c59ada599d3dcdf7555871cfa978a85fa3a4d42b04278a0f5204467295"
+    },
+    "allocations.py": {
+      "path": "benches/comparison/measurements/2026-10-24-simplify-events/allocations.py",
+      "sha256": "3587bf37c65c547213bbf74334569d1bfa59347ec3f374b2a0347bf8c8225c07"
+    },
+    "fixtures.py": {
+      "path": "benches/comparison/measurements/2026-10-24-simplify-events/fixtures.py",
+      "sha256": "0bee0d87f3f42963534a1b3fb81661f34b94d8955c06ee284d9e7cb5c0163399"
+    },
+    "parser-size.rs": {
+      "path": "benches/comparison/measurements/2026-10-24-simplify-events/parser-size.rs",
+      "sha256": "d3a7d8d9ebb84490a6129c04a0c307a79af1e20f37c991c608f37912f7684da2"
+    }
+  },
+  "adapter_sha256": "c777b410926f894344b65d362b1380e9e97fd969463cb8e68a16eea0b83dffc2",
+  "comparison_source_sha256": "775cd3bd5d0763efba37bddf02688115cd62381ea5143e9b586ba7815c59c2eb",
+  "comparison_lock_sha256": "0b2a9e432f49bbd8f5ab9e49f36c2534cddbafe7b92348d2548d2e5ed95765d3",
+  "gem_lock_sha256": "b65055f3d64957fe2f81f5bfc3e7ffe00a3695b0ad5dbc7924657e25c207c94c",
+  "method": "Sequential alternating engine order on the local Apple M4 Pro Mac. Identical Rust launch path, arguments and environment per fixture; fresh executable inode per launch. 200ms warmup and seven calibrated batches per process. Startup, input I/O and options construction excluded; parsing, rendering and result disposal included. No concurrent project builds, tests, profiling or agent review during timing. No CPU affinity or full machine isolation; GFM outputs differ.",
+  "processes": 84,
+  "document_results": 156,
+  "rounds": 3,
+  "sample_medians_recomputed": true,
+  "profiles": {
+    "before-mdx": {
+      "file": "before-mdx-profile.txt",
+      "sha256": "ac13297e21fc5f10f0011b761488438ec0cc24ac9d89981ea035f7ead935ab04",
+      "binary_sha256": "bbc3279016084dba15569872afe3fb2176618bbde01970e69edf04583d0be70f",
+      "sample_seconds": 5,
+      "interval_ms": 1
+    },
+    "current": {
+      "file": "current-profile.txt",
+      "sha256": "0cd29f563107137fc3b0a32ed0a8b73397651121348c6bdc6c237e6c4462cb2f",
+      "binary_sha256": "b33f77acde4d661dec49dafe6adef1384418637060ec38c6ff1b8bc31019da4e",
+      "sample_seconds": 5,
+      "interval_ms": 1
+    }
+  },
+  "baseline_provenance": {
+    "previous": "../2026-10-24-simplify-events/metadata.json",
+    "current": "../2026-10-24-remove-mdx/metadata.json",
+    "note": "Retained pre-merge executables have identical source trees to the corresponding squash-merged heads. built_from_head identifies their original build commits."
+  }
+}

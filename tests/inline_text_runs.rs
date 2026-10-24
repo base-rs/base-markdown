@@ -157,3 +157,16 @@ fn structured_details_keep_their_own_source_ranges() {
     assert_eq!(value, &Text::Source(start..start + 4));
     assert_eq!(&source[code.span.clone()], "` code `");
 }
+
+#[test]
+fn links_without_emphasis_preserve_delimiters_in_enclosing_and_following_regions() {
+    for options in [Options::default(), Options::gfm()] {
+        for (source, expected) in [
+            ("*outside [plain](/one) after* [*inner*](/two) [plain](/three) _end_", "<p><em>outside <a href=\"/one\">plain</a> after</em> <a href=\"/two\"><em>inner</em></a> <a href=\"/three\">plain</a> <em>end</em></p>"),
+            ("*unclosed\n\n[plain](/one)\n\n*after*", "<p>*unclosed</p>\n<p><a href=\"/one\">plain</a></p>\n<p><em>after</em></p>"),
+            ("*outer [plain][ref] and ![alt](/img) tail*\n\n[ref]: /target", "<p><em>outer <a href=\"/target\">plain</a> and <img src=\"/img\" alt=\"alt\" /> tail</em></p>\n"),
+        ] {
+            assert_rendering_paths(source, &options, expected);
+        }
+    }
+}
