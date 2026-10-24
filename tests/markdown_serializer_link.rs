@@ -395,3 +395,28 @@ fn text() {
         "should not escape unneeded characters in a `title` (single quotes)"
     );
 }
+
+#[test]
+fn autolink_schemes_require_ascii_letters() {
+    for (destination, expected) in [
+        ("HTTP://example.test", "<HTTP://example.test>\n"),
+        ("a+.-:value", "<a+.-:value>\n"),
+        ("Kk:value", "[Kk:value](Kk:value)\n"),
+        ("ſs:value", "[ſs:value](ſs:value)\n"),
+        ("hK:value", "[hK:value](hK:value)\n"),
+    ] {
+        assert_eq!(
+            to(&Node::Link(Link {
+                children: vec![Node::Text(Text {
+                    value: destination.into(),
+                    position: None,
+                })],
+                position: None,
+                url: destination.into(),
+                title: None,
+            }))
+            .unwrap(),
+            expected,
+        );
+    }
+}

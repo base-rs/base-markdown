@@ -2,59 +2,41 @@
 // Copyright, 2024-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use crate::unist::{Point, Position};
-use alloc::{boxed::Box, fmt, string::String};
+//! Diagnostics use the same byte offsets as documents and events.
 
-#[derive(Clone, Debug, PartialEq)]
+use alloc::borrow::Cow;
+use core::{fmt, ops::Range};
+
+/// A serializer or custom event producer diagnostic.
+///
+/// Static messages and identifiers require no allocation. A dynamically formatted
+/// reason can be supplied with `String::into`. Spans are half-open byte ranges in
+/// the source; consumers can derive line and column numbers when presenting them.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Message {
-    /// Place of message.
-    pub place: Option<Box<Place>>,
-    /// Reason for message (should use markdown).
-    pub reason: String,
+    /// Source bytes associated with this diagnostic, when available.
+    pub span: Option<Range<usize>>,
+    /// Human-readable explanation.
+    pub reason: Cow<'static, str>,
     /// Category of message.
-    pub rule_id: Box<String>,
+    pub rule_id: &'static str,
     /// Namespace of message.
-    pub source: Box<String>,
+    pub source: &'static str,
 }
 
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(ref place) = self.place {
-            write!(f, "{place}: ")?;
+        if let Some(span) = &self.span {
+            write!(f, "{}..{}: ", span.start, span.end)?;
         }
-
         write!(f, "{} ({}:{})", self.reason, self.source, self.rule_id)
-    }
-}
-
-/// Somewhere.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Place {
-    /// Between two points.
-    Position(Position),
-    /// At a point.
-    Point(Point),
-}
-
-impl fmt::Display for Place {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Place::Position(position) => write!(
-                f,
-                "{}:{}-{}:{}",
-                position.start.line, position.start.column, position.end.line, position.end.column
-            ),
-            Place::Point(point) => write!(f, "{}:{}", point.line, point.column),
-        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Message, Place};
-    use crate::unist::{Point, Position};
-    use alloc::boxed::Box;
-    use alloc::string::ToString;
+    use super::Message;
+    use alloc::{borrow::Cow, format, string::ToString};
     use core::fmt::Write as _;
 
     struct FailingWriter;
@@ -66,48 +48,23 @@ mod tests {
     }
 
     #[test]
-    fn displays_a_message_with_its_place() {
-        let message = Message {
-            place: Some(Box::new(Place::Point(Point::new(2, 3, 4)))),
+    fn diagnostics_borrow_static_reasons_and_display_byte_ranges() {
+        let mut message = Message {
+            span: None,
             reason: "invalid value".into(),
-            rule_id: Box::new("example".into()),
-            source: Box::new("parser".into()),
+            rule_id: "example",
+            source: "parser",
         };
+        assert_eq!(message.reason, Cow::Borrowed("invalid value"));
+        assert_eq!(message.to_string(), "invalid value (parser:example)");
+        assert!(write!(&mut FailingWriter, "{message}").is_err());
 
-        assert_eq!(message.to_string(), "2:3: invalid value (parser:example)");
-
-        let message = Message {
-            place: Some(Box::new(Place::Position(Position::new(1, 2, 3, 4, 5, 6)))),
-            reason: "invalid range".into(),
-            rule_id: Box::new("example".into()),
-            source: Box::new("parser".into()),
-        };
-
+        message.span = Some(2..5);
+        message.reason = format!("invalid value {}", 42).into();
         assert_eq!(
             message.to_string(),
-            "1:2-4:5: invalid range (parser:example)"
+            "2..5: invalid value 42 (parser:example)"
         );
-
-        let message = Message {
-            place: None,
-            reason: "invalid without a location".into(),
-            rule_id: Box::new("example".into()),
-            source: Box::new("parser".into()),
-        };
-        assert_eq!(
-            message.to_string(),
-            "invalid without a location (parser:example)"
-        );
-
-        let mut writer = FailingWriter;
-        assert!(write!(&mut writer, "{message}").is_err());
-
-        let message = Message {
-            place: Some(Box::new(Place::Point(Point::new(2, 3, 4)))),
-            reason: "invalid value".into(),
-            rule_id: Box::new("example".into()),
-            source: Box::new("parser".into()),
-        };
-        assert!(write!(&mut writer, "{message}").is_err());
+        assert!(write!(&mut FailingWriter, "{message}").is_err());
     }
 }

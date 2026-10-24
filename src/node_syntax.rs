@@ -199,7 +199,7 @@ pub(crate) fn infer(
             }
             let info = info.trim_matches([' ', '\t']);
             let start = span.start + (info.as_ptr() as usize - first.as_ptr() as usize);
-            let text = crate::grammar_parser::decode_string(source, start..start + info.len());
+            let text = crate::value_builder::decode_string(source, start..start + info.len());
             Some(NodeSyntax::Code { info: text })
         }
         EventKind::Opaque { block: true, .. } => frontmatter(raw).map(

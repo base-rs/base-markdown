@@ -4,9 +4,10 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use core_markdown::{message, to_html, unist::Position};
+use core_markdown::{message, to_html};
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
+use support::fixture::Position;
 use support::fixture::{Node, Root};
 
 #[test]

@@ -3,8 +3,10 @@
 
 //! Pull semantic events from compact source-backed block records.
 use crate::block_parser::{Blocks, Body};
-use crate::grammar_parser::{GrammarParser, ValueBuilder};
+use crate::grammar_parser::GrammarParser;
+use crate::inline_workspace::InlineWorkspace;
 use crate::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
+use crate::value_builder::ValueBuilder;
 use crate::{LineEnding, ParseOptions};
 use alloc::boxed::Box;
 
@@ -32,7 +34,7 @@ impl<'a> EventParser<'a> {
         let producer = if let Some((blocks, definitions)) = Blocks::parse(source, options) {
             Producer::Compact(CompactParser {
                 blocks,
-                inline: GrammarParser::empty(source, options, definitions),
+                inline: InlineWorkspace::new(source, options, definitions),
                 gfm: options.constructs != crate::Constructs::default(),
                 cursor: 0,
                 closing: false,
@@ -66,7 +68,7 @@ enum Phase {
 }
 struct CompactParser<'a> {
     blocks: Blocks,
-    inline: GrammarParser<'a>,
+    inline: InlineWorkspace<'a>,
     gfm: bool,
     cursor: usize,
     closing: bool,
@@ -396,7 +398,7 @@ impl CompactParser<'_> {
                     language: if code.info.is_empty() {
                         None
                     } else {
-                        Some(crate::grammar_parser::decode_string(
+                        Some(crate::value_builder::decode_string(
                             self.inline.source(),
                             code.info.clone(),
                         ))

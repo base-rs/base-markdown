@@ -17,7 +17,7 @@ use super::{
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::format_heading_as_setext,
         format_link_as_auto_link::auto_link_text, longest_char_streak::longest_char_streak,
-        pattern_in_scope::pattern_in_scope, safe::SafeConfig,
+        pattern_in_scope::pattern_in_scope,
     },
 };
 use crate::{
@@ -27,44 +27,48 @@ use crate::{
 };
 use alloc::{
     borrow::Cow,
-    boxed::Box,
     format,
     string::{String, ToString},
 };
 use core::mem;
-use regex::Regex;
 
 impl State<'_> {
     pub(super) fn blockquote<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         node: NodeId,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
         self.enter(ConstructName::Blockquote);
-        let value = self.container_flow(document, node)?;
-        let value = self.indent_lines(&value, |line, _, blank| {
-            format!(">{}{}", if blank { "" } else { " " }, line)
+        let start = self.output.len();
+        self.container_flow(document, node)?;
+        self.indent_lines(start, |line, _, blank, output| {
+            output.push('>');
+            if !blank {
+                output.push(' ');
+            }
+            output.push_str(line);
         });
         self.exit();
-        Ok(value)
+        Ok(())
     }
 
-    pub(super) fn hard_break(&mut self, info: &Info) -> Result<String, Message> {
-        for pattern in self.r#unsafe.iter() {
-            // If we can’t put eols in this construct (setext headings, tables), use a
-            // space instead.
-            if pattern.character == '\n' && pattern_in_scope(&self.stack, pattern) {
-                let space_or_tab = info.before.chars().any(|c| c == '\t' || c == ' ');
-
-                if space_or_tab {
-                    return Ok("".to_string());
-                }
-
-                return Ok(" ".to_string());
+    pub(super) fn hard_break(&mut self, info: &Info) -> Result<(), Message> {
+        if self
+            .r#unsafe
+            .iter()
+            .any(|pattern| pattern.character == '\n' && pattern_in_scope(&self.stack, pattern))
+        {
+            if !info
+                .before(&self.output)
+                .chars()
+                .any(|c| matches!(c, '\t' | ' '))
+            {
+                self.output.push(' ');
             }
+        } else {
+            self.output.push_str("\\\n");
         }
-
-        Ok("\\\n".to_string())
+        Ok(())
     }
 
     pub(super) fn code(
@@ -72,68 +76,59 @@ impl State<'_> {
         content: &str,
         language: Option<&str>,
         metadata: Option<&str>,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
         let marker = check_fence(self)?;
-
+        let start = self.output.len();
         if format_code_as_indented(content, language.is_none(), self) {
             self.enter(ConstructName::CodeIndented);
-            let value = self.indent_lines(content, |line, _, blank| {
-                if blank {
-                    String::new()
-                } else {
-                    format!("    {}", line)
+            self.output.push_str(content);
+            self.indent_lines(start, |line, _, blank, output| {
+                if !blank {
+                    output.push_str("    ");
                 }
+                output.push_str(line);
             });
             self.exit();
-            return Ok(value);
+            return Ok(());
         }
-
-        let sequence = marker
-            .to_string()
-            .repeat((longest_char_streak(content, marker) + 1).max(3));
-
+        let size = (longest_char_streak(content, marker) + 1).max(3);
         self.enter(ConstructName::CodeFenced);
-        let mut value = sequence.clone();
-
-        if let Some(lang) = language {
-            let code_fenced_lang_construct = if marker == '`' {
+        self.output.extend(core::iter::repeat(marker).take(size));
+        if let Some(language) = language {
+            self.enter(if marker == '`' {
                 ConstructName::CodeFencedLangGraveAccent
             } else {
                 ConstructName::CodeFencedLangTilde
-            };
-            self.enter(code_fenced_lang_construct);
-
-            value.push_str(&self.safe(lang, &SafeConfig::new(&value, " ", Some('`'))));
-
+            });
+            self.write_safe(
+                language,
+                &Info::at(start, self.output.len(), " "),
+                Some('`'),
+            );
             self.exit();
-
-            if let Some(meta) = metadata {
-                let code_fenced_meta_construct = if marker == '`' {
+            if let Some(metadata) = metadata {
+                self.enter(if marker == '`' {
                     ConstructName::CodeFencedMetaGraveAccent
                 } else {
                     ConstructName::CodeFencedMetaTilde
-                };
-
-                self.enter(code_fenced_meta_construct);
-                value.push(' ');
-
-                value.push_str(&self.safe(meta, &SafeConfig::new(&value, "\n", Some('`'))));
-
+                });
+                self.output.push(' ');
+                self.write_safe(
+                    metadata,
+                    &Info::at(start, self.output.len(), "\n"),
+                    Some('`'),
+                );
                 self.exit();
             }
         }
-
-        value.push('\n');
-
+        self.output.push('\n');
         if !content.is_empty() {
-            value.push_str(content);
-            value.push('\n');
+            self.output.push_str(content);
+            self.output.push('\n');
         }
-
-        value.push_str(&sequence);
+        self.output.extend(core::iter::repeat(marker).take(size));
         self.exit();
-
-        Ok(value)
+        Ok(())
     }
 
     pub(super) fn definition(
@@ -141,55 +136,52 @@ impl State<'_> {
         label: &str,
         destination: &str,
         title: Option<&str>,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
         let quote = check_quote(self)?;
-
+        let start = self.output.len();
         self.enter(ConstructName::Definition);
         self.enter(ConstructName::Label);
-
-        let mut value = String::from('[');
-
-        value.push_str(&self.safe(label, &SafeConfig::new(&value, "]", None)));
-
-        value.push_str("]: ");
-
+        self.output.push('[');
+        self.write_safe(label, &Info::at(start, self.output.len(), "]"), None);
+        self.output.push_str("]: ");
         self.exit();
-
         if destination.is_empty() || contains_control_or_whitespace(destination) {
             self.enter(ConstructName::DestinationLiteral);
-            value.push('<');
-            value.push_str(&self.safe(destination, &SafeConfig::new(&value, ">", None)));
-            value.push('>');
+            self.output.push('<');
+            self.write_safe(destination, &Info::at(start, self.output.len(), ">"), None);
+            self.output.push('>');
         } else {
             self.enter(ConstructName::DestinationRaw);
-            let after = if title.is_some() { " " } else { ")" };
-            value.push_str(&self.safe(destination, &SafeConfig::new(&value, after, None)));
+            self.write_safe(
+                destination,
+                &Info::at(
+                    start,
+                    self.output.len(),
+                    if title.is_some() { " " } else { ")" },
+                ),
+                None,
+            );
         }
-
         self.exit();
-
         if let Some(title) = title {
-            let title_construct_name = if quote == '"' {
+            self.enter(if quote == '"' {
                 ConstructName::TitleQuote
             } else {
                 ConstructName::TitleApostrophe
-            };
-
-            self.enter(title_construct_name);
-            value.push(' ');
-            value.push(quote);
-
-            let mut before_buffer = [0u8; 4];
-            let before = quote.encode_utf8(&mut before_buffer);
-            value.push_str(&self.safe(title, &SafeConfig::new(destination, before, None)));
-
-            value.push(quote);
+            });
+            self.output.push(' ');
+            self.output.push(quote);
+            let mut buffer = [0u8; 4];
+            self.write_safe(
+                title,
+                &Info::new(destination, quote.encode_utf8(&mut buffer)),
+                None,
+            );
+            self.output.push(quote);
             self.exit();
         }
-
         self.exit();
-
-        Ok(value)
+        Ok(())
     }
 
     pub(super) fn emphasis<S: AsRef<str>>(
@@ -197,21 +189,14 @@ impl State<'_> {
         document: &Document<S>,
         node: NodeId,
         info: &Info,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
         let marker = check_emphasis(self)?;
-
         self.enter(ConstructName::Emphasis);
-
-        let mut value = format!(
-            "{}{}",
-            marker,
-            self.container_phrasing(document, node, info)?
-        );
-        value.push(marker);
-
+        self.output.push(marker);
+        self.container_phrasing(document, node, info)?;
+        self.output.push(marker);
         self.exit();
-
-        Ok(value)
+        Ok(())
     }
 
     pub(super) fn heading<S: AsRef<str>>(
@@ -219,62 +204,49 @@ impl State<'_> {
         document: &Document<S>,
         node: NodeId,
         rank: u8,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
+        let start = self.output.len();
         if format_heading_as_setext(document, node, self) {
             self.enter(ConstructName::HeadingSetext);
             self.enter(ConstructName::Phrasing);
-            let mut value = self.container_phrasing(document, node, &Info::new("\n", "\n"))?;
-
+            self.container_phrasing(document, node, &Info::new("\n", "\n"))?;
             self.exit();
             self.exit();
-
-            let underline_char = if rank == 1 { "=" } else { "-" };
-            let last_line_rank = value
-                .rfind('\n')
-                .unwrap_or(0)
-                .max(value.rfind('\r').unwrap_or(0));
-
-            let last_line_rank = if last_line_rank > 0 {
-                last_line_rank + 1
-            } else {
-                0
-            };
-
-            let setext_underline = underline_char.repeat(value.len() - last_line_rank);
-            value.push('\n');
-            value.push_str(&setext_underline);
-
-            return Ok(value);
+            let content = &self.output[start..];
+            let last_line = content.rfind(['\r', '\n']).map_or(0, |index| index + 1);
+            let size = content.len() - last_line;
+            self.output.push('\n');
+            self.output
+                .extend(core::iter::repeat(if rank == 1 { '=' } else { '-' }).take(size));
+            return Ok(());
         }
-
-        let sequence = "#".repeat(rank as usize);
         self.enter(ConstructName::HeadingAtx);
         self.enter(ConstructName::Phrasing);
-
-        let mut value = self.container_phrasing(document, node, &Info::new("# ", "\n"))?;
-
-        if let Some(first_char) = value.chars().nth(0) {
-            if first_char == ' ' || first_char == '\t' {
-                let hex_code = u32::from(first_char);
-                value = format!("&#x{:X};{}", hex_code, &value[1..])
-            }
+        self.output
+            .extend(core::iter::repeat('#').take(usize::from(rank)));
+        self.output.push(' ');
+        let content_start = self.output.len();
+        self.container_phrasing(document, node, &Info::new("# ", "\n"))?;
+        if self.output.len() == content_start {
+            self.output.pop();
+        } else if let Some(character) = self.output[content_start..]
+            .chars()
+            .next()
+            .filter(|c| matches!(c, ' ' | '\t'))
+        {
+            self.output.replace_range(
+                content_start..content_start + 1,
+                if character == ' ' { "&#x20;" } else { "&#x9;" },
+            );
         }
-
-        if value.is_empty() {
-            value.push_str(&sequence);
-        } else {
-            value = format!("{} {}", sequence, value);
-        }
-
         if self.options.close_atx {
-            value.push(' ');
-            value.push_str(&sequence);
+            self.output.push(' ');
+            self.output
+                .extend(core::iter::repeat('#').take(usize::from(rank)));
         }
-
         self.exit();
         self.exit();
-
-        Ok(value)
+        Ok(())
     }
 
     pub(super) fn paragraph<S: AsRef<str>>(
@@ -282,13 +254,13 @@ impl State<'_> {
         document: &Document<S>,
         node: NodeId,
         info: &Info,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
         self.enter(ConstructName::Paragraph);
         self.enter(ConstructName::Phrasing);
-        let value = self.container_phrasing(document, node, info)?;
+        self.container_phrasing(document, node, info)?;
         self.exit();
         self.exit();
-        Ok(value)
+        Ok(())
     }
 
     pub(super) fn strong<S: AsRef<str>>(
@@ -296,197 +268,133 @@ impl State<'_> {
         document: &Document<S>,
         node: NodeId,
         info: &Info,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
         let marker = check_strong(self)?;
-
         self.enter(ConstructName::Strong);
-
-        let mut value = format!(
-            "{}{}{}",
-            marker,
-            marker,
-            self.container_phrasing(document, node, info)?
-        );
-        value.push(marker);
-        value.push(marker);
-
+        self.output.push(marker);
+        self.output.push(marker);
+        self.container_phrasing(document, node, info)?;
+        self.output.push(marker);
+        self.output.push(marker);
         self.exit();
-
-        Ok(value)
+        Ok(())
     }
 
-    pub(super) fn thematic_break(&mut self) -> Result<String, Message> {
+    pub(super) fn thematic_break(&mut self) -> Result<(), Message> {
         let marker = check_rule(self)?;
-        let space = if self.options.rule_spaces { " " } else { "" };
-        let mut value =
-            format!("{}{}", marker, space).repeat(check_rule_repetition(self)? as usize);
-
-        if self.options.rule_spaces {
-            // Remove the last space.
-            value.pop();
-            Ok(value)
-        } else {
-            Ok(value)
+        for index in 0..check_rule_repetition(self)? {
+            if index > 0 && self.options.rule_spaces {
+                self.output.push(' ');
+            }
+            self.output.push(marker);
         }
+        Ok(())
     }
 
     pub(super) fn inline_code(
         &mut self,
         content: &str,
         language: Option<&str>,
-    ) -> Result<String, Message> {
-        let mut value = content.to_string();
-        let mut sequence = String::from('`');
-        let mut grave_accent_match = Regex::new(&format!(r"(^|[^`]){}([^`]|$)", sequence)).unwrap();
-        while grave_accent_match.is_match(&value) {
-            sequence.push('`');
-            grave_accent_match = Regex::new(&format!(r"(^|[^`]){}([^`]|$)", sequence)).unwrap();
+    ) -> Result<(), Message> {
+        if let Some(language) = language {
+            self.output.push_str(language);
+            self.output.push(':');
         }
+        self.inline_literal(content, '`', 1);
+        Ok(())
+    }
 
-        let no_whitespaces = !value.chars().all(char::is_whitespace);
-        let starts_with_whitespace = value.starts_with(char::is_whitespace);
-        let ends_with_whitespace = value.ends_with(char::is_whitespace);
-        let starts_with_tick = value.starts_with('`');
-        let ends_with_tick = value.ends_with('`');
+    pub(super) fn inline_math(&mut self, content: &str) -> Result<(), Message> {
+        self.inline_literal(
+            content,
+            '$',
+            if self.options.single_dollar_text_math {
+                1
+            } else {
+                2
+            },
+        );
+        Ok(())
+    }
 
-        if no_whitespaces
-            && ((starts_with_whitespace && ends_with_whitespace)
-                || starts_with_tick
-                || ends_with_tick)
-        {
-            value = format!("{}{}{}", ' ', value, ' ');
+    fn inline_literal(&mut self, content: &str, marker: char, minimum: usize) {
+        let size = super::util::scan::delimiter_size(content, marker as u8, minimum);
+        self.output.extend(core::iter::repeat(marker).take(size));
+        let start = self.output.len();
+        let non_whitespace = !content.chars().all(char::is_whitespace);
+        let pad = non_whitespace
+            && (content.starts_with(char::is_whitespace) && content.ends_with(char::is_whitespace)
+                || content.starts_with(marker)
+                || content.ends_with(marker));
+        if pad {
+            self.output.push(' ');
         }
-
-        for pattern in &mut self.r#unsafe {
+        self.output.push_str(content);
+        if pad {
+            self.output.push(' ');
+        }
+        // Flatten a physical line ending only when a block-opening rule would become active.
+        let patterns = &mut self.r#unsafe;
+        let mut scratch = core::mem::take(&mut self.scratch);
+        scratch.clear();
+        scratch.push_str(&self.output[start..]);
+        for pattern in patterns {
             if !pattern.at_break {
                 continue;
             }
-
             State::compile_pattern(pattern);
-
             let regex = pattern
                 .compiled
                 .as_ref()
                 .expect("compiling an unsafe pattern sets its regex");
-            while let Some(m) = regex.find(&value) {
-                let match_start = m.start();
-                let (start, end) = if match_start > 0
-                    && value.as_bytes()[match_start - 1] == b'\r'
-                    && value.as_bytes()[match_start] == b'\n'
-                {
-                    (match_start - 1, match_start + 1)
-                } else {
-                    (match_start, match_start + 1)
-                };
-
-                value.replace_range(start..end, " ");
+            while let Some(found) = regex.find(&scratch) {
+                let at = found.start();
+                let from = at
+                    - usize::from(
+                        at > 0
+                            && scratch.as_bytes()[at - 1] == b'\r'
+                            && scratch.as_bytes()[at] == b'\n',
+                    );
+                scratch.replace_range(from..at + 1, " ");
             }
         }
-
-        let prefix = language
-            .map(|lang| format!("{}:", lang))
-            .unwrap_or_default();
-
-        Ok(format!("{}{}{}{}", prefix, sequence, value, sequence))
+        self.output.truncate(start);
+        self.output.push_str(&scratch);
+        self.scratch = scratch;
+        self.output.extend(core::iter::repeat(marker).take(size));
     }
 
-    pub(super) fn inline_math(&mut self, content: &str) -> Result<String, Message> {
-        let mut size: usize = if !self.options.single_dollar_text_math {
-            2
-        } else {
-            1
-        };
-
-        let pattern = format!("(^|[^$]){}([^$]|$)", "\\$".repeat(size));
-        let mut dollar_sign_match = Regex::new(&pattern).unwrap();
-        while dollar_sign_match.is_match(content) {
-            size += 1;
-            let pattern = format!("(^|[^$]){}([^$]|$)", "\\$".repeat(size));
-            dollar_sign_match = Regex::new(&pattern).unwrap();
-        }
-
-        let sequence = "$".repeat(size);
-
-        let no_whitespaces = !content.chars().all(char::is_whitespace);
-        let starts_with_whitespace = content.starts_with(char::is_whitespace);
-        let ends_with_whitespace = content.ends_with(char::is_whitespace);
-        let starts_with_dollar = content.starts_with('$');
-        let ends_with_dollar = content.ends_with('$');
-
-        let mut value = content.to_string();
-        if no_whitespaces
-            && ((starts_with_whitespace && ends_with_whitespace)
-                || starts_with_dollar
-                || ends_with_dollar)
-        {
-            value = format!(" {} ", value);
-        }
-
-        for pattern in &mut self.r#unsafe {
-            if !pattern.at_break {
-                continue;
-            }
-
-            State::compile_pattern(pattern);
-
-            let regex = pattern
-                .compiled
-                .as_ref()
-                .expect("compiling an unsafe pattern sets its regex");
-            while let Some(m) = regex.find(&value) {
-                let match_start = m.start();
-                let (start, end) = if match_start > 0
-                    && value.as_bytes()[match_start - 1] == b'\r'
-                    && value.as_bytes()[match_start] == b'\n'
-                {
-                    (match_start - 1, match_start + 1)
-                } else {
-                    (match_start, match_start + 1)
-                };
-
-                value.replace_range(start..end, " ");
-            }
-        }
-
-        Ok(format!("{}{}{}", sequence, value, sequence))
-    }
-
-    pub(super) fn math(
-        &mut self,
-        content: &str,
-        metadata: Option<&str>,
-    ) -> Result<String, Message> {
-        let sequence = "$".repeat((longest_char_streak(content, '$') + 1).max(2));
+    pub(super) fn math(&mut self, content: &str, metadata: Option<&str>) -> Result<(), Message> {
+        let size = (longest_char_streak(content, '$') + 1).max(2);
         self.enter(ConstructName::MathFlow);
-
-        let mut value = String::new();
-        value.push_str(&sequence);
-
-        if let Some(meta) = metadata {
+        let start = self.output.len();
+        self.output.extend(core::iter::repeat('$').take(size));
+        if let Some(metadata) = metadata {
             self.enter(ConstructName::MathFlowMeta);
-            value.push_str(&self.safe(meta, &SafeConfig::new(&value, "\n", Some('$'))));
+            self.write_safe(
+                metadata,
+                &Info::at(start, self.output.len(), "\n"),
+                Some('$'),
+            );
             self.exit();
         }
-
-        value.push('\n');
-
+        self.output.push('\n');
         if !content.is_empty() {
-            value.push_str(content);
-            value.push('\n');
+            self.output.push_str(content);
+            self.output.push('\n');
         }
-
-        value.push_str(&sequence);
+        self.output.extend(core::iter::repeat('$').take(size));
         self.exit();
-        Ok(value)
+        Ok(())
     }
 
-    pub(super) fn text(&mut self, content: &str, info: &Info) -> Result<String, Message> {
+    pub(super) fn text(&mut self, content: &str, info: &Info) -> Result<(), Message> {
         let value = match self.options.line_wrapping {
             crate::markdown::LineWrapping::Preserve => Cow::Borrowed(content),
             crate::markdown::LineWrapping::Unwrap => Cow::Owned(unwrap_soft_line_breaks(content)),
         };
-
-        Ok(self.safe(&value, &SafeConfig::new(info.before, info.after, None)))
+        self.write_safe(&value, info, None);
+        Ok(())
     }
 
     pub(super) fn resource<S: AsRef<str>>(
@@ -496,18 +404,19 @@ impl State<'_> {
         destination: &str,
         title: Option<&str>,
         image: bool,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
         let quote = check_quote(self)?;
+        let start = self.output.len();
         if !image {
             if let Some(text) = auto_link_text(document, node, destination, title.is_some(), self) {
-                let old_stack = mem::take(&mut self.stack);
+                let stack = mem::take(&mut self.stack);
                 self.enter(ConstructName::Autolink);
-                let mut value = String::from("<");
-                value.push_str(&self.safe(text, &SafeConfig::new(&value, ">", None)));
-                value.push('>');
+                self.output.push('<');
+                self.write_safe(text, &Info::at(start, self.output.len(), ">"), None);
+                self.output.push('>');
                 self.exit();
-                self.stack = old_stack;
-                return Ok(value);
+                self.stack = stack;
+                return Ok(());
             }
         }
         self.enter(if image {
@@ -516,27 +425,32 @@ impl State<'_> {
             ConstructName::Link
         });
         self.enter(ConstructName::Label);
-        let mut value = String::from(if image { "![" } else { "[" });
+        self.output.push_str(if image { "![" } else { "[" });
+        let info = Info::at(start, self.output.len(), "](");
         if image {
-            let alt = image_alt(document, node);
-            value.push_str(&self.safe(&alt, &SafeConfig::new(&value, "]", None)));
+            self.write_safe(&image_alt(document, node), &info, None);
         } else {
-            value.push_str(&self.container_phrasing(document, node, &Info::new(&value, "]("))?);
+            self.container_phrasing(document, node, &info)?;
         }
-        value.push_str("](");
+        self.output.push_str("](");
         self.exit();
         if destination.is_empty() && title.is_some() || contains_control_or_whitespace(destination)
         {
             self.enter(ConstructName::DestinationLiteral);
-            value.push('<');
-            value.push_str(&self.safe(destination, &SafeConfig::new(&value, ">", None)));
-            value.push('>');
+            self.output.push('<');
+            self.write_safe(destination, &Info::at(start, self.output.len(), ">"), None);
+            self.output.push('>');
         } else {
             self.enter(ConstructName::DestinationRaw);
-            value.push_str(&self.safe(
+            self.write_safe(
                 destination,
-                &SafeConfig::new(&value, if title.is_some() { " " } else { ")" }, None),
-            ));
+                &Info::at(
+                    start,
+                    self.output.len(),
+                    if title.is_some() { " " } else { ")" },
+                ),
+                None,
+            );
         }
         self.exit();
         if let Some(title) = title {
@@ -545,19 +459,20 @@ impl State<'_> {
             } else {
                 ConstructName::TitleApostrophe
             });
-            value.push(' ');
-            value.push(quote);
-            let mut quote_buffer = [0u8; 4];
-            value.push_str(&self.safe(
+            self.output.push(' ');
+            self.output.push(quote);
+            let mut buffer = [0u8; 4];
+            self.write_safe(
                 title,
-                &SafeConfig::new(destination, quote.encode_utf8(&mut quote_buffer), None),
-            ));
-            value.push(quote);
+                &Info::new(destination, quote.encode_utf8(&mut buffer)),
+                None,
+            );
+            self.output.push(quote);
             self.exit();
         }
-        value.push(')');
+        self.output.push(')');
         self.exit();
-        Ok(value)
+        Ok(())
     }
 
     pub(super) fn reference<S: AsRef<str>>(
@@ -567,40 +482,46 @@ impl State<'_> {
         kind: ReferenceKind,
         label: &str,
         image: bool,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
         self.enter(if image {
             ConstructName::ImageReference
         } else {
             ConstructName::LinkReference
         });
         self.enter(ConstructName::Label);
-        let mut value = String::from(if image { "![" } else { "[" });
-        let text = if image {
-            self.safe(
-                &image_alt(document, node),
-                &SafeConfig::new(&value, "]", None),
-            )
+        let start = self.output.len();
+        self.output.push_str(if image { "![" } else { "[" });
+        let text_start = self.output.len();
+        let info = Info::at(start, text_start, "]");
+        if image {
+            self.write_safe(&image_alt(document, node), &info, None);
         } else {
-            self.container_phrasing(document, node, &Info::new(&value, "]"))?
-        };
-        value.push_str(&text);
-        value.push_str("][");
-        self.exit();
-        let old_stack = mem::take(&mut self.stack);
-        self.enter(ConstructName::Reference);
-        let reference = self.safe(label, &SafeConfig::new(&value, "]", None));
-        self.exit();
-        self.stack = old_stack;
-        self.exit();
-        if matches!(kind, ReferenceKind::Full) || text.is_empty() || text != reference {
-            value.push_str(&reference);
-            value.push(']');
-        } else if matches!(kind, ReferenceKind::Shortcut) {
-            value.pop();
-        } else {
-            value.push(']');
+            self.container_phrasing(document, node, &info)?;
         }
-        Ok(value)
+        let text_end = self.output.len();
+        self.output.push_str("][");
+        self.exit();
+        let stack = mem::take(&mut self.stack);
+        self.enter(ConstructName::Reference);
+        let reference_start = self.output.len();
+        self.write_safe(label, &Info::at(start, reference_start, "]"), None);
+        self.exit();
+        self.stack = stack;
+        self.exit();
+        if matches!(kind, ReferenceKind::Full)
+            || text_start == text_end
+            || self.output[text_start..text_end] != self.output[reference_start..]
+        {
+            self.output.push(']');
+        } else {
+            self.output.truncate(reference_start);
+            if matches!(kind, ReferenceKind::Shortcut) {
+                self.output.pop();
+            } else {
+                self.output.push(']');
+            }
+        }
+        Ok(())
     }
 
     pub(super) fn list<S: AsRef<str>>(
@@ -608,7 +529,7 @@ impl State<'_> {
         document: &Document<S>,
         node: NodeId,
         ordered: bool,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
         self.enter(ConstructName::List);
         let bullet_current = self.bullet_current;
         let mut bullet = if ordered {
@@ -667,18 +588,18 @@ impl State<'_> {
             bullet = bullet_other;
         }
         self.bullet_current = Some(bullet);
-        let value = self.container_flow(document, node)?;
+        self.container_flow(document, node)?;
         self.bullet_last_used = Some(bullet);
         self.bullet_current = bullet_current;
         self.exit();
-        Ok(value)
+        Ok(())
     }
 
     pub(super) fn list_item<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         node: NodeId,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
         let mut bullet = self
             .bullet_current
             .unwrap_or(check_bullet(self)?)
@@ -720,22 +641,21 @@ impl State<'_> {
             size = size.div_ceil(4) * 4;
         }
         self.enter(ConstructName::ListItem);
-        let value = self.container_flow(document, node)?;
-        let value = self.indent_lines(&value, |line, index, blank| {
-            if index > 0 {
-                if blank {
-                    line.into()
-                } else {
-                    format!("{}{}", " ".repeat(size), line)
+        let start = self.output.len();
+        self.container_flow(document, node)?;
+        self.indent_lines(start, |line, index, blank, output| {
+            if index == 0 {
+                output.push_str(&bullet);
+                if !blank {
+                    output.extend(core::iter::repeat(' ').take(size - bullet.len()));
                 }
-            } else if blank {
-                format!("{}{}", bullet, line)
-            } else {
-                format!("{}{}{}", bullet, " ".repeat(size - bullet.len()), line)
+            } else if !blank {
+                output.extend(core::iter::repeat(' ').take(size));
             }
+            output.push_str(line);
         });
         self.exit();
-        Ok(value)
+        Ok(())
     }
 
     pub(super) fn is_item_task<S: AsRef<str>>(&self, document: &Document<S>, node: NodeId) -> bool {
@@ -761,17 +681,17 @@ impl State<'_> {
         authored_info: &str,
         fence: CodeFence,
         closing_fence_length: usize,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
         let mut info = authored_info.trim_matches([' ', '\t']);
         if (matches!(fence.character, '`' | '~') && info.is_empty())
             || authored_info.contains(['\r', '\n'])
             || (fence.character == '`' && authored_info.contains('`'))
         {
             return Err(Message {
-                place: None,
+                span: None,
                 reason: "Frontmatter requires a valid fence and a single-line info string; code fences require a language hint".into(),
-                rule_id: Box::new("invalid-frontmatter".into()),
-                source: Box::new("mdast-util-to-markdown".into()),
+                rule_id: "invalid-frontmatter",
+                source: "mdast-util-to-markdown",
             });
         }
         let mut marker = fence.character;
@@ -804,18 +724,18 @@ impl State<'_> {
             } else {
                 ""
             };
-        let mut output = format!(
-            "{}{}{}\n",
-            marker.to_string().repeat(opening_length),
-            separator,
-            info
-        );
-        output.push_str(body);
+        self.output
+            .extend(core::iter::repeat(marker).take(opening_length));
+        self.output.push_str(separator);
+        self.output.push_str(info);
+        self.output.push('\n');
+        self.output.push_str(body);
         if !body.is_empty() && !body.ends_with(['\r', '\n']) {
-            output.push('\n');
+            self.output.push('\n');
         }
-        output.push_str(&marker.to_string().repeat(closing_length));
-        Ok(output)
+        self.output
+            .extend(core::iter::repeat(marker).take(closing_length));
+        Ok(())
     }
 }
 

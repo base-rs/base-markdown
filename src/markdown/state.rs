@@ -12,9 +12,8 @@ use crate::markdown::{
     util::{
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::format_heading_as_setext,
-        format_link_as_auto_link::auto_link_text,
-        pattern_in_scope::pattern_in_scope,
-        safe::{escape_backslashes, EscapeInfos, SafeConfig},
+        format_link_as_auto_link::auto_link_text, pattern_in_scope::pattern_in_scope,
+        safe::EscapeInfos,
     },
     Options,
 };
@@ -24,18 +23,17 @@ use crate::{
     util::normalize_identifier::{normalize_identifier, normalize_identifier_into},
     AlignKind, Document, NodeId, NodeSyntax,
 };
-use alloc::{
-    borrow::Cow,
-    collections::BTreeMap,
-    format,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
 use regex::Regex;
 
 pub struct Info<'a> {
     pub after: &'a str,
-    pub before: &'a str,
+    before: Before<'a>,
+}
+
+enum Before<'a> {
+    Literal(&'a str),
+    Output(core::ops::Range<usize>),
 }
 
 #[derive(Debug)]
@@ -50,6 +48,10 @@ enum Join {
 }
 
 pub struct State<'a> {
+    pub output: String,
+    pub(super) scratch: String,
+    escape_context: String,
+    escapes: Vec<(usize, EscapeInfos)>,
     pub bullet_current: Option<char>,
     pub bullet_last_used: Option<char>,
     pub index_stack: Vec<usize>,
@@ -63,25 +65,39 @@ pub struct State<'a> {
 
 impl<'a> Info<'a> {
     pub fn new(before: &'a str, after: &'a str) -> Self {
-        Info { after, before }
+        Self {
+            before: Before::Literal(before),
+            after,
+        }
+    }
+    pub fn at(start: usize, end: usize, after: &'a str) -> Self {
+        Self {
+            before: Before::Output(start..end),
+            after,
+        }
+    }
+    pub fn before<'o>(&'o self, output: &'o str) -> &'o str {
+        match &self.before {
+            Before::Literal(value) => value,
+            Before::Output(range) => &output[range.clone()],
+        }
     }
 }
 
 impl<'a> State<'a> {
     fn between<S: AsRef<str>>(
-        &self,
+        &mut self,
         document: &Document<S>,
         left: NodeId,
         right: NodeId,
         parent: NodeId,
-        results: &mut String,
     ) {
         let join = if self.options.tight_definitions {
             self.tight_definition(document, left, right)
         } else {
             self.join_defaults(document, left, right, parent)
         };
-        Self::set_between(&join, results);
+        Self::set_between(&join, &mut self.output);
     }
 
     /// JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/util/compile-pattern.js>.
@@ -142,12 +158,11 @@ impl<'a> State<'a> {
         &mut self,
         document: &Document<S>,
         parent: NodeId,
-    ) -> Result<String, Message> {
-        let mut results = String::new();
+    ) -> Result<(), Message> {
         let mut children = flow_children(document, parent).peekable();
         self.index_stack.push(0);
-        let mut index = 0;
-        while let Some(child) = children.next() {
+        for index in 0.. {
+            let Some(child) = children.next() else { break };
             *self.index_stack.last_mut().unwrap() = index;
             if !matches!(
                 document.node(child).unwrap().kind,
@@ -155,14 +170,13 @@ impl<'a> State<'a> {
             ) {
                 self.bullet_last_used = None;
             }
-            results.push_str(&self.handle(document, child, &Info::new("\n", "\n"))?);
+            self.write_node(document, child, &Info::new("\n", "\n"))?;
             if let Some(&next) = children.peek() {
-                self.between(document, child, next, parent, &mut results);
+                self.between(document, child, next, parent);
             }
-            index += 1;
         }
         self.index_stack.pop();
-        Ok(results)
+        Ok(())
     }
 
     pub fn container_phrasing<S: AsRef<str>>(
@@ -170,8 +184,8 @@ impl<'a> State<'a> {
         document: &Document<S>,
         parent: NodeId,
         info: &Info,
-    ) -> Result<String, Message> {
-        let mut results = String::new();
+    ) -> Result<(), Message> {
+        let start = self.output.len();
         let mut children = flow_children(document, parent).peekable();
         self.index_stack.push(0);
         let mut index = 0;
@@ -187,47 +201,45 @@ impl<'a> State<'a> {
             }
             after_hard_break = matches!(kind, EventKind::HardBreak);
             *self.index_stack.last_mut().unwrap() = index;
-            let mut new_info = Info::new(info.before, info.after);
             let mut buffer = [0u8; 4];
-            if let Some(&next) = children.peek() {
+            let after = if let Some(&next) = children.peek() {
                 if let Some(first) = self.peek_node(document, next) {
-                    new_info.after = first.encode_utf8(&mut buffer);
+                    first.encode_utf8(&mut buffer) as &str
                 } else {
-                    new_info.after = self
-                        .handle(document, next, &Info::new("", ""))?
-                        .chars()
-                        .next()
-                        .unwrap_or_default()
-                        .encode_utf8(&mut buffer);
+                    // Render nodes without a fixed prefix to determine the next character.
+                    let checkpoint = self.output.len();
+                    self.write_node(document, next, &Info::new("", ""))?;
+                    let first = self.output[checkpoint..].chars().next().unwrap_or_default();
+                    self.output.truncate(checkpoint);
+                    first.encode_utf8(&mut buffer)
                 }
-            }
-            // Inline HTML after a source line break would otherwise become a flow block.
-            if !results.is_empty() {
-                if (info.before == "\r" || info.before == "\n")
-                    && matches!(document.node(child).unwrap().kind, EventKind::Html { .. })
-                {
-                    if results.ends_with(['\n', '\r']) {
-                        results.pop();
-                        if results.ends_with('\r') {
-                            results.pop();
-                        }
+            } else {
+                info.after
+            };
+            let before = if self.output.len() == start {
+                match &info.before {
+                    Before::Literal(value) => Before::Literal(value),
+                    Before::Output(range) => Before::Output(range.clone()),
+                }
+            } else if matches!(info.before(&self.output), "\r" | "\n")
+                && matches!(kind, EventKind::Html { .. })
+            {
+                if self.output.ends_with(['\n', '\r']) {
+                    self.output.pop();
+                    if self.output.ends_with('\r') {
+                        self.output.pop();
                     }
-                    results.push(' ');
-                    new_info.before = " ";
-                } else {
-                    new_info.before = &results;
                 }
-            }
-            results.push_str(&self.handle(document, child, &new_info)?);
+                self.output.push(' ');
+                Before::Literal(" ")
+            } else {
+                Before::Output(start..self.output.len())
+            };
+            self.write_node(document, child, &Info { before, after })?;
             index += 1;
         }
         self.index_stack.pop();
-        Ok(results)
-    }
-
-    fn encode_char(character: char) -> String {
-        let hex_code = u32::from(character);
-        format!("&#x{:X};", hex_code)
+        Ok(())
     }
 
     pub fn enter(&mut self, name: ConstructName) {
@@ -244,6 +256,16 @@ impl<'a> State<'a> {
         id: NodeId,
         info: &Info,
     ) -> Result<String, Message> {
+        self.write_node(document, id, info)?;
+        Ok(core::mem::take(&mut self.output))
+    }
+
+    fn write_node<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        id: NodeId,
+        info: &Info,
+    ) -> Result<(), Message> {
         let node = document
             .node(id)
             .expect("serialization uses existing arena nodes");
@@ -266,10 +288,12 @@ impl<'a> State<'a> {
                 Tag::Item { .. } => self.list_item(document, id),
                 Tag::Emphasis => self.emphasis(document, id, info),
                 Tag::Strong => self.strong(document, id, info),
-                Tag::Delete => Ok(format!(
-                    "~~{}~~",
-                    self.container_phrasing(document, id, info)?
-                )),
+                Tag::Delete => {
+                    self.output.push_str("~~");
+                    self.container_phrasing(document, id, info)?;
+                    self.output.push_str("~~");
+                    Ok(())
+                }
                 Tag::Link { destination, title } | Tag::Image { destination, title } => {
                     let image = matches!(tag, Tag::Image { .. });
                     let destination = destination.resolve(source).unwrap();
@@ -294,19 +318,21 @@ impl<'a> State<'a> {
                         Some(NodeSyntax::Footnote { label }) => label.resolve(source).unwrap(),
                         _ => label.resolve(source).unwrap(),
                     };
-                    let mut value = format!("[^{}]:", label);
+                    self.output.push_str("[^");
+                    self.output.push_str(label);
+                    self.output.push_str("]:");
                     if flow_children(document, id).next().is_some() {
-                        let content = self.container_flow(document, id)?;
-                        value.push(' ');
-                        value.push_str(&self.indent_lines(&content, |line, index, blank| {
-                            if index == 0 || blank {
-                                line.to_string()
-                            } else {
-                                format!("    {}", line)
+                        self.output.push(' ');
+                        let start = self.output.len();
+                        self.container_flow(document, id)?;
+                        self.indent_lines(start, |line, index, blank, output| {
+                            if index > 0 && !blank {
+                                output.push_str("    ");
                             }
-                        }));
+                            output.push_str(line);
+                        });
                     }
-                    Ok(value)
+                    Ok(())
                 }
             },
             EventKind::Text(text) => {
@@ -373,13 +399,15 @@ impl<'a> State<'a> {
                 }
             }
             EventKind::Math(value) => self.inline_math(value.resolve(source).unwrap()),
-            EventKind::Html { value, .. } => Ok(value.resolve(source).unwrap().to_string()),
+            EventKind::Html { value, .. } => {
+                self.output.push_str(value.resolve(source).unwrap());
+                Ok(())
+            }
             EventKind::TaskMarker(checked) => {
-                if self.is_item_task(document, id) {
-                    Ok(String::new())
-                } else {
-                    Ok(if *checked { "[x]" } else { "[ ]" }.into())
+                if !self.is_item_task(document, id) {
+                    self.output.push_str(if *checked { "[x]" } else { "[ ]" });
                 }
+                Ok(())
             }
             EventKind::Definition {
                 label,
@@ -406,7 +434,10 @@ impl<'a> State<'a> {
                         closing_fence_length,
                     )
                 } else {
-                    Ok(value.resolve(source).unwrap().into())
+                    {
+                        self.output.push_str(value.resolve(source).unwrap());
+                        Ok(())
+                    }
                 }
             }
             EventKind::FootnoteReference(label) => {
@@ -415,9 +446,12 @@ impl<'a> State<'a> {
                     Some(NodeSyntax::Footnote { label }) => label.resolve(source).unwrap(),
                     _ => label.resolve(source).unwrap(),
                 };
-                Ok(format!("[^{}]", label))
+                self.output.push_str("[^");
+                self.output.push_str(label);
+                self.output.push(']');
+                Ok(())
             }
-            EventKind::Separator { .. } => Ok(String::new()),
+            EventKind::Separator { .. } => Ok(()),
             EventKind::End(_) => unreachable!("arena nodes store starts and leaves only"),
         }
     }
@@ -426,7 +460,7 @@ impl<'a> State<'a> {
         &mut self,
         document: &Document<S>,
         id: NodeId,
-    ) -> Result<String, Message> {
+    ) -> Result<(), Message> {
         let rows = flow_children(document, id).flat_map(|child| {
             let group = matches!(
                 document.node(child).unwrap().kind,
@@ -445,8 +479,7 @@ impl<'a> State<'a> {
         document: &Document<S>,
         rows: impl Iterator<Item = NodeId>,
         header: bool,
-    ) -> Result<String, Message> {
-        let mut output = String::new();
+    ) -> Result<(), Message> {
         for (index, row) in rows.enumerate() {
             if !matches!(
                 document.node(row).unwrap().kind,
@@ -455,38 +488,39 @@ impl<'a> State<'a> {
                 return Err(unsupported_content());
             }
             if index > 0 {
-                output.push('\n');
+                self.output.push('\n');
             }
-            output.push_str(&self.render_table_row(document, row)?);
+            self.render_table_row(document, row)?;
             if header && index == 0 {
-                output.push_str("\n| ");
+                self.output.push_str("\n| ");
                 for (index, cell) in flow_children(document, row).enumerate() {
                     if index > 0 {
-                        output.push_str(" | ");
+                        self.output.push_str(" | ");
                     }
-                    let alignment = match document.node(cell).unwrap().kind {
-                        EventKind::Start(Tag::TableCell { alignment, .. }) => alignment,
-                        _ => unreachable!("rendered table rows contain only cells"),
+                    let EventKind::Start(Tag::TableCell { alignment, .. }) =
+                        document.node(cell).unwrap().kind
+                    else {
+                        unreachable!("rendered table rows contain only cells")
                     };
-                    output.push_str(match alignment {
+                    self.output.push_str(match alignment {
                         AlignKind::Left => ":---",
                         AlignKind::Right => "---:",
                         AlignKind::Center => ":---:",
                         AlignKind::None => "---",
                     });
                 }
-                output.push_str(" |");
+                self.output.push_str(" |");
             }
         }
-        Ok(output)
+        Ok(())
     }
 
     fn render_table_row<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         row: NodeId,
-    ) -> Result<String, Message> {
-        let mut value = String::from("| ");
+    ) -> Result<(), Message> {
+        self.output.push_str("| ");
         for (index, cell) in flow_children(document, row).enumerate() {
             if !matches!(
                 document.node(cell).unwrap().kind,
@@ -495,33 +529,39 @@ impl<'a> State<'a> {
                 return Err(unsupported_content());
             }
             if index > 0 {
-                value.push_str(" | ");
+                self.output.push_str(" | ");
             }
-            let content = self.container_phrasing(document, cell, &Info::new("", ""))?;
-            value.push_str(&escape_table_pipes(&content));
+            let start = self.output.len();
+            self.container_phrasing(document, cell, &Info::new("", ""))?;
+            self.rewrite(start, write_table_pipes);
         }
-        value.push_str(" |");
-        Ok(value)
+        self.output.push_str(" |");
+        Ok(())
     }
 
-    /// JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/main/lib/util/indent-lines.js>.
-    pub fn indent_lines(&self, value: &str, map: impl Fn(&str, usize, bool) -> String) -> String {
-        let mut result = String::new();
-        let mut start = 0;
-        let mut line = 0;
-        let eol = Regex::new(r"\r?\n|\r").unwrap();
+    // Transform only the newly written range; nested formatting reuses this buffer after its children finish.
+    pub(super) fn rewrite(&mut self, start: usize, transform: impl FnOnce(&str, &mut String)) {
+        let mut scratch = core::mem::take(&mut self.scratch);
+        scratch.clear();
+        scratch.push_str(&self.output[start..]);
+        self.output.truncate(start);
+        transform(&scratch, &mut self.output);
+        self.scratch = scratch;
+    }
 
-        for m in eol.captures_iter(value) {
-            let full_match = m.get(0).unwrap();
-            let value_slice = &value[start..full_match.start()];
-            result.push_str(&map(value_slice, line, value_slice.is_empty()));
-            result.push_str(full_match.as_str());
-            start = full_match.start() + full_match.len();
-            line += 1;
-        }
-
-        result.push_str(&map(&value[start..], line, value.is_empty()));
-        result
+    pub fn indent_lines(&mut self, start: usize, map: impl Fn(&str, usize, bool, &mut String)) {
+        self.rewrite(start, |value, output| {
+            let mut start = 0;
+            let mut line = 0;
+            for ending in super::util::scan::line_endings(value) {
+                let slice = &value[start..ending.start];
+                map(slice, line, slice.is_empty(), output);
+                output.push_str(&value[ending.clone()]);
+                start = ending.end;
+                line += 1;
+            }
+            map(&value[start..], line, value.is_empty(), output);
+        });
     }
 
     fn join_defaults<S: AsRef<str>>(
@@ -586,6 +626,10 @@ impl<'a> State<'a> {
     /// No JS equivalent.
     pub fn new(options: &'a Options) -> Self {
         State {
+            output: String::new(),
+            scratch: String::new(),
+            escape_context: String::new(),
+            escapes: Vec::new(),
             bullet_current: None,
             bullet_last_used: None,
             index_stack: Vec::new(),
@@ -675,116 +719,92 @@ impl<'a> State<'a> {
         }
     }
 
-    /// JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/main/lib/util/safe.js>.
-    pub fn safe(&mut self, input: &str, config: &SafeConfig) -> String {
-        let value = format!("{}{}{}", config.before, input, config.after);
-        let mut positions: Vec<usize> = Vec::new();
-        let mut result: String = String::new();
-        let mut infos: BTreeMap<usize, EscapeInfos> = BTreeMap::new();
-
+    pub fn write_safe(&mut self, input: &str, info: &Info, encode: Option<char>) {
+        let before = info.before(&self.output);
+        let start = before.len();
+        self.escape_context.clear();
+        self.escape_context.push_str(before);
+        self.escape_context.push_str(input);
+        self.escape_context.push_str(info.after);
+        let value = &self.escape_context;
+        let end = start + input.len();
+        self.escapes.clear();
         for pattern in &mut self.r#unsafe {
             if !pattern_in_scope(&self.stack, pattern) {
                 continue;
             }
-
             Self::compile_pattern(pattern);
-
             let regex = pattern
                 .compiled
                 .as_ref()
                 .expect("compiling an unsafe pattern sets its regex");
-            for m in regex.captures_iter(&value) {
-                let full_match = m.get(0).expect("Guaranteed to have a match");
-                let captured_group_len = m
-                    .get(1)
-                    .map(|captured_group| captured_group.len())
-                    .unwrap_or(0);
-                let before = pattern.before.is_some() || pattern.at_break;
-                let after = pattern.after.is_some();
-                let position = full_match.start() + if before { captured_group_len } else { 0 };
-
-                if positions.contains(&position) {
-                    let entry = infos
-                        .get_mut(&position)
-                        .expect("every escaped position has matching escape info");
-                    if entry.before && !before {
-                        entry.before = false;
-                    }
-                    if entry.after && !after {
-                        entry.after = false;
-                    }
-                } else {
-                    infos.insert(position, EscapeInfos { after, before });
-                    positions.push(position);
-                }
+            for capture in regex.captures_iter(value) {
+                let found = capture.get(0).expect("a capture contains the full match");
+                let position = found.start() + capture.get(1).map_or(0, |group| group.len());
+                self.escapes.push((
+                    position,
+                    EscapeInfos {
+                        before: pattern.before.is_some() || pattern.at_break,
+                        after: pattern.after.is_some(),
+                    },
+                ));
             }
         }
-
-        positions.sort_unstable();
-
-        let mut start = config.before.len();
-        let end = value.len() - config.after.len();
-
-        for (index, position) in positions.iter().enumerate() {
-            if *position < start || *position >= end {
+        self.escapes.sort_unstable_by_key(|entry| entry.0);
+        self.escapes.dedup_by(|right, left| {
+            if right.0 == left.0 {
+                left.1.before &= right.1.before;
+                left.1.after &= right.1.after;
+                true
+            } else {
+                false
+            }
+        });
+        let mut cursor = start;
+        for (index, &(position, ref flags)) in self.escapes.iter().enumerate() {
+            if position < start || position >= end {
                 continue;
             }
-
-            // If this character is supposed to be escaped because it has a condition on
-            // the next character, and the next character is definitly being escaped,
-            // then skip this escape.
-            // This will never panic because the bounds are properly checked, and we
-            // guarantee that the positions are already keys in the `infos` map before this
-            // point in execution.
-            if index + 1 < positions.len()
-                && position + 1 < end
-                && positions[index + 1] == position + 1
-                && infos[position].after
-                && !infos[&(position + 1)].before
-                && !infos[&(position + 1)].after
-                || index > 0
-                    && positions[index - 1] == position - 1
-                    && infos[position].before
-                    && !infos[&(position - 1)].before
-                    && !infos[&(position - 1)].after
+            if self.escapes.get(index + 1).is_some_and(|next| {
+                position + 1 < end
+                    && next.0 == position + 1
+                    && flags.after
+                    && !next.1.before
+                    && !next.1.after
+            }) || index > 0
+                && self.escapes[index - 1].0 + 1 == position
+                && flags.before
+                && !self.escapes[index - 1].1.before
+                && !self.escapes[index - 1].1.after
             {
                 continue;
             }
-
-            if start != *position {
-                result.push_str(&escape_backslashes(&value[start..*position], r"\"));
-            }
-            start = *position;
-
-            let character = value[*position..]
+            super::util::safe::write_backslashes(&value[cursor..position], "\\", &mut self.output);
+            cursor = position;
+            let character = value[position..]
                 .chars()
                 .next()
-                .expect("escape position must identify a character");
-            match character {
-                '!'..='/' | ':'..='@' | '['..='`' | '{'..='~' => {
-                    if let Some(encode) = &config.encode {
-                        if *encode != character {
-                            result.push('\\');
-                        } else {
-                            let encoded_char = Self::encode_char(character);
-                            result.push_str(&encoded_char);
-                            start += character.len_utf8();
-                        }
-                    } else {
-                        result.push('\\');
-                    }
-                }
-                character => {
-                    let encoded_char = Self::encode_char(character);
-                    result.push_str(&encoded_char);
-                    start += character.len_utf8();
-                }
-            };
+                .expect("escape positions are character boundaries");
+            if character.is_ascii_punctuation() && encode != Some(character) {
+                self.output.push('\\');
+            } else {
+                use core::fmt::Write as _;
+                write!(self.output, "&#x{:X};", u32::from(character))
+                    .expect("String writing is infallible");
+                cursor += character.len_utf8();
+            }
         }
+        super::util::safe::write_backslashes(&value[cursor..end], info.after, &mut self.output);
+    }
 
-        result.push_str(&escape_backslashes(&value[start..end], config.after));
-
-        result
+    #[cfg(test)]
+    pub fn safe(&mut self, input: &str, config: &super::util::safe::SafeConfig) -> String {
+        self.write_safe(
+            input,
+            &Info::new(config.before, config.after),
+            config.encode,
+        );
+        core::mem::take(&mut self.output)
     }
 
     /// No real JS equivalent, but see:
@@ -863,25 +883,25 @@ pub(super) fn trim_terminal_ending(value: &str) -> &str {
 
 pub(super) fn unsupported_content() -> Message {
     Message {
-        place: None,
+        span: None,
         reason: "This content shape cannot be represented in Markdown".into(),
-        rule_id: alloc::boxed::Box::new("unsupported-node".into()),
-        source: alloc::boxed::Box::new("markdown".into()),
+        rule_id: "unsupported-node",
+        source: "markdown",
     }
 }
 
 pub(super) fn invalid_node() -> Message {
     Message {
-        place: None,
+        span: None,
         reason: "Node does not belong to the document".into(),
-        rule_id: alloc::boxed::Box::new("invalid-node".into()),
-        source: alloc::boxed::Box::new("markdown".into()),
+        rule_id: "invalid-node",
+        source: "markdown",
     }
 }
 
-fn escape_table_pipes(value: &str) -> String {
+fn write_table_pipes(value: &str, result: &mut String) {
     let bytes = value.as_bytes();
-    let mut result = String::new();
+    let start_output = result.len();
     let mut index = 0;
     let mut code_ticks = None;
 
@@ -899,7 +919,7 @@ fn escape_table_pipes(value: &str) -> String {
             }
             result.push_str(&value[start..index]);
         } else if bytes[index] == b'|' && code_ticks.is_none() {
-            let slashes = result
+            let slashes = result[start_output..]
                 .chars()
                 .rev()
                 .take_while(|character| *character == '\\')
@@ -915,8 +935,13 @@ fn escape_table_pipes(value: &str) -> String {
             index += character.len_utf8();
         }
     }
+}
 
-    result
+#[cfg(test)]
+fn escape_table_pipes(value: &str) -> String {
+    let mut output = String::new();
+    write_table_pipes(value, &mut output);
+    output
 }
 
 fn has_matching_ticks(bytes: &[u8], mut index: usize, ticks: usize) -> bool {

@@ -3,11 +3,11 @@
 
 //! Compact inline candidates, resolved in reusable storage for the active block.
 use crate::definitions::{scan_label, Definitions};
-use crate::grammar_parser::decode_string;
 use crate::stream::{Event, EventKind, Tag, TagKind, Text};
 use crate::util::char::{classify_opt, Kind as CharacterKind};
 use crate::util::character_reference::{scan as scan_character_reference, Reference};
 use crate::util::normalize_identifier::normalize_identifier_into;
+use crate::value_builder::decode_string;
 use alloc::{string::String, vec::Vec};
 use core::{convert::TryFrom, ops::Range};
 

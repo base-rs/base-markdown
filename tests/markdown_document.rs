@@ -191,7 +191,7 @@ fn detached_nodes_and_invalid_subtree_indices_are_handled() {
     );
     let other = empty();
     assert_eq!(
-        *to_markdown_node(&other, text, &Default::default())
+        to_markdown_node(&other, text, &Default::default())
             .unwrap_err()
             .rule_id,
         "invalid-node"
@@ -341,7 +341,7 @@ fn block_leaves_inside_a_heading_are_not_representable_in_markdown() {
             .unwrap();
         document.append_child(heading, kind).unwrap();
         assert_eq!(
-            *to_markdown(&document).unwrap_err().rule_id,
+            to_markdown(&document).unwrap_err().rule_id,
             "unsupported-node"
         );
     }
@@ -358,7 +358,7 @@ fn table_serialization_rejects_unrepresentable_structure() {
             .append_child(container, EventKind::Text(Text::Literal("unexpected")))
             .unwrap();
         assert_eq!(
-            *to_markdown(&document).unwrap_err().rule_id,
+            to_markdown(&document).unwrap_err().rule_id,
             "unsupported-node"
         );
     }
@@ -373,7 +373,7 @@ fn table_serialization_rejects_unrepresentable_structure() {
         .append_child(group, EventKind::Start(Tag::Paragraph { tight: false }))
         .unwrap();
     assert_eq!(
-        *to_markdown(&document).unwrap_err().rule_id,
+        to_markdown(&document).unwrap_err().rule_id,
         "unsupported-node"
     );
 }
@@ -462,7 +462,7 @@ fn list_children_must_be_items() {
         .append_child(list, EventKind::Text(Text::Literal("missing an item")))
         .unwrap();
     assert_eq!(
-        *to_markdown(&document).unwrap_err().rule_id,
+        to_markdown(&document).unwrap_err().rule_id,
         "unsupported-node"
     );
 }

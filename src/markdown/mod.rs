@@ -7,8 +7,7 @@
 //!
 //! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/main/lib/index.js.
 
-// This serializer is ported from `mdast-util-to-markdown`; retain its established
-// implementation while keeping the parser's stricter lints on the surrounding API.
+// Formatting rules are adapted from `mdast-util-to-markdown`; keep the parser's stricter lints on the surrounding API.
 #![allow(clippy::pedantic)]
 
 pub use self::configure::{IndentOptions, LineWrapping, Options};

@@ -40,3 +40,13 @@ The source stays immutable while ranges depend on it. Integer offsets survive mo
 The `serde` feature serializes the source, arena slots and sparse syntax overrides. Deserialization constructs the arena directly and validates the complete forest, including detached subtrees, before exposing it. Validation rejects invalid UTF-8 ranges, broken or cyclic links, duplicate ownership, illegal roots, invalid event values and incompatible metadata. It does not collect a complete event stream as an intermediate representation.
 
 Source ranges stay ranges. Literal and owned values share the serialized `Value` representation; deserialization owns those strings. Node IDs retain their indices within the restored document. This arena format replaces mdast JSON and is not the mdast interchange schema.
+
+## Diagnostics
+
+`Message` retains its role as the serializer error and custom producer diagnostic.
+Its `reason` is now `Cow<'static, str>` (`"literal".into()` or
+`format!("... {value}").into()`), while `source` and `rule_id` are static strings.
+Use `span: Some(start..end)` for a source byte range, or `span: None` for an
+option error. This replaces boxed strings and `place: Option<Box<Place>>`.
+`unist::{Point, Position}`, `message::Place`, and the hidden `Location` utility
+have been removed; document and event spans remain the location contract.

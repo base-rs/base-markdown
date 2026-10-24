@@ -5,11 +5,11 @@
 
 mod support;
 use core_markdown::{
-    message, to_html, to_html_with_options, unist::Position, CompileOptions, Constructs, Options,
-    ParseOptions,
+    message, to_html, to_html_with_options, CompileOptions, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
+use support::fixture::Position;
 use support::fixture::{Definition, Node, Root};
 
 #[test]
@@ -82,6 +82,7 @@ fn compact_definitions_preserve_values_and_inline_fallback() {
         "[a]: /a)\n\n[a]".to_string(),
         "text <i>inline HTML</i> [a]\n\n[a]: /a".to_string(),
         "first <i>inline HTML</i> [a]\n\nsecond <i>inline HTML</i> [a]\n\n[a]: /a".to_string(),
+        "compact [a]\n\nfirst <i>HTML</i> [a]\n\ncompact again [a]\n\nsecond <b>HTML</b> [a]\n\n[a]: /a".to_string(),
         "`a\nb` [a]\n\n[a]: /a".to_string(),
         "> [a\n> b]\n\n[a b]: /ab".to_string(),
         "[a]\0 [a]\n\n[a]: /a".to_string(),

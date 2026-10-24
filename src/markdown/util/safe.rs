@@ -4,20 +4,21 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! JS equivalent https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/util/safe.js
-use alloc::{format, string::String, vec::Vec};
-use regex::Regex;
+use alloc::string::String;
 
 pub struct EscapeInfos {
     pub after: bool,
     pub before: bool,
 }
 
+#[cfg(test)]
 pub struct SafeConfig<'a> {
     pub after: &'a str,
     pub before: &'a str,
     pub encode: Option<char>,
 }
 
+#[cfg(test)]
 impl<'a> SafeConfig<'a> {
     pub(crate) fn new(before: &'a str, after: &'a str, encode: Option<char>) -> Self {
         SafeConfig {
@@ -29,25 +30,29 @@ impl<'a> SafeConfig<'a> {
 }
 
 /// JS: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/util/safe.js#L148>.
-pub fn escape_backslashes(value: &str, after: &str) -> String {
-    let expression = Regex::new(r"\\[!-/:-@\[-`{-~]").unwrap();
-    let mut results: String = String::new();
-    let whole = format!("{}{}", value, after);
-
-    let positions: Vec<usize> = expression.find_iter(&whole).map(|m| m.start()).collect();
+pub fn write_backslashes(value: &str, after: &str, results: &mut String) {
     let mut start = 0;
-
-    for position in &positions {
-        if start != *position {
-            results.push_str(&value[start..*position]);
+    let bytes = value.as_bytes();
+    let mut at = 0;
+    while let Some(offset) = memchr::memchr(b'\\', &bytes[at..]) {
+        let position = at + offset;
+        let next = bytes.get(position + 1).or_else(|| after.as_bytes().first());
+        if next.is_some_and(u8::is_ascii_punctuation) {
+            results.push_str(&value[start..position]);
+            results.push('\\');
+            start = position;
+            // Regex matches consume both bytes: paired backslashes cannot overlap.
+            at = (position + 2).min(bytes.len());
+        } else {
+            at = position + 1;
         }
-
-        results.push('\\');
-
-        start = *position;
     }
-
     results.push_str(&value[start..]);
+}
 
-    results
+#[cfg(test)]
+pub fn escape_backslashes(value: &str, after: &str) -> String {
+    let mut output = String::new();
+    write_backslashes(value, after, &mut output);
+    output
 }

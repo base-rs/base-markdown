@@ -60,12 +60,10 @@ fn handles_adjacent_text_nodes_and_phrasing_lookahead_errors() {
     document
         .append_child(node, EventKind::Text(Text::Literal("second")))
         .unwrap();
-    assert_eq!(
-        state
-            .container_phrasing(&document, node, &Info::new("", ""))
-            .unwrap(),
-        "firstsecond"
-    );
+    state
+        .container_phrasing(&document, node, &Info::new("", ""))
+        .unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "firstsecond");
 
     document
         .append_child(node, EventKind::Start(Tag::Item { block_end: false }))
@@ -77,7 +75,7 @@ fn handles_adjacent_text_nodes_and_phrasing_lookahead_errors() {
     let error = State::new(&options)
         .container_phrasing(&document, node, &Info::new("", ""))
         .unwrap_err();
-    assert_eq!(*error.rule_id, "unexpected-marker");
+    assert_eq!(error.rule_id, "unexpected-marker");
 }
 
 #[test]
@@ -137,17 +135,15 @@ fn inline_literal_normalization_preserves_crlf_and_nonmatches() {
     let mut ending = Unsafe::new('\n', None, None, vec![], vec![], true);
     ending.set_compiled(Regex::new("\\n").unwrap());
     state.r#unsafe = vec![ending];
-    assert_eq!(state.inline_code("one\r\ntwo", None).unwrap(), "`one two`");
-    assert_eq!(state.inline_math("one\r\ntwo").unwrap(), "$one two$");
+    state.inline_code("one\r\ntwo", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "`one two`");
+    state.inline_math("one\r\ntwo").unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "$one two$");
     state.r#unsafe = vec![Unsafe::new('#', None, None, vec![], vec![], true)];
-    assert_eq!(
-        state.inline_code("ordinary code", None).unwrap(),
-        "`ordinary code`"
-    );
-    assert_eq!(
-        state.inline_math("ordinary math").unwrap(),
-        "$ordinary math$"
-    );
+    state.inline_code("ordinary code", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "`ordinary code`");
+    state.inline_math("ordinary math").unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "$ordinary math$");
     assert_eq!(
         state.safe("é\n# heading", &SafeConfig::new("", "", None)),
         "é\n\\# heading"
