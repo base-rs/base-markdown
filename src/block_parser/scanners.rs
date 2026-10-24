@@ -305,11 +305,9 @@ pub(crate) fn scan_setext_heading(data: &[u8]) -> Option<(usize, u8)> {
     Some((i, level))
 }
 
+// Callers dispatch on the opening byte: data is nonempty and starts with a backtick or tilde.
 pub(crate) fn scan_code_fence(data: &[u8]) -> Option<(usize, u8)> {
     let c = data[0];
-    if !(c == b'`' || c == b'~') {
-        return None;
-    }
     let i = 1 + scan_ch_repeat(&data[1..], c);
     if i >= 3 {
         if c == b'`' {
