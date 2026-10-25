@@ -43,9 +43,6 @@ mod value_builder;
 pub mod message; // To do: externalize.
 
 #[doc(hidden)]
-pub use util::character_reference::{decode_named, decode_numeric};
-
-#[doc(hidden)]
 pub use util::sanitize_uri::sanitize;
 
 pub use util::line_ending::LineEnding;
