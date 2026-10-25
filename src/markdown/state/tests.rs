@@ -137,6 +137,12 @@ fn inline_literals_normalize_block_openers_and_preserve_other_line_endings() {
     assert_eq!(core::mem::take(&mut state.output), "$one > two$");
     state.inline_code("one\r\ntwo", None).unwrap();
     assert_eq!(core::mem::take(&mut state.output), "`one\r\ntwo`");
+    state.inline_code("é ` α", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "``é ` α``");
+    state.inline_math(" $α$ ").unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "$$  $α$  $$");
+    state.inline_code("one\n12. two", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "`one 12. two`");
 }
 
 #[test]

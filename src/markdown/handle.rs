@@ -341,13 +341,12 @@ impl State<'_> {
             self.output.push(' ');
         }
         // Flatten a physical line ending only when a block-opening rule would become active.
-        let mut scratch = core::mem::take(&mut self.scratch);
-        scratch.clear();
-        scratch.push_str(&self.output[start..]);
-        super::escape::normalize_inline(&mut scratch);
-        self.output.truncate(start);
-        self.output.push_str(&scratch);
-        self.scratch = scratch;
+        if super::util::scan::line_endings(content).next().is_some() {
+            self.rewrite(start, |value, output| {
+                super::escape::normalize_inline(value);
+                output.push_str(value);
+            });
+        }
         self.output.extend(core::iter::repeat(marker).take(size));
     }
 

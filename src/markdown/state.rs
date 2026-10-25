@@ -464,19 +464,23 @@ impl<'a> State<'a> {
             }
             let start = self.output.len();
             self.container_phrasing(document, cell, &Info::new("", ""))?;
-            self.rewrite(start, write_table_pipes);
+            self.rewrite(start, |value, output| write_table_pipes(value, output));
         }
         self.output.push_str(" |");
         Ok(())
     }
 
     // Transform only the newly written range; nested formatting reuses this buffer after its children finish.
-    pub(super) fn rewrite(&mut self, start: usize, transform: impl FnOnce(&str, &mut String)) {
+    pub(super) fn rewrite(
+        &mut self,
+        start: usize,
+        transform: impl FnOnce(&mut String, &mut String),
+    ) {
         let mut scratch = core::mem::take(&mut self.scratch);
         scratch.clear();
         scratch.push_str(&self.output[start..]);
         self.output.truncate(start);
-        transform(&scratch, &mut self.output);
+        transform(&mut scratch, &mut self.output);
         self.scratch = scratch;
     }
 
