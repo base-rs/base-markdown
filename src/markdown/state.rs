@@ -804,38 +804,38 @@ pub(super) fn invalid_node() -> Message {
 
 fn write_table_pipes(value: &str, result: &mut String) {
     let bytes = value.as_bytes();
-    let start_output = result.len();
+    let mut start = 0;
     let mut index = 0;
     let mut code_ticks = None;
 
-    while index < bytes.len() {
+    while let Some(offset) = memchr::memchr2(b'`', b'|', &bytes[index..]) {
+        index += offset;
         if bytes[index] == b'`' {
-            let start = index;
+            let marker_start = index;
             index = super::util::scan::marker_run_end(bytes, index + 1, b'`');
-            let ticks = index - start;
+            let ticks = index - marker_start;
             if code_ticks == Some(ticks) {
                 code_ticks = None;
             } else if code_ticks.is_none() && has_matching_ticks(bytes, index, ticks) {
                 code_ticks = Some(ticks);
             }
-            result.push_str(&value[start..index]);
-        } else if bytes[index] == b'|' && code_ticks.is_none() {
-            let slashes = result[start_output..]
-                .chars()
-                .rev()
-                .take_while(|character| *character == '\\')
-                .count();
-            if slashes % 2 == 0 {
-                result.push('\\');
-            }
-            result.push('|');
-            index += 1;
         } else {
-            let character = value[index..].chars().next().expect("valid UTF-8");
-            result.push(character);
-            index += character.len_utf8();
+            if code_ticks.is_none() {
+                let slashes = bytes[..index]
+                    .iter()
+                    .rev()
+                    .take_while(|&&byte| byte == b'\\')
+                    .count();
+                if slashes % 2 == 0 {
+                    result.push_str(&value[start..index]);
+                    result.push('\\');
+                    start = index;
+                }
+            }
+            index += 1;
         }
     }
+    result.push_str(&value[start..]);
 }
 
 #[cfg(test)]
