@@ -24,7 +24,7 @@ Ordinary inline regions scan physical source fragments without copying them. Con
 
 Bare inline link destinations use the shared candidate-byte scanner to skip ordinary URL runs. Scalar handling retains escapes, balanced parentheses, whitespace and control-byte rules; NUL remains destination data until value decoding replaces it. This uses NEON on supported AArch64 targets and the existing scalar fallback elsewhere, without extra parser state or allocation.
 
-Reference and footnote indexes normalize raw identifiers before inline resolution. They preserve authored definitions, including duplicates, while lookup selects the first normalized identifier. String decoding honors independently disabled escape and character-reference constructs. Frontmatter, math, tables, tasks, literal links, and inline-code metadata have direct handlers in the block or inline parser.
+Reference and footnote indexes normalize raw identifiers before inline resolution. They preserve authored definitions, including duplicates. Shared sort/deduplication and binary-search helpers break ties by authored position so lookup selects the first normalized identifier. Their distinct normalization policies remain at the callers. String decoding honors independently disabled escape and character-reference constructs. Frontmatter, math, tables, tasks, literal links, and inline-code metadata have direct handlers in the block or inline parser.
 
 Reference keys borrow contiguous canonical ASCII labels from source; other forms use owned normalized storage. Their ASCII letters use lowercase internally after Unicode folding; footnote keys retain uppercase because they appear in rendered IDs. Pending block separators are explicit delivery phases rather than independent parser state.
 
@@ -34,11 +34,9 @@ The Markdown serializer shares destination/title formatting for definitions, lin
 
 The Markdown serializer writes its three possible block separators directly from static strings, without an intermediate join representation or per-boundary newline allocation.
 
-Code, math and frontmatter formatting share one byte iterator over complete marker runs. Inline delimiters choose the first absent run length; block fences choose a length above the longest run. Table escaping shares run continuation for a known backtick start and the iterator for exact matching of later runs. Keep these selection policies distinct even though the byte scanning is shared.
+Code, math and frontmatter formatting share one byte iterator over complete marker runs. Inline delimiters choose the first absent run length; block fences choose a length above the longest run. Table escaping shares run continuation for a known backtick start and the iterator for exact matching of later runs. Keep these selection policies distinct even though the byte scanning is shared. Code/frontmatter bodies reserve space for the body, closing fence and terminating line ending together to avoid immediate growth after a large body.
 
-The Markdown serializer writes recursively into one output string. Output ranges
-provide preceding context without copying parent strings; reusable scratch handles
-indentation and table escaping. Formatting and escaping use byte scanners and static scope rules; regex is a test-only dependency. The escape matcher retains non-overlapping neighbor consumption and uses ASCII digits for ordered-list markers.
+The Markdown serializer writes recursively into one output string. Output ranges provide preceding context without copying parent strings; reusable scratch handles indentation and table escaping. Escape rules read a borrowed three-part byte view of preceding context, current input and following context. A preflight check uses the same rule predicate to skip rules that cannot affect the input or its immediately preceding escape; possible matches retain the full prefix walk to preserve non-overlapping neighbor consumption. Only those relevant escape positions are collected and sorted. This removes the assembled context string, but escape-heavy adjacent nodes can still rescan preceding context. Formatting and escaping use byte scanners and static scope rules; regex is a test-only dependency. Ordered-list markers use ASCII digits.
 
 Inline code/math normalization uses the same scratch rewrite helper as table escaping and indentation, and skips rewriting values without CR/LF. Phrasing lookahead can return a text value's first character directly when it is outside every escape rule's candidate byte. ASCII spaces/tabs, physical line endings and other context-sensitive prefixes retain speculative rendering, preserving task trimming, wrapping and diagnostic order.
 
@@ -46,6 +44,8 @@ List markers are written directly into the shared output. Ordered items reuse th
 current traversal position, making sibling numbering linear in the number of
 items. Serializing an attached item on its own scans its source-list siblings once
 to retain its original number and uses the configured ordered marker.
+
+Footnote backreferences write through the shared HTML writer instead of assembling intermediate markup and escaped option strings. Each repeated backlink formats its number once and reuses it for the ID suffix and superscript; footnote bodies remain buffered until document completion.
 
 Diagnostics use static identifiers, borrowed or owned reasons, and optional
 half-open byte spans. `Message::span` replaces the former boxed `Place`; public

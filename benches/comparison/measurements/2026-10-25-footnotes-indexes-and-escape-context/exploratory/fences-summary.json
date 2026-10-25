@@ -1,0 +1,94 @@
+{
+  "controls/fenced-code-1m": {
+    "baseline": {
+      "median_ms": 0.02366484074994353,
+      "process_medians_ms": [
+        0.035251795807819127,
+        0.022315376623376623,
+        0.02366484074994353
+      ],
+      "process_spread_percent": 57.97087543165582,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "footnotes": {
+      "median_ms": 0.035022227781435156,
+      "process_medians_ms": [
+        0.030326558550968826,
+        0.03509900277200277,
+        0.035022227781435156
+      ],
+      "process_spread_percent": 15.7368473346986,
+      "control_engine": "baseline",
+      "time_change_percent": 47.99266198957508
+    },
+    "indexes": {
+      "median_ms": 0.033298275089605735,
+      "process_medians_ms": [
+        0.023033964800923252,
+        0.033298275089605735,
+        0.0353867895964544
+      ],
+      "process_spread_percent": 53.62873870084242,
+      "control_engine": "baseline",
+      "time_change_percent": 40.70779280306458
+    },
+    "candidate": {
+      "median_ms": 0.034341313419723254,
+      "process_medians_ms": [
+        0.03254809921186833,
+        0.034341313419723254,
+        0.034376931617987945
+      ],
+      "process_spread_percent": 5.618860856405239,
+      "control_engine": "baseline",
+      "time_change_percent": 45.11533706308673
+    }
+  },
+  "controls/ordinary-code-fence-1m": {
+    "baseline": {
+      "median_ms": 0.022624169884169886,
+      "process_medians_ms": [
+        0.033215007249660165,
+        0.022624169884169886,
+        0.021844745496183208
+      ],
+      "process_spread_percent": 52.05032832936236,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "footnotes": {
+      "median_ms": 0.026986872383985443,
+      "process_medians_ms": [
+        0.023506149729108517,
+        0.033069561364643334,
+        0.026986872383985443
+      ],
+      "process_spread_percent": 40.68472185256311,
+      "control_engine": "baseline",
+      "time_change_percent": 19.283370493377248
+    },
+    "indexes": {
+      "median_ms": 0.03229336301950806,
+      "process_medians_ms": [
+        0.02220266372582287,
+        0.03229336301950806,
+        0.034403975139405206
+      ],
+      "process_spread_percent": 54.954268389839925,
+      "control_engine": "baseline",
+      "time_change_percent": 42.738333317164944
+    },
+    "candidate": {
+      "median_ms": 0.022502182621199674,
+      "process_medians_ms": [
+        0.022011516810473076,
+        0.022502182621199674,
+        0.031334127439724455
+      ],
+      "process_spread_percent": 42.353331256188945,
+      "control_engine": "baseline",
+      "time_change_percent": -0.5391900060632393
+    }
+  }
+}

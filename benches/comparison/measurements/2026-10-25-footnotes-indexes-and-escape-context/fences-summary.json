@@ -1,0 +1,50 @@
+{
+  "controls/fenced-code-1m": {
+    "baseline": {
+      "median_ms": 0.03254770935960591,
+      "process_medians_ms": [
+        0.035054509866182804,
+        0.028590638216070743,
+        0.03254770935960591
+      ],
+      "process_spread_percent": 22.608350332238224,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.02137599145055571,
+      "process_medians_ms": [
+        0.02142734729749524,
+        0.021194124186704386,
+        0.02137599145055571
+      ],
+      "process_spread_percent": 1.1004140050154154,
+      "control_engine": "baseline",
+      "time_change_percent": -34.32412949746663
+    }
+  },
+  "controls/ordinary-code-fence-1m": {
+    "baseline": {
+      "median_ms": 0.03039146491588018,
+      "process_medians_ms": [
+        0.03394398922759569,
+        0.03039146491588018,
+        0.028320018912529547
+      ],
+      "process_spread_percent": 19.858638980562084,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.021652603968938745,
+      "process_medians_ms": [
+        0.02152674672923777,
+        0.021652603968938745,
+        0.02168898154242381
+      ],
+      "process_spread_percent": 0.7536429690311319,
+      "control_engine": "baseline",
+      "time_change_percent": -28.754326160747834
+    }
+  }
+}
