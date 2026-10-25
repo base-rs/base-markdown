@@ -32,7 +32,7 @@ static WHITESPACE: AsciiSet = AsciiSet::new(b" \t\r\n");
 /// ## Examples
 ///
 /// ```rust ignore
-/// core_markdown::util::normalize_identifier::normalize_identifier;
+/// base_markdown::util::normalize_identifier::normalize_identifier;
 ///
 /// assert_eq!(normalize_identifier(" a "), "A");
 /// assert_eq!(normalize_identifier("a\t\r\nb"), "A B");

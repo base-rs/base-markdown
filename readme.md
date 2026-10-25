@@ -1,4 +1,4 @@
-# `core-markdown`
+# `base-markdown`
 
 A CommonMark-compliant Markdown parser for Rust with pull events, a source-backed AST, extensions, and HTML and Markdown renderers. It builds on [`markdown-rs`](https://github.com/wooorm/markdown-rs), with compact CommonMark parsing and a single source-backed document representation.
 
@@ -18,14 +18,14 @@ The existing `Constructs::frontmatter` option also supports language-agnostic fr
 
 The AST stores nodes in a contiguous arena and ordinary text as offsets into one source buffer. `Document` provides traversal, text extraction, heading lookup, section replacement, and checked subtree editing. Both parsed source and edited documents feed the same semantic event contract into the same HTML writer. Markdown serialization preserves reference style, code info strings, and frontmatter; optional heading IDs share their anchors with the table-of-contents helper.
 
-The fork also includes fixes for parsing and serialization edge cases, including CRLF handling in inline code and math. See [releases.md](releases.md) for changes and the [API documentation](https://docs.rs/core-markdown/latest/core_markdown/) for configuration details.
+The fork also includes fixes for parsing and serialization edge cases, including CRLF handling in inline code and math. See [releases.md](releases.md) for changes and the [API documentation](https://docs.rs/base-markdown/latest/base_markdown/) for configuration details.
 
 ## Usage
 
 ### Install
 
 ```sh
-cargo add core-markdown
+cargo add base-markdown
 ```
 
 The library supports Rust 1.73 and later.
@@ -35,14 +35,14 @@ The library supports Rust 1.73 and later.
 For direct conversion from Markdown source to HTML:
 
 ```rust
-let html = core_markdown::to_html("## Hello, *world*!");
+let html = base_markdown::to_html("## Hello, *world*!");
 assert_eq!(html, "<h2>Hello, <em>world</em>!</h2>");
 ```
 
 Enable GFM constructs with `Options::gfm()`:
 
 ```rust
-use core_markdown::{to_html_with_options, Options};
+use base_markdown::{to_html_with_options, Options};
 
 let html = to_html_with_options("* [x] done", &Options::gfm());
 ```
@@ -52,7 +52,7 @@ let html = to_html_with_options("* [x] done", &Options::gfm());
 `EventParser` yields resolved semantic events on demand. Direct HTML rendering and the source-backed `Document` AST use this same contract. A document can own the input buffer, while ordinary text values retain byte ranges into it:
 
 ```rust
-use core_markdown::{render_events, CompileOptions, Document, ParseOptions};
+use base_markdown::{render_events, CompileOptions, Document, ParseOptions};
 
 let source = String::from("# Introduction\n\nHello, *world*!");
 let document = Document::parse(source, &ParseOptions::default()).unwrap();
@@ -73,7 +73,7 @@ assert_eq!(html, "<h1>Introduction</h1>\n<p>Hello, <em>world</em>!</p>");
 Nodes use stable `NodeId` indices. Editing text materializes that value; detaching or moving a subtree retains its IDs and source metadata:
 
 ```rust
-use core_markdown::{to_markdown, Document, HeadingOptions, ParseOptions};
+use base_markdown::{to_markdown, Document, HeadingOptions, ParseOptions};
 
 let mut document = Document::parse(String::from("# Introduction\n\nHello"), &ParseOptions::default()).unwrap();
 let heading = document.headings(&HeadingOptions::default())[0].node;
@@ -91,7 +91,7 @@ assert!(to_markdown(&document).unwrap().starts_with("# Introduction updated"));
 Code-block events retain the opening marker, length, and indentation independently of source offsets:
 
 ```rust
-use core_markdown::{stream::EventKind, Document, ParseOptions};
+use base_markdown::{stream::EventKind, Document, ParseOptions};
 
 let document = Document::parse("  ~~~~rust\n  let x = 1;\n  ~~~~", &ParseOptions::default()).unwrap();
 let code = document.children(document.root()).next().unwrap();
@@ -106,14 +106,14 @@ Indentation is measured in columns relative to the containing block. `NodeSyntax
 
 ### Extensions
 
-The parser inherits support for CommonMark, GFM, frontmatter, and math constructs from `markdown-rs`. The fork-specific parsing options are described under [Motivation](#motivation). HTML output escapes raw HTML by default. MDX, JSX, and JavaScript expression parsing have been removed to simplify the Markdown pipeline. See the [API documentation](https://docs.rs/core-markdown/latest/core_markdown/) for parser options, renderer configuration, and AST types.
+The parser inherits support for CommonMark, GFM, frontmatter, and math constructs from `markdown-rs`. The fork-specific parsing options are described under [Motivation](#motivation). HTML output escapes raw HTML by default. MDX, JSX, and JavaScript expression parsing have been removed to simplify the Markdown pipeline. See the [API documentation](https://docs.rs/base-markdown/latest/base_markdown/) for parser options, renderer configuration, and AST types.
 
 ### Language-agnostic frontmatter
 
 Enable the existing frontmatter construct to accept any format. The opening fence must be unindented on the first line of the document, outside list items and blockquotes, and have a matching closing fence:
 
 ````rust
-use core_markdown::{Document, NodeSyntax, Constructs, ParseOptions};
+use base_markdown::{Document, NodeSyntax, Constructs, ParseOptions};
 
 let options = ParseOptions {
     constructs: Constructs { frontmatter: true, ..Constructs::default() },
@@ -133,15 +133,22 @@ Markdown serialization retains the stored info string and body while normalizing
 
 ## Releasing
 
-Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or `bump --version X.Y.Z`), commit with a `Release: vVERSION` Git trailer, then run `cargo bake cargo:release` and open a pull request. After review and merge, GitHub Actions publishes the release when the configured `crates-io` environment approves it. Follow the shared [Releasing skill](https://github.com/core-rs/core-project/blob/main/context/releasing.md) for the standard process.
+Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or `bump --version X.Y.Z`), commit with a `Release: vVERSION` Git trailer, then run `cargo bake cargo:release` and open a pull request. After review and merge, GitHub Actions publishes the release when the configured `crates-io` environment approves it. Follow the shared [Releasing skill](https://github.com/base-rs/base-project/blob/main/context/releasing.md) for the standard process.
 
 ## Releases
 
 <!-- bake-readme:releases:start -->
-
 See [releases.md](releases.md) for the full release history.
 
-### v0.2.0
+### v0.1.0
+
+- Publish as `base-markdown` in the `base-rs` organization, with package versions starting at 0.1.0.
+
+- Consolidate text construction into one semantic value state, share physical line-ending scans and terminal boundaries, and avoid repeated reference-label, email-prefix and table-cell scans. Preserve output, authored syntax and source spans.
+
+- Avoid intermediate escaped image-title strings, retain source-backed values across empty decoding fragments, borrow semantic text when choosing heading syntax, and skip Markdown table-cell rewrites when no pipe needs escaping. Preserve rendered output and source spans.
+
+- Document downstream migration details for heading spans, frontmatter values, and resolved reference destinations. Update fuzz targets to the sole `Document` AST.
 
 - Fuse inline-title continuation normalization and decoding, share semantic heading text and terminal line-ending rules, and remove infallible API wrappers. `EventParser::new` now returns the parser directly and `to_html_with_options` returns `String`; remove `?`, `.unwrap()` or `.expect(...)` from those calls. This is a breaking API change; checked event consumers, document validation and Markdown serialization retain their errors. See the migration in `context/pull-parser.md`.
 
@@ -225,11 +232,8 @@ See [releases.md](releases.md) for the full release history.
 
 - Improve Markdown parsing throughput and large-document scaling by indexing and batching event edits, scanning ordinary byte runs, compacting internal events and states, and reusing tokenizer buffers. Retain extension support and ordinary HTML output, with the corrections described above.
 
-### v0.1.0
-
-- Publish as `core-markdown` in the `core-rs` organization, with version numbering restarted at `0.1.0`.
+- Publish as `base-markdown` in the `base-rs` organization, with version numbering restarted at `0.1.0`.
 - Require a `Release: vVERSION` Git trailer on the final release commit; version changes alone no longer trigger publication.
-
 <!-- bake-readme:releases:end -->
 
 ## See Also
@@ -239,16 +243,16 @@ See [releases.md](releases.md) for the full release history.
 
 ## Contributing
 
-Please open an issue or pull request on [GitHub](https://github.com/core-rs/core-markdown).
+Please open an issue or pull request on [GitHub](https://github.com/base-rs/base-markdown).
 
 ### Agent Context
 
 Run `cargo bake agent:context:install` to install shared context and skills. Read `.agents/context/index.md` to find relevant guides, follow `agents.md` if present, and apply skills under `.agents/skills/`. The installer preserves repository-owned `agents.md`; it does not create or regenerate that file.
 
-[badge-build-image]: https://github.com/core-rs/core-markdown/actions/workflows/test.yml/badge.svg
+[badge-build-image]: https://github.com/base-rs/base-markdown/actions/workflows/test.yml/badge.svg
 
-[badge-build-url]: https://github.com/core-rs/core-markdown/actions
+[badge-build-url]: https://github.com/base-rs/base-markdown/actions
 
-[badge-coverage-image]: https://github.com/core-rs/core-markdown/actions/workflows/test.yml/badge.svg
+[badge-coverage-image]: https://github.com/base-rs/base-markdown/actions/workflows/test.yml/badge.svg
 
-[badge-coverage-url]: https://github.com/core-rs/core-markdown/actions/workflows/test.yml
+[badge-coverage-url]: https://github.com/base-rs/base-markdown/actions/workflows/test.yml

@@ -16,7 +16,7 @@ use alloc::string::String;
 /// ## Examples
 ///
 /// ```rust ignore
-/// use core_markdown::util::tagfilter::tagfilter;
+/// use base_markdown::util::tagfilter::tagfilter;
 ///
 /// assert_eq!(tagfilter("<iframe>"), "&lt;iframe>");
 /// ```

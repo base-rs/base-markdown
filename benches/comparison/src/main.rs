@@ -12,9 +12,9 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
     match parser {
         "core-stream" => {
             let mut options = if profile.starts_with("gfm") {
-                core_markdown::Options::gfm()
+                base_markdown::Options::gfm()
             } else {
-                core_markdown::Options::default()
+                base_markdown::Options::default()
             };
             if profile != "default" {
                 options.compile.allow_dangerous_html = true;
@@ -25,21 +25,21 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                 options.parse.constructs.label_start_footnote = false;
             }
             Box::new(move |s| {
-                let events = core_markdown::EventParser::new(s, &options.parse);
+                let events = base_markdown::EventParser::new(s, &options.parse);
                 let mut output = String::new();
-                core_markdown::render_events(s, events, &options.compile, &mut output).unwrap();
+                base_markdown::render_events(s, events, &options.compile, &mut output).unwrap();
                 output
             })
         }
-        "core-markdown" | "core-ast" | "core-arena" | "core-prepare" | "core-events" | "core-markdown-output" => {
-            let markdown = parser == "core-markdown-output";
+        "base-markdown" | "core-ast" | "core-arena" | "core-prepare" | "core-events" | "base-markdown-output" => {
+            let markdown = parser == "base-markdown-output";
             let prepare = parser == "core-prepare";
             let events = parser == "core-events";
             let arena = matches!(parser,"core-arena"|"core-ast");
             let mut options = if profile.starts_with("gfm") {
-                core_markdown::Options::gfm()
+                base_markdown::Options::gfm()
             } else {
-                core_markdown::Options::default()
+                base_markdown::Options::default()
             };
             if profile != "default" {
                 options.compile.allow_dangerous_html = true;
@@ -51,7 +51,7 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
             }
             Box::new(move |s| {
                 if prepare || events {
-                    let parser = core_markdown::EventParser::new(s, &options.parse);
+                    let parser = base_markdown::EventParser::new(s, &options.parse);
                     if events {
                         for event in parser {
                             black_box(event.unwrap());
@@ -61,12 +61,12 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                     }
                     String::new()
                 } else if markdown {
-                    let document = core_markdown::Document::parse(s, &options.parse).unwrap();
-                    core_markdown::to_markdown(&document).unwrap()
+                    let document = base_markdown::Document::parse(s, &options.parse).unwrap();
+                    base_markdown::to_markdown(&document).unwrap()
                 } else if arena {
-                    let document = core_markdown::Document::parse(s, &options.parse).unwrap();
+                    let document = base_markdown::Document::parse(s, &options.parse).unwrap();
                     let mut output = String::new();
-                    core_markdown::render_events(
+                    base_markdown::render_events(
                         s,
                         document.events(),
                         &options.compile,
@@ -75,7 +75,7 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                     .unwrap();
                     output
                 } else {
-                    core_markdown::to_html_with_options(s, &options)
+                    base_markdown::to_html_with_options(s, &options)
                 }
             })
         }

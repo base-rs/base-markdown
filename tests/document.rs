@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{
+use base_markdown::{
     stream::{EventKind, Tag, Text},
     CompileOptions, Document, HeadingOptions, NodeSyntax, Options, ParseOptions, ReferenceKind,
 };
@@ -267,7 +267,7 @@ fn frontmatter_edits_detach_the_body_and_keep_fence_metadata() {
             Some(format!("{before}edited!").as_str())
         );
         assert_eq!(html(&document), "");
-        let output = core_markdown::to_markdown(&document).unwrap();
+        let output = base_markdown::to_markdown(&document).unwrap();
         let reparsed = Document::parse(output.as_str(), &options).unwrap();
         let id = reparsed.children(reparsed.root()).next().unwrap();
         assert_eq!(
@@ -289,7 +289,7 @@ fn frontmatter_edits_detach_the_body_and_keep_fence_metadata() {
         .unwrap();
     let syntax = NodeSyntax::Frontmatter {
         info: Text::Literal(""),
-        fence: core_markdown::CodeFence {
+        fence: base_markdown::CodeFence {
             character: '-',
             length: 3,
             indent: 0,
@@ -357,10 +357,10 @@ fn section_replacement_copies_values_without_retaining_another_source_buffer() {
     document
         .replace_heading_section(root, 0, &replacement, true, true)
         .unwrap();
-    assert!(core_markdown::to_markdown(&document)
+    assert!(base_markdown::to_markdown(&document)
         .unwrap()
         .contains("[link](/u)"));
-    assert!(core_markdown::to_markdown(&document)
+    assert!(base_markdown::to_markdown(&document)
         .unwrap()
         .contains("rust meta"));
 }
@@ -497,7 +497,7 @@ fn structural_edits_refresh_list_tightness_and_item_endings() {
 
 #[test]
 fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax() {
-    use core_markdown::{
+    use base_markdown::{
         stream::{Event, TagKind},
         AstBuilder,
     };
@@ -556,7 +556,7 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
             EventKind::CodeBlock {
                 value: Text::Literal("x"),
                 language: None,
-                fence: Some(core_markdown::CodeFence {
+                fence: Some(base_markdown::CodeFence {
                     character: '`',
                     length: 3,
                     indent: 0,
@@ -608,7 +608,7 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
             id,
             Some(NodeSyntax::Frontmatter {
                 info: Text::Literal(""),
-                fence: core_markdown::CodeFence {
+                fence: base_markdown::CodeFence {
                     character: '-',
                     length: 3,
                     indent: 0,
@@ -639,11 +639,11 @@ fn escaped_footnote_labels_and_nul_code_info_roundtrip() {
     let options = Options::gfm();
     let source = "Call.[^a\\]b].\n\n[^a\\]b]: y\n";
     let document = Document::parse(source, &options.parse).unwrap();
-    let markdown = core_markdown::to_markdown(&document).unwrap();
+    let markdown = base_markdown::to_markdown(&document).unwrap();
     assert!(markdown.contains("[^a\\]b]"));
     assert_eq!(
         html(&document),
-        core_markdown::to_html_with_options(&markdown, &options)
+        base_markdown::to_html_with_options(&markdown, &options)
     );
     let source = "```r\0ust extra &amp;\nx\n```\n";
     let document = Document::parse(source, &ParseOptions::default()).unwrap();
@@ -652,14 +652,14 @@ fn escaped_footnote_labels_and_nul_code_info_roundtrip() {
         panic!()
     };
     assert_eq!(info.resolve(source).unwrap(), "r\0ust extra &");
-    let markdown = core_markdown::to_markdown(&document).unwrap();
+    let markdown = base_markdown::to_markdown(&document).unwrap();
     assert!(
         markdown.contains("extra &"),
         "{:?}; {:?}",
         markdown,
         document.node(id).unwrap().kind
     );
-    assert_eq!(html(&document), core_markdown::to_html(&markdown));
+    assert_eq!(html(&document), base_markdown::to_html(&markdown));
 }
 
 #[test]
@@ -698,11 +698,11 @@ fn copied_references_preserve_targets_with_conflicting_or_missing_definitions() 
             .replace_heading_section(root, index, &replacement, true, true)
             .unwrap();
         drop(replacement);
-        let markdown = core_markdown::to_markdown(&document).unwrap();
+        let markdown = base_markdown::to_markdown(&document).unwrap();
         assert!(markdown.contains("[x](/new \"title\")"));
         assert_eq!(
             html(&document).trim_end(),
-            core_markdown::to_html(&markdown).trim_end()
+            base_markdown::to_html(&markdown).trim_end()
         );
     }
 }
@@ -723,7 +723,7 @@ fn copied_sections_materialize_frontmatter_footnotes_and_edited_values() {
     document
         .replace_heading_section(document.root(), 0, &replacement, true, true)
         .unwrap();
-    let markdown = core_markdown::to_markdown(&document).unwrap();
+    let markdown = base_markdown::to_markdown(&document).unwrap();
     drop(replacement);
     assert!(markdown.contains("custom\nbody\nedited\n---"));
     assert!(markdown.contains("[^Mixed]"));
@@ -734,7 +734,7 @@ fn copied_sections_materialize_frontmatter_footnotes_and_edited_values() {
     );
     assert_eq!(
         html(&document).trim_end(),
-        core_markdown::to_html_with_options(&markdown, &options).trim_end()
+        base_markdown::to_html_with_options(&markdown, &options).trim_end()
     );
 }
 
@@ -799,7 +799,7 @@ fn custom_heading_helpers_capture_the_same_leaf_set_and_line_endings_as_html() {
 
 #[test]
 fn item_source_spacing_preserves_crlf_boundaries_and_detached_hints() {
-    use core_markdown::{
+    use base_markdown::{
         stream::{Event, TagKind},
         AstBuilder,
     };
@@ -923,8 +923,8 @@ fn section_copy_preserves_nested_siblings_empty_containers_and_insertion_boundar
         document
             .replace_heading_section(root, index, &replacement, true, true)
             .unwrap();
-        let prefix_html = core_markdown::to_html(prefix);
-        let suffix_html = core_markdown::to_html(suffix);
+        let prefix_html = base_markdown::to_html(prefix);
+        let suffix_html = base_markdown::to_html(suffix);
         let expected = format!("{prefix_html}{expected}\n{suffix_html}");
         assert_eq!(html(&document).trim_end(), expected.trim_end());
         let copied: Vec<_> = document

@@ -8,7 +8,7 @@
 // To do: clippy introduced this in 1.72 but breaks when it fixes it.
 // Remove when solved.
 mod support;
-use core_markdown::{message, to_html, to_html_with_options, Options, ParseOptions};
+use base_markdown::{message, to_html, to_html_with_options, Options, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
 use support::fixture::Position;
@@ -441,7 +441,7 @@ u ~**xxx**~ zzz
 
 #[test]
 fn strikethrough_is_invariant_under_unrelated_options() {
-    use core_markdown::{render_events, Document, EventParser};
+    use base_markdown::{render_events, Document, EventParser};
     for single in [false, true] {
         let mut options = Options::gfm();
         options.parse.strikethrough_single_tilde = single;

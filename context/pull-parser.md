@@ -36,7 +36,7 @@ The AST uses a contiguous arena with stable node indices and parent/child/siblin
 
 Pull-based event delivery is distinct from accepting input in chunks. The initial implementation accepts a complete UTF-8 buffer. CommonMark forward references and list tightness require preparation before some semantic events can be yielded. The block pass records source ranges, container relationships, and definitions. Inline parsing is deferred until its containing block is requested. Compact event delivery moves through explicit `Start`, `Body`, `DocumentEnd`, and `Done` phases. Infrequent document boundaries stay outside the hot body loop. After the optional final separator, it closes the document without walking the finished block tree again; final code/HTML separator rules are derived from the final block rather than maintained during leaf delivery. Temporary delimiter and bracket state is bounded by the active inline region, and its storage is reused across regions.
 
-The block pass uses a compact arena of block relationships and source fragments for paragraphs, headings, lists, quotes, rules, code, all HTML block forms, tables, footnotes, math, and frontmatter. It does not emit grammar enter/exit tokens or retain per-line event edits. Core construct switches and optional extensions select individual syntax handlers within this same pass.
+The block pass uses a compact arena of block relationships and source fragments for paragraphs, headings, lists, quotes, rules, code, all HTML block forms, tables, footnotes, math, and frontmatter. It does not emit grammar enter/exit tokens or retain per-line event edits. Base construct switches and optional extensions select individual syntax handlers within this same pass.
 
 Definitions retain authored order and source-backed labels, destinations, and titles where possible. Separate sorted indexes select the first reference or footnote definition for each normalized raw identifier; duplicate authored definitions remain available to AST consumers. Forward references resolve because indexes are finished before event delivery. Definition lookahead traverses content fragments lazily, stopping at block interruptions, and commits a destination-only definition if an invalid title attempt started on a later line.
 
@@ -91,7 +91,7 @@ The algorithmic references are pulldown-cmark's [two-pass pull design](https://p
 `EventParser::new` now returns `EventParser` directly, and `to_html_with_options` returns `String`. Remove `?`, `.unwrap()` or `.expect(...)` from those two calls. This is a breaking API change that removes error wrappers retained after MDX removal.
 
 ```rust
-use core_markdown::{EventParser, Options, to_html_with_options};
+use base_markdown::{EventParser, Options, to_html_with_options};
 
 let options = Options::default();
 let html: String = to_html_with_options("# Heading", &options);

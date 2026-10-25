@@ -26,7 +26,7 @@ const URI_SAFE: [bool; 256] = {
 /// ## Examples
 ///
 /// ```rust ignore
-/// use core_markdown::util::sanitize_uri::sanitize;
+/// use base_markdown::util::sanitize_uri::sanitize;
 ///
 /// assert_eq!(sanitize("javascript:alert(1)"), "javascript:alert(1)");
 /// assert_eq!(sanitize("https://a👍b.c/%20/%"), "https://a%F0%9F%91%8Db.c/%20/%25");
@@ -60,7 +60,7 @@ pub fn sanitize(value: &str) -> String {
 /// ## Examples
 ///
 /// ```rust ignore
-/// use core_markdown::util::sanitize_uri::sanitize_with_protocols;
+/// use base_markdown::util::sanitize_uri::sanitize_with_protocols;
 ///
 /// assert_eq!(sanitize_with_protocols("javascript:alert(1)", &["http", "https"]), "");
 /// assert_eq!(sanitize_with_protocols("https://example.com", &["http", "https"]), "https://example.com");

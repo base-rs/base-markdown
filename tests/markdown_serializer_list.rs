@@ -4,7 +4,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use core_markdown::markdown::{IndentOptions, Options};
+use base_markdown::markdown::{IndentOptions, Options};
 use pretty_assertions::assert_eq;
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
 use support::fixture::{List, ListItem, Node, Paragraph, Text, ThematicBreak};

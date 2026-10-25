@@ -4,7 +4,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use core_markdown::{
+use base_markdown::{
     message, to_html, to_html_with_options, CompileOptions, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
@@ -30,7 +30,7 @@ fn definitions_use_the_same_compact_container_rules_as_other_blocks() {
 
 #[test]
 fn definitions_preserve_values_across_parser_options() {
-    use core_markdown::{render_events, stream::EventKind, Document, EventParser};
+    use base_markdown::{render_events, stream::EventKind, Document, EventParser};
 
     let options = Options::default();
     let configured = Options {
@@ -664,7 +664,7 @@ fn definition() -> Result<(), message::Message> {
 
 #[test]
 fn inline_regions_share_prepared_references_across_options() {
-    use core_markdown::{render_events, Document, EventParser};
+    use base_markdown::{render_events, Document, EventParser};
     let source = "[MiXeD]: /first\n[mixed]: /ignored\n[STRASSE]: /unicode\n\nbefore <i\n title=\"x\"> [a][mixed] and [b][straße] ![alt][MIXED] [missing]\n\nnext [MiXeD]\n";
     let expected = "<p>before <i\ntitle=\"x\"> <a href=\"/first\">a</a> and <a href=\"/unicode\">b</a> <img src=\"/first\" alt=\"alt\" /> [missing]</p>\n<p>next <a href=\"/first\">MiXeD</a></p>\n";
     for extended_options in [false, true] {

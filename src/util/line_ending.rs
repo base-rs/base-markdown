@@ -45,7 +45,7 @@ pub(crate) fn trim_terminal_ending(value: &str) -> &str {
 /// ## Examples
 ///
 /// ```
-/// use core_markdown::LineEnding;
+/// use base_markdown::LineEnding;
 /// # fn main() {
 ///
 /// // Use a CR + LF combination:

@@ -5,7 +5,7 @@
 
 #![cfg(feature = "serde")]
 
-use core_markdown::{
+use base_markdown::{
     stream::{Event, EventKind, Tag, Text},
     CodeFence, Document, NodeSyntax, Options, ReferenceKind,
 };
@@ -79,8 +79,8 @@ fn document_serialization_preserves_source_edits_metadata_and_detached_subtrees(
     assert_eq!(html(&restored), html(&document));
     assert_eq!(restored.text_content(detached), "detached");
     assert_eq!(
-        core_markdown::to_markdown(&restored).unwrap(),
-        core_markdown::to_markdown(&document).unwrap()
+        base_markdown::to_markdown(&restored).unwrap(),
+        base_markdown::to_markdown(&document).unwrap()
     );
     assert_eq!(serde_json::to_string(&restored).unwrap(), stored);
     assert!(restored.syntax(code).is_none());
@@ -101,7 +101,7 @@ fn events_text_and_syntax_have_owned_deserialization() {
         EventKind::Text(Text::Literal("literal")),
         EventKind::Text(Text::Source(0..1)),
         EventKind::Start(Tag::TableCell {
-            alignment: core_markdown::AlignKind::Center,
+            alignment: base_markdown::AlignKind::Center,
             header: true,
         }),
         EventKind::CodeBlock {
@@ -213,7 +213,7 @@ fn invalid_serialized_arena_links_ranges_and_metadata_are_rejected() {
 
 #[test]
 fn alignment_and_configuration_values_round_trip() {
-    use core_markdown::AlignKind;
+    use base_markdown::AlignKind;
     for (value, wire) in [
         (AlignKind::None, json!(null)),
         (AlignKind::Left, json!("left")),
@@ -276,7 +276,7 @@ fn extension_configuration_uses_syntax_names() {
     let restored: Options = serde_json::from_value(wire.clone()).unwrap();
     assert_eq!(serde_json::to_value(&restored).unwrap(), wire);
     let source = "note[^a]\n\n[^a]: explanation\n\n- [x] done";
-    let html = core_markdown::to_html_with_options(source, &restored);
+    let html = base_markdown::to_html_with_options(source, &restored);
     assert!(html.contains("<h3 id=\"footnote-label\" class=\"notes\">Notes</h3>"));
     assert!(html.contains("id=\"notes-fn-a\""));
     assert!(html.contains("aria-label=\"Back to the note\""));
@@ -285,7 +285,7 @@ fn extension_configuration_uses_syntax_names() {
 
 #[test]
 fn alignment_deserialization_accepts_byte_labels_and_optional_none() {
-    use core_markdown::AlignKind;
+    use base_markdown::AlignKind;
     use serde::{
         de::value::{BytesDeserializer, Error, UnitDeserializer},
         Deserialize,

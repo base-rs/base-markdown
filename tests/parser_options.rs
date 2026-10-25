@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{to_html_with_options, Document, Options};
+use base_markdown::{to_html_with_options, Document, Options};
 
 fn assert_configured_html(source: &str, expected: &str, gfm: bool) {
     let mut options = if gfm {
@@ -114,7 +114,7 @@ fn configured_fences_preserve_info_metadata_and_reject_embedded_markers() {
 
 #[test]
 fn mixed_inline_regions_preserve_one_document_lifecycle() {
-    use core_markdown::{
+    use base_markdown::{
         stream::{EventKind, Tag, TagKind},
         EventParser,
     };
@@ -144,7 +144,7 @@ fn mixed_inline_regions_preserve_one_document_lifecycle() {
             assert!(parser.next().is_none());
         }
         let mut checked = String::new();
-        core_markdown::render_events(
+        base_markdown::render_events(
             source,
             events.into_iter().map(Ok),
             &options.compile,

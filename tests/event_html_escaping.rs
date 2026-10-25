@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{
+use base_markdown::{
     render_events,
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
     Document, EventHtmlRenderer, EventParser, Options,
@@ -66,7 +66,7 @@ fn escaping_uses_heading_capture_before_footnote_capture() {
     let source = "# Main &\"<>\0\n\nNote[^n].\n\n[^n]: # Nested &\"<>\0\n\n    Body &\"<>\0\n";
     let mut options = Options::gfm();
     options.compile.heading_ids = true;
-    let expected = core_markdown::to_html_with_options(source, &options);
+    let expected = base_markdown::to_html_with_options(source, &options);
     let marker = "&amp;&quot;&lt;&gt;�";
     let footnotes = expected.find("<section data-footnotes").unwrap();
     assert!(expected[..footnotes].contains(&format!("Main {marker}</h1>")));

@@ -1,8 +1,8 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::stream::EventKind;
-use core_markdown::{CodeFence, Constructs, Document, NodeId, NodeSyntax, ParseOptions};
+use base_markdown::stream::EventKind;
+use base_markdown::{CodeFence, Constructs, Document, NodeId, NodeSyntax, ParseOptions};
 use pretty_assertions::assert_eq;
 
 fn code(source: &str, options: &ParseOptions) -> EventKind<'static> {
@@ -184,7 +184,7 @@ fn detached_and_edited_nodes_keep_fence_metadata() {
     document.set_syntax(node, None).unwrap();
     assert_eq!(document_fence(&document, node), expected);
     assert_eq!(
-        core_markdown::to_markdown_node(&document, node, &Default::default()).unwrap(),
+        base_markdown::to_markdown_node(&document, node, &Default::default()).unwrap(),
         "```python\nedited\n```\n"
     );
 }

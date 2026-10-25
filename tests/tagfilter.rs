@@ -7,7 +7,7 @@
 
 // To do: clippy introduced this in 1.72 but breaks when it fixes it.
 // Remove when solved.
-use core_markdown::{to_html_with_options, CompileOptions, Options};
+use base_markdown::{to_html_with_options, CompileOptions, Options};
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -174,7 +174,7 @@ javascript:/*--></title></style></textarea></script></xmp><svg/onload='+/"/+/onm
 
 #[test]
 fn filtered_html_uses_the_same_heading_and_footnote_captures() {
-    use core_markdown::{render_events, Document, EventParser};
+    use base_markdown::{render_events, Document, EventParser};
     let mut options = Options::gfm();
     options.compile.allow_dangerous_html = true;
     options.compile.heading_ids = true;

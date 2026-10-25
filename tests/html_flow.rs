@@ -4,7 +4,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use core_markdown::{
+use base_markdown::{
     message, to_html, to_html_with_options, CompileOptions, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
@@ -101,20 +101,20 @@ fn html_flow_can_continue_across_blank_lines_when_indented() {
         ("<div>\n\n\ttext\n", 1, "<div>\n\n\ttext\n"),
         ("<div>\n  ", 1, "<div>\n  "),
     ] {
-        let document = core_markdown::Document::parse(source, &options).unwrap();
+        let document = base_markdown::Document::parse(source, &options).unwrap();
         let children: Vec<_> = document
             .children(document.root())
             .filter(|id| {
                 !matches!(
                     document.node(*id).unwrap().kind,
-                    core_markdown::stream::EventKind::Separator { .. }
+                    base_markdown::stream::EventKind::Separator { .. }
                 )
             })
             .collect();
         assert_eq!(children.len(), expected_children);
         assert!(matches!(
             document.node(children[0]).unwrap().kind,
-            core_markdown::stream::EventKind::Html { .. }
+            base_markdown::stream::EventKind::Html { .. }
         ));
         assert_eq!(document.text_content(children[0]), expected_first);
         if children.len() > 1 {
@@ -122,7 +122,7 @@ fn html_flow_can_continue_across_blank_lines_when_indented() {
         }
     }
     let source = "<div>\n\tfirst\n  second\n\n  last\n";
-    let document = core_markdown::Document::parse(source, &options).unwrap();
+    let document = base_markdown::Document::parse(source, &options).unwrap();
     assert!(document.text_content(document.root()).contains("<div>"));
 }
 
@@ -1192,7 +1192,7 @@ fn html_flow_7_complete() {
 
 #[test]
 fn retained_blank_lines_end_at_the_enclosing_container_boundary() {
-    use core_markdown::{render_events, Document, EventParser};
+    use base_markdown::{render_events, Document, EventParser};
     let options = Options {
         parse: ParseOptions {
             html_block_blank_lines: true,
@@ -1231,7 +1231,7 @@ fn retained_blank_lines_end_at_the_enclosing_container_boundary() {
 
 #[test]
 fn retained_html_keeps_only_lines_inside_the_active_container() {
-    use core_markdown::{render_events, stream::EventKind, Document, EventParser};
+    use base_markdown::{render_events, stream::EventKind, Document, EventParser};
     let options = Options {
         parse: ParseOptions {
             html_block_blank_lines: true,
@@ -1272,7 +1272,7 @@ fn retained_html_keeps_only_lines_inside_the_active_container() {
 
 #[test]
 fn retained_html_preserves_adjacent_sibling_list_items() {
-    use core_markdown::{render_events, Document, EventParser};
+    use base_markdown::{render_events, Document, EventParser};
     let options = Options {
         parse: ParseOptions {
             html_block_blank_lines: true,
@@ -1315,7 +1315,7 @@ fn retained_html_preserves_adjacent_sibling_list_items() {
 
 #[test]
 fn compact_html_preserves_values_spans_and_rendering_paths() {
-    use core_markdown::{render_events, stream::EventKind, Document, EventParser};
+    use base_markdown::{render_events, stream::EventKind, Document, EventParser};
 
     let mut options = Options::default();
     options.compile.allow_dangerous_html = true;
@@ -1420,7 +1420,7 @@ fn compact_html_preserves_values_spans_and_rendering_paths() {
 
 #[test]
 fn unclosed_html_container_boundaries_preserve_terminal_source_endings() {
-    use core_markdown::{stream::EventKind, EventParser};
+    use base_markdown::{stream::EventKind, EventParser};
     let mut options = Options::default();
     options.compile.allow_dangerous_html = true;
     let mut configured = Options::default();

@@ -5,7 +5,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use core_markdown::{
+use base_markdown::{
     message, to_html, to_html_with_options, CompileOptions, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
@@ -376,7 +376,7 @@ Text.</li>
 
 #[test]
 fn tasks_preserve_markers_and_whitespace_across_options() {
-    use core_markdown::{stream::EventKind, EventParser};
+    use base_markdown::{stream::EventKind, EventParser};
     let options = Options::gfm();
     let mut configured = Options::gfm();
     configured.parse.constructs.math_flow = true;

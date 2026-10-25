@@ -3,7 +3,7 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{to_html, to_html_with_options, CompileOptions, LineEnding, Options};
+use base_markdown::{to_html, to_html_with_options, CompileOptions, LineEnding, Options};
 use pretty_assertions::assert_eq;
 
 #[test]

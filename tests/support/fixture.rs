@@ -4,12 +4,12 @@
 //! Declarative test inputs, converted to the public document AST before rendering.
 //! These types describe fixtures only; there is no parser or renderer implementation here.
 #![allow(dead_code)]
-use core_markdown::stream::Text as EventText;
-pub use core_markdown::{AlignKind, CodeFence, ReferenceKind};
-use core_markdown::{Document, NodeId, NodeSyntax, ParseOptions};
+use base_markdown::stream::Text as EventText;
+pub use base_markdown::{AlignKind, CodeFence, ReferenceKind};
+use base_markdown::{Document, NodeId, NodeSyntax, ParseOptions};
 use std::collections::BTreeMap;
 
-use core_markdown::stream::{EventKind, Tag};
+use base_markdown::stream::{EventKind, Tag};
 /// Historical source coordinates retained only as fixture descriptions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Position([usize; 6]);
@@ -575,32 +575,32 @@ fn append(
 pub trait MarkdownFixture {
     fn markdown(
         &self,
-        options: &core_markdown::MarkdownOptions,
-    ) -> Result<String, core_markdown::message::Message>;
+        options: &base_markdown::MarkdownOptions,
+    ) -> Result<String, base_markdown::message::Message>;
 }
 impl MarkdownFixture for Node {
     fn markdown(
         &self,
-        options: &core_markdown::MarkdownOptions,
-    ) -> Result<String, core_markdown::message::Message> {
-        core_markdown::to_markdown_with_options(&self.document(), options)
+        options: &base_markdown::MarkdownOptions,
+    ) -> Result<String, base_markdown::message::Message> {
+        base_markdown::to_markdown_with_options(&self.document(), options)
     }
 }
 impl<S: AsRef<str>> MarkdownFixture for Document<S> {
     fn markdown(
         &self,
-        options: &core_markdown::MarkdownOptions,
-    ) -> Result<String, core_markdown::message::Message> {
-        core_markdown::to_markdown_with_options(self, options)
+        options: &base_markdown::MarkdownOptions,
+    ) -> Result<String, base_markdown::message::Message> {
+        base_markdown::to_markdown_with_options(self, options)
     }
 }
-pub fn to_markdown(node: &impl MarkdownFixture) -> Result<String, core_markdown::message::Message> {
+pub fn to_markdown(node: &impl MarkdownFixture) -> Result<String, base_markdown::message::Message> {
     node.markdown(&Default::default())
 }
 pub fn to_markdown_with_options(
     node: &impl MarkdownFixture,
-    options: &core_markdown::MarkdownOptions,
-) -> Result<String, core_markdown::message::Message> {
+    options: &base_markdown::MarkdownOptions,
+) -> Result<String, base_markdown::message::Message> {
     node.markdown(options)
 }
 
@@ -611,7 +611,7 @@ pub struct ParsedDocument(pub Document);
 pub fn parse_fixture(
     source: &str,
     options: &ParseOptions,
-) -> Result<ParsedDocument, core_markdown::message::Message> {
+) -> Result<ParsedDocument, base_markdown::message::Message> {
     Ok(ParsedDocument(
         Document::parse(source.to_owned(), options).expect("valid parser stream"),
     ))

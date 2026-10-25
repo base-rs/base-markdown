@@ -3,7 +3,7 @@
 Enable Markdown extensions by their syntax names. `Constructs` controls parsing, `ParseOptions` adjusts syntax details, and `CompileOptions` controls HTML output.
 
 ```rust
-use core_markdown::{to_html_with_options, Constructs, Options, ParseOptions};
+use base_markdown::{to_html_with_options, Constructs, Options, ParseOptions};
 
 let options = Options {
     parse: ParseOptions {

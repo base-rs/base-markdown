@@ -5,20 +5,20 @@
 
 fn main() {
     // Safely turn (untrusted?) markdown into HTML.
-    println!("{:?}", core_markdown::to_html("## Hello, *world*!"));
+    println!("{:?}", base_markdown::to_html("## Hello, *world*!"));
 
     // Turn trusted markdown into HTML.
     println!(
         "{:?}",
-        core_markdown::to_html_with_options(
+        base_markdown::to_html_with_options(
             "<div style=\"color: goldenrod\">\n\n# Hi, *Saturn*! 🪐\n\n</div>",
-            &core_markdown::Options {
-                compile: core_markdown::CompileOptions {
+            &base_markdown::Options {
+                compile: base_markdown::CompileOptions {
                     allow_dangerous_html: true,
                     allow_dangerous_protocol: true,
-                    ..core_markdown::CompileOptions::default()
+                    ..base_markdown::CompileOptions::default()
                 },
-                ..core_markdown::Options::default()
+                ..base_markdown::Options::default()
             }
         )
     );
@@ -26,18 +26,18 @@ fn main() {
     // Support GFM extensions.
     println!(
         "{}",
-        core_markdown::to_html_with_options(
+        base_markdown::to_html_with_options(
             "* [x] contact ~Mercury~Venus at hi@venus.com!",
-            &core_markdown::Options::gfm()
+            &base_markdown::Options::gfm()
         )
     );
 
     // Access the syntax tree:
     println!(
         "{:?}",
-        core_markdown::Document::parse(
+        base_markdown::Document::parse(
             "# Hello, *world*!",
-            &core_markdown::ParseOptions::default()
+            &base_markdown::ParseOptions::default()
         )
         .unwrap()
     );

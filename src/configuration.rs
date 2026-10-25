@@ -16,7 +16,7 @@ use alloc::string::String;
 /// ## Examples
 ///
 /// ```
-/// use core_markdown::Constructs;
+/// use base_markdown::Constructs;
 /// # fn main() {
 ///
 /// // Use the default trait to get `CommonMark` constructs:
@@ -351,7 +351,7 @@ impl Constructs {
 /// ## Examples
 ///
 /// ```
-/// use core_markdown::CompileOptions;
+/// use base_markdown::CompileOptions;
 /// # fn main() {
 ///
 /// // Use the default trait to get safe defaults:
@@ -397,7 +397,7 @@ pub struct CompileOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html_with_options, CompileOptions, Options};
+    /// use base_markdown::{to_html_with_options, CompileOptions, Options};
     ///
     /// // By default, some protocols in image sources are dropped:
     /// assert_eq!(
@@ -439,7 +439,7 @@ pub struct CompileOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html, to_html_with_options, CompileOptions, Options};
+    /// use base_markdown::{to_html, to_html_with_options, CompileOptions, Options};
     ///
     /// // `markdown-rs` is safe by default:
     /// assert_eq!(
@@ -490,7 +490,7 @@ pub struct CompileOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html, to_html_with_options, CompileOptions, Options};
+    /// use base_markdown::{to_html, to_html_with_options, CompileOptions, Options};
     ///
     /// // `markdown-rs` is safe by default:
     /// assert_eq!(
@@ -533,7 +533,7 @@ pub struct CompileOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html, to_html_with_options, CompileOptions, LineEnding, Options};
+    /// use base_markdown::{to_html, to_html_with_options, CompileOptions, LineEnding, Options};
     ///
     /// // `markdown-rs` uses `\n` by default:
     /// assert_eq!(
@@ -570,7 +570,7 @@ pub struct CompileOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
+    /// use base_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
     ///
     /// // `"Back to content"` is used by default:
     /// assert_eq!(
@@ -623,7 +623,7 @@ pub struct CompileOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
+    /// use base_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
     ///
     /// // `"user-content-"` is used by default:
     /// assert_eq!(
@@ -668,7 +668,7 @@ pub struct CompileOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
+    /// use base_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
     ///
     /// // `"class=\"sr-only\""` is used by default:
     /// assert_eq!(
@@ -710,7 +710,7 @@ pub struct CompileOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
+    /// use base_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
     ///
     /// // `"h2"` is used by default:
     /// assert_eq!(
@@ -752,7 +752,7 @@ pub struct CompileOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
+    /// use base_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
     ///
     /// // `"Footnotes"` is used by default:
     /// assert_eq!(
@@ -788,7 +788,7 @@ pub struct CompileOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
+    /// use base_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
     ///
     /// // With `task_list_item_checkable`, generated `<input type="checkbox" />`
     /// // tags do not contain the attribute `disabled=""` and are thus toggleable by
@@ -822,7 +822,7 @@ pub struct CompileOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
+    /// use base_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
     ///
     /// // With `allow_dangerous_html`, `markdown-rs` passes HTML through untouched:
     /// assert_eq!(
@@ -902,7 +902,7 @@ impl CompileOptions {
 /// ## Examples
 ///
 /// ```
-/// use core_markdown::ParseOptions;
+/// use base_markdown::ParseOptions;
 /// # fn main() {
 ///
 /// // Use the default trait to parse markdown according to `CommonMark`:
@@ -927,7 +927,7 @@ pub struct ParseOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html, to_html_with_options, Constructs, Options, ParseOptions};
+    /// use base_markdown::{to_html, to_html_with_options, Constructs, Options, ParseOptions};
     ///
     /// // `markdown-rs` follows CommonMark by default:
     /// assert_eq!(
@@ -992,7 +992,7 @@ pub struct ParseOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html_with_options, Constructs, Options, ParseOptions};
+    /// use base_markdown::{to_html_with_options, Constructs, Options, ParseOptions};
     ///
     /// // `markdown-rs` supports single tildes by default:
     /// assert_eq!(
@@ -1045,7 +1045,7 @@ pub struct ParseOptions {
     /// ## Examples
     ///
     /// ```
-    /// use core_markdown::{to_html_with_options, Constructs, Options, ParseOptions};
+    /// use base_markdown::{to_html_with_options, Constructs, Options, ParseOptions};
     ///
     /// // `markdown-rs` supports single dollars by default:
     /// assert_eq!(
@@ -1127,7 +1127,7 @@ impl ParseOptions {
 /// ## Examples
 ///
 /// ```
-/// use core_markdown::Options;
+/// use base_markdown::Options;
 /// # fn main() {
 ///
 /// // Use the default trait to compile markdown to HTML according to `CommonMark`:

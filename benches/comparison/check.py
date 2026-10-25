@@ -79,7 +79,7 @@ for profile, cases, path in [
     ("commonmark", commonmark, D / "commonmark.json"),
     ("gfm", gfm, gfm_path),
 ]:
-    actual = render("core-markdown", profile, path)
+    actual = render("base-markdown", profile, path)
     arena = render("core-arena", profile, path)
     upstream = render("markdown-rs", profile, path)
     assert arena == actual, f"{profile}: arena traversal differs from direct rendering"
@@ -91,7 +91,7 @@ for profile, cases, path in [
         assert not differences, f"CommonMark reference differences in examples {differences}"
     print(f"{profile}: {len(cases)} byte-identical upstream outputs")
     if options.all:
-        for parser in ["core-markdown", "markdown-rs", "comrak", "markly", "commonmarker", "inkmark"]:
+        for parser in ["base-markdown", "markdown-rs", "comrak", "markly", "commonmarker", "inkmark"]:
             output = render(parser, profile, path)
             assert len(output) == len(cases)
             result = {
@@ -114,7 +114,7 @@ if options.all:
 custom_path = P / "fixtures/custom.json"
 custom = json.loads(custom_path.read_text(encoding="utf-8"))
 for profile in ["default", "commonmark", "gfm", "gfm-footnotes"]:
-    actual = render("core-markdown", profile, custom_path)
+    actual = render("base-markdown", profile, custom_path)
     arena = render("core-arena", profile, custom_path)
     upstream = render("markdown-rs", profile, custom_path)
     assert arena == actual, f"{profile}: targeted arena traversal differs from direct rendering"

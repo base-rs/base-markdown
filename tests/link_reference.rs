@@ -4,7 +4,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use core_markdown::{
+use base_markdown::{
     message, to_html, to_html_with_options, CompileOptions, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
@@ -18,9 +18,9 @@ fn references_share_keys_across_borrowed_and_normalized_definitions() {
     let expected = "<p><a href=\"/first\">key</a> <a href=\"/sharp\">SS</a> <a href=\"/theta\">θ</a> <a href=\"/spaces\">a b</a></p>\n";
     assert_eq!(to_html(source), expected);
     let options = Options::default();
-    let document = core_markdown::Document::parse(source, &options.parse).unwrap();
+    let document = base_markdown::Document::parse(source, &options.parse).unwrap();
     let mut output = String::new();
-    core_markdown::render_events(source, document.events(), &options.compile, &mut output).unwrap();
+    base_markdown::render_events(source, document.events(), &options.compile, &mut output).unwrap();
     assert_eq!(output, expected);
     assert_eq!(
         document
@@ -28,7 +28,7 @@ fn references_share_keys_across_borrowed_and_normalized_definitions() {
             .iter()
             .filter(|node| matches!(
                 node.kind,
-                core_markdown::stream::EventKind::Definition { .. }
+                base_markdown::stream::EventKind::Definition { .. }
             ))
             .count(),
         8
@@ -45,7 +45,7 @@ fn reference_paragraphs_resolve_emphasis_like_other_compact_inlines() {
 
 #[test]
 fn compact_references_preserve_resolution_and_event_roundtrips() {
-    use core_markdown::{render_events, Document, EventParser};
+    use base_markdown::{render_events, Document, EventParser};
     let options = Options::default();
     let configured = Options {
         parse: ParseOptions {

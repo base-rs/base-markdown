@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{
+use base_markdown::{
     render_events,
     stream::{EventKind, Tag, Text},
     to_html_with_options, AstBuilder, BuildProgress, Document, EventParser, Options,

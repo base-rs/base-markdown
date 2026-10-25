@@ -1,8 +1,8 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::stream::{EventKind, Tag};
-use core_markdown::{
+use base_markdown::stream::{EventKind, Tag};
+use base_markdown::{
     message, to_html_with_options, CompileOptions, Document, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;

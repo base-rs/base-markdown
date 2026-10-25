@@ -1,6 +1,6 @@
 # Markdown parser comparison
 
-This harness compares the public Markdown-to-HTML APIs of core-markdown, markdown-rs, Comrak, Markly, Commonmarker, and Inkmark. It lives outside the main workspace so competitor dependencies do not affect the published crate or ordinary tests. The adjacent [Rust](Cargo.lock) and [Ruby](Gemfile.lock) lockfiles pin the comparison dependencies.
+This harness compares the public Markdown-to-HTML APIs of base-markdown, markdown-rs, Comrak, Markly, Commonmarker, and Inkmark. It lives outside the main workspace so competitor dependencies do not affect the published crate or ordinary tests. The adjacent [Rust](Cargo.lock) and [Ruby](Gemfile.lock) lockfiles pin the comparison dependencies.
 
 ## Recorded comparison
 
@@ -20,7 +20,7 @@ The [inline destination study](measurements/2026-10-25-inline-destinations/readm
 
 The original four workloads, in milliseconds per complete conversion; lower is faster:
 
-| Workload | Input bytes | core-markdown ms | Inkmark ms |
+| Workload | Input bytes | base-markdown ms | Inkmark ms |
 | --- | ---: | ---: | ---: |
 | README | 9,019 | 0.013416 | 0.019405 |
 | Mixed 100 KB | 100,252 | 0.393345 | 0.415127 |
@@ -29,7 +29,7 @@ The original four workloads, in milliseconds per complete conversion; lower is f
 
 The shared byte scanner skips ordinary inline link destination runs without changing allocations or output. Clap's README takes **14.9% less time** and Awesome Rust's README **18.2% less time** than #53 in the primary cohort; a separate repeat finds 14.2% and 16.2% less time. The original four take 0.4–1.8% less time. The CommonMark specification takes **2.2% more time** in the primary cohort and 0.2% less in the repeat; small effects remain uncertain on this shared host.
 
-Core-markdown has lower medians than Inkmark on all twelve established workloads and all six pinned real documents in this run. It has twenty-eight lower medians across all twenty-nine inputs; mixed dense-Unicode keys remain **4.1% behind Inkmark**. Real documents agree after entity decoding. **Generated GFM output differs:** Inkmark leaves `www.` unlinked and table formatting differs. These shared-host measurements do not establish a universal ranking; candidate Awesome Rust process medians span 56.2%. See the [complete tables, repeats and raw samples](measurements/2026-10-25-inline-destinations/readme.md) before generalizing.
+Base-markdown has lower medians than Inkmark on all twelve established workloads and all six pinned real documents in this run. It has twenty-eight lower medians across all twenty-nine inputs; mixed dense-Unicode keys remain **4.1% behind Inkmark**. Real documents agree after entity decoding. **Generated GFM output differs:** Inkmark leaves `www.` unlinked and table formatting differs. These shared-host measurements do not establish a universal ranking; candidate Awesome Rust process medians span 56.2%. See the [complete tables, repeats and raw samples](measurements/2026-10-25-inline-destinations/readme.md) before generalizing.
 
 The [preceding Unicode folding study](measurements/2026-10-25-normalize-identifiers/readme.md) retains its casing allocation gains, late-uppercase tradeoff, and initial real-document comparison.
 
@@ -41,7 +41,7 @@ Install a Rust toolchain, Python 3, Ruby, Bundler, and a compiler for the native
 cd benches/comparison
 bundle config set --local path vendor/bundle
 bundle install
-python3 run.py core-markdown inkmark
+python3 run.py base-markdown inkmark
 python3 check.py --all
 ```
 
@@ -52,12 +52,12 @@ To reproduce a saved study, use its recorded source revisions, toolchain, lockfi
 The Rust adapter also accepts `render` and a 30-second `profile` loop:
 
 ```sh
-target/release/markdown-comparison render core-markdown commonmark data/commonmark.json
-target/release/markdown-comparison profile core-markdown commonmark data/bench-commonmark.json
+target/release/markdown-comparison render base-markdown commonmark data/commonmark.json
+target/release/markdown-comparison profile base-markdown commonmark data/bench-commonmark.json
 bundle exec ruby adapter.rb inkmark render commonmark data/commonmark.json
 ```
 
-Inputs are JSON arrays containing `markdown` and, for timing, `name`. Diagnostic engines measure complete operations, including disposal: `core-prepare` constructs and drops the parser; `core-events` additionally consumes every semantic event without rendering; `core-arena` builds a `Document` and renders its event traversal; `core-markdown-output` builds a document and serializes Markdown. `core-ast` aliases `core-arena`. These operations are independent measurements, not additive phases.
+Inputs are JSON arrays containing `markdown` and, for timing, `name`. Diagnostic engines measure complete operations, including disposal: `core-prepare` constructs and drops the parser; `core-events` additionally consumes every semantic event without rendering; `core-arena` builds a `Document` and renders its event traversal; `base-markdown-output` builds a document and serializes Markdown. `core-ast` aliases `core-arena`. These operations are independent measurements, not additive phases.
 
 ## Method and output checks
 

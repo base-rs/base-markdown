@@ -5,7 +5,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use core_markdown::{
+use base_markdown::{
     message, to_html, to_html_with_options, Constructs, Document, NodeSyntax, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
@@ -333,7 +333,7 @@ fn tagged_frontmatter_keeps_opaque_info_and_literal_body() {
         );
         assert_eq!(node.language(), info.split_ascii_whitespace().next());
         let document = parse_document(source, &parse_options());
-        let output = core_markdown::to_markdown(&document).unwrap();
+        let output = base_markdown::to_markdown(&document).unwrap();
         let reparsed = parse_frontmatter(&output);
         assert_eq!(reparsed.info, info);
         assert_eq!(reparsed.value, body);
@@ -428,14 +428,14 @@ fn both_html_paths_omit_frontmatter_and_keep_later_code() {
         .filter(|id| {
             !matches!(
                 document.node(*id).unwrap().kind,
-                core_markdown::stream::EventKind::Separator { .. }
+                base_markdown::stream::EventKind::Separator { .. }
             )
         })
         .collect();
     assert_eq!(children.len(), 3);
     assert!(matches!(
         document.node(children[2]).unwrap().kind,
-        core_markdown::stream::EventKind::CodeBlock { .. }
+        base_markdown::stream::EventKind::CodeBlock { .. }
     ));
 }
 
@@ -451,7 +451,7 @@ fn frontmatter_preserves_source_spans_and_body_after_detaching() {
     document.detach(node).unwrap();
     assert_eq!(document.frontmatter_value(node), Some("{}\n"));
     assert_eq!(
-        core_markdown::to_markdown_node(&document, node, &Default::default()).unwrap(),
+        base_markdown::to_markdown_node(&document, node, &Default::default()).unwrap(),
         "```json title=x\n{}\n```\n"
     );
 }
@@ -508,7 +508,7 @@ fn serialization_rejects_invalid_edited_frontmatter_metadata() {
             id,
             Some(NodeSyntax::Frontmatter {
                 info: info.to_string().into(),
-                fence: core_markdown::CodeFence {
+                fence: base_markdown::CodeFence {
                     character: fence,
                     length: 3,
                     indent: 0,
@@ -521,7 +521,7 @@ fn serialization_rejects_invalid_edited_frontmatter_metadata() {
         } else {
             result.unwrap();
             assert_eq!(
-                core_markdown::to_markdown(&document).unwrap_err().rule_id,
+                base_markdown::to_markdown(&document).unwrap_err().rule_id,
                 "invalid-frontmatter"
             );
         }
@@ -548,8 +548,8 @@ fn frontmatter_serde_roundtrip_preserves_body_and_fences() {
     assert_eq!(fence.length, 4);
     assert_eq!(closing_fence_length, 5);
     assert_eq!(
-        core_markdown::to_markdown(&document).unwrap(),
-        core_markdown::to_markdown(&restored).unwrap()
+        base_markdown::to_markdown(&document).unwrap(),
+        base_markdown::to_markdown(&restored).unwrap()
     );
 }
 
@@ -569,9 +569,9 @@ fn rejected_multiline_frontmatter_restores_line_positions() {
     for source in ["---\n\n>", "---\r\r>", "---x\n\n>x", "+++\n\n> x"] {
         let expected = to_html_with_options(source, &Options::gfm());
         assert_eq!(to_html_with_options(source, &options), expected);
-        let document = core_markdown::Document::parse(source, &options.parse).unwrap();
+        let document = base_markdown::Document::parse(source, &options.parse).unwrap();
         let mut output = String::new();
-        core_markdown::render_events(source, document.events(), &options.compile, &mut output)
+        base_markdown::render_events(source, document.events(), &options.compile, &mut output)
             .unwrap();
         assert_eq!(output, expected);
     }

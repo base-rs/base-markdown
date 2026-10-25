@@ -5,7 +5,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use core_markdown::{message, to_html, to_html_with_options, CompileOptions, Options};
+use base_markdown::{message, to_html, to_html_with_options, CompileOptions, Options};
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
 use support::fixture::Position;
