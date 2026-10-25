@@ -24,12 +24,17 @@ pub fn marker_runs(bytes: &[u8], marker: u8) -> impl Iterator<Item = Range<usize
     core::iter::from_fn(move || {
         let offset = memchr::memchr(marker, &bytes[at..])?;
         let start = at + offset;
-        at = start + 1;
-        while bytes.get(at) == Some(&marker) {
-            at += 1;
-        }
+        at = marker_run_end(bytes, start + 1, marker);
         Some(start..at)
     })
+}
+
+// The first matching byte is already known. Continue from the following byte.
+pub fn marker_run_end(bytes: &[u8], mut at: usize, marker: u8) -> usize {
+    while bytes.get(at) == Some(&marker) {
+        at += 1;
+    }
+    at
 }
 
 pub fn longest_run(value: &str, marker: u8) -> usize {

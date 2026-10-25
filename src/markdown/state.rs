@@ -809,10 +809,7 @@ fn write_table_pipes(value: &str, result: &mut String) {
     while index < bytes.len() {
         if bytes[index] == b'`' {
             let start = index;
-            index += super::util::scan::marker_runs(&bytes[index..], b'`')
-                .next()
-                .expect("the current byte begins a backtick run")
-                .len();
+            index = super::util::scan::marker_run_end(bytes, index + 1, b'`');
             let ticks = index - start;
             if code_ticks == Some(ticks) {
                 code_ticks = None;
