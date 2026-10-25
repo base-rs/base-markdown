@@ -960,3 +960,79 @@ fn section_removal_splices_item_children_and_retains_detached_subtrees() {
         }
     }
 }
+
+#[test]
+fn reference_syntax_preserves_backslash_runs_and_authored_offsets() {
+    for count in [0, 1, 2, 31, 32, 255, 256, 900] {
+        let label = format!("é{}z", "\\".repeat(count));
+        for (authored, kind) in [
+            (format!("[{label}]"), ReferenceKind::Shortcut),
+            (format!("![{label}][]"), ReferenceKind::Collapsed),
+            (format!("[label][{label}]"), ReferenceKind::Full),
+        ] {
+            let source = format!("prefix {authored}\n\n[{label}]: /target");
+            let document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+            let id = document
+                .descendants(document.root())
+                .find(|id| {
+                    matches!(
+                        document.node(*id).unwrap().kind,
+                        EventKind::Start(Tag::Link { .. } | Tag::Image { .. })
+                    )
+                })
+                .unwrap();
+            let Some(NodeSyntax::Reference {
+                kind: actual,
+                label: actual_label,
+            }) = document.syntax(id)
+            else {
+                panic!("missing syntax for {:?}", authored);
+            };
+            assert_eq!(actual, kind);
+            assert_eq!(actual_label.resolve(document.source()).unwrap(), label);
+            let Text::Source(range) = actual_label else {
+                panic!("authored labels remain source-backed")
+            };
+            assert_eq!(&source[range], label);
+        }
+    }
+}
+
+#[test]
+fn reference_syntax_distinguishes_escaped_brackets_after_backslash_runs() {
+    for pairs in [0, 1, 16, 128] {
+        let slashes = "\\".repeat(pairs * 2);
+        for label in [
+            format!("a{slashes}"),
+            format!("a{slashes}\\]z"),
+            format!("a{slashes}\\[z"),
+        ] {
+            for (authored, expected) in [
+                (format!("[{label}]"), ReferenceKind::Shortcut),
+                (format!("![{label}][]"), ReferenceKind::Collapsed),
+                (format!("![image][{label}]"), ReferenceKind::Full),
+            ] {
+                let source = format!("{authored}\n\n[{label}]: /target");
+                let document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+                let id = document
+                    .descendants(document.root())
+                    .find(|id| {
+                        matches!(
+                            document.node(*id).unwrap().kind,
+                            EventKind::Start(Tag::Link { .. } | Tag::Image { .. })
+                        )
+                    })
+                    .unwrap();
+                let Some(NodeSyntax::Reference {
+                    kind,
+                    label: actual,
+                }) = document.syntax(id)
+                else {
+                    panic!("missing reference syntax for {:?}", authored)
+                };
+                assert_eq!(kind, expected);
+                assert_eq!(actual.resolve(document.source()).unwrap(), label);
+            }
+        }
+    }
+}

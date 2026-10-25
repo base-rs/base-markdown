@@ -132,7 +132,8 @@ pub(crate) fn infer(
             let bytes = raw.as_bytes();
             let mut depth = 0;
             let mut start = None;
-            for index in (prefix - 1..bytes.len()).rev() {
+            // Only brackets affect nesting. Each preceding escape run is examined once.
+            for index in memchr::memrchr2_iter(b'[', b']', bytes) {
                 let mut back = index;
                 while back > 0 && bytes[back - 1] == b'\\' {
                     back -= 1;
@@ -142,7 +143,7 @@ pub(crate) fn infer(
                 }
                 if bytes[index] == b']' {
                     depth += 1;
-                } else if bytes[index] == b'[' {
+                } else {
                     depth -= 1;
                     if depth == 0 {
                         start = Some(index);
