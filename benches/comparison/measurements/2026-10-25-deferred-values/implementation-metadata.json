@@ -1,0 +1,20 @@
+{
+  "baseline": {
+    "commit": "0ec8b512e35ebf8c79acd897379a3915e341f727",
+    "tree": "17beec794a34622aad26538c8565fb29eda2bb04",
+    "timing_sha256": "66cd79f96bfc3bc382efac931041e437344d6fc3faf0aa361ec20cb2e8d27cf0"
+  },
+  "candidate": {
+    "commit": "be85ff306a4705a99ab13cc174115ff58a06526e",
+    "tree": "e82ab8dec95d32fa29d53a6255c3b60971140c06",
+    "timing_sha256": "ee459cce2d104f1ce052b34568db418ef19e4a0a1e00e6d5e2e24c61809b7443"
+  },
+  "environment": {
+    "rustc -vV": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.3",
+    "cargo -V": "cargo 1.99.1 (5f94df478 2026-08-27) (Homebrew)",
+    "sw_vers": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0.1\nBuildVersion:\t\t26A434",
+    "sysctl -n machdep.cpu.brand_string": "Apple M4 Pro"
+  },
+  "driver_sha256": "ded4092deaecee3c17eacd63008ebd227c85f40859a9161d253b9dea821c1d29",
+  "cargo_lock_sha256": "200b460f87bfc779d10006d3378e36a648beabe648a45d43e24681bba64f437e"
+}

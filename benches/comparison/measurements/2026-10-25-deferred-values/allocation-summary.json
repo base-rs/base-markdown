@@ -1,0 +1,1325 @@
+{
+  "timing": [],
+  "allocations": [
+    {
+      "name": "readme",
+      "mode": "html",
+      "baseline": {
+        "allocations": 13,
+        "output_bytes": 10365,
+        "reallocations": 13,
+        "requested_bytes": 58243
+      },
+      "candidate": {
+        "allocations": 13,
+        "output_bytes": 10365,
+        "reallocations": 13,
+        "requested_bytes": 58243
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "readme",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 10365,
+        "reallocations": 12,
+        "requested_bytes": 41112
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 10365,
+        "reallocations": 12,
+        "requested_bytes": 41112
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "readme",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 22,
+        "output_bytes": 9019,
+        "reallocations": 12,
+        "requested_bytes": 36742
+      },
+      "candidate": {
+        "allocations": 15,
+        "output_bytes": 9019,
+        "reallocations": 12,
+        "requested_bytes": 36674
+      },
+      "deltas": {
+        "allocations": -7,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": -68
+      }
+    },
+    {
+      "name": "mixed-100k",
+      "mode": "html",
+      "baseline": {
+        "allocations": 12,
+        "output_bytes": 147724,
+        "reallocations": 21,
+        "requested_bytes": 1187072
+      },
+      "candidate": {
+        "allocations": 12,
+        "output_bytes": 147724,
+        "reallocations": 21,
+        "requested_bytes": 1187072
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "mixed-100k",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 147724,
+        "reallocations": 16,
+        "requested_bytes": 524472
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 147724,
+        "reallocations": 16,
+        "requested_bytes": 524472
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "mixed-100k",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 263,
+        "output_bytes": 99477,
+        "reallocations": 15,
+        "requested_bytes": 330613
+      },
+      "candidate": {
+        "allocations": 5,
+        "output_bytes": 99477,
+        "reallocations": 15,
+        "requested_bytes": 327885
+      },
+      "deltas": {
+        "allocations": -258,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": -2728
+      }
+    },
+    {
+      "name": "mixed-1m",
+      "mode": "html",
+      "baseline": {
+        "allocations": 12,
+        "output_bytes": 1472348,
+        "reallocations": 27,
+        "requested_bytes": 10712280
+      },
+      "candidate": {
+        "allocations": 12,
+        "output_bytes": 1472348,
+        "reallocations": 27,
+        "requested_bytes": 10712280
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "mixed-1m",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 1472348,
+        "reallocations": 19,
+        "requested_bytes": 4194488
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 1472348,
+        "reallocations": 19,
+        "requested_bytes": 4194488
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "mixed-1m",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 2572,
+        "output_bytes": 992318,
+        "reallocations": 18,
+        "requested_bytes": 2651339
+      },
+      "candidate": {
+        "allocations": 5,
+        "output_bytes": 992318,
+        "reallocations": 18,
+        "requested_bytes": 2621645
+      },
+      "deltas": {
+        "allocations": -2567,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": -29694
+      }
+    },
+    {
+      "name": "gfm-100k",
+      "mode": "html",
+      "baseline": {
+        "allocations": 371,
+        "output_bytes": 208604,
+        "reallocations": 379,
+        "requested_bytes": 1873759
+      },
+      "candidate": {
+        "allocations": 371,
+        "output_bytes": 208604,
+        "reallocations": 379,
+        "requested_bytes": 1873759
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "gfm-100k",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 208604,
+        "reallocations": 16,
+        "requested_bytes": 524472
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 208604,
+        "reallocations": 16,
+        "requested_bytes": 524472
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "gfm-100k",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 542,
+        "output_bytes": 104962,
+        "reallocations": 15,
+        "requested_bytes": 332608
+      },
+      "candidate": {
+        "allocations": 363,
+        "output_bytes": 104962,
+        "reallocations": 15,
+        "requested_bytes": 330749
+      },
+      "deltas": {
+        "allocations": -179,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": -1859
+      }
+    },
+    {
+      "name": "commonmark-spec",
+      "mode": "html",
+      "baseline": {
+        "allocations": 28,
+        "output_bytes": 228258,
+        "reallocations": 58,
+        "requested_bytes": 1901951
+      },
+      "candidate": {
+        "allocations": 28,
+        "output_bytes": 228258,
+        "reallocations": 58,
+        "requested_bytes": 1901951
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "commonmark-spec",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 228258,
+        "reallocations": 17,
+        "requested_bytes": 524728
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 228258,
+        "reallocations": 17,
+        "requested_bytes": 524728
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "commonmark-spec",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 48,
+        "output_bytes": 165988,
+        "reallocations": 19,
+        "requested_bytes": 527469
+      },
+      "candidate": {
+        "allocations": 7,
+        "output_bytes": 165988,
+        "reallocations": 19,
+        "requested_bytes": 526818
+      },
+      "deltas": {
+        "allocations": -41,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": -651
+      }
+    },
+    {
+      "name": "rust-readme",
+      "mode": "html",
+      "baseline": {
+        "allocations": 21,
+        "output_bytes": 3579,
+        "reallocations": 11,
+        "requested_bytes": 25050
+      },
+      "candidate": {
+        "allocations": 21,
+        "output_bytes": 3579,
+        "reallocations": 11,
+        "requested_bytes": 25050
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "rust-readme",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 3579,
+        "reallocations": 4,
+        "requested_bytes": 9912
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 3579,
+        "reallocations": 4,
+        "requested_bytes": 9912
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "rust-readme",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 46,
+        "output_bytes": 3317,
+        "reallocations": 7,
+        "requested_bytes": 11916
+      },
+      "candidate": {
+        "allocations": 39,
+        "output_bytes": 3317,
+        "reallocations": 7,
+        "requested_bytes": 11833
+      },
+      "deltas": {
+        "allocations": -7,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": -83
+      }
+    },
+    {
+      "name": "clap-readme",
+      "mode": "html",
+      "baseline": {
+        "allocations": 10,
+        "output_bytes": 2353,
+        "reallocations": 11,
+        "requested_bytes": 24513
+      },
+      "candidate": {
+        "allocations": 10,
+        "output_bytes": 2353,
+        "reallocations": 11,
+        "requested_bytes": 24513
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "clap-readme",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 2353,
+        "reallocations": 10,
+        "requested_bytes": 8376
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 2353,
+        "reallocations": 10,
+        "requested_bytes": 8376
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "clap-readme",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 11,
+        "output_bytes": 1825,
+        "reallocations": 12,
+        "requested_bytes": 6367
+      },
+      "candidate": {
+        "allocations": 7,
+        "output_bytes": 1825,
+        "reallocations": 12,
+        "requested_bytes": 6332
+      },
+      "deltas": {
+        "allocations": -4,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": -35
+      }
+    },
+    {
+      "name": "tokio-changelog",
+      "mode": "html",
+      "baseline": {
+        "allocations": 15,
+        "output_bytes": 236064,
+        "reallocations": 29,
+        "requested_bytes": 2135400
+      },
+      "candidate": {
+        "allocations": 15,
+        "output_bytes": 236064,
+        "reallocations": 29,
+        "requested_bytes": 2135400
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "tokio-changelog",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 236064,
+        "reallocations": 15,
+        "requested_bytes": 508073
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 236064,
+        "reallocations": 15,
+        "requested_bytes": 508073
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "tokio-changelog",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 3545,
+        "output_bytes": 196541,
+        "reallocations": 202,
+        "requested_bytes": 535906
+      },
+      "candidate": {
+        "allocations": 3346,
+        "output_bytes": 196541,
+        "reallocations": 18,
+        "requested_bytes": 529918
+      },
+      "deltas": {
+        "allocations": -199,
+        "output_bytes": 0,
+        "reallocations": -184,
+        "requested_bytes": -5988
+      }
+    },
+    {
+      "name": "rust-nll-rfc",
+      "mode": "html",
+      "baseline": {
+        "allocations": 48,
+        "output_bytes": 95404,
+        "reallocations": 69,
+        "requested_bytes": 522896
+      },
+      "candidate": {
+        "allocations": 48,
+        "output_bytes": 95404,
+        "reallocations": 69,
+        "requested_bytes": 522896
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "rust-nll-rfc",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 95404,
+        "reallocations": 15,
+        "requested_bytes": 262328
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 95404,
+        "reallocations": 15,
+        "requested_bytes": 262328
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "rust-nll-rfc",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 83,
+        "output_bytes": 83672,
+        "reallocations": 22,
+        "requested_bytes": 266415
+      },
+      "candidate": {
+        "allocations": 74,
+        "output_bytes": 83672,
+        "reallocations": 21,
+        "requested_bytes": 266267
+      },
+      "deltas": {
+        "allocations": -9,
+        "output_bytes": 0,
+        "reallocations": -1,
+        "requested_bytes": -148
+      }
+    },
+    {
+      "name": "awesome-rust-readme",
+      "mode": "html",
+      "baseline": {
+        "allocations": 11,
+        "output_bytes": 482631,
+        "reallocations": 22,
+        "requested_bytes": 2136056
+      },
+      "candidate": {
+        "allocations": 11,
+        "output_bytes": 482631,
+        "reallocations": 22,
+        "requested_bytes": 2136056
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "awesome-rust-readme",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 482631,
+        "reallocations": 18,
+        "requested_bytes": 1638807
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 482631,
+        "reallocations": 18,
+        "requested_bytes": 1638807
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "awesome-rust-readme",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 91,
+        "output_bytes": 413100,
+        "reallocations": 98,
+        "requested_bytes": 955598
+      },
+      "candidate": {
+        "allocations": 84,
+        "output_bytes": 413100,
+        "reallocations": 95,
+        "requested_bytes": 955338
+      },
+      "deltas": {
+        "allocations": -7,
+        "output_bytes": 0,
+        "reallocations": -3,
+        "requested_bytes": -260
+      }
+    },
+    {
+      "name": "images-simple",
+      "mode": "html",
+      "baseline": {
+        "allocations": 2056,
+        "output_bytes": 135168,
+        "reallocations": 9,
+        "requested_bytes": 1014288
+      },
+      "candidate": {
+        "allocations": 8,
+        "output_bytes": 135168,
+        "reallocations": 9,
+        "requested_bytes": 997904
+      },
+      "deltas": {
+        "allocations": -2048,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": -16384
+      }
+    },
+    {
+      "name": "images-simple",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2051,
+        "output_bytes": 135168,
+        "reallocations": 15,
+        "requested_bytes": 540824
+      },
+      "candidate": {
+        "allocations": 3,
+        "output_bytes": 135168,
+        "reallocations": 15,
+        "requested_bytes": 524440
+      },
+      "deltas": {
+        "allocations": -2048,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": -16384
+      }
+    },
+    {
+      "name": "images-simple",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 4,
+        "output_bytes": 77823,
+        "reallocations": 14,
+        "requested_bytes": 262240
+      },
+      "candidate": {
+        "allocations": 4,
+        "output_bytes": 77823,
+        "reallocations": 14,
+        "requested_bytes": 262240
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "images-rich-alt",
+      "mode": "html",
+      "baseline": {
+        "allocations": 2060,
+        "output_bytes": 91136,
+        "reallocations": 2058,
+        "requested_bytes": 522512
+      },
+      "candidate": {
+        "allocations": 2060,
+        "output_bytes": 91136,
+        "reallocations": 1034,
+        "requested_bytes": 507152
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": -1024,
+        "requested_bytes": -15360
+      }
+    },
+    {
+      "name": "images-rich-alt",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 1027,
+        "output_bytes": 91136,
+        "reallocations": 1038,
+        "requested_bytes": 286872
+      },
+      "candidate": {
+        "allocations": 1027,
+        "output_bytes": 91136,
+        "reallocations": 14,
+        "requested_bytes": 271512
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": -1024,
+        "requested_bytes": -15360
+      }
+    },
+    {
+      "name": "images-rich-alt",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 1028,
+        "output_bytes": 55295,
+        "reallocations": 2061,
+        "requested_bytes": 245849
+      },
+      "candidate": {
+        "allocations": 1028,
+        "output_bytes": 55295,
+        "reallocations": 2061,
+        "requested_bytes": 245849
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "titles-and-definitions",
+      "mode": "html",
+      "baseline": {
+        "allocations": 3082,
+        "output_bytes": 109824,
+        "reallocations": 1552,
+        "requested_bytes": 1059160
+      },
+      "candidate": {
+        "allocations": 3082,
+        "output_bytes": 109824,
+        "reallocations": 1552,
+        "requested_bytes": 1054552
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": -4608
+      }
+    },
+    {
+      "name": "titles-and-definitions",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 109824,
+        "reallocations": 14,
+        "requested_bytes": 262200
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 109824,
+        "reallocations": 14,
+        "requested_bytes": 262200
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "titles-and-definitions",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 1542,
+        "output_bytes": 80639,
+        "reallocations": 13,
+        "requested_bytes": 223438
+      },
+      "candidate": {
+        "allocations": 1542,
+        "output_bytes": 80639,
+        "reallocations": 13,
+        "requested_bytes": 223438
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "metadata-leading-escapes",
+      "mode": "html",
+      "baseline": {
+        "allocations": 8202,
+        "output_bytes": 95232,
+        "reallocations": 17,
+        "requested_bytes": 1419640
+      },
+      "candidate": {
+        "allocations": 10,
+        "output_bytes": 95232,
+        "reallocations": 17,
+        "requested_bytes": 1364344
+      },
+      "deltas": {
+        "allocations": -8192,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": -55296
+      }
+    },
+    {
+      "name": "metadata-leading-escapes",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 95232,
+        "reallocations": 14,
+        "requested_bytes": 262200
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 95232,
+        "reallocations": 14,
+        "requested_bytes": 262200
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "metadata-leading-escapes",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 2054,
+        "output_bytes": 64511,
+        "reallocations": 13,
+        "requested_bytes": 144856
+      },
+      "candidate": {
+        "allocations": 2054,
+        "output_bytes": 64511,
+        "reallocations": 13,
+        "requested_bytes": 144856
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "leading-escapes",
+      "mode": "html",
+      "baseline": {
+        "allocations": 2053,
+        "output_bytes": 104448,
+        "reallocations": 11,
+        "requested_bytes": 2262384
+      },
+      "candidate": {
+        "allocations": 2053,
+        "output_bytes": 104448,
+        "reallocations": 11,
+        "requested_bytes": 2262384
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "leading-escapes",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 104448,
+        "reallocations": 14,
+        "requested_bytes": 262200
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 104448,
+        "reallocations": 14,
+        "requested_bytes": 262200
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "leading-escapes",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 4,
+        "output_bytes": 55295,
+        "reallocations": 13,
+        "requested_bytes": 131168
+      },
+      "candidate": {
+        "allocations": 4,
+        "output_bytes": 55295,
+        "reallocations": 13,
+        "requested_bytes": 131168
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "headings",
+      "mode": "html",
+      "baseline": {
+        "allocations": 12614,
+        "output_bytes": 204630,
+        "reallocations": 14345,
+        "requested_bytes": 2008954
+      },
+      "candidate": {
+        "allocations": 12614,
+        "output_bytes": 204630,
+        "reallocations": 14345,
+        "requested_bytes": 2008954
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "headings",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 12605,
+        "output_bytes": 204630,
+        "reallocations": 14348,
+        "requested_bytes": 1531656
+      },
+      "candidate": {
+        "allocations": 12605,
+        "output_bytes": 204630,
+        "reallocations": 14348,
+        "requested_bytes": 1531656
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "headings",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 2052,
+        "output_bytes": 76799,
+        "reallocations": 3086,
+        "requested_bytes": 404576
+      },
+      "candidate": {
+        "allocations": 4,
+        "output_bytes": 76799,
+        "reallocations": 14,
+        "requested_bytes": 262240
+      },
+      "deltas": {
+        "allocations": -2048,
+        "output_bytes": 0,
+        "reallocations": -3072,
+        "requested_bytes": -142336
+      }
+    },
+    {
+      "name": "tables-no-pipes",
+      "mode": "html",
+      "baseline": {
+        "allocations": 12,
+        "output_bytes": 328704,
+        "reallocations": 15,
+        "requested_bytes": 3769624
+      },
+      "candidate": {
+        "allocations": 12,
+        "output_bytes": 328704,
+        "reallocations": 15,
+        "requested_bytes": 3769624
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "tables-no-pipes",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 328704,
+        "reallocations": 17,
+        "requested_bytes": 1048760
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 328704,
+        "reallocations": 17,
+        "requested_bytes": 1048760
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "tables-no-pipes",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 5,
+        "output_bytes": 99327,
+        "reallocations": 15,
+        "requested_bytes": 262267
+      },
+      "candidate": {
+        "allocations": 4,
+        "output_bytes": 99327,
+        "reallocations": 14,
+        "requested_bytes": 262240
+      },
+      "deltas": {
+        "allocations": -1,
+        "output_bytes": 0,
+        "reallocations": -1,
+        "requested_bytes": -27
+      }
+    },
+    {
+      "name": "tables-pipe-heavy",
+      "mode": "html",
+      "baseline": {
+        "allocations": 1034,
+        "output_bytes": 306176,
+        "reallocations": 15,
+        "requested_bytes": 3634744
+      },
+      "candidate": {
+        "allocations": 1034,
+        "output_bytes": 306176,
+        "reallocations": 15,
+        "requested_bytes": 3634744
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "tables-pipe-heavy",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 306176,
+        "reallocations": 17,
+        "requested_bytes": 1048760
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 306176,
+        "reallocations": 17,
+        "requested_bytes": 1048760
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "tables-pipe-heavy",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 1029,
+        "output_bytes": 94207,
+        "reallocations": 15,
+        "requested_bytes": 270456
+      },
+      "candidate": {
+        "allocations": 1029,
+        "output_bytes": 94207,
+        "reallocations": 15,
+        "requested_bytes": 270459
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 3
+      }
+    },
+    {
+      "name": "headings-forced-setext",
+      "mode": "html",
+      "baseline": {
+        "allocations": 11,
+        "output_bytes": 126976,
+        "reallocations": 10,
+        "requested_bytes": 755856
+      },
+      "candidate": {
+        "allocations": 11,
+        "output_bytes": 126976,
+        "reallocations": 10,
+        "requested_bytes": 755856
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "headings-forced-setext",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 126976,
+        "reallocations": 14,
+        "requested_bytes": 262200
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 126976,
+        "reallocations": 14,
+        "requested_bytes": 262200
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "headings-forced-setext",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 2052,
+        "output_bytes": 141311,
+        "reallocations": 3087,
+        "requested_bytes": 666720
+      },
+      "candidate": {
+        "allocations": 4,
+        "output_bytes": 141311,
+        "reallocations": 15,
+        "requested_bytes": 524384
+      },
+      "deltas": {
+        "allocations": -2048,
+        "output_bytes": 0,
+        "reallocations": -3072,
+        "requested_bytes": -142336
+      }
+    },
+    {
+      "name": "headings-multiline",
+      "mode": "html",
+      "baseline": {
+        "allocations": 11,
+        "output_bytes": 137216,
+        "reallocations": 11,
+        "requested_bytes": 1162256
+      },
+      "candidate": {
+        "allocations": 11,
+        "output_bytes": 137216,
+        "reallocations": 11,
+        "requested_bytes": 1162256
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "headings-multiline",
+      "mode": "ast-html",
+      "baseline": {
+        "allocations": 2,
+        "output_bytes": 137216,
+        "reallocations": 15,
+        "requested_bytes": 524344
+      },
+      "candidate": {
+        "allocations": 2,
+        "output_bytes": 137216,
+        "reallocations": 15,
+        "requested_bytes": 524344
+      },
+      "deltas": {
+        "allocations": 0,
+        "output_bytes": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    {
+      "name": "headings-multiline",
+      "mode": "markdown",
+      "baseline": {
+        "allocations": 2052,
+        "output_bytes": 134143,
+        "reallocations": 4111,
+        "requested_bytes": 693344
+      },
+      "candidate": {
+        "allocations": 4,
+        "output_bytes": 134143,
+        "reallocations": 15,
+        "requested_bytes": 524384
+      },
+      "deltas": {
+        "allocations": -2048,
+        "output_bytes": 0,
+        "reallocations": -4096,
+        "requested_bytes": -168960
+      }
+    }
+  ]
+}
