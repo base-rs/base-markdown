@@ -581,7 +581,7 @@ impl<S: AsRef<str>> Document<S> {
                             .get(end.wrapping_sub(1))
                             .is_some_and(|byte| matches!(byte, b'\r' | b'\n'));
                         if crate::util::line_ending::line_endings(gap)
-                            .nth(if ended { 0 } else { 1 })
+                            .nth(usize::from(!ended))
                             .is_some()
                         {
                             return Some(NodeSyntax::ListItem { spread: true });

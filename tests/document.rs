@@ -831,9 +831,8 @@ fn item_source_spacing_preserves_crlf_boundaries_and_detached_hints() {
                 source.len()..source.len(),
             ),
         ];
-        let mut events = kinds
-            .into_iter()
-            .map(|(kind, span)| Ok(Event { kind, span }));
+        let mut events =
+            IntoIterator::into_iter(kinds).map(|(kind, span)| Ok(Event { kind, span }));
         let mut builder = AstBuilder::new();
         builder.consume(&mut events, usize::MAX).unwrap();
         let mut document = builder.finish(source).unwrap();
