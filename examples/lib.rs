@@ -4,10 +4,6 @@
 // Copyright, 2026, by Samuel Williams.
 
 fn main() -> Result<(), core_markdown::message::Message> {
-    // Turn on debugging.
-    // You can show it with `RUST_LOG=debug cargo run --features log --example lib`
-    env_logger::init();
-
     // Safely turn (untrusted?) markdown into HTML.
     println!("{:?}", core_markdown::to_html("## Hello, *world*!"));
 
