@@ -3,10 +3,14 @@
 
 //! Source-backed text construction and syntax-aware string decoding.
 use crate::{stream::Text, util::constant::CHARACTER_REFERENCES};
-use alloc::string::{String, ToString};
+use alloc::{
+    borrow::Cow,
+    string::{String, ToString},
+};
 use core::ops::Range;
 
 static STRING_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\\&\0");
+static UNPADDED_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\\&\0\r\n");
 
 /// Keep a contiguous source range until normalization actually requires an owned string.
 pub(crate) struct ValueBuilder<'a> {
@@ -60,7 +64,7 @@ impl<'a> ValueBuilder<'a> {
 }
 
 pub(crate) fn decode_string(source: &str, range: Range<usize>) -> Text<'static> {
-    decode(source, range, true, true, false)
+    decode::<false>(source, range, true, true, false)
 }
 
 pub(crate) fn decode_string_with_options(
@@ -68,7 +72,7 @@ pub(crate) fn decode_string_with_options(
     range: Range<usize>,
     options: &crate::ParseOptions,
 ) -> Text<'static> {
-    decode(
+    decode::<false>(
         source,
         range,
         options.constructs.character_escape,
@@ -77,7 +81,23 @@ pub(crate) fn decode_string_with_options(
     )
 }
 
-fn decode(
+/// Inline HTML and titles omit physical continuation indentation before decoding.
+/// Decoded line endings (such as `&NewLine;`) do not strip following whitespace.
+pub(crate) fn decode_unpadded(
+    source: &str,
+    range: Range<usize>,
+    options: Option<&crate::ParseOptions>,
+) -> Text<'static> {
+    decode::<true>(
+        source,
+        range,
+        options.is_some_and(|options| options.constructs.character_escape),
+        options.is_some_and(|options| options.constructs.character_reference),
+        true,
+    )
+}
+
+fn decode<const UNPAD: bool>(
     source: &str,
     range: Range<usize>,
     escapes: bool,
@@ -90,9 +110,25 @@ fn decode(
     let mut start = range.start;
     let mut index = start;
     while index < range.end {
-        index += STRING_MARKERS.find(&bytes[index..range.end]);
+        index += if UNPAD {
+            UNPADDED_MARKERS.find(&bytes[index..range.end])
+        } else {
+            STRING_MARKERS.find(&bytes[index..range.end])
+        };
         if index == range.end {
             break;
+        }
+        if UNPAD && matches!(bytes[index], b'\r' | b'\n') {
+            index += 1 + usize::from(bytes[index] == b'\r' && bytes.get(index + 1) == Some(&b'\n'));
+            let end = index;
+            while index < range.end && matches!(bytes[index], b' ' | b'\t') {
+                index += 1;
+            }
+            if end != index {
+                value.append(Text::Source(start..end));
+                start = index;
+            }
+            continue;
         }
         if escapes
             && bytes[index] == b'\\'
@@ -114,9 +150,12 @@ fn decode(
         }
         if references && bytes[index] == b'&' {
             if let Some((end, reference)) = scan(source, index, range.end) {
+                let mut buffer = [0; 4];
                 let decoded = match reference {
                     Reference::Named(index) => Text::Literal(CHARACTER_REFERENCES[index].1),
-                    Reference::Numeric(character) => Text::from(String::from(character)),
+                    Reference::Numeric(character) => {
+                        Text::Value(Cow::Borrowed(character.encode_utf8(&mut buffer)))
+                    }
                 };
                 value.append(Text::Source(start..index));
                 value.append(decoded);
@@ -129,4 +168,43 @@ fn decode(
     }
     value.append(Text::Source(start..range.end));
     value.finish()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decode_unpadded;
+    use crate::{stream::Text, ParseOptions};
+
+    #[test]
+    fn continuation_padding_is_removed_before_entity_and_escape_decoding() {
+        let source = "a&NewLine;  b\r\n \t&amp;\\* &#x1F980;\0";
+        for (escapes, references, expected) in [
+            (true, true, "a\n  b\r\n&* 🦀�"),
+            (false, true, "a\n  b\r\n&\\* 🦀�"),
+            (true, false, "a&NewLine;  b\r\n&amp;* &#x1F980;�"),
+            (false, false, "a&NewLine;  b\r\n&amp;\\* &#x1F980;�"),
+        ] {
+            let mut options = ParseOptions::default();
+            options.constructs.character_escape = escapes;
+            options.constructs.character_reference = references;
+            assert_eq!(
+                decode_unpadded(source, 0..source.len(), Some(&options))
+                    .resolve(source)
+                    .unwrap(),
+                expected
+            );
+        }
+        assert_eq!(
+            decode_unpadded(source, 0..source.len(), None)
+                .resolve(source)
+                .unwrap(),
+            "a&NewLine;  b\r\n&amp;\\* &#x1F980;�"
+        );
+        for source in ["", "plain é", "a\nb", "a\rb", "a\r\nb", "&invalid; \\q"] {
+            assert_eq!(
+                decode_unpadded(source, 0..source.len(), Some(&ParseOptions::default())),
+                Text::Source(0..source.len())
+            );
+        }
+    }
 }
