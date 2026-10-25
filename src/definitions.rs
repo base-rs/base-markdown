@@ -85,14 +85,14 @@ impl<'a> Definitions<'a> {
 }
 
 // Sort equal keys by authored position so deduplication keeps the first definition.
-fn build_index<T>(order: &mut Vec<usize>, values: &[T], key: impl Fn(&T) -> &str) {
+pub(crate) fn build_index<T>(order: &mut Vec<usize>, values: &[T], key: impl Fn(&T) -> &str) {
     order.clear();
     order.extend(0..values.len());
     order.sort_unstable_by(|&a, &b| key(&values[a]).cmp(key(&values[b])).then(a.cmp(&b)));
     order.dedup_by(|a, b| key(&values[*a]) == key(&values[*b]));
 }
 
-fn find_index<T>(
+pub(crate) fn find_index<T>(
     order: &[usize],
     values: &[T],
     value: &str,

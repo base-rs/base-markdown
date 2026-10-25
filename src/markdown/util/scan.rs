@@ -46,12 +46,23 @@ pub fn longest_run(value: &str, marker: u8) -> usize {
 
 // A delimiter must have a length absent from the content's complete marker runs.
 pub fn delimiter_size(value: &str, marker: u8, minimum: usize) -> usize {
+    let mut used = 0_usize;
     let mut lengths = Vec::new();
     for run in marker_runs(value.as_bytes(), marker) {
-        lengths.push(run.len());
+        if let Some(offset) = run.len().checked_sub(minimum) {
+            if offset < usize::BITS as usize {
+                used |= 1 << offset;
+            } else {
+                lengths.push(run.len());
+            }
+        }
     }
+    if used != usize::MAX {
+        return minimum + used.trailing_ones() as usize;
+    }
+    // Only long runs need storage. Sorting them when the word is full preserves bounded work even for dense contents.
+    let mut size = minimum + usize::BITS as usize;
     lengths.sort_unstable();
-    let mut size = minimum;
     for length in lengths {
         if length == size {
             size += 1;
@@ -87,6 +98,30 @@ mod tests {
             marker_runs(b"`a``b```", b'`').collect::<Vec<_>>(),
             [0..1, 2..4, 5..8]
         );
+    }
+
+    #[test]
+    fn delimiter_selection_preserves_gaps_across_bitset_windows() {
+        use alloc::string::String;
+        for marker in *b"`$" {
+            let mut value = String::new();
+            for length in 1..=2 * usize::BITS as usize + 1 {
+                value.extend(core::iter::repeat(char::from(marker)).take(length));
+                value.push(' ');
+                assert_eq!(delimiter_size(&value, marker, 1), length + 1);
+                assert_eq!(delimiter_size(&value, marker, 2), length + 1);
+            }
+            for gap in [1, 2, usize::BITS as usize, usize::BITS as usize + 1] {
+                let mut value = String::new();
+                for length in (1..=2 * usize::BITS as usize + 1).rev() {
+                    if length != gap {
+                        value.extend(core::iter::repeat(char::from(marker)).take(length));
+                        value.push(' ');
+                    }
+                }
+                assert_eq!(delimiter_size(&value, marker, 1), gap);
+            }
+        }
     }
 
     #[test]

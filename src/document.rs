@@ -7,7 +7,7 @@ use crate::{
     stream::{Tag, TagKind},
     NodeSyntax,
 };
-use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::{num::NonZeroUsize, ops::Range};
 
 /// A stable index into a document's contiguous node arena.
@@ -321,26 +321,7 @@ impl<S: AsRef<str>> Document<S> {
         if let Some(body) = body {
             *text = Text::from(body);
         }
-        if let Text::Source(range) = text {
-            *text = Text::Value(Cow::Owned(
-                self.source
-                    .as_ref()
-                    .get(range.clone())
-                    .ok_or(StreamError::InvalidRange)?
-                    .into(),
-            ));
-        }
-        match text {
-            Text::Value(value) => Ok(value.to_mut()),
-            Text::Literal(value) => {
-                *text = Text::Value(Cow::Owned((*value).into()));
-                match text {
-                    Text::Value(value) => Ok(value.to_mut()),
-                    _ => unreachable!("literal was materialized above"),
-                }
-            }
-            Text::Source(_) => unreachable!("source text was materialized above"),
-        }
+        text.to_mut(self.source.as_ref())
     }
 
     /// Traverse without a heap-allocated traversal stack or cloned owned strings.

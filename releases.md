@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Centralize editable text materialization, avoid temporary run-length allocations for ordinary inline-code and math delimiters, and cache footnote IDs while sharing definition lookup indexing. Preserve output, first-call numbering, duplicate-definition precedence, and source-range errors.
+
 - Remove unused Markdown serializer scopes, share frontmatter fence validation, and reserve heading anchors and suffix counters in one map, preserving output and collision behavior.
 
 - Remove the hidden public `decode_named` and `decode_numeric` compatibility helpers and their HTML 4 entity table. This is a breaking API removal; Markdown character-reference decoding continues to use HTML 5.

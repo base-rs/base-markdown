@@ -25,6 +25,13 @@ struct HeadingCapture {
     output: String,
     text: String,
 }
+struct FootnoteCall {
+    key: String,
+    id: String,
+    count: usize,
+    definition: Option<usize>,
+}
+
 struct Capture {
     key: String,
     output: String,
@@ -45,7 +52,7 @@ pub struct EventHtmlRenderer<'a, W> {
     image_titles: Vec<String>,
     captures: Vec<Capture>,
     notes: Vec<(String, String)>,
-    calls: Vec<(String, usize)>,
+    calls: Vec<FootnoteCall>,
     started: bool,
     ended: bool,
     heading: Option<HeadingCapture>,
@@ -693,31 +700,49 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         let index = self
             .calls
             .iter()
-            .position(|(id, _)| id == key)
+            .position(|call| call.key == key)
             .unwrap_or_else(|| {
-                self.calls.push((key.into(), 0));
+                self.calls.push(FootnoteCall {
+                    key: key.into(),
+                    id: sanitize(&key.to_lowercase()),
+                    count: 0,
+                    definition: None,
+                });
                 self.calls.len() - 1
             });
-        self.calls[index].1 += 1;
-        let count = self.calls[index].1;
+        let call = &mut self.calls[index];
+        call.count += 1;
+        let count = call.count;
         if self.images != 0 {
             return Ok(());
         }
-        let safe = sanitize(&key.to_lowercase());
+        // Temporarily move the cached ID out so writes can borrow the renderer. Restore it even when the caller's writer fails.
+        let safe = core::mem::take(&mut call.id);
+        let result = self.write_footnote_call(&safe, index + 1, count);
+        self.calls[index].id = safe;
+        result
+    }
+
+    fn write_footnote_call(
+        &mut self,
+        safe: &str,
+        number: usize,
+        count: usize,
+    ) -> Result<(), StreamError> {
         self.write("<sup><a href=\"#")?;
         self.prefix()?;
         self.write("fn-")?;
-        self.write(&safe)?;
+        self.write(safe)?;
         self.write("\" id=\"")?;
         self.prefix()?;
         self.write("fnref-")?;
-        self.write(&safe)?;
+        self.write(safe)?;
         if count > 1 {
             self.write("-")?;
             self.write(&count.to_string())?;
         }
         self.write("\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">")?;
-        self.write(&(index + 1).to_string())?;
+        self.write(&number.to_string())?;
         self.write("</a></sup>")
     }
 
@@ -786,15 +811,28 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         self.write(">")?;
         self.newline()?;
         self.write("<ol>")?;
+        // Index called labels, then match definitions in completion order. Unused labels need no index storage, and the first matching body wins.
+        let mut order = Vec::new();
+        crate::definitions::build_index(&mut order, &self.calls, |call| call.key.as_str());
+        let mut remaining = self.calls.len();
+        for (index, (key, _)) in self.notes.iter().enumerate() {
+            if let Some(call) =
+                crate::definitions::find_index(&order, &self.calls, key, |call| call.key.as_str())
+            {
+                if self.calls[call].definition.is_none() {
+                    self.calls[call].definition = Some(index);
+                    remaining -= 1;
+                    if remaining == 0 {
+                        break;
+                    }
+                }
+            }
+        }
         for index in 0..self.calls.len() {
-            let (key, count) = &self.calls[index];
-            let safe = sanitize(&key.to_lowercase());
-            let note = self
-                .notes
-                .iter()
-                .position(|(id, _)| id == key)
-                .ok_or(StreamError::Unbalanced)?;
-            let count = *count;
+            let call = &self.calls[index];
+            let note = call.definition.ok_or(StreamError::Unbalanced)?;
+            let count = call.count;
+            let safe = core::mem::take(&mut self.calls[index].id);
             let value = core::mem::take(&mut self.notes[note].1);
             self.newline()?;
             self.write("<li id=\"")?;

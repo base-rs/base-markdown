@@ -1,0 +1,106 @@
+{
+  "sources": {
+    "baseline": {
+      "commit": "174813e0fe63a57005c1582a43649c4b57248a62",
+      "src_tree": "021efa886d6357e7d8178022373b3b76d06fda09",
+      "tests_tree": "76f8bd1122ccf33c78e17394e8d4c3617c1950f8"
+    },
+    "candidate": {
+      "commit": "7ace4c156ab61b05351712067b421159a21a6aa6",
+      "src_tree": "b0810c8cd90c07227973f5c64d24883ffb1d17a4",
+      "tests_tree": "6f2e85f2c8efebfd195f46409c7019dd421cb10b"
+    }
+  },
+  "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.3",
+  "validation_compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "host": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "machine": "Apple M4 Pro",
+    "isolation": "Shared host, no affinity/isolation. Own builds, tests, diagnostics and reviews ran outside final timing."
+  },
+  "binaries": {
+    "baseline-bench": {
+      "sha256": "bf2e283e60d2cba1ce06b9bc2ca9ac651b7ac980c34f3edf200028898be12225",
+      "bytes": 1848784
+    },
+    "baseline-allocations": {
+      "sha256": "838537a3b1bc8d7afc60f2bf0ba99981e4108b1cd86b8f6667ad9accf598a571",
+      "bytes": 1882448
+    },
+    "baseline-html": {
+      "sha256": "8b1ab633d551bbc6bb08ec999c69bf36e6c22d42d24d481681669727b17164db",
+      "bytes": 3217616
+    },
+    "baseline-driver": {
+      "sha256": "f32a36e286b940516309aee242684ca29b075aaa3d69656e591cdad7ba296fc0",
+      "bytes": 1646224
+    },
+    "candidate-bench": {
+      "sha256": "8a812dc82693219a3da4a4b2292be03579b9fe9e47d3b03e474dac9bf853250d",
+      "bytes": 1887568
+    },
+    "candidate-allocations": {
+      "sha256": "aace069f57d17a5a62689cc798f9bcf7656e9db5d87f23ecb31c170d69465a48",
+      "bytes": 1904176
+    },
+    "candidate-html": {
+      "sha256": "69f5bfa7937a5594ad7f1329f98c3a7c8034c2aa8a1cf504cbbac3f6366ec489",
+      "bytes": 3239136
+    },
+    "candidate-driver": {
+      "sha256": "68c604ed63c4a7bda9a92138c578f288bde2f1500f360d1804d3dd0313394521",
+      "bytes": 1671040
+    }
+  },
+  "inputs": {
+    "2026-10-25-footnotes-indexes-and-escape-context/original.json": {
+      "sha256": "bcc25b304657ef9a179b4f87b70e22b2fa8ad728723176e207908b3a9e6101cd",
+      "cases": 4
+    },
+    "2026-10-25-footnotes-indexes-and-escape-context/controls.json": {
+      "sha256": "f00d9d48ff0a802456acfeaa7c56b094de7172adaafb0cb55b06607b7041a937",
+      "cases": 16
+    },
+    "2026-10-25-footnotes-indexes-and-escape-context/fence-controls.json": {
+      "sha256": "e151a4e8ea8942e2844cb598073f8b2df3f5fbe3e1e3cf9134e15a188abdc2f1",
+      "cases": 2
+    },
+    "2026-10-25-footnotes-indexes-and-escape-context/probes.json": {
+      "sha256": "a7841a06141aca7c1b94caa152d8fe77d8950facb20f623721cbac871bb4fc02",
+      "cases": 23082
+    },
+    "2026-10-25-text-delimiters-and-footnotes/delimiter-controls.json": {
+      "sha256": "01b5d980ebea9e54228260638ba0a23bdc41eb88267159a7c75a273ab6a2b787",
+      "cases": 12
+    },
+    "2026-10-25-text-delimiters-and-footnotes/delimiter-probes.json": {
+      "sha256": "fdb5702ea811c139ff1ac3b21b2205f3efef4fa3cf5b88383b3f84a55839ed4e",
+      "cases": 320
+    },
+    "2026-10-25-text-delimiters-and-footnotes/features.json": {
+      "sha256": "60d3d4760b3903f1d635289e17822dc1e97c012512553808226c787a88cc6f0e",
+      "cases": 9
+    },
+    "2026-10-25-text-delimiters-and-footnotes/sparse-calls.json": {
+      "sha256": "dcfc67573e318dd5283362201f8e871bce518696fbedd3c2a632eb8263f83a36",
+      "cases": 8
+    }
+  },
+  "drivers": {
+    "2026-10-25-text-delimiters-and-footnotes/prepare.py": "24e7a72364b61b075253a364b7bbcc0d5ab9ec4ce1fef7b1c55bd97d2dcf0d56",
+    "2026-10-25-text-delimiters-and-footnotes/verify.py": "6c6252f6d967806ce1e1b6e60689f0c0544d33b29c0ca6831cc7c6cd9d75bb15",
+    "2026-10-25-text-delimiters-and-footnotes/record.py": "ba68e7d853dea4f88a442a53aa67a81913f66fee7d697461d0cf1043c701cbbd",
+    "2026-10-25-footnotes-indexes-and-escape-context/build.py": "889358b2d795ecd7ab7f5e8e14c2b3be4cfa27a9d15ef3c3a9ebbab86f37923a",
+    "2026-10-25-footnotes-indexes-and-escape-context/bench.rs": "8eba019434e49bc669f2994cdbaceeb0a467bd7c3cb691480eddff9ca94da9c7",
+    "2026-10-25-footnotes-indexes-and-escape-context/measure.py": "e71e2540a8d40ee7f511ede97801586b4e4728eb3ae75cfcac3aae30cd647626",
+    "2026-10-25-serializer-and-edits/bench.rs": "1c9aef5dc9e9d1416e04d3f9323311134bbb4ba0320b0b2b9c93f50031c892a2",
+    "2026-10-25-single-parser/probe-driver.rs": "59fda445a797f70016e546ea519eabdb51e3b3f626991faf272d7f7de4ba7afc",
+    "2026-10-25-normalize-identifiers/summarize.py": "792c0152b103af41678aae64fdfa2fdf7683af1bc3a1daa8553d24b4b77d60f3"
+  },
+  "locks": {
+    "/Users/samuel/Developer/core-rs/core-markdown/Cargo.lock": "e6dae993451707ea3208661462f52e8f57b61d9de444e228665527f2b6dd7c1a",
+    "/Users/samuel/Developer/core-rs/core-markdown/benches/comparison/Cargo.lock": "f5e800843ee0953d706b17e637b17645604493bc2f331190518fd12989b169a2",
+    "/private/tmp/core-markdown-cleanup61/baseline-driver-source/Cargo.lock": "42ca4ca9eb86fba0acd88e4c49b86d7cccbf88201abe198d079740254e55761b",
+    "/private/tmp/core-markdown-cleanup61/candidate-driver-source/Cargo.lock": "42ca4ca9eb86fba0acd88e4c49b86d7cccbf88201abe198d079740254e55761b"
+  }
+}

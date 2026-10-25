@@ -1,0 +1,13 @@
+{
+  "commit": "8d8a4fa69ca9564c987f224664e616a8ec1ed373",
+  "src_tree": "6d6683f769b209643237579270e97711dda4cb67",
+  "binaries": {
+    "candidate-bench": "8642a94727a2c11617fb8c592113074aa632fc6ffd2876d2d05e38c623a25573",
+    "candidate-allocations": "898de6a6ca7050a9febc33e7e021639e1fa05c085538ae2bd01c6c52338e9c32",
+    "candidate-html": "8bc15242f867a84aeb5a801f37ac2285efb91701c6ad3685c1d489f359e8d01d",
+    "candidate-driver": "2b208732463453e4b2d6a10eb554e8608a075058bafa18f56d8441760ab300b5"
+  },
+  "note": "Rejected map registry / bounded second-scan delimiter prototype; completed samples retained, final timings use revised sources.",
+  "base": "174813e0fe63a57005c1582a43649c4b57248a62",
+  "patch_sha256": "a9db1b6859b3887df5710c53a7980ee9efce1da0d20cb964bb3f27515471ad23"
+}
