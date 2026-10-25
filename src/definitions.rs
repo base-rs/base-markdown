@@ -55,27 +55,14 @@ impl<'a> Definitions<'a> {
     }
 
     pub fn finish(&mut self) {
-        self.ordered.clear();
-        self.ordered.extend(0..self.entries.len());
-        let entries = &self.entries;
-        self.ordered
-            .sort_unstable_by(|&a, &b| entries[a].key.cmp(&entries[b].key).then(a.cmp(&b)));
-        self.ordered
-            .dedup_by(|a, b| entries[*a].key == entries[*b].key);
-        self.footnote_order.clear();
-        self.footnote_order.extend(0..self.footnotes.len());
-        let footnotes = &self.footnotes;
-        self.footnote_order
-            .sort_unstable_by(|&a, &b| footnotes[a].cmp(&footnotes[b]).then(a.cmp(&b)));
-        self.footnote_order
-            .dedup_by(|a, b| footnotes[*a] == footnotes[*b]);
+        build_index(&mut self.ordered, &self.entries, |entry| entry.key.as_ref());
+        build_index(&mut self.footnote_order, &self.footnotes, String::as_str);
     }
 
     pub fn find(&self, key: &str) -> Option<usize> {
-        self.ordered
-            .binary_search_by(|&index| self.entries[index].key.as_ref().cmp(key))
-            .ok()
-            .map(|index| self.ordered[index])
+        find_index(&self.ordered, &self.entries, key, |entry| {
+            entry.key.as_ref()
+        })
     }
 
     pub fn push_footnote(&mut self, source: &str, label: &Text<'_>) -> usize {
@@ -93,11 +80,28 @@ impl<'a> Definitions<'a> {
     }
 
     pub fn find_footnote(&self, key: &str) -> Option<usize> {
-        self.footnote_order
-            .binary_search_by(|&index| self.footnotes[index].as_str().cmp(key))
-            .ok()
-            .map(|index| self.footnote_order[index])
+        find_index(&self.footnote_order, &self.footnotes, key, String::as_str)
     }
+}
+
+// Sort equal keys by authored position so deduplication keeps the first definition.
+fn build_index<T>(order: &mut Vec<usize>, values: &[T], key: impl Fn(&T) -> &str) {
+    order.clear();
+    order.extend(0..values.len());
+    order.sort_unstable_by(|&a, &b| key(&values[a]).cmp(key(&values[b])).then(a.cmp(&b)));
+    order.dedup_by(|a, b| key(&values[*a]) == key(&values[*b]));
+}
+
+fn find_index<T>(
+    order: &[usize],
+    values: &[T],
+    value: &str,
+    key: impl Fn(&T) -> &str,
+) -> Option<usize> {
+    order
+        .binary_search_by(|&index| key(&values[index]).cmp(value))
+        .ok()
+        .map(|index| order[index])
 }
 
 // Reference keys fold ASCII letters to lowercase after the shared Unicode fold.

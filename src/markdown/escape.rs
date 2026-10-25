@@ -127,6 +127,36 @@ pub(super) fn literal_prefix(value: &str) -> Option<char> {
     (!RULES.iter().any(|rule| char::from(rule.byte) == first)).then_some(first)
 }
 
+// Borrow neighboring text instead of assembling a copy of the growing output prefix.
+#[derive(Clone, Copy)]
+struct Context<'a>([&'a [u8]; 3]);
+
+impl Context<'_> {
+    fn get(self, mut position: usize) -> Option<u8> {
+        for part in self.0 {
+            if position < part.len() {
+                return Some(part[position]);
+            }
+            position -= part.len();
+        }
+        None
+    }
+
+    fn find(self, byte: u8, start: usize) -> Option<usize> {
+        let mut offset = 0;
+        for part in self.0 {
+            let from = start.saturating_sub(offset);
+            if from < part.len() {
+                if let Some(index) = memchr::memchr(byte, &part[from..]) {
+                    return Some(offset + from + index);
+                }
+            }
+            offset += part.len();
+        }
+        None
+    }
+}
+
 fn scopes(stack: &[ConstructName]) -> u32 {
     stack.iter().fold(0, |mask, name| mask | bit(*name))
 }
@@ -135,11 +165,11 @@ impl Rule {
     fn active(&self, scopes: u32) -> bool {
         (self.include == 0 || self.include & scopes != 0) && self.exclude & scopes == 0
     }
-    fn at(&self, value: &[u8], position: usize, single_math: bool) -> Option<Range<usize>> {
+    fn at(&self, value: Context<'_>, position: usize, single_math: bool) -> Option<Range<usize>> {
         let start = match self.before {
             Before::Any => position,
             Before::Previous(byte) => {
-                if position == 0 || value[position - 1] != byte {
+                if position == 0 || value.get(position - 1) != Some(byte) {
                     return None;
                 }
                 position - 1
@@ -148,23 +178,23 @@ impl Rule {
                 let mut at = position;
                 if matches!(self.before, Before::Digits) {
                     // Markdown ordered-list markers use ASCII digits.
-                    while at > 0 && value[at - 1].is_ascii_digit() {
+                    while at > 0 && value.get(at - 1).is_some_and(|byte| byte.is_ascii_digit()) {
                         at -= 1;
                     }
                     if at == position {
                         return None;
                     }
                 }
-                while at > 0 && matches!(value[at - 1], b' ' | b'\t') {
+                while at > 0 && matches!(value.get(at - 1), Some(b' ' | b'\t')) {
                     at -= 1;
                 }
-                if at == 0 || !matches!(value[at - 1], b'\r' | b'\n') {
+                if at == 0 || !matches!(value.get(at - 1), Some(b'\r' | b'\n')) {
                     return None;
                 }
                 at - 1
             }
         };
-        let next = value.get(position + 1).copied();
+        let next = value.get(position + 1);
         let width = match self.after {
             After::Any => 0,
             After::Math if single_math => 0,
@@ -213,17 +243,15 @@ impl Rule {
     }
     fn matches<'a>(
         &'a self,
-        value: &'a str,
+        value: Context<'a>,
         single_math: bool,
     ) -> impl Iterator<Item = (Range<usize>, usize)> + 'a {
-        let bytes = value.as_bytes();
         let mut search = 0;
         let mut minimum = 0;
         core::iter::from_fn(move || {
-            while let Some(offset) = memchr::memchr(self.byte, &bytes[search..]) {
-                let position = search + offset;
+            while let Some(position) = value.find(self.byte, search) {
                 if let Some(range) = self
-                    .at(bytes, position, single_math)
+                    .at(value, position, single_math)
                     .filter(|range| range.start >= minimum)
                 {
                     search = range.end;
@@ -238,22 +266,44 @@ impl Rule {
 }
 
 pub(super) fn collect(
-    value: &str,
+    before: &str,
+    input: &str,
+    after: &str,
     stack: &[ConstructName],
     single_math: bool,
     output: &mut Vec<(usize, EscapeInfos)>,
 ) {
+    let value = Context([before.as_bytes(), input.as_bytes(), after.as_bytes()]);
+    let start = before.len().saturating_sub(1);
+    let end = before.len() + input.len();
     let scopes = scopes(stack);
     for rule in RULES.iter().filter(|rule| rule.active(scopes)) {
+        // Only input escapes and the immediately preceding escape can affect output.
+        // Test candidates without a consumption boundary first; a possible match still
+        // uses the full prefix walk to preserve non-overlapping neighbor consumption.
+        let mut at = start;
+        let mut possible = false;
+        while let Some(position) = value.find(rule.byte, at).filter(|position| *position < end) {
+            if rule.at(value, position, single_math).is_some() {
+                possible = true;
+                break;
+            }
+            at = position + 1;
+        }
+        if !possible {
+            continue;
+        }
         for (_, position) in rule.matches(value, single_math) {
-            output.push((
-                position,
-                EscapeInfos {
-                    before: !matches!(rule.before, Before::Any),
-                    after: !matches!(rule.after, After::Any)
-                        && !(matches!(rule.after, After::Math) && single_math),
-                },
-            ));
+            if position >= start && position < end {
+                output.push((
+                    position,
+                    EscapeInfos {
+                        before: !matches!(rule.before, Before::Any),
+                        after: !matches!(rule.after, After::Any)
+                            && !(matches!(rule.after, After::Math) && single_math),
+                    },
+                ));
+            }
         }
     }
 }
@@ -268,7 +318,9 @@ pub(super) fn normalize_inline(value: &mut String) {
         .filter(|rule| matches!(rule.before, Before::Line | Before::Digits))
     {
         loop {
-            let first = rule.matches(value, false).next();
+            let first = rule
+                .matches(Context([b"", value.as_bytes(), b""]), false)
+                .next();
             let Some((range, _)) = first else {
                 break;
             };
@@ -286,6 +338,78 @@ pub(super) fn normalize_inline(value: &mut String) {
 mod tests {
     use super::*;
     use alloc::{format, string::ToString};
+
+    #[test]
+    fn borrowed_context_preserves_matches_across_every_split() {
+        for value in [
+            "",
+            "ordinary é α 世界",
+            "\r\n \t12. next",
+            "\n*\n*\n*\n* ",
+            "\r\n-\r\n-\r\n-\r\n",
+            "](![x] &amp; <$a> $$ ",
+            "\\\r\n\t é\n  # heading\r\n",
+            "\n123456) x\r\n",
+            "`**__~~$",
+        ] {
+            let boundaries: Vec<_> = (0..=value.len())
+                .filter(|&at| value.is_char_boundary(at))
+                .collect();
+            for &start in &boundaries {
+                for &end in boundaries.iter().filter(|&&end| end >= start) {
+                    let context = Context([
+                        &value.as_bytes()[..start],
+                        &value.as_bytes()[start..end],
+                        &value.as_bytes()[end..],
+                    ]);
+                    for single in [false, true] {
+                        for rule in RULES {
+                            let expected: Vec<_> = rule
+                                .matches(Context([b"", value.as_bytes(), b""]), single)
+                                .collect();
+                            let actual: Vec<_> = rule.matches(context, single).collect();
+                            assert_eq!(actual, expected, "{value:?}, {start}..{end}");
+                        }
+                        for scope in [
+                            Phrasing,
+                            Label,
+                            DestinationRaw,
+                            HeadingAtx,
+                            CodeFencedLangGraveAccent,
+                        ] {
+                            let mut actual = Vec::new();
+                            collect(
+                                &value[..start],
+                                &value[start..end],
+                                &value[end..],
+                                &[scope],
+                                single,
+                                &mut actual,
+                            );
+                            let mut expected = Vec::new();
+                            for rule in RULES.iter().filter(|rule| rule.active(bit(scope))) {
+                                for (_, position) in rule.matches(context, single) {
+                                    if position >= start.saturating_sub(1) && position < end {
+                                        expected.push((
+                                            position,
+                                            !matches!(rule.before, Before::Any),
+                                            !matches!(rule.after, After::Any)
+                                                && !(matches!(rule.after, After::Math) && single),
+                                        ));
+                                    }
+                                }
+                            }
+                            let actual: Vec<_> = actual
+                                .into_iter()
+                                .map(|(at, flags)| (at, flags.before, flags.after))
+                                .collect();
+                            assert_eq!(actual, expected, "{value:?}, {start}..{end}");
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn fixed_matchers_preserve_non_overlapping_regex_rules() {
@@ -328,7 +452,9 @@ mod tests {
                                 char::from(byte),
                                 char::from(rule.byte)
                             );
-                            let actual: Vec<_> = rule.matches(&value, single).collect();
+                            let actual: Vec<_> = rule
+                                .matches(Context([b"", value.as_bytes(), b""]), single)
+                                .collect();
                             let expected: Vec<_> = expression
                                 .captures_iter(&value)
                                 .map(|capture| {

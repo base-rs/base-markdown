@@ -113,6 +113,8 @@ impl State<'_> {
         }
         self.output.push('\n');
         if !content.is_empty() {
+            // Grow once for the body, closing fence and terminating line ending.
+            self.output.reserve(content.len() + size + 2);
             self.output.push_str(content);
             self.output.push('\n');
         }
@@ -690,8 +692,11 @@ impl State<'_> {
         self.output.push_str(separator);
         self.output.push_str(info);
         self.output.push('\n');
+        let needs_line_ending = !body.is_empty() && !body.ends_with(['\r', '\n']);
+        self.output
+            .reserve(body.len() + closing_length + usize::from(needs_line_ending) + 1);
         self.output.push_str(body);
-        if !body.is_empty() && !body.ends_with(['\r', '\n']) {
+        if needs_line_ending {
             self.output.push('\n');
         }
         self.output

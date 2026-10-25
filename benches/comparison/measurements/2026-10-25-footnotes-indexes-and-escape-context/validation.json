@@ -1,0 +1,44 @@
+{
+  "commit": "8126f8a5c4d1c43e64a49643b5063375e5aa8230",
+  "src_tree": "d54347706f7d6ef3ae4edf816293abc8ecd774ea",
+  "coverage": {
+    "measured": 13792,
+    "covered": 13792,
+    "unreachable_exclusions": 22,
+    "target": "aarch64-apple-darwin",
+    "features": "all"
+  },
+  "checks": [
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test:coverage --package core-markdown --all-targets true --all-features true",
+      "scope": "native runtime",
+      "passed": true,
+      "log_sha256": "a1186352da84a29c2e9680627aea18ae5fe73ce5e14f24d1c75131b937a18bad"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test",
+      "scope": "default workspace",
+      "passed": true,
+      "log_sha256": "576b5ad101022defc24f1474673ed2ffa5d9cd92135da2cedda98d67dace9853"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+      "scope": "all features/targets",
+      "passed": true,
+      "log_sha256": "7dbbc45d7394ba7479ae6ae7c4bb28a9d574e18d4f7f8028e7191ae074bba5da"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo check --lib --all-features --target x86_64-unknown-linux-gnu --locked",
+      "scope": "compile-only",
+      "passed": true,
+      "log_sha256": "29157ce6a655aa5b120056dc814209d5e56fa6d6de33b6be0cb547b6a9762949"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "scope": "formatting",
+      "passed": true,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "preservation_log_sha256": "7732fc3a434015a4d846355565da256962edd1474f911f7facb21343a767a1a0"
+}

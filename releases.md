@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Share reference/footnote index construction and lookup, write footnote backlinks directly through the HTML writer, and borrow Markdown escape context instead of copying it. Skip irrelevant escape scans and reserve fenced-body/closing-marker capacity together, preserving output and diagnostic behavior.
+
 - Share Markdown scratch rewrites and marker-run scanning across code, math, frontmatter and tables. Skip inline normalization copies without line endings and avoid speculative rendering for literal text prefixes, preserving output and diagnostic behavior.
 
 - Write Markdown block separators from static strings, borrow unchanged text when unwrapping soft line breaks, and splice removed heading sections as one sibling range. Preserve output, stable node IDs, detached subtrees, and edit-context hints.
