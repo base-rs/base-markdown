@@ -618,10 +618,7 @@ impl State<'_> {
         closing_fence_length: usize,
     ) -> Result<(), Message> {
         let mut info = authored_info.trim_matches([' ', '\t']);
-        if (matches!(fence.character, '`' | '~') && info.is_empty())
-            || authored_info.contains(['\r', '\n'])
-            || (fence.character == '`' && authored_info.contains('`'))
-        {
+        if !fence.valid_frontmatter_info(authored_info.as_bytes()) {
             return Err(Message {
                 span: None,
                 reason: "Frontmatter requires a valid fence and a single-line info string; code fences require a language hint".into(),
