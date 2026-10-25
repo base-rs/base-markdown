@@ -1,0 +1,90 @@
+{
+  "recorded_utc": "2026-10-25T04:23:19.639252+00:00",
+  "baseline_commit": "d65d7210b62210a3a855080516b55a83bea992cf",
+  "baseline_build_commit": "4a60bfeaacef439833a42610638aadfcabf45ee8",
+  "baseline_tree": "4e325e559a83a254f418fa59c46d7d34eee935a1",
+  "baseline_build_tree": "4e325e559a83a254f418fa59c46d7d34eee935a1",
+  "candidate_commit": "1b7b1b0e3a7a99d065c3cb059e13bd54e9d2f1e3",
+  "candidate_src_tree": "a8b7334e08fe7e419ce0eac63a858387cdb20d8d",
+  "stages": {
+    "titles": "bf68305219989b401dc5d2046cce8a78bfcd55bf",
+    "headings": "fcbb4b0000cbc79dc8ef11935e75ae1f62489682"
+  },
+  "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.3",
+  "host": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "machine": "Apple M4 Pro"
+  },
+  "binary_sha256": {
+    "baseline-bench": "2ce606e64b0d8c414b048739dd6022a1d8282be3326f74e898cd92adfc5806ec",
+    "baseline-html": "8ca55861d25a1872e3858f27adefa72f9993f09c5a280a808c51496fff5662b4",
+    "baseline-driver": "37688506d55838fc25c91651d590d4d86afbe5d655c667fbf15a0330e8b468ab",
+    "baseline-allocations": "426631f605cc3a228992e7c52ee4b35e04199e1b644e2eb0425089064bb1b51e",
+    "candidate-bench": "4276c07f51f1a2a934f0eaf1c1acbd2aead119042306d71456cd74acdbd84613",
+    "candidate-html": "4a2e42dec99383ae7f343b42472e2761adab1a18353ffd0f2211741d6b2d69c1",
+    "candidate-driver": "aa79dc4981179965e6f6871685daaec2af51031b8eba28470d38006544c12afa",
+    "candidate-allocations": "3ee92ac021b39536f4c27683a0dcd3ab8497263295b68366d15e635b54f15ce4",
+    "titles-bench": "cc0822db23f6fa660f3a8bfa4d22cb159480b15707d254fbe5a063bd9622aadb",
+    "headings-bench": "cb6140699fbb07f0cebea30ddc5e6f38a2719eccc5f444f3e5fe0893d84ed35c"
+  },
+  "file_sha256": {
+    "Cargo.toml": "d1bfa13cadbca239eb25beac9e84f5f00907f30cc35867a958f2ab911f604571",
+    "Cargo.lock": "b00a3a3d06287d4790cc6fa5e222e0ba04c26fdc6c1e1f648af5bd5754cc46e3",
+    "benches/comparison/Cargo.toml": "d736a0096b5562e92182c6cbd57e8e889a3e1e201e5102d3c7fb2fb7aa138d94",
+    "benches/comparison/Cargo.lock": "f5e800843ee0953d706b17e637b17645604493bc2f331190518fd12989b169a2",
+    "benches/comparison/src/main.rs": "f4dfef68b05e019d9cd31541790f4fbff271ca9e78e7c53020e768da1408a040",
+    "benches/comparison/measurements/2026-10-25-titles-headings-and-infallible-apis/build.py": "830d0a51a3ce4f8ff4ae1e268dcaaeae30fa91175ba227d8e09cecf2c39db1df",
+    "benches/comparison/measurements/2026-10-25-titles-headings-and-infallible-apis/api_migration.py": "0560d018f851e4ea6e263a58a199c141574467803fe25279133886785eff1f22",
+    "benches/comparison/measurements/2026-10-25-titles-headings-and-infallible-apis/measure.py": "a844f2eb29fde520d2fe2ecccaca77a6f62bba14d28995f9fcd89d717d28ae55",
+    "benches/comparison/measurements/2026-10-25-titles-headings-and-infallible-apis/prepare.py": "4ec7f6345065230a8dda33e59091ced09d13e12c4f112746e92442900a2a28dd",
+    "benches/comparison/measurements/2026-10-25-titles-headings-and-infallible-apis/verify.py": "701662c285bf8d39f7f1c6a7191515b4cc3854dd5df14c23d1fc0e9d07cb9806",
+    "benches/comparison/measurements/2026-10-25-parser-consolidation/event-probe.lock": "42ca4ca9eb86fba0acd88e4c49b86d7cccbf88201abe198d079740254e55761b",
+    "benches/comparison/measurements/2026-10-25-single-parser/probe-driver.rs": "59fda445a797f70016e546ea519eabdb51e3b3f626991faf272d7f7de4ba7afc",
+    "benches/comparison/measurements/2026-10-25-scopes-frontmatter-and-anchors/bench.rs": "26d805840ec3d8934e60f5df6b72ea7a1e80c1bfe94aea699ee100d731e3fdab",
+    "benches/comparison/measurements/2026-10-25-footnotes-indexes-and-escape-context/bench.rs": "8eba019434e49bc669f2994cdbaceeb0a467bd7c3cb691480eddff9ca94da9c7",
+    "benches/comparison/measurements/2026-10-25-serializer-and-edits/bench.rs": "1c9aef5dc9e9d1416e04d3f9323311134bbb4ba0320b0b2b9c93f50031c892a2",
+    "benches/comparison/measurements/2026-10-25-text-delimiters-and-footnotes/verify.py": "6c6252f6d967806ce1e1b6e60689f0c0544d33b29c0ca6831cc7c6cd9d75bb15",
+    "benches/comparison/measurements/2026-10-25-serializer-and-edits/verify.py": "341c656052d0ef47ddeb3a58e219db7b00e3db1e1631f7f92c0d72e1444f828b",
+    "benches/comparison/measurements/2026-10-25-normalize-identifiers/summarize.py": "792c0152b103af41678aae64fdfa2fdf7683af1bc3a1daa8553d24b4b77d60f3",
+    "benches/comparison/measurements/2026-10-25-footnotes-indexes-and-escape-context/measure.py": "e71e2540a8d40ee7f511ede97801586b4e4728eb3ae75cfcac3aae30cd647626"
+  },
+  "staged_driver_sha256": {
+    "baseline-driver-source/src/previous.rs": "8eba019434e49bc669f2994cdbaceeb0a467bd7c3cb691480eddff9ca94da9c7",
+    "baseline-driver-source/src/main.rs": "59fda445a797f70016e546ea519eabdb51e3b3f626991faf272d7f7de4ba7afc",
+    "baseline-driver-source/src/established.rs": "1c9aef5dc9e9d1416e04d3f9323311134bbb4ba0320b0b2b9c93f50031c892a2",
+    "candidate-driver-source/src/previous.rs": "31e99eee6a49a16574930e76393d8d720a0f5b6cf1bb0d5797607ab0f81a2cc7",
+    "candidate-driver-source/src/main.rs": "4a3bf2bf8f30e31f066533592202b1cfe0c2398830abf35e127d19842ee6e2c8",
+    "candidate-driver-source/src/established.rs": "f5b137278b4b1de79517076c5b4d93bb4c8fdd101ab8700809565c24bf019710",
+    "titles-driver-source/src/previous.rs": "8eba019434e49bc669f2994cdbaceeb0a467bd7c3cb691480eddff9ca94da9c7",
+    "titles-driver-source/src/main.rs": "26d805840ec3d8934e60f5df6b72ea7a1e80c1bfe94aea699ee100d731e3fdab",
+    "titles-driver-source/src/established.rs": "1c9aef5dc9e9d1416e04d3f9323311134bbb4ba0320b0b2b9c93f50031c892a2",
+    "headings-driver-source/src/previous.rs": "8eba019434e49bc669f2994cdbaceeb0a467bd7c3cb691480eddff9ca94da9c7",
+    "headings-driver-source/src/main.rs": "26d805840ec3d8934e60f5df6b72ea7a1e80c1bfe94aea699ee100d731e3fdab",
+    "headings-driver-source/src/established.rs": "1c9aef5dc9e9d1416e04d3f9323311134bbb4ba0320b0b2b9c93f50031c892a2"
+  },
+  "input_sha256": {
+    "benches/comparison/measurements/2026-10-25-titles-headings-and-infallible-apis/features.json": "72cb376fc35f32e10fc99aba2701507cfca09c0a029bfabacec00e2feb356169",
+    "benches/comparison/measurements/2026-10-25-footnotes-indexes-and-escape-context/original.json": "bcc25b304657ef9a179b4f87b70e22b2fa8ad728723176e207908b3a9e6101cd"
+  },
+  "cohorts": {
+    "primary": {
+      "sha256": "d98d9b5d34b09f2f808fd62488dddf25d151d5d668bb88a7fd202883e40f0e62",
+      "process_mode_records": 18,
+      "document_results": 114,
+      "batch_samples": 798
+    },
+    "html-repeat": {
+      "sha256": "836359acba22caa6892e34b764c6558f5acfb6f9676e125249ba73e5b493833a",
+      "process_mode_records": 6,
+      "document_results": 24,
+      "batch_samples": 168
+    },
+    "stages": {
+      "sha256": "8ca4f8e7ca62455b14f9bac5b72b86a2c54188dacb95b1e5a1802b10a0188840",
+      "process_mode_records": 12,
+      "document_results": 48,
+      "batch_samples": 336
+    }
+  },
+  "method": "Three sequential alternating rounds per cohort, reversing engine order in round two; 200 ms warmup and seven approximately 150 ms calibrated batches. Fresh executable inodes. Median of process medians. Native allocator for timing; separate instrumented allocation executables. Shared host without isolation. Own builds, tests and output/allocation diagnostics completed before each timing cohort. Lightweight source/log inspection may overlap primary; HTML repeat and stage cohort have no own review/diagnostic overlap. All primary, repeat and intermediate samples retained separately."
+}

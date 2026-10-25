@@ -1,0 +1,39 @@
+{
+  "candidate_commit": "1b7b1b0e3a7a99d065c3cb059e13bd54e9d2f1e3",
+  "candidate_src_tree": "a8b7334e08fe7e419ce0eac63a858387cdb20d8d",
+  "target": "aarch64-apple-darwin",
+  "coverage": {
+    "covered": 13828,
+    "measured": 13828,
+    "excluded_invariant_regions": 21
+  },
+  "formatting": "cargo fmt --all -- --check passed",
+  "checks": [
+    {
+      "command": "PATH=\"/Users/samuel/.cargo/bin:$PATH\" CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 rustup run stable cargo bake --locked test:coverage --package core-markdown --all-targets true --all-features true",
+      "exit_code": 0,
+      "log": "/tmp/core-markdown-cleanup63/coverage.log",
+      "log_sha256": "ecd15f80afde36384feddc6f9f19c00d522ba5d53cc5f2b48c112de512f08099"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo bake --locked test",
+      "exit_code": 0,
+      "log": "/tmp/core-markdown-cleanup63/test.log",
+      "log_sha256": "08916829c30511d95c49e5c9a733c70124f175b73b3103a8de8f32fe683225c5"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+      "exit_code": 0,
+      "log": "/tmp/core-markdown-cleanup63/clippy.log",
+      "log_sha256": "d0b75592e0f032a2ebf641fcbda76e3daad3f5293b8858a0c34e4edc29bac831"
+    },
+    {
+      "command": "python3 benches/comparison/measurements/2026-10-25-text-delimiters-and-footnotes/verify.py --work /tmp/core-markdown-cleanup63",
+      "exit_code": 0,
+      "log": "/tmp/core-markdown-cleanup63/verify.log",
+      "log_sha256": "21a9efda81ad3c88b60a375500ddf95cac2f883d2aa75099f4406eac5479971c"
+    }
+  ],
+  "focused_verification": "11 outputs preserved byte for byte; 11 allocation records; see focused-preservation.json and focused-allocations.json",
+  "linux": "Pending CI; no Linux runtime result claimed here."
+}

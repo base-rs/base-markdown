@@ -1,0 +1,98 @@
+{
+  "html/readme": {
+    "baseline": {
+      "median_ms": 0.01236004388495498,
+      "process_medians_ms": [
+        0.012339594233660565,
+        0.01236004388495498,
+        0.012623147211189777
+      ],
+      "process_spread_percent": 2.297911682992959,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.012536298218029351,
+      "process_medians_ms": [
+        0.012536298218029351,
+        0.012495356245513279,
+        0.012617402574186627
+      ],
+      "process_spread_percent": 0.9767334862275101,
+      "control_engine": "baseline",
+      "time_change_percent": 1.4260008679169323
+    }
+  },
+  "html/mixed-100k": {
+    "baseline": {
+      "median_ms": 0.3715478946078431,
+      "process_medians_ms": [
+        0.37076412871287123,
+        0.3715478946078431,
+        0.3771633416458853
+      ],
+      "process_spread_percent": 1.7259525497327122,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.37999587563451775,
+      "process_medians_ms": [
+        0.37999587563451775,
+        0.3795967381546135,
+        0.383837085
+      ],
+      "process_spread_percent": 1.1170661966171558,
+      "control_engine": "baseline",
+      "time_change_percent": 2.2737259850688307
+    }
+  },
+  "html/mixed-1m": {
+    "baseline": {
+      "median_ms": 3.759109375,
+      "process_medians_ms": [
+        3.7426839512195125,
+        3.760342725,
+        3.759109375
+      ],
+      "process_spread_percent": 0.47182113185735286,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 3.8282572999999998,
+      "process_medians_ms": [
+        3.8222843749999997,
+        3.8282572999999998,
+        3.845855225
+      ],
+      "process_spread_percent": 0.6166691875195918,
+      "control_engine": "baseline",
+      "time_change_percent": 1.8394762722220515
+    }
+  },
+  "html/gfm-100k": {
+    "baseline": {
+      "median_ms": 0.58004833984375,
+      "process_medians_ms": [
+        0.5750087110266161,
+        0.58004833984375,
+        0.5804914749034749
+      ],
+      "process_spread_percent": 0.9535097071955434,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.5874015444015444,
+      "process_medians_ms": [
+        0.5874015444015444,
+        0.58708626171875,
+        0.5919049558232932
+      ],
+      "process_spread_percent": 0.8207812750439691,
+      "control_engine": "baseline",
+      "time_change_percent": 1.2676882343590767
+    }
+  }
+}
