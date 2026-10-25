@@ -70,7 +70,6 @@ impl State<'_> {
         let marker = self.options.check_fence()?;
         let start = self.output.len();
         if format_code_as_indented(content, language.is_none(), self) {
-            self.enter(ConstructName::CodeIndented);
             self.output.push_str(content);
             self.indent_lines(start, |line, _, blank, output| {
                 if !blank {
@@ -78,11 +77,9 @@ impl State<'_> {
                 }
                 output.push_str(line);
             });
-            self.exit();
             return Ok(());
         }
         let size = (longest_run(content, marker as u8) + 1).max(3);
-        self.enter(ConstructName::CodeFenced);
         self.output.extend(core::iter::repeat(marker).take(size));
         if let Some(language) = language {
             self.enter(if marker == '`' {
@@ -119,7 +116,6 @@ impl State<'_> {
             self.output.push('\n');
         }
         self.output.extend(core::iter::repeat(marker).take(size));
-        self.exit();
         Ok(())
     }
 
@@ -131,7 +127,6 @@ impl State<'_> {
     ) -> Result<(), Message> {
         let quote = self.options.check_quote()?;
         let start = self.output.len();
-        self.enter(ConstructName::Definition);
         self.enter(ConstructName::Label);
         self.output.push('[');
         self.write_safe(label, &Info::at(start, self.output.len(), "]"), None);
@@ -144,7 +139,6 @@ impl State<'_> {
             quote,
             destination.is_empty() || contains_control_or_whitespace(destination),
         );
-        self.exit();
         Ok(())
     }
 
@@ -200,11 +194,9 @@ impl State<'_> {
         info: &Info,
     ) -> Result<(), Message> {
         let marker = self.options.check_emphasis()?;
-        self.enter(ConstructName::Emphasis);
         self.output.push(marker);
         self.container_phrasing(document, node, info)?;
         self.output.push(marker);
-        self.exit();
         Ok(())
     }
 
@@ -216,10 +208,8 @@ impl State<'_> {
     ) -> Result<(), Message> {
         let start = self.output.len();
         if format_heading_as_setext(document, node, self) {
-            self.enter(ConstructName::HeadingSetext);
             self.enter(ConstructName::Phrasing);
             self.container_phrasing(document, node, &Info::new("\n", "\n"))?;
-            self.exit();
             self.exit();
             let content = &self.output[start..];
             let last_line = content.rfind(['\r', '\n']).map_or(0, |index| index + 1);
@@ -264,10 +254,8 @@ impl State<'_> {
         node: NodeId,
         info: &Info,
     ) -> Result<(), Message> {
-        self.enter(ConstructName::Paragraph);
         self.enter(ConstructName::Phrasing);
         self.container_phrasing(document, node, info)?;
-        self.exit();
         self.exit();
         Ok(())
     }
@@ -279,13 +267,11 @@ impl State<'_> {
         info: &Info,
     ) -> Result<(), Message> {
         let marker = self.options.check_strong()?;
-        self.enter(ConstructName::Strong);
         self.output.push(marker);
         self.output.push(marker);
         self.container_phrasing(document, node, info)?;
         self.output.push(marker);
         self.output.push(marker);
-        self.exit();
         Ok(())
     }
 
@@ -354,7 +340,6 @@ impl State<'_> {
 
     pub(super) fn math(&mut self, content: &str, metadata: Option<&str>) -> Result<(), Message> {
         let size = (longest_run(content, b'$') + 1).max(2);
-        self.enter(ConstructName::MathFlow);
         let start = self.output.len();
         self.output.extend(core::iter::repeat('$').take(size));
         if let Some(metadata) = metadata {
@@ -372,7 +357,6 @@ impl State<'_> {
             self.output.push('\n');
         }
         self.output.extend(core::iter::repeat('$').take(size));
-        self.exit();
         Ok(())
     }
 
@@ -407,11 +391,6 @@ impl State<'_> {
                 return Ok(());
             }
         }
-        self.enter(if image {
-            ConstructName::Image
-        } else {
-            ConstructName::Link
-        });
         self.enter(ConstructName::Label);
         self.output.push_str(if image { "![" } else { "[" });
         let info = Info::at(start, self.output.len(), "](");
@@ -431,7 +410,6 @@ impl State<'_> {
                 || contains_control_or_whitespace(destination),
         );
         self.output.push(')');
-        self.exit();
         Ok(())
     }
 
@@ -443,11 +421,6 @@ impl State<'_> {
         label: &str,
         image: bool,
     ) -> Result<(), Message> {
-        self.enter(if image {
-            ConstructName::ImageReference
-        } else {
-            ConstructName::LinkReference
-        });
         self.enter(ConstructName::Label);
         let start = self.output.len();
         self.output.push_str(if image { "![" } else { "[" });
@@ -467,7 +440,6 @@ impl State<'_> {
         self.write_safe(label, &Info::at(start, reference_start, "]"), None);
         self.exit();
         self.stack = stack;
-        self.exit();
         if matches!(kind, ReferenceKind::Full)
             || text_start == text_end
             || self.output[text_start..text_end] != self.output[reference_start..]
