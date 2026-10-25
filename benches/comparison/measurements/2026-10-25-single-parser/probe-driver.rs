@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 use std::io::{self, BufRead};
 use core_markdown::{Options, EventParser, Document, render_events, to_html_with_options, to_markdown};
 use serde_json::{json, Value};

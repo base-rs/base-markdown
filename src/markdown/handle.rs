@@ -1,6 +1,4 @@
 // Released under the MIT License.
-// Copyright, 2024, by Bnchi.
-// Copyright, 2024-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
 //! Markdown construct formatting adapted from `mdast-util-to-markdown` and `mdast-util-math`.

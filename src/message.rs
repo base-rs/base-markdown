@@ -3,7 +3,6 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Diagnostics use the same byte offsets as documents and events.
-
 use alloc::borrow::Cow;
 use core::{fmt, ops::Range};
 

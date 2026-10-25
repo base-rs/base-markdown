@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 use core_markdown::{EventParser,Options,render_events};
 use core_markdown::stream::EventKind;
 use std::{env,fs,fmt};

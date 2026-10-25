@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 // Copyright 2015 Google Inc. All rights reserved.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,7 +24,6 @@
 // Copyright 2026 Samuel Williams.
 
 //! Candidate-byte scanning. The two-nibble lookup technique follows pulldown-cmark's SIMD scanner (revision 38e4d08f14ec4bd9783270e9623db7681ebed968); Markdown recognition stays in the parser.
-
 pub(crate) struct AsciiSet {
     members: [bool; 256],
     #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]

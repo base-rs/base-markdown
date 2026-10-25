@@ -1,4 +1,6 @@
 // Released under the MIT License.
+// Copyright, 2024, by Harsha Teja Kanna.
+// Copyright, 2024-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
 #![cfg(feature = "serde")]

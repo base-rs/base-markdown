@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 // Copyright 2015 Google Inc. All rights reserved.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy

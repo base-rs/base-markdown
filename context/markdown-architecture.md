@@ -1,7 +1,6 @@
 # Markdown Parser Architecture
 
-This crate exposes one pull-based parser and a semantic event contract shared by direct HTML rendering and a source-backed arena AST. A block pass records containers, source fragments, and definitions. One reusable inline scanner resolves a block only when its events are requested. CommonMark, independently enabled extensions, and custom construct configurations use the same implementation.
-The [Pull Parser Architecture](pull-parser.md) specifies the source-backed semantic event contract and implementation of lazy inline parsing, shared HTML rendering, and incremental arena AST construction.
+This crate exposes one pull-based parser and a semantic event contract shared by direct HTML rendering and a source-backed arena AST. A block pass records containers, source fragments, and definitions. One reusable inline scanner resolves a block only when its events are requested. CommonMark, independently enabled extensions, and custom construct configurations use the same implementation. The [Pull Parser Architecture](pull-parser.md) specifies the source-backed semantic event contract and implementation of lazy inline parsing, shared HTML rendering, and incremental arena AST construction.
 
 Extensions use their syntax names throughout configuration and implementation: `table`, `strikethrough`, `autolink_literal`, `task_list_item`, and footnote constructs. Each can be enabled independently through `Constructs`; `Options::gfm()` remains a convenient preset. See [Extension configuration](extensions.md) for examples and the configuration-name migration.
 
@@ -46,19 +45,13 @@ The Markdown serializer writes recursively into one output string. Output ranges
 
 Inline code/math normalization uses the same scratch rewrite helper as table escaping and indentation, and skips rewriting values without CR/LF. Phrasing lookahead can return a text value's first character directly when it is outside every escape rule's candidate byte. ASCII spaces/tabs, physical line endings and other context-sensitive prefixes retain speculative rendering, preserving task trimming, wrapping and diagnostic order.
 
-List markers are written directly into the shared output. Ordered items reuse the
-current traversal position, making sibling numbering linear in the number of
-items. Serializing an attached item on its own scans its source-list siblings once
-to retain its original number and uses the configured ordered marker.
+List markers are written directly into the shared output. Ordered items reuse the current traversal position, making sibling numbering linear in the number of items. Serializing an attached item on its own scans its source-list siblings once to retain its original number and uses the configured ordered marker.
 
 Footnote backreferences write through the shared HTML writer instead of assembling intermediate markup and escaped option strings. Ordered-list attributes and footnote counters format into a stack buffer without temporary strings. Each repeated backlink formats its number once and reuses it for the ID suffix and superscript; footnote bodies remain buffered until document completion.
 
 The HTML renderer retains footnote definitions in completion order and calls in first-use order, caching each called label's escaped ID. At completion, the parser's shared indexing helpers index only called labels. One walk matches definitions in completion order and stops when every called label has a body. Duplicate definitions retain the first completed body, including an empty body. Documents without calls skip indexing, and unused labels consume no index storage. Call lookup remains linear in distinct called labels.
 
-Diagnostics use static identifiers, borrowed or owned reasons, and optional
-half-open byte spans. `Message::span` replaces the former boxed `Place`; public
-`unist` coordinates and the hidden `Location` helper have been removed. Custom
-producers can still return `StreamError::Parse(Message)`.
+Diagnostics use static identifiers, borrowed or owned reasons, and optional half-open byte spans. `Message::span` replaces the former boxed `Place`; public `unist` coordinates and the hidden `Location` helper have been removed. Custom producers can still return `StreamError::Parse(Message)`.
 
 The Markdown serializer lives in `src/markdown/`. Keep its construct handlers and safety logic separate from the parser's event-to-HTML compiler. Serializer changes should preserve references, extensions, and formatting options when possible.
 

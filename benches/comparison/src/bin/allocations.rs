@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 //! Allocation diagnostics are separate from the timing executable so its allocator remains unchanged.
 use serde_json::{json, Value};
 use std::{

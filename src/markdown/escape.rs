@@ -1,6 +1,4 @@
 // Released under the MIT License.
-// Copyright, 2024, by Bnchi.
-// Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
 //! Fixed Markdown escaping rules. Scopes and neighbor predicates are static;

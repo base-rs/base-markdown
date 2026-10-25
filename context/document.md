@@ -23,6 +23,8 @@ The legacy recursive AST, its compiler and separate HTML renderer have been remo
 
 Events and AST nodes express resolved Markdown meaning. References contain their resolved URL/title; images contain semantic alternative-text children. Tables have explicit head/body containers and per-cell alignment. Task markers, soft breaks, and output separators are explicit leaves. Node boundaries follow source chunks rather than guaranteeing one text node per run. Direct-child indices, including the section helper's heading index, include separator nodes. Use IDs or filtered child traversal when source whitespace should not affect selection.
 
+Source spans are half-open byte ranges, rather than legacy unist positions. Parsed ATX and setext heading spans include the terminating source line ending when present: use `node.span.end` directly to locate the heading body, without skipping another CR/LF. Frontmatter spans end at the closing fence before its terminating line ending. Value ranges identify semantic text and can differ from the enclosing node span; use `Text::resolve` and `frontmatter_value` instead of slicing node spans for decoded values. Resolved reference links already honor first-definition precedence, so consumers should inspect their destinations rather than search definitions again.
+
 Markdown serialization preserves supported Markdown structure rather than every possible custom event tree. For example, Markdown tables require a header: a manually edited table without its head is serialized with its first remaining row as the header. Use HTML rendering to preserve such custom table structure. Unsupported phrasing, list, or table child shapes return errors.
 
 ## Ownership and editing
@@ -43,10 +45,4 @@ Source ranges stay ranges. Literal and owned values share the serialized `Value`
 
 ## Diagnostics
 
-`Message` retains its role as the serializer error and custom producer diagnostic.
-Its `reason` is now `Cow<'static, str>` (`"literal".into()` or
-`format!("... {value}").into()`), while `source` and `rule_id` are static strings.
-Use `span: Some(start..end)` for a source byte range, or `span: None` for an
-option error. This replaces boxed strings and `place: Option<Box<Place>>`.
-`unist::{Point, Position}`, `message::Place`, and the hidden `Location` utility
-have been removed; document and event spans remain the location contract.
+`Message` retains its role as the serializer error and custom producer diagnostic. Its `reason` is now `Cow<'static, str>` (`"literal".into()` or `format!("... {value}").into()`), while `source` and `rule_id` are static strings. Use `span: Some(start..end)` for a source byte range, or `span: None` for an option error. This replaces boxed strings and `place: Option<Box<Place>>`. `unist::{Point, Position}`, `message::Place`, and the hidden `Location` utility have been removed; document and event spans remain the location contract.

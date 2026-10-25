@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 extern crate core_markdown as p;
 use std::io::{Read,Write,BufWriter};
 fn safe<T:std::fmt::Debug>(f:impl FnOnce()->T)->String {
