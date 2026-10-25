@@ -4,90 +4,10 @@
 
 //! Helpers for character references.
 use crate::util::constant::{
-    CHARACTER_REFERENCES, CHARACTER_REFERENCES_HTML_4, CHARACTER_REFERENCE_DECIMAL_SIZE_MAX,
+    CHARACTER_REFERENCES, CHARACTER_REFERENCE_DECIMAL_SIZE_MAX,
     CHARACTER_REFERENCE_HEXADECIMAL_SIZE_MAX, CHARACTER_REFERENCE_NAMED_SIZE_MAX,
 };
-use alloc::string::String;
 use core::str;
-
-/// Decode named character references.
-///
-/// Turn the name coming from a named character reference (without the `&` or
-/// `;`) into a string.
-/// This looks the given string up at `0` in the tuples of
-/// `CHARACTER_REFERENCES` (or `CHARACTER_REFERENCES_HTML_4`)
-/// and then takes the corresponding value from `1`.
-///
-/// The `html5` boolean is used for named character references, and specifier
-/// whether the 2125 names from HTML 5 or the 252 names from HTML 4 are
-/// supported.
-///
-/// The result is `String` instead of `char` because named character references
-/// can expand into multiple characters.
-///
-/// ## Examples
-///
-/// ```rust ignore
-/// use core_markdown::util::decode_character_reference::decode_named;
-///
-/// assert_eq!(decode_named("amp", true), "&");
-/// assert_eq!(decode_named("AElig", true), "Æ");
-/// assert_eq!(decode_named("aelig", true), "æ");
-/// ```
-///
-/// ## References
-///
-/// * [`wooorm/decode-named-character-reference`](https://github.com/wooorm/decode-named-character-reference)
-/// * [*§ 2.5 Entity and numeric character references* in `CommonMark`](https://spec.commonmark.org/0.31/#entity-and-numeric-character-references)
-pub fn decode_named(value: &str, html5: bool) -> Option<String> {
-    let references = if html5 {
-        CHARACTER_REFERENCES.as_slice()
-    } else {
-        CHARACTER_REFERENCES_HTML_4.as_slice()
-    };
-    references
-        .binary_search_by_key(&value, |entry| entry.0)
-        .ok()
-        .map(|index| references[index].1.into())
-}
-
-/// Decode numeric character references.
-///
-/// Turn the number (in string form as either hexadecimal or decimal) coming
-/// from a numeric character reference into a string.
-/// The base of the string form must be passed as the `radix` parameter, as
-/// `10` (decimal) or `16` (hexadecimal).
-///
-/// This returns a `String` form of the associated character or a replacement
-/// character for C0 control characters (except for ASCII whitespace), C1
-/// control characters, lone surrogates, noncharacters, and out of range
-/// characters.
-///
-/// ## Examples
-///
-/// ```rust ignore
-/// use core_markdown::util::decode_character_reference::decode_numeric;
-///
-/// assert_eq!(decode_numeric("123", 10), "{");
-/// assert_eq!(decode_numeric("9", 16), "\t");
-/// assert_eq!(decode_numeric("0", 10), "�"); // Not allowed.
-/// ```
-///
-/// ## Panics
-///
-/// This function panics if a invalid string or an out of bounds valid string
-/// is given.
-/// It is expected that figuring out whether a number is allowed is handled in
-/// the parser.
-/// When `markdown-rs` is used, this function never panics.
-///
-/// ## References
-///
-/// * [`micromark-util-decode-numeric-character-reference` in `micromark`](https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-numeric-character-reference)
-/// * [*§ 2.5 Entity and numeric character references* in `CommonMark`](https://spec.commonmark.org/0.31/#entity-and-numeric-character-references)
-pub fn decode_numeric(value: &str, radix: u32) -> String {
-    decode_numeric_char(value, radix).into()
-}
 
 fn decode_numeric_char(value: &str, radix: u32) -> char {
     if let Some(char) = char::from_u32(u32::from_str_radix(value, radix).unwrap()) {
@@ -182,18 +102,17 @@ pub fn value_test(marker: u8) -> fn(&u8) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_named, CHARACTER_REFERENCES, CHARACTER_REFERENCES_HTML_4};
+    use super::CHARACTER_REFERENCES;
     #[test]
-    fn named_reference_tables_remain_sorted_and_complete() {
-        for (html5, references) in [
-            (true, CHARACTER_REFERENCES.as_slice()),
-            (false, CHARACTER_REFERENCES_HTML_4.as_slice()),
-        ] {
-            assert!(references.windows(2).all(|pair| pair[0].0 < pair[1].0));
-            for &(name, value) in references {
-                assert_eq!(decode_named(name, html5).as_deref(), Some(value));
-            }
-            assert_eq!(decode_named("notAnEntity", html5), None);
+    fn named_reference_table_remains_sorted_and_complete() {
+        assert!(CHARACTER_REFERENCES
+            .windows(2)
+            .all(|pair| pair[0].0 < pair[1].0));
+        for (expected, &(name, _)) in CHARACTER_REFERENCES.iter().enumerate() {
+            let source = alloc::format!("&{name};");
+            let (end, reference) = super::scan(&source, 0, source.len()).unwrap();
+            assert_eq!(end, source.len());
+            assert!(matches!(reference, super::Reference::Named(index) if index == expected));
         }
     }
 
@@ -252,13 +171,13 @@ mod tests {
         }
     }
 
-    use super::{decode_numeric, value_max, value_test};
+    use super::{decode_numeric_char, value_max, value_test};
 
     #[test]
     fn replaces_disallowed_numeric_codepoints_but_keeps_ascii_whitespace() {
-        assert_eq!(decode_numeric("128", 10), "�");
-        assert_eq!(decode_numeric("55296", 10), "�");
-        assert_eq!(decode_numeric("9", 10), "\t");
+        assert_eq!(decode_numeric_char("128", 10), '�');
+        assert_eq!(decode_numeric_char("55296", 10), '�');
+        assert_eq!(decode_numeric_char("9", 10), '\t');
     }
 
     #[test]

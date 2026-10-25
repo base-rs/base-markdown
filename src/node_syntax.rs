@@ -223,14 +223,7 @@ pub(crate) fn frontmatter(
     core::ops::Range<usize>,
 )> {
     let bytes = raw.as_bytes();
-    let marker = *bytes.first()?;
-    if !matches!(marker, b'-' | b'+' | b'`' | b'~') {
-        return None;
-    }
-    let length = bytes.iter().take_while(|&&b| b == marker).count();
-    if length < 3 || (matches!(marker, b'-' | b'+') && length != 3) {
-        return None;
-    }
+    let fence = CodeFence::frontmatter_open(bytes)?;
     let first_end = bytes.iter().position(|b| matches!(b, b'\r' | b'\n'))?;
     let mut body_start = first_end + 1;
     if bytes[first_end] == b'\r' && bytes.get(body_start) == Some(&b'\n') {
@@ -242,26 +235,15 @@ pub(crate) fn frontmatter(
         return None;
     }
     let close = raw[closing_start..raw_end].trim_matches([' ', '\t']);
-    let closing_fence_length = close.bytes().take_while(|&b| b == marker).count();
-    if closing_fence_length < length
-        || closing_fence_length != close.len()
-        || (matches!(marker, b'-' | b'+') && closing_fence_length != 3)
-    {
-        return None;
-    }
-    let info = raw[length..first_end].trim_matches([' ', '\t']);
-    if matches!(marker, b'`' | b'~') && (info.is_empty() || (marker == b'`' && info.contains('`')))
-    {
+    let closing_fence_length = fence.frontmatter_close(close.as_bytes())?;
+    let info = raw[fence.length..first_end].trim_matches([' ', '\t']);
+    if !fence.valid_frontmatter_info(info.as_bytes()) {
         return None;
     }
     let start = info.as_ptr() as usize - raw.as_ptr() as usize;
     Some((
         start..start + info.len(),
-        CodeFence {
-            character: char::from(marker),
-            length,
-            indent: 0,
-        },
+        fence,
         closing_fence_length,
         body_start..closing_start,
     ))

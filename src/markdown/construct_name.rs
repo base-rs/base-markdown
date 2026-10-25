@@ -3,7 +3,7 @@
 // Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-//! Names of the things being serialized.
+//! Contexts consulted by escaping or nested-list marker selection.
 //!
 //! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/index.d.ts#L18.
 #[derive(Clone, Copy, PartialEq)]
@@ -24,17 +24,6 @@ pub enum ConstructName {
     ///     ^
     /// ```
     Blockquote,
-    /// Whole code (fenced).
-    ///
-    /// ````markdown
-    /// > | ```js
-    ///     ^^^^^
-    /// > | console.log(1)
-    ///     ^^^^^^^^^^^^^^
-    /// > | ```
-    ///     ^^^
-    /// ````
-    CodeFenced,
     /// Code (fenced) language, when fenced with grave accents.
     ///
     /// ````markdown
@@ -71,20 +60,6 @@ pub enum ConstructName {
     ///   | ~~~
     /// ````
     CodeFencedMetaTilde,
-    /// Whole code (indented).
-    ///
-    /// ```markdown
-    /// ␠␠␠␠console.log(1)
-    /// ^^^^^^^^^^^^^^^^^^
-    /// ```
-    CodeIndented,
-    /// Whole definition.
-    ///
-    /// ```markdown
-    /// > | [a]: b "c"
-    ///     ^^^^^^^^^^
-    /// ```
-    Definition,
     /// Destination (literal) (occurs in definition, image, link).
     ///
     /// ```markdown
@@ -103,13 +78,6 @@ pub enum ConstructName {
     ///            ^
     /// ```
     DestinationRaw,
-    /// Emphasis.
-    ///
-    /// ```markdown
-    /// > | *a*
-    ///     ^^^
-    /// ```
-    Emphasis,
     /// Whole heading (atx).
     ///
     /// ```markdown
@@ -117,31 +85,6 @@ pub enum ConstructName {
     ///     ^^^^^^^
     /// ```
     HeadingAtx,
-    /// Whole heading (setext).
-    ///
-    /// ```markdown
-    /// > | alpha
-    ///     ^^^^^
-    /// > | =====
-    ///     ^^^^^
-    /// ```
-    HeadingSetext,
-    /// Whole image.
-    ///
-    /// ```markdown
-    /// > | ![a](b)
-    ///     ^^^^^^^
-    /// > | ![c]
-    ///     ^^^^
-    /// ```
-    Image,
-    /// Whole image reference.
-    ///
-    /// ```markdown
-    /// > | ![a]
-    ///     ^^^^
-    /// ```
-    ImageReference,
     /// Label (occurs in definitions, image reference, image, link reference,
     /// link).
     ///
@@ -156,22 +99,6 @@ pub enum ConstructName {
     ///       ^^^
     /// ```
     Label,
-    /// Whole link.
-    ///
-    /// ```markdown
-    /// > | [a](b)
-    ///     ^^^^^^
-    /// > | [c]
-    ///     ^^^
-    /// ```
-    Link,
-    /// Whole link reference.
-    ///
-    /// ```markdown
-    /// > | [a]
-    ///     ^^^
-    /// ```
-    LinkReference,
     /// List.
     ///
     /// ```markdown
@@ -190,17 +117,6 @@ pub enum ConstructName {
     ///     ^^^^
     /// ```
     ListItem,
-    /// Math (flow).
-    ///
-    /// ```markdown
-    /// > | $$
-    ///     ^^
-    /// > | a
-    ///     ^
-    /// > | $$
-    ///     ^^
-    /// ```
-    MathFlow,
     /// Math (flow) meta flag.
     ///
     /// ```markdown
@@ -210,15 +126,6 @@ pub enum ConstructName {
     ///   | $$
     /// ```
     MathFlowMeta,
-    /// Paragraph.
-    ///
-    /// ```markdown
-    /// > | a b
-    ///     ^^^
-    /// > | c.
-    ///     ^^
-    /// ```
-    Paragraph,
     /// Phrasing (occurs in headings, paragraphs, etc).
     ///
     /// ```markdown
@@ -233,13 +140,6 @@ pub enum ConstructName {
     ///        ^^
     /// ```
     Reference,
-    /// Strong.
-    ///
-    /// ```markdown
-    /// > | **a**
-    ///     ^^^^^
-    /// ```
-    Strong,
     /// Title using single quotes (occurs in definition, image, link).
     ///
     /// ```markdown
