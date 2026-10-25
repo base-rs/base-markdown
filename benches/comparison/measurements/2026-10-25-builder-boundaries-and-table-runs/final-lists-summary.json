@@ -1,0 +1,49 @@
+{
+  "metadata": {
+    "utc": "2026-10-25T06:14:24.220281+00:00",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "binaries": {
+      "baseline": {
+        "path": "/private/tmp/core-markdown-refine-next-study-2026-10-25/baseline-bench",
+        "sha256": "d6cd5daaf3e4985d8a2bc740698911929754c9fbbed71d762de6a9b129b2bf86"
+      },
+      "final": {
+        "path": "/private/tmp/core-markdown-refine-next-study-2026-10-25/final-bench",
+        "sha256": "e892f2ae169fcbacaa1cfe8646a8742c862a80d3390309cd7250d8c527cb8821"
+      }
+    },
+    "datasets": {
+      "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json": "a8532094f3812a1870aa08e81c1185cec356c159626a7cb7aab4a12c7587700d"
+    },
+    "rounds": 7,
+    "warmup_ms": 100,
+    "order": "alternating per round"
+  },
+  "sample_count": 168,
+  "summary": [
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-blocks-2","mode":"syntax","median_seconds":4.068674051064992e-06,"min_seconds":4.010913025669033e-06,"max_seconds":4.106263073457127e-06,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-blocks-2","mode":"syntax","median_seconds":4.030274303659202e-06,"min_seconds":4.000763756144184e-06,"max_seconds":4.065105577553249e-06,"ratio_to_baseline":0.9905620978913909,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-blocks-2","mode":"markdown","median_seconds":3.734074149659864e-05,"min_seconds":3.659804700061843e-05,"max_seconds":3.776275510204082e-05,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-blocks-2","mode":"markdown","median_seconds":3.7312010513296225e-05,"min_seconds":3.711212894248609e-05,"max_seconds":3.779968058132344e-05,"ratio_to_baseline":0.9992305727698249,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-blocks-8","mode":"syntax","median_seconds":2.035940260407744e-05,"min_seconds":2.025594620524242e-05,"max_seconds":2.045590628747644e-05,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-blocks-8","mode":"syntax","median_seconds":1.6270922562960425e-05,"min_seconds":1.6232039917765975e-05,"max_seconds":1.6364235394894638e-05,"ratio_to_baseline":0.7991846754728352,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-blocks-8","mode":"markdown","median_seconds":0.00015616639397905758,"min_seconds":0.00015421864136125655,"max_seconds":0.00015730262827225131,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-blocks-8","mode":"markdown","median_seconds":0.00015672343979057592,"min_seconds":0.00015618411910994765,"max_seconds":0.00016612783638743453,"ratio_to_baseline":1.003567001819822,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-blocks-32","mode":"syntax","median_seconds":8.16727364498645e-05,"min_seconds":8.0385472899729e-05,"max_seconds":8.226055758807588e-05,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-blocks-32","mode":"syntax","median_seconds":5.3644901761517614e-05,"min_seconds":5.3081413956639565e-05,"max_seconds":5.403604945799458e-05,"ratio_to_baseline":0.6568275301323838,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-blocks-32","mode":"markdown","median_seconds":0.000614555412371134,"min_seconds":0.0006110397319587629,"max_seconds":0.0006268535206185566,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-blocks-32","mode":"markdown","median_seconds":0.0006167923144329897,"min_seconds":0.0006101327319587629,"max_seconds":0.0006257594484536083,"ratio_to_baseline":1.003639870411726,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-gap-2","mode":"syntax","median_seconds":4.876085755506357e-08,"min_seconds":4.680647169903466e-08,"max_seconds":5.0386061550733366e-08,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-gap-2","mode":"syntax","median_seconds":4.2542508424359835e-08,"min_seconds":4.1999007492389586e-08,"max_seconds":4.2795595321427995e-08,"ratio_to_baseline":0.8724725231979028,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-gap-2","mode":"markdown","median_seconds":3.8915870550903127e-07,"min_seconds":3.8496323494734855e-07,"max_seconds":3.9172783620451527e-07,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-gap-2","mode":"markdown","median_seconds":3.846460260461231e-07,"min_seconds":3.82572644159834e-07,"max_seconds":3.89669188635644e-07,"ratio_to_baseline":0.9884040125557375,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-gap-4096","mode":"syntax","median_seconds":1.615830746610031e-06,"min_seconds":1.6080972335674997e-06,"max_seconds":1.6219781898382618e-06,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-gap-4096","mode":"syntax","median_seconds":4.2772259434732885e-08,"min_seconds":4.062063660621903e-08,"max_seconds":4.570048467026085e-08,"ratio_to_baseline":0.02647075476467317,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-gap-4096","mode":"markdown","median_seconds":3.871547706030741e-07,"min_seconds":3.8099018735928217e-07,"max_seconds":3.9225849431508226e-07,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-gap-4096","mode":"markdown","median_seconds":3.8743441433280326e-07,"min_seconds":3.8117229978807606e-07,"max_seconds":3.9405428360779853e-07,"ratio_to_baseline":1.0007223047498384,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-gap-65536","mode":"syntax","median_seconds":2.5048943243243242e-05,"min_seconds":2.4998215592515594e-05,"max_seconds":2.521729916839917e-05,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-gap-65536","mode":"syntax","median_seconds":4.2550311850311855e-08,"min_seconds":4.191787941787942e-08,"max_seconds":4.577255717255717e-08,"ratio_to_baseline":0.0016986869041587002,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-gap-65536","mode":"markdown","median_seconds":3.904134979673768e-07,"min_seconds":3.88092707858914e-07,"max_seconds":3.924059173793499e-07,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/lists.json","name":"list-gap-65536","mode":"markdown","median_seconds":3.9309329824738966e-07,"min_seconds":3.8337156689101427e-07,"max_seconds":3.992391039589764e-07,"ratio_to_baseline":1.0068640051995252,"process_samples":7}
+  ]
+}

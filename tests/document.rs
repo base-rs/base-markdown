@@ -798,6 +798,59 @@ fn custom_heading_helpers_capture_the_same_leaf_set_and_line_endings_as_html() {
 }
 
 #[test]
+fn item_source_spacing_preserves_crlf_boundaries_and_detached_hints() {
+    use core_markdown::{
+        stream::{Event, TagKind},
+        AstBuilder,
+    };
+
+    // Custom producers may end sibling provenance before, within, or after CRLF.
+    // A previous span ending in CR/LF still requires only one ending in the gap.
+    for (source, previous_end, next_start, spread) in [
+        ("a\r\nb", 1, 3, false),
+        ("a\r\nb", 2, 3, true),
+        ("a\r\nb", 3, 3, false),
+        ("a\r\n\r\nb", 1, 5, true),
+        ("a\r\n\r\nb", 3, 5, true),
+        ("a\r\r\nb", 1, 4, true),
+        ("a\rb", 1, 2, false),
+        ("a\nb", 1, 2, false),
+        ("a\n\nb", 2, 3, true),
+    ] {
+        let kinds = [
+            (EventKind::Start(Tag::Document(None)), 0..0),
+            (EventKind::Start(Tag::Item { block_end: false }), 0..0),
+            (EventKind::Text(Text::Literal("a")), 0..previous_end),
+            (
+                EventKind::Text(Text::Literal("b")),
+                next_start..source.len(),
+            ),
+            (EventKind::End(TagKind::Item), source.len()..source.len()),
+            (
+                EventKind::End(TagKind::Document),
+                source.len()..source.len(),
+            ),
+        ];
+        let mut events =
+            IntoIterator::into_iter(kinds).map(|(kind, span)| Ok(Event { kind, span }));
+        let mut builder = AstBuilder::new();
+        builder.consume(&mut events, usize::MAX).unwrap();
+        let mut document = builder.finish(source).unwrap();
+        let item = document.children(document.root()).next().unwrap();
+        for detached in [false, true] {
+            if detached {
+                document.detach(item).unwrap();
+            }
+            assert_eq!(
+                document.syntax(item),
+                Some(NodeSyntax::ListItem { spread }),
+                "{source:?}, {previous_end}..{next_start}, detached={detached}"
+            );
+        }
+    }
+}
+
+#[test]
 fn item_source_spacing_handles_all_line_endings_and_reordered_provenance() {
     for ending in ["\n", "\r", "\r\n"] {
         let source = format!("- a{ending}{ending}  b{ending}");
@@ -957,6 +1010,82 @@ fn section_removal_splices_item_children_and_retains_detached_subtrees() {
             let restored: Document =
                 serde_json::from_value(serde_json::to_value(&document).unwrap()).unwrap();
             assert_eq!(html(&restored), html(&document));
+        }
+    }
+}
+
+#[test]
+fn reference_syntax_preserves_backslash_runs_and_authored_offsets() {
+    for count in [0, 1, 2, 31, 32, 255, 256, 900] {
+        let label = format!("é{}z", "\\".repeat(count));
+        for (authored, kind) in [
+            (format!("[{label}]"), ReferenceKind::Shortcut),
+            (format!("![{label}][]"), ReferenceKind::Collapsed),
+            (format!("[label][{label}]"), ReferenceKind::Full),
+        ] {
+            let source = format!("prefix {authored}\n\n[{label}]: /target");
+            let document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+            let id = document
+                .descendants(document.root())
+                .find(|id| {
+                    matches!(
+                        document.node(*id).unwrap().kind,
+                        EventKind::Start(Tag::Link { .. } | Tag::Image { .. })
+                    )
+                })
+                .unwrap();
+            let Some(NodeSyntax::Reference {
+                kind: actual,
+                label: actual_label,
+            }) = document.syntax(id)
+            else {
+                panic!("missing syntax for {:?}", authored);
+            };
+            assert_eq!(actual, kind);
+            assert_eq!(actual_label.resolve(document.source()).unwrap(), label);
+            let Text::Source(range) = actual_label else {
+                panic!("authored labels remain source-backed")
+            };
+            assert_eq!(&source[range], label);
+        }
+    }
+}
+
+#[test]
+fn reference_syntax_distinguishes_escaped_brackets_after_backslash_runs() {
+    for pairs in [0, 1, 16, 128] {
+        let slashes = "\\".repeat(pairs * 2);
+        for label in [
+            format!("a{slashes}"),
+            format!("a{slashes}\\]z"),
+            format!("a{slashes}\\[z"),
+        ] {
+            for (authored, expected) in [
+                (format!("[{label}]"), ReferenceKind::Shortcut),
+                (format!("![{label}][]"), ReferenceKind::Collapsed),
+                (format!("![image][{label}]"), ReferenceKind::Full),
+            ] {
+                let source = format!("{authored}\n\n[{label}]: /target");
+                let document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+                let id = document
+                    .descendants(document.root())
+                    .find(|id| {
+                        matches!(
+                            document.node(*id).unwrap().kind,
+                            EventKind::Start(Tag::Link { .. } | Tag::Image { .. })
+                        )
+                    })
+                    .unwrap();
+                let Some(NodeSyntax::Reference {
+                    kind,
+                    label: actual,
+                }) = document.syntax(id)
+                else {
+                    panic!("missing reference syntax for {:?}", authored)
+                };
+                assert_eq!(kind, expected);
+                assert_eq!(actual.resolve(document.source()).unwrap(), label);
+            }
         }
     }
 }

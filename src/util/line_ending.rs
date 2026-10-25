@@ -4,13 +4,37 @@
 // Copyright, 2026, by Samuel Williams.
 
 use alloc::{str::FromStr, string::String};
+use core::ops::Range;
+
+/// Complete physical line endings, treating CRLF as one range.
+pub(crate) fn line_endings(value: &str) -> impl Iterator<Item = Range<usize>> + '_ {
+    let bytes = value.as_bytes();
+    let mut at = 0;
+    core::iter::from_fn(move || {
+        let start = at + memchr::memchr2(b'\r', b'\n', &bytes[at..])?;
+        at = start + 1;
+        if bytes[start] == b'\r' && bytes.get(at) == Some(&b'\n') {
+            at += 1;
+        }
+        Some(start..at)
+    })
+}
+
+/// Start of one terminal physical line ending before `end`, or `end` itself.
+#[inline]
+pub(crate) fn terminal_ending_start(bytes: &[u8], mut end: usize) -> usize {
+    if bytes.get(end.wrapping_sub(1)) == Some(&b'\n') {
+        end -= 1;
+    }
+    if bytes.get(end.wrapping_sub(1)) == Some(&b'\r') {
+        end -= 1;
+    }
+    end
+}
 
 /// Remove one terminal physical line ending, preserving preceding line endings.
 pub(crate) fn trim_terminal_ending(value: &str) -> &str {
-    value
-        .strip_suffix("\r\n")
-        .or_else(|| value.strip_suffix(['\r', '\n']))
-        .unwrap_or(value)
+    &value[..terminal_ending_start(value.as_bytes(), value.len())]
 }
 
 /// Type of line endings in markdown.
@@ -110,6 +134,41 @@ impl FromStr for LineEnding {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preserves_complete_physical_line_endings() {
+        let value = "é\r\nα\rb\n";
+        assert_eq!(
+            line_endings(value)
+                .map(|range| &value[range])
+                .collect::<alloc::vec::Vec<_>>(),
+            ["\r\n", "\r", "\n"]
+        );
+    }
+
+    #[test]
+    fn trims_only_one_terminal_physical_line_ending() {
+        for (source, expected) in [
+            ("", ""),
+            ("é", "é"),
+            ("\n", ""),
+            ("\r", ""),
+            ("\r\n", ""),
+            ("é\n", "é"),
+            ("é\r", "é"),
+            ("é\r\n", "é"),
+            ("é\n\n", "é\n"),
+            ("é\r\r\n", "é\r"),
+            ("é\n\r", "é\n"),
+        ] {
+            assert_eq!(trim_terminal_ending(source), expected);
+            let with_suffix = alloc::format!("{source}suffix");
+            assert_eq!(
+                terminal_ending_start(with_suffix.as_bytes(), source.len()),
+                expected.len(),
+            );
+        }
+    }
 
     #[test]
     fn detects_the_first_source_line_ending() {

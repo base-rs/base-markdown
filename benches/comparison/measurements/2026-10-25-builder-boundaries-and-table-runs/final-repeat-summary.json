@@ -1,0 +1,49 @@
+{
+  "metadata": {
+    "utc": "2026-10-25T06:16:07.884453+00:00",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "binaries": {
+      "baseline": {
+        "path": "/private/tmp/core-markdown-refine-next-study-2026-10-25/baseline-bench",
+        "sha256": "d6cd5daaf3e4985d8a2bc740698911929754c9fbbed71d762de6a9b129b2bf86"
+      },
+      "final": {
+        "path": "/private/tmp/core-markdown-refine-next-study-2026-10-25/final-bench",
+        "sha256": "e892f2ae169fcbacaa1cfe8646a8742c862a80d3390309cd7250d8c527cb8821"
+      }
+    },
+    "datasets": {
+      "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json": "36022cf73025704a75ea911f3554637f753a9fbd70ec99104e08b456b29adf8f"
+    },
+    "rounds": 7,
+    "warmup_ms": 100,
+    "order": "alternating per round"
+  },
+  "sample_count": 168,
+  "summary": [
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"readme","mode":"html","median_seconds":1.349748368456832e-05,"min_seconds":1.3393548493088603e-05,"max_seconds":1.3663895422615001e-05,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"readme","mode":"html","median_seconds":1.3296562202583276e-05,"min_seconds":1.3266485384092455e-05,"max_seconds":1.3400625084976207e-05,"ratio_to_baseline":0.9851141526316674,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"readme","mode":"ast-html","median_seconds":8.365418737644733e-06,"min_seconds":8.255109785371364e-06,"max_seconds":8.381730725783676e-06,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"readme","mode":"ast-html","median_seconds":8.220179680881106e-06,"min_seconds":8.190735950296526e-06,"max_seconds":8.299494563682575e-06,"ratio_to_baseline":0.9826381605848319,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"readme","mode":"markdown","median_seconds":6.392065823466093e-05,"min_seconds":6.375843164693218e-05,"max_seconds":6.426572066738428e-05,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"readme","mode":"markdown","median_seconds":6.369124542518838e-05,"min_seconds":6.306916038751345e-05,"max_seconds":6.445142626480087e-05,"ratio_to_baseline":0.9964109754841642,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"mixed-100k","mode":"html","median_seconds":0.0003969647009966778,"min_seconds":0.00039447688372093025,"max_seconds":0.0004021680498338871,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"mixed-100k","mode":"html","median_seconds":0.0003992908372093023,"min_seconds":0.0003949066976744186,"max_seconds":0.0004049476744186047,"ratio_to_baseline":1.0058598061912916,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"mixed-100k","mode":"ast-html","median_seconds":0.0002638609889380531,"min_seconds":0.0002615600110619469,"max_seconds":0.0002684720685840708,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"mixed-100k","mode":"ast-html","median_seconds":0.00025996248008849557,"min_seconds":0.00025612536725663716,"max_seconds":0.0002632109159292035,"ratio_to_baseline":0.9852251412183072,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"mixed-100k","mode":"markdown","median_seconds":0.0014004190930232557,"min_seconds":0.0013900663837209302,"max_seconds":0.0014112955348837208,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"mixed-100k","mode":"markdown","median_seconds":0.001378343023255814,"min_seconds":0.0013472708372093023,"max_seconds":0.0013993565813953488,"ratio_to_baseline":0.9842360976957379,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"mixed-1m","mode":"html","median_seconds":0.004045379166666667,"min_seconds":0.004024372233333334,"max_seconds":0.0040847986,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"mixed-1m","mode":"html","median_seconds":0.004031569433333333,"min_seconds":0.0040203278,"max_seconds":0.004096031933333333,"ratio_to_baseline":0.9965862944449995,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"mixed-1m","mode":"ast-html","median_seconds":0.0026057264565217393,"min_seconds":0.002537349652173913,"max_seconds":0.0026162898695652175,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"mixed-1m","mode":"ast-html","median_seconds":0.0025289855,"min_seconds":0.0024917472826086954,"max_seconds":0.0025788451086956525,"ratio_to_baseline":0.9705491125786944,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"mixed-1m","mode":"markdown","median_seconds":0.013869666666666666,"min_seconds":0.013644203666666667,"max_seconds":0.014189750000000001,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"mixed-1m","mode":"markdown","median_seconds":0.013672,"min_seconds":0.013439555555555555,"max_seconds":0.013859356444444445,"ratio_to_baseline":0.9857482756134491,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"gfm-100k","mode":"html","median_seconds":0.0006052775641025641,"min_seconds":0.0005994382461538462,"max_seconds":0.0006154123948717948,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"gfm-100k","mode":"html","median_seconds":0.0006012358974358974,"min_seconds":0.0005917696564102564,"max_seconds":0.0006054792717948718,"ratio_to_baseline":0.9933226227001173,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"gfm-100k","mode":"ast-html","median_seconds":0.000378006570977918,"min_seconds":0.00036968033753943217,"max_seconds":0.00038300578233438484,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"gfm-100k","mode":"ast-html","median_seconds":0.0003740028927444795,"min_seconds":0.0003697577570977918,"max_seconds":0.000379852523659306,"ratio_to_baseline":0.9894084427604503,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"gfm-100k","mode":"markdown","median_seconds":0.00157849612,"min_seconds":0.00156206888,"max_seconds":0.00160492612,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"final","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json","name":"gfm-100k","mode":"markdown","median_seconds":0.0015500733333333333,"min_seconds":0.0015244033333333333,"max_seconds":0.0015705805466666666,"ratio_to_baseline":0.9819937557612326,"process_samples":7}
+  ]
+}

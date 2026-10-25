@@ -1,0 +1,45 @@
+{
+  "metadata": {
+    "utc": "2026-10-25T06:05:58.046912+00:00",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "binaries": {
+      "baseline": {
+        "path": "/private/tmp/core-markdown-refine-next-study-2026-10-25/baseline-bench",
+        "sha256": "d6cd5daaf3e4985d8a2bc740698911929754c9fbbed71d762de6a9b129b2bf86"
+      },
+      "candidate": {
+        "path": "/private/tmp/core-markdown-refine-next-study-2026-10-25/candidate-bench",
+        "sha256": "0ded64c2c9451aafdbffbab60da1573184a41d16cc3e12ab39fb605f66aa5c78"
+      }
+    },
+    "datasets": {
+      "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json": "606d426afc70bc7c9ad0a3a115bf94f9746454e9481810d181b1216025003bfb"
+    },
+    "rounds": 7,
+    "warmup_ms": 100,
+    "order": "alternating per round"
+  },
+  "sample_count": 140,
+  "summary": [
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-plain-128","mode":"syntax","median_seconds":1.627297889219436e-05,"min_seconds":1.6170279076356425e-05,"max_seconds":1.6606105680691317e-05,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"candidate","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-plain-128","mode":"syntax","median_seconds":3.4587996883411247e-06,"min_seconds":3.4336073098172544e-06,"max_seconds":3.502502762430939e-06,"ratio_to_baseline":0.21254864958991637,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-plain-128","mode":"markdown","median_seconds":5.898204522862823e-05,"min_seconds":5.863587226640159e-05,"max_seconds":5.939036630218688e-05,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"candidate","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-plain-128","mode":"markdown","median_seconds":4.68606486083499e-05,"min_seconds":4.606086381709742e-05,"max_seconds":4.7915776341948306e-05,"ratio_to_baseline":0.7944900592495062,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-slash-heavy-128","mode":"syntax","median_seconds":0.0004007357142857143,"min_seconds":0.00038912782857142855,"max_seconds":0.0004404422607142857,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"candidate","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-slash-heavy-128","mode":"syntax","median_seconds":9.122025e-06,"min_seconds":8.861014285714286e-06,"max_seconds":1.0653717857142857e-05,"ratio_to_baseline":0.022763194481578528,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-slash-heavy-128","mode":"markdown","median_seconds":0.0004868424412955465,"min_seconds":0.0004593874817813765,"max_seconds":0.0007990915991902834,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"candidate","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-slash-heavy-128","mode":"markdown","median_seconds":9.815435222672065e-05,"min_seconds":9.546896356275303e-05,"max_seconds":0.00012116734412955466,"ratio_to_baseline":0.20161420595443583,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-plain-800","mode":"syntax","median_seconds":8.34691317715959e-05,"min_seconds":8.200112811127379e-05,"max_seconds":9.819960980966324e-05,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"candidate","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-plain-800","mode":"syntax","median_seconds":4.670907027818448e-06,"min_seconds":4.627989751098097e-06,"max_seconds":4.8213762811127375e-06,"ratio_to_baseline":0.05595969346608123,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-plain-800","mode":"markdown","median_seconds":0.0001437387654171705,"min_seconds":0.00014267926239419588,"max_seconds":0.00015161134582829502,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"candidate","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-plain-800","mode":"markdown","median_seconds":6.822596735187424e-05,"min_seconds":6.668757557436518e-05,"max_seconds":7.00008561064087e-05,"ratio_to_baseline":0.47465252086911425,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-slash-heavy-800","mode":"syntax","median_seconds":0.012088689777777778,"min_seconds":0.011694074111111112,"max_seconds":0.013847537,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"candidate","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-slash-heavy-800","mode":"syntax","median_seconds":3.517133333333333e-05,"min_seconds":3.398611111111111e-05,"max_seconds":4.570833333333334e-05,"ratio_to_baseline":0.0029094413025626304,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-slash-heavy-800","mode":"markdown","median_seconds":0.0127938416,"min_seconds":0.0119900834,"max_seconds":0.015334583399999999,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"candidate","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-labels-slash-heavy-800","mode":"markdown","median_seconds":0.0003736375,"min_seconds":0.0003578,"max_seconds":0.0003824375,"ratio_to_baseline":0.029204480693273555,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-authored-forms-small","mode":"syntax","median_seconds":4.6617050409766435e-07,"min_seconds":4.529087147168041e-07,"max_seconds":4.793997629584085e-07,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"candidate","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-authored-forms-small","mode":"syntax","median_seconds":3.426435881463024e-07,"min_seconds":3.327151132217431e-07,"max_seconds":3.503093473670585e-07,"ratio_to_baseline":0.7350177352158629,"process_samples":7},
+    {"label":"baseline","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-authored-forms-small","mode":"markdown","median_seconds":8.040194887300714e-06,"min_seconds":7.75687479384277e-06,"max_seconds":9.167144791094008e-06,"ratio_to_baseline":1.0,"process_samples":7},
+    {"label":"candidate","data":"/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json","name":"reference-authored-forms-small","mode":"markdown","median_seconds":7.795975948323254e-06,"min_seconds":7.674403312259483e-06,"max_seconds":7.971922553600879e-06,"ratio_to_baseline":0.9696252463527721,"process_samples":7}
+  ]
+}

@@ -2841,6 +2841,26 @@ www.a/~
 }
 
 #[test]
+fn email_runs_preserve_boundaries_after_long_unicode_prefixes() {
+    let prefix = "世界 ordinary ".repeat(256);
+    for (source, expected) in [
+        (
+            "first@example.com, then second@example.org.",
+            "<a href=\"mailto:first@example.com\">first@example.com</a>, then <a href=\"mailto:second@example.org\">second@example.org</a>.",
+        ),
+        (
+            "bad@localhost 世界@example.com ，valid@example.com",
+            "bad@localhost 世界@example.com ，<a href=\"mailto:valid@example.com\">valid@example.com</a>",
+        ),
+    ] {
+        assert_eq!(
+            to_html_with_options(&format!("{prefix}{source}"), &Options::gfm()),
+            format!("<p>{prefix}{expected}</p>")
+        );
+    }
+}
+
+#[test]
 fn compact_literal_links_preserve_destinations_and_boundaries() {
     use core_markdown::{
         render_events,

@@ -16,6 +16,7 @@ use super::{
 use crate::{
     message::Message,
     stream::{EventKind, Tag},
+    util::line_ending::line_endings,
     CodeFence, Document, NodeId, NodeSyntax, ReferenceKind,
 };
 use alloc::{
@@ -313,7 +314,7 @@ impl State<'_> {
             self.output.push(' ');
         }
         // Flatten a physical line ending only when a block-opening rule would become active.
-        if super::util::scan::line_endings(content).next().is_some() {
+        if line_endings(content).next().is_some() {
             self.rewrite(start, |value, output| {
                 super::escape::normalize_inline(value);
                 output.push_str(value);
@@ -703,7 +704,7 @@ fn image_alt<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> Cow<'_, str
 }
 
 fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
-    if super::util::scan::line_endings(value).next().is_none() {
+    if line_endings(value).next().is_none() {
         return Cow::Borrowed(value);
     }
     let mut result = String::with_capacity(value.len());

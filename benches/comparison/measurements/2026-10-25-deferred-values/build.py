@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--candidate", type=Path, required=True, help="Candidate core-markdown checkout")
     parser.add_argument("--work", type=Path, required=True, help="Build outputs, frozen binaries and unpacked data")
     parser.add_argument("--stage", action="append", default=[], metavar="LABEL=PATH", help="Additional checkout; timing binary only")
+    parser.add_argument("--driver", type=Path, default=root / "driver.rs", help="Rust driver source (default: this study)")
     args = parser.parse_args()
     work = args.work.resolve()
     sources = [("baseline", args.baseline.resolve(), True), ("candidate", args.candidate.resolve(), True)]
@@ -36,7 +37,7 @@ def main():
     for label, source, all_features in sources:
         crate = work / f"{label}-driver"
         (crate / "src").mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(root / "driver.rs", crate / "src/main.rs")
+        shutil.copyfile(args.driver, crate / "src/main.rs")
         shutil.copyfile(root / "driver.lock", crate / "Cargo.lock")
         manifest = f'''[package]
 name = "refine-study-driver"

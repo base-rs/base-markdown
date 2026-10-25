@@ -567,7 +567,6 @@ impl<S: AsRef<str>> Document<S> {
         }
         if matches!(node.kind, EventKind::Start(Tag::Item { .. })) {
             let mut previous: Option<NodeId> = None;
-            let mut spread = false;
             for child in self
                 .children(id)
                 .filter(|id| !matches!(self.nodes[id.index()].kind, EventKind::Separator { .. }))
@@ -576,24 +575,22 @@ impl<S: AsRef<str>> Document<S> {
                     let end = self.nodes[previous.index()].span.end;
                     let start = self.nodes[child.index()].span.start;
                     if let Some(gap) = self.source().get(end..start) {
-                        let lines = gap.bytes().filter(|&byte| byte == b'\n').count()
-                            + gap
-                                .as_bytes()
-                                .windows(2)
-                                .filter(|pair| pair[0] == b'\r' && pair[1] != b'\n')
-                                .count()
-                            + usize::from(gap.ends_with('\r'));
                         let ended = self
                             .source()
                             .as_bytes()
                             .get(end.wrapping_sub(1))
                             .is_some_and(|byte| matches!(byte, b'\r' | b'\n'));
-                        spread |= lines >= if ended { 1 } else { 2 };
+                        if crate::util::line_ending::line_endings(gap)
+                            .nth(usize::from(!ended))
+                            .is_some()
+                        {
+                            return Some(NodeSyntax::ListItem { spread: true });
+                        }
                     }
                 }
                 previous = Some(child);
             }
-            return Some(NodeSyntax::ListItem { spread });
+            return Some(NodeSyntax::ListItem { spread: false });
         }
         crate::node_syntax::infer(self.source(), node.span.clone(), &node.kind)
     }
