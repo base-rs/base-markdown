@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{render_events, to_html, Document, Options};
+use base_markdown::{render_events, to_html, Document, Options};
 
 #[test]
 fn block_boundaries_preserve_source_whitespace() {
@@ -67,7 +67,7 @@ fn compact_inline_resolution_keeps_escaped_markers_and_unmatched_code() {
 
 #[test]
 fn resources_and_multiline_regions_agree_with_arena_rendering() {
-    use core_markdown::ParseOptions;
+    use base_markdown::ParseOptions;
     for source in [
         "a [x]( b)",
         "Literal ! and !x.",
@@ -142,7 +142,7 @@ fn resources_and_multiline_regions_agree_with_arena_rendering() {
     for source in ["#", "\t<x>", "a\n\t<b>"] {
         let expected = arena_html(source, &options.parse);
         assert_eq!(
-            core_markdown::to_html_with_options(source, &options),
+            base_markdown::to_html_with_options(source, &options),
             expected
         );
     }
@@ -202,7 +202,7 @@ fn inline_regions_preserve_document_structure() {
 
 #[test]
 fn arena_preserves_empty_container_structure() {
-    use core_markdown::stream::{EventKind, Tag};
+    use base_markdown::stream::{EventKind, Tag};
     for source in [
         "* >\n\n* a",
         "* > \n\n* a",
@@ -256,7 +256,7 @@ fn arena_preserves_empty_container_structure() {
 
 #[test]
 fn leading_brackets_distinguish_links_from_possible_definitions() {
-    use core_markdown::ParseOptions;
+    use base_markdown::ParseOptions;
     for source in [
         "[text](url)",
         "[**strong**](url)",
@@ -282,7 +282,7 @@ fn leading_brackets_distinguish_links_from_possible_definitions() {
 
 #[test]
 fn ordinary_regions_preserve_extension_boundaries() {
-    use core_markdown::{render_events, Document, EventParser, Options};
+    use base_markdown::{render_events, Document, EventParser, Options};
     let sources = [
         "ordinary *emphasis*, **strong**, `code`, &amp; and \\*escaped*.",
         "[explicit](https://example.com?q=x&n=2) and ![image](image.png)",
@@ -308,8 +308,8 @@ fn ordinary_regions_preserve_extension_boundaries() {
         let mut configured = Options::gfm();
         // Enabling math must not change these sources without math delimiters.
         configured.parse.constructs.math_flow = true;
-        let direct = core_markdown::to_html_with_options(source, &options);
-        let expected = core_markdown::to_html_with_options(source, &configured);
+        let direct = base_markdown::to_html_with_options(source, &options);
+        let expected = base_markdown::to_html_with_options(source, &configured);
         assert_eq!(direct, expected, "source: {source:?}");
         let mut checked = String::new();
         render_events(
@@ -331,8 +331,8 @@ fn ordinary_regions_preserve_extension_boundaries() {
 fn uses_commonmark_attention_boundaries_when_no_extension_is_present() {
     for source in ["[a]*a**_\n\n[a]: /a", "[a](path) *a**_ [a]*a**_\n\n[a]: /a"] {
         assert_eq!(
-            core_markdown::to_html_with_options(source, &core_markdown::Options::gfm()),
-            core_markdown::to_html(source)
+            base_markdown::to_html_with_options(source, &base_markdown::Options::gfm()),
+            base_markdown::to_html(source)
         );
     }
 }
@@ -345,8 +345,8 @@ fn preserves_the_same_literal_line_endings_as_commonmark() {
         "intro\n\n```\r\ncode\r\n```\n",
     ] {
         assert_eq!(
-            core_markdown::to_html_with_options(source, &core_markdown::Options::gfm()),
-            core_markdown::to_html(source)
+            base_markdown::to_html_with_options(source, &base_markdown::Options::gfm()),
+            base_markdown::to_html(source)
         );
     }
 }
@@ -361,9 +361,9 @@ fn extensions_preserve_virtual_spaces_in_code() {
         "- a\n\n  \t\tcode",
         "- ```\n\tcode\n  ```",
     ] {
-        let direct = core_markdown::to_html_with_options(source, &options);
+        let direct = base_markdown::to_html_with_options(source, &options);
         // Enabling an unrelated extension preserves container indentation and code values.
-        assert_eq!(direct, core_markdown::to_html(source));
+        assert_eq!(direct, base_markdown::to_html(source));
         let document = Document::parse(source, &options.parse).unwrap();
         let mut output = String::new();
         render_events(source, document.events(), &options.compile, &mut output).unwrap();
@@ -371,7 +371,7 @@ fn extensions_preserve_virtual_spaces_in_code() {
     }
 }
 
-fn arena_html(source: &str, options: &core_markdown::ParseOptions) -> String {
+fn arena_html(source: &str, options: &base_markdown::ParseOptions) -> String {
     let document = Document::parse(source, options).unwrap();
     let mut output = String::new();
     document
@@ -382,7 +382,7 @@ fn arena_html(source: &str, options: &core_markdown::ParseOptions) -> String {
 
 #[test]
 fn inline_angles_preserve_syntax_and_authored_ranges() {
-    use core_markdown::{stream::EventKind, to_html_with_options};
+    use base_markdown::{stream::EventKind, to_html_with_options};
     let mut cases = vec![
         "plain < 3 and **bold**".to_string(),
         "__<_\n?_>".to_string(),
@@ -427,7 +427,7 @@ fn inline_angles_preserve_syntax_and_authored_ranges() {
     for node in document.nodes() {
         if matches!(
             node.kind,
-            EventKind::Start(core_markdown::stream::Tag::Link { .. })
+            EventKind::Start(base_markdown::stream::Tag::Link { .. })
         ) {
             assert_eq!(&source[node.span.clone()], "<ab:é>");
         }

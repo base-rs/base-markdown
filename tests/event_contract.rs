@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{
+use base_markdown::{
     render_events,
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
     AstBuilder, BuildProgress, Document, Options,
@@ -86,7 +86,7 @@ fn footnote_ids_survive_a_call_writer_failure() {
     };
     let options = Options::default();
     {
-        let mut renderer = core_markdown::EventHtmlRenderer::new("", &options.compile, &mut writer);
+        let mut renderer = base_markdown::EventHtmlRenderer::new("", &options.compile, &mut writer);
         renderer
             .event(event(EventKind::Start(Tag::Document(None))).unwrap())
             .unwrap();
@@ -101,7 +101,7 @@ fn footnote_ids_survive_a_call_writer_failure() {
             fail_at,
             output: String::new(),
         };
-        let mut renderer = core_markdown::EventHtmlRenderer::new("", &options.compile, &mut writer);
+        let mut renderer = base_markdown::EventHtmlRenderer::new("", &options.compile, &mut writer);
         renderer
             .event(event(EventKind::Start(Tag::Document(None))).unwrap())
             .unwrap();
@@ -398,7 +398,7 @@ fn writer_failures_propagate_from_every_output_position() {
             let render = |writer: &mut Writer| {
                 render_events(
                     source,
-                    core_markdown::EventParser::new(source, &options.parse),
+                    base_markdown::EventParser::new(source, &options.parse),
                     &options.compile,
                     writer,
                 )
@@ -448,7 +448,7 @@ fn heading_ids_use_normalized_semantic_code_text() {
         ("a`\nb `\n---", "<h2 id=\"ab\">a<code>b</code></h2>"),
     ] {
         assert_eq!(
-            core_markdown::to_html_with_options(source, &options),
+            base_markdown::to_html_with_options(source, &options),
             expected
         );
         let ast = Document::parse(source, &options.parse).unwrap();
@@ -477,7 +477,7 @@ fn document_completion_yields_one_terminal_separator_and_end() {
         ("> <!--\n> body\n", None),
         ("<!-- closed -->\r\n", Some(("\r\n", false))),
     ] {
-        let mut parser = core_markdown::EventParser::new(source, &options.parse);
+        let mut parser = base_markdown::EventParser::new(source, &options.parse);
         assert!(matches!(
             parser.next().unwrap().unwrap().kind,
             EventKind::Start(Tag::Document(_))
@@ -520,7 +520,7 @@ fn paragraph_tightness_follows_its_own_list() {
         ),
         ("- a\n\n  b\n- c", vec![false, false, false]),
     ] {
-        let actual: Vec<_> = core_markdown::EventParser::new(source, &options.parse)
+        let actual: Vec<_> = base_markdown::EventParser::new(source, &options.parse)
             .filter_map(|event| match event.unwrap().kind {
                 EventKind::Start(Tag::Paragraph { tight }) => Some(tight),
                 _ => None,
@@ -532,7 +532,7 @@ fn paragraph_tightness_follows_its_own_list() {
 
 #[test]
 fn mixed_list_kinds_after_unclosed_fences_are_siblings() {
-    let output = core_markdown::to_html("1. ~~~\n-");
+    let output = base_markdown::to_html("1. ~~~\n-");
     assert_eq!(
         output,
         "<ol>\n<li>\n<pre><code></code></pre>\n</li>\n</ol>\n<ul>\n<li></li>\n</ul>"
@@ -604,7 +604,7 @@ fn custom_block_events_inside_images_contribute_only_alt_text() {
         EventKind::Start(Tag::TableHead),
         EventKind::Start(Tag::TableRow),
         EventKind::Start(Tag::TableCell {
-            alignment: core_markdown::AlignKind::Left,
+            alignment: base_markdown::AlignKind::Left,
             header: true,
         }),
         EventKind::Text(Text::Literal("<&")),
@@ -648,7 +648,7 @@ fn extensions_and_unclosed_container_fences_keep_their_boundaries() {
         "---\nx\n---\n\n>",
         "+++\nx\n+++\n\n>",
     ] {
-        let output = core_markdown::to_html_with_options(source, &options);
+        let output = base_markdown::to_html_with_options(source, &options);
         let ast = Document::parse(source, &options.parse).unwrap();
         let mut actual = String::new();
         render_events(source, ast.events(), &options.compile, &mut actual).unwrap();
@@ -797,7 +797,7 @@ fn reference_labels_keep_significant_collapsed_spaces() {
     let options = Options::default();
     let source = "[a b] [ab]\n\n[a b]: /spaced\n[ab]: /compact";
     let expected = "<p><a href=\"/spaced\">a b</a> <a href=\"/compact\">ab</a></p>\n";
-    assert_eq!(core_markdown::to_html(source), expected);
+    assert_eq!(base_markdown::to_html(source), expected);
     let ast = Document::parse(source, &options.parse).unwrap();
     let mut output = String::new();
     render_events(source, ast.events(), &options.compile, &mut output).unwrap();
@@ -806,7 +806,7 @@ fn reference_labels_keep_significant_collapsed_spaces() {
 
 #[test]
 fn individual_event_delivery_matches_whole_stream_rendering() {
-    use core_markdown::{EventHtmlRenderer, EventParser};
+    use base_markdown::{EventHtmlRenderer, EventParser};
     let source = "# Incremental *events*\n\nA [link](url).";
     let options = Options::default();
     let mut output = String::new();
@@ -814,7 +814,7 @@ fn individual_event_delivery_matches_whole_stream_rendering() {
     for event in EventParser::new(source, &options.parse) {
         renderer.event(event.unwrap()).unwrap();
     }
-    assert_eq!(output, core_markdown::to_html(source));
+    assert_eq!(output, base_markdown::to_html(source));
     let mut output = String::new();
     let mut renderer = EventHtmlRenderer::new(source, &options.compile, &mut output);
     assert!(renderer
@@ -859,7 +859,7 @@ fn deferred_image_titles_retain_values_until_the_image_closes() {
     }
 
     let mut output = String::new();
-    let mut renderer = core_markdown::EventHtmlRenderer::new("", &options.compile, &mut output);
+    let mut renderer = base_markdown::EventHtmlRenderer::new("", &options.compile, &mut output);
     renderer
         .event(event(EventKind::Start(Tag::Document(None))).unwrap())
         .unwrap();

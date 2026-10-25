@@ -23,15 +23,15 @@ authors = ["Titus Wormer <tituswormer@gmail.com>"]
 categories = ["compilers", "encoding", "parser-implementations", "parsing", "text-processing"]
 description = "CommonMark compliant markdown parser in Rust with ASTs and extensions"
 edition = "2018"
-homepage = "https://github.com/core-rs/core-markdown"
+homepage = "https://github.com/base-rs/base-markdown"
 include = ["src/**", "context/**", "readme.md", "license.md", "releases.md", "releases/**"]
 keywords = ["commonmark", "markdown", "parse", "render", "tokenize"]
 license = "MIT"
-name = "core-markdown"
+name = "base-markdown"
 readme = "readme.md"
-repository = "https://github.com/core-rs/core-markdown"
+repository = "https://github.com/base-rs/base-markdown"
 rust-version = "1.73"
-version = "0.2.0"
+version = "0.1.0"
 
 [workspace]
 members = ["generate", "bake"]
@@ -41,7 +41,7 @@ resolver = "2"
 manifest = "bake/Cargo.toml"
 
 [workspace.metadata.bake.release]
-reviewers = ["core-rs/maintainers"]
+reviewers = ["base-rs/maintainers"]
 
 [workspace.dependencies]
 pretty_assertions = "1"

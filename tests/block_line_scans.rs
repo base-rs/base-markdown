@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{
+use base_markdown::{
     render_events,
     stream::{EventKind, Tag, Text},
     to_html_with_options, Document, EventParser, Options, ParseOptions,
@@ -131,7 +131,7 @@ fn nested_empty_items_preserve_the_outer_boundary_before_a_blank_line() {
         let source = "- > - a\n  >\n  > -\n\noutside\n".replace('\n', ending);
         let expected_end = source.find(&format!("{ending}{ending}")).unwrap() + ending.len();
         let document =
-            core_markdown::Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+            base_markdown::Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
         let item = document
             .descendants(document.root())
             .find(|id| {

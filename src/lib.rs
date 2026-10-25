@@ -74,7 +74,7 @@ use alloc::string::String;
 /// ## Examples
 ///
 /// ```
-/// use core_markdown::to_html;
+/// use base_markdown::to_html;
 ///
 /// assert_eq!(to_html("# Hi Mercury!"), "<h1>Hi Mercury!</h1>");
 /// ```
@@ -89,7 +89,7 @@ pub fn to_html(value: &str) -> String {
 /// ## Examples
 ///
 /// ```
-/// use core_markdown::{to_html_with_options, CompileOptions, Options};
+/// use base_markdown::{to_html_with_options, CompileOptions, Options};
 ///
 /// // Use GFM:
 /// let result = to_html_with_options("~Venus~Mars!", &Options::gfm());

@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{
+use base_markdown::{
     stream::{EventKind, Tag, Text},
     to_markdown, to_markdown_node, Document, ParseOptions,
 };
@@ -115,7 +115,7 @@ fn empty() -> Document<&'static str> {
 
 #[test]
 fn synthetic_references_cannot_override_a_present_definition() {
-    use core_markdown::{NodeSyntax, ReferenceKind};
+    use base_markdown::{NodeSyntax, ReferenceKind};
     for target in ["/original", "/changed"] {
         let mut document = empty();
         let root = document.root();
@@ -258,7 +258,7 @@ fn structured_image_alt_and_link_text_use_their_semantic_content() {
 
 #[test]
 fn synthetic_math_blocks_use_semantic_info_without_authored_syntax() {
-    use core_markdown::NodeSyntax;
+    use base_markdown::NodeSyntax;
     let mut document = empty();
     let block = document
         .append_child(
@@ -380,7 +380,7 @@ fn table_serialization_rejects_unrepresentable_structure() {
 
 #[test]
 fn table_separator_metadata_does_not_add_empty_rows_or_cells() {
-    use core_markdown::AlignKind;
+    use base_markdown::AlignKind;
     let mut document = empty();
     let table = document
         .append_child(document.root(), EventKind::Start(Tag::Table))
@@ -506,7 +506,7 @@ fn ordered_list_positions_survive_nested_and_direct_item_serialization() {
         to_markdown_node(&document, second, &Default::default()).unwrap(),
         "10. next\n"
     );
-    let mut options = core_markdown::MarkdownOptions {
+    let mut options = base_markdown::MarkdownOptions {
         bullet_ordered: ')',
         ..Default::default()
     };
@@ -527,12 +527,12 @@ fn ordered_list_positions_survive_nested_and_direct_item_serialization() {
         .collect();
     let document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
     assert_eq!(to_markdown(&document).unwrap(), source);
-    let options = core_markdown::MarkdownOptions {
+    let options = base_markdown::MarkdownOptions {
         increment_list_marker: false,
         ..Default::default()
     };
     assert_eq!(
-        core_markdown::to_markdown_with_options(&document, &options).unwrap(),
+        base_markdown::to_markdown_with_options(&document, &options).unwrap(),
         "9. value\n".repeat(256)
     );
 }

@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{to_html, to_html_with_options, Constructs, Document, Options, ParseOptions};
+use base_markdown::{to_html, to_html_with_options, Constructs, Document, Options, ParseOptions};
 
 #[test]
 fn syntax_extensions_can_be_enabled_without_a_preset() {

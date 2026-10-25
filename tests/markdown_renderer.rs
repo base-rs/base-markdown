@@ -2,7 +2,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use core_markdown::{Constructs, Document, MarkdownOptions, ParseOptions};
+use base_markdown::{Constructs, Document, MarkdownOptions, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::{to_markdown as markdown, to_markdown_with_options};
 use support::fixture::{
@@ -15,7 +15,7 @@ use support::fixture::{
 fn parse(
     source: &str,
     options: &ParseOptions,
-) -> Result<Document, core_markdown::message::Message> {
+) -> Result<Document, base_markdown::message::Message> {
     Ok(Document::parse(source.to_owned(), options).unwrap())
 }
 
@@ -34,7 +34,7 @@ fn paragraph(children: Vec<Node>) -> Node {
 }
 
 #[test]
-fn serializes_a_markdown_document() -> Result<(), core_markdown::message::Message> {
+fn serializes_a_markdown_document() -> Result<(), base_markdown::message::Message> {
     let node = parse(
         "# Hello *world*!\n\nA [link](/url).",
         &ParseOptions::default(),
@@ -49,14 +49,14 @@ fn serializes_a_markdown_document() -> Result<(), core_markdown::message::Messag
 }
 
 #[test]
-fn serializes_extracted_fragments() -> Result<(), core_markdown::message::Message> {
+fn serializes_extracted_fragments() -> Result<(), base_markdown::message::Message> {
     let mut node = parse("**hello**", &ParseOptions::default())?;
     let fragment = node
         .extract_children(node.root())
         .expect("root has children");
 
     assert_eq!(
-        core_markdown::to_markdown_node(&node, fragment[0], &Default::default()).unwrap(),
+        base_markdown::to_markdown_node(&node, fragment[0], &Default::default()).unwrap(),
         "**hello**\n"
     );
 
@@ -64,7 +64,7 @@ fn serializes_extracted_fragments() -> Result<(), core_markdown::message::Messag
 }
 
 #[test]
-fn renders_with_custom_markdown_options() -> Result<(), core_markdown::message::Message> {
+fn renders_with_custom_markdown_options() -> Result<(), base_markdown::message::Message> {
     let node = parse("*hello*", &ParseOptions::default())?;
     let options = MarkdownOptions {
         emphasis: '_',
@@ -79,7 +79,7 @@ fn renders_with_custom_markdown_options() -> Result<(), core_markdown::message::
 }
 
 #[test]
-fn serializes_constructs() -> Result<(), core_markdown::message::Message> {
+fn serializes_constructs() -> Result<(), base_markdown::message::Message> {
     let node = parse(
         "~~old~~\n\n| A | B |\n| :- | -: |\n| x | y |\n\nCall[^note].\n\n[^note]: Details.",
         &ParseOptions::gfm(),
@@ -94,7 +94,7 @@ fn serializes_constructs() -> Result<(), core_markdown::message::Message> {
 }
 
 #[test]
-fn serializes_frontmatter() -> Result<(), core_markdown::message::Message> {
+fn serializes_frontmatter() -> Result<(), base_markdown::message::Message> {
     let options = ParseOptions {
         constructs: Constructs {
             frontmatter: true,
@@ -664,7 +664,7 @@ fn propagates_errors_from_nested_markdown_nodes() {
 
 #[test]
 fn formatting_options_are_checked_only_when_their_construct_is_serialized() {
-    let options = core_markdown::MarkdownOptions {
+    let options = base_markdown::MarkdownOptions {
         bullet: 'x',
         bullet_ordered: 'x',
         bullet_other: 'x',
@@ -674,13 +674,13 @@ fn formatting_options_are_checked_only_when_their_construct_is_serialized() {
         quote: 'x',
         rule: 'x',
         rule_repetition: 0,
-        ..core_markdown::MarkdownOptions::default()
+        ..base_markdown::MarkdownOptions::default()
     };
     let document =
-        core_markdown::Document::parse("plain text", &core_markdown::ParseOptions::default())
+        base_markdown::Document::parse("plain text", &base_markdown::ParseOptions::default())
             .unwrap();
     assert_eq!(
-        core_markdown::to_markdown_with_options(&document, &options).unwrap(),
+        base_markdown::to_markdown_with_options(&document, &options).unwrap(),
         "plain text\n"
     );
     for (source, options, reason) in [
@@ -697,17 +697,17 @@ fn formatting_options_are_checked_only_when_their_construct_is_serialized() {
         // A list item's fallback bullet is checked even in an ordered list.
         (
             "1. text",
-            core_markdown::MarkdownOptions {
+            base_markdown::MarkdownOptions {
                 bullet: 'x',
-                ..core_markdown::MarkdownOptions::default()
+                ..base_markdown::MarkdownOptions::default()
             },
             "Cannot serialize items with `x` for `options.bullet`, expected `*`, `+`, or `-`",
         ),
     ] {
         let document =
-            core_markdown::Document::parse(source, &core_markdown::ParseOptions::default())
+            base_markdown::Document::parse(source, &base_markdown::ParseOptions::default())
                 .unwrap();
-        let error = core_markdown::to_markdown_with_options(&document, &options).unwrap_err();
+        let error = base_markdown::to_markdown_with_options(&document, &options).unwrap_err();
         assert_eq!(error.reason, reason);
         assert_eq!(error.source, "mdast-util-to-markdown");
         assert_eq!(error.rule_id, "unexpected-marker");

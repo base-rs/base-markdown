@@ -8,7 +8,7 @@ P = Path(__file__).resolve().parent
 subprocess.run([sys.executable, str(P / "prepare.py")], check=True)
 subprocess.run(["cargo", "build", "--release", "--locked", "--manifest-path", str(P / "Cargo.toml")], check=True)
 (P / "results").mkdir(exist_ok=True)
-parsers = sys.argv[1:] or ["core-markdown", "markdown-rs", "comrak", "markly", "commonmarker", "inkmark"]
+parsers = sys.argv[1:] or ["base-markdown", "markdown-rs", "comrak", "markly", "commonmarker", "inkmark"]
 for parser in parsers:
     for profile in ["commonmark", "gfm"]:
         path = P / "data" / ("bench-commonmark.json" if profile == "commonmark" else "bench-gfm.json")

@@ -8,7 +8,7 @@
 // To do: clippy introduced this in 1.72 but breaks when it fixes it.
 // Remove when solved.
 mod support;
-use core_markdown::{message, to_html, to_html_with_options, Options, ParseOptions};
+use base_markdown::{message, to_html, to_html_with_options, Options, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
 use support::fixture::Position;
@@ -2862,7 +2862,7 @@ fn email_runs_preserve_boundaries_after_long_unicode_prefixes() {
 
 #[test]
 fn compact_literal_links_preserve_destinations_and_boundaries() {
-    use core_markdown::{
+    use base_markdown::{
         render_events,
         stream::{EventKind, Tag, TagKind},
         Document, EventParser, Options,
@@ -2916,13 +2916,13 @@ fn compact_literal_links_preserve_destinations_and_boundaries() {
             ("&#9;", ""),
         ] {
             let source = format!("{before}{address}{after}");
-            let direct = core_markdown::to_html_with_options(&source, &options);
+            let direct = base_markdown::to_html_with_options(&source, &options);
             assert_eq!(
                 direct,
-                core_markdown::to_html_with_options(&source, &configured),
+                base_markdown::to_html_with_options(&source, &configured),
                 "{source:?}"
             );
-            let links = |parse: &core_markdown::ParseOptions| {
+            let links = |parse: &base_markdown::ParseOptions| {
                 EventParser::new(&source, parse)
                     .map(Result::unwrap)
                     .filter(|event| {

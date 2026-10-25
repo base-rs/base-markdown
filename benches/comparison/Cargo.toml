@@ -7,7 +7,7 @@ publish = false
 [workspace]
 
 [dependencies]
-core-markdown = { path = "../.." }
+base-markdown = { path = "../.." }
 markdown = "=1.0.0"
 comrak = { version = "=0.57.0", default-features = false }
 serde_json = "1"

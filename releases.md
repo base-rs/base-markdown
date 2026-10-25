@@ -1,14 +1,12 @@
 # Releases
 
-See [socketry-markdown release history](releases/socketry-markdown.md) for releases before the rename.
+## v0.1.0
 
-## Unreleased
+- Publish as `base-markdown` in the `base-rs` organization, with package versions starting at 0.1.0.
 
 - Consolidate text construction into one semantic value state, share physical line-ending scans and terminal boundaries, and avoid repeated reference-label, email-prefix and table-cell scans. Preserve output, authored syntax and source spans.
 
 - Avoid intermediate escaped image-title strings, retain source-backed values across empty decoding fragments, borrow semantic text when choosing heading syntax, and skip Markdown table-cell rewrites when no pipe needs escaping. Preserve rendered output and source spans.
-
-## v0.2.0
 
 - Document downstream migration details for heading spans, frontmatter values, and resolved reference destinations. Update fuzz targets to the sole `Document` AST.
 
@@ -94,7 +92,5 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 - Improve Markdown parsing throughput and large-document scaling by indexing and batching event edits, scanning ordinary byte runs, compacting internal events and states, and reusing tokenizer buffers. Retain extension support and ordinary HTML output, with the corrections described above.
 
-## v0.1.0
-
-- Publish as `core-markdown` in the `core-rs` organization, with version numbering restarted at `0.1.0`.
+- Publish as `base-markdown` in the `base-rs` organization, with version numbering restarted at `0.1.0`.
 - Require a `Release: vVERSION` Git trailer on the final release commit; version changes alone no longer trigger publication.

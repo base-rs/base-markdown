@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{render_events, AstBuilder, BuildProgress, Document, EventParser, Options};
+use base_markdown::{render_events, AstBuilder, BuildProgress, Document, EventParser, Options};
 
 #[test]
 fn parser_and_document_use_the_same_html_consumer() {
@@ -34,7 +34,7 @@ fn parser_and_document_use_the_same_html_consumer() {
     ];
     for options in [Options::default(), Options::gfm()] {
         for source in cases {
-            let expected = core_markdown::to_html_with_options(source, &options);
+            let expected = base_markdown::to_html_with_options(source, &options);
             let mut actual = String::new();
             render_events(
                 source,
@@ -128,7 +128,7 @@ fn extended_metadata_and_rendering_options_roundtrip() {
     options.parse.constructs.math_flow = true;
     options.parse.constructs.math_text = true;
     options.compile.heading_ids = true;
-    options.compile.default_line_ending = core_markdown::LineEnding::CarriageReturnLineFeed;
+    options.compile.default_line_ending = base_markdown::LineEnding::CarriageReturnLineFeed;
     options.compile.task_list_item_checkable = true;
     options.compile.footnote_clobber_prefix = Some("prefix-".into());
     options.compile.footnote_back_label = Some("Back & return".into());
@@ -145,14 +145,14 @@ fn extended_metadata_and_rendering_options_roundtrip() {
         "`  `, ` a `, `a\r\nb`, ``` a `` b ```\n",
         "> ```\n>\n>\n>\n\na", "```", "<script>x</script>\n",
     ] {
-        let expected = core_markdown::to_html_with_options(source, &options);
+        let expected = base_markdown::to_html_with_options(source, &options);
         let document = Document::parse(source, &options.parse).unwrap();
         let mut output = String::new();
         render_events(document.source(), document.events(), &options.compile, &mut output).unwrap();
         assert_eq!(output, expected, "{source:?}");
     }
     let options = Options {
-        parse: core_markdown::ParseOptions::default(),
+        parse: base_markdown::ParseOptions::default(),
         ..Options::default()
     };
     for source in [
@@ -160,7 +160,7 @@ fn extended_metadata_and_rendering_options_roundtrip() {
         "# Hi {name}\n\n{value}\n",
         "<>\n\n# Heading\n\n</>\n",
     ] {
-        let expected = core_markdown::to_html_with_options(source, &options);
+        let expected = base_markdown::to_html_with_options(source, &options);
         let document = Document::parse(source, &options.parse).unwrap();
         let mut output = String::new();
         render_events(
@@ -176,7 +176,7 @@ fn extended_metadata_and_rendering_options_roundtrip() {
 
 #[test]
 fn consumers_reject_broken_streams_and_propagate_writer_errors() {
-    use core_markdown::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
+    use base_markdown::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
     fn event(kind: EventKind<'static>) -> Result<Event<'static>, StreamError> {
         Ok(Event { kind, span: 0..0 })
     }
@@ -252,7 +252,7 @@ fn consumers_reject_broken_streams_and_propagate_writer_errors() {
 
 #[test]
 fn edits_and_consumers_validate_the_same_contract() {
-    use core_markdown::stream::{Event, EventKind, Tag, TagKind, Text};
+    use base_markdown::stream::{Event, EventKind, Tag, TagKind, Text};
     let options = Options::default();
     let mut document = Document::parse("abc", &options.parse).unwrap();
     let root = document.root();
@@ -368,7 +368,7 @@ fn virtual_container_spaces_and_autolink_nulls_keep_authored_values() {
         ),
     ] {
         assert_eq!(
-            core_markdown::to_html_with_options(source, &options),
+            base_markdown::to_html_with_options(source, &options),
             expected
         );
         let document = Document::parse(source, &options.parse).unwrap();
@@ -390,7 +390,7 @@ fn unclosed_footnote_fence_does_not_consume_following_soft_break() {
     let source = "[^a]:~~~\n1. a\nb";
     let expected = "<ol>\n<li>a\nb</li>\n</ol>";
     assert_eq!(
-        core_markdown::to_html_with_options(source, &options),
+        base_markdown::to_html_with_options(source, &options),
         expected
     );
     let document = Document::parse(source, &options.parse).unwrap();
@@ -408,7 +408,7 @@ fn task_checkbox_attributes_preserve_checkability_and_state() {
     ] {
         let mut options = Options::gfm();
         options.compile.task_list_item_checkable = checkable;
-        assert_eq!(core_markdown::to_html_with_options(source, &options), expected);
+        assert_eq!(base_markdown::to_html_with_options(source, &options), expected);
         let mut checked = String::new();
         render_events(source, EventParser::new(source, &options.parse), &options.compile, &mut checked).unwrap();
         assert_eq!(checked, expected);
@@ -430,7 +430,7 @@ fn inline_workspace_reuses_storage_across_mixed_regions() {
         let expected = format!(
             "<p>before <code>a b</code> &amp; <em>first</em>.</p>\n<p><a href=\"/target\" title=\"title\">compact</a> <strong>second</strong>.</p>\n<p>raw <span>third</span>.</p>\n{table}<p><code>x y</code> <a href=\"/target\" title=\"title\">last</a>.</p>\n"
         );
-        assert_eq!(core_markdown::to_html_with_options(source, &options), expected);
+        assert_eq!(base_markdown::to_html_with_options(source, &options), expected);
         let mut rendered = String::new();
         render_events(source, EventParser::new(source, &options.parse), &options.compile, &mut rendered).unwrap();
         assert_eq!(rendered, expected);
@@ -464,7 +464,7 @@ fn javascript_like_input_is_ordinary_markdown() {
             options.parse.constructs.autolink = !configured;
             for (source, expected) in cases {
                 assert_eq!(
-                    core_markdown::to_html_with_options(source, &options),
+                    base_markdown::to_html_with_options(source, &options),
                     expected
                 );
                 let document = Document::parse(source, &options.parse).unwrap();
@@ -484,7 +484,7 @@ fn javascript_like_input_is_ordinary_markdown() {
 
 #[test]
 fn custom_producer_diagnostics_reach_both_consumers() {
-    use core_markdown::{message::Message, stream::StreamError};
+    use base_markdown::{message::Message, stream::StreamError};
     let diagnostic = Message {
         span: Some(0..0),
         reason: "custom input failed".into(),

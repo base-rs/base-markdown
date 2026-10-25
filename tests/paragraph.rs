@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{to_html_with_options, Document, Options, ParseOptions};
+use base_markdown::{to_html_with_options, Document, Options, ParseOptions};
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -18,14 +18,14 @@ fn paragraphs_preserve_container_chunks_and_source_positions() {
         .filter(|id| {
             !matches!(
                 tree.node(*id).unwrap().kind,
-                core_markdown::stream::EventKind::Separator { .. }
+                base_markdown::stream::EventKind::Separator { .. }
             )
         })
         .collect();
     let paragraph = tree.children(children[0]).next().unwrap();
     assert!(matches!(
         tree.node(paragraph).unwrap().kind,
-        core_markdown::stream::EventKind::Start(core_markdown::stream::Tag::Paragraph { .. })
+        base_markdown::stream::EventKind::Start(base_markdown::stream::Tag::Paragraph { .. })
     ));
     assert_eq!(tree.node(paragraph).unwrap().span, 2..14);
     let emphasis = tree
@@ -33,7 +33,7 @@ fn paragraphs_preserve_container_chunks_and_source_positions() {
         .find(|id| {
             matches!(
                 tree.node(*id).unwrap().kind,
-                core_markdown::stream::EventKind::Start(core_markdown::stream::Tag::Emphasis)
+                base_markdown::stream::EventKind::Start(base_markdown::stream::Tag::Emphasis)
             )
         })
         .unwrap();

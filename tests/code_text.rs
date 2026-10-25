@@ -5,7 +5,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use core_markdown::{
+use base_markdown::{
     message, to_html, to_html_with_options, CompileOptions, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
@@ -263,11 +263,11 @@ fn parses_inline_code_info_and_removes_its_prefix() {
     );
 
     for (source, expected_prefix) in [("rust:`code`", ""), ("before rust:`code`", "before ")] {
-        let tree = core_markdown::Document::parse(source, &options.parse).unwrap();
+        let tree = base_markdown::Document::parse(source, &options.parse).unwrap();
         let paragraph = tree.children(tree.root()).next().unwrap();
         let children: Vec<_> = tree.children(paragraph).collect();
         let code = *children.last().unwrap();
-        let core_markdown::stream::EventKind::Code {
+        let base_markdown::stream::EventKind::Code {
             value,
             language: Some(language),
         } = &tree.node(code).unwrap().kind

@@ -3,11 +3,11 @@
 // Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::markdown::{
+use base_markdown::markdown::{
     to_markdown as to, to_markdown_with_options as to_md_with_opts, Options,
 };
 mod support;
-use core_markdown::Document;
+use base_markdown::Document;
 use pretty_assertions::assert_eq;
 use support::fixture::canonical;
 

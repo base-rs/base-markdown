@@ -4,8 +4,8 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use core_markdown::markdown::{LineWrapping, Options};
-use core_markdown::Document;
+use base_markdown::markdown::{LineWrapping, Options};
+use base_markdown::Document;
 use pretty_assertions::assert_eq;
 use support::fixture::to_markdown as to;
 use support::fixture::to_markdown_with_options as to_with_options;

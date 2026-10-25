@@ -4,7 +4,7 @@
 // Copyright, 2023, by Mick van Gelderen.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{to_html, to_html_with_options, Document, Options};
+use base_markdown::{to_html, to_html_with_options, Document, Options};
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -120,10 +120,10 @@ fn fuzz() {
     );
 
     assert_eq!(
-        core_markdown::to_html_with_options(
+        base_markdown::to_html_with_options(
             "<",
-            &core_markdown::Options {
-                parse: core_markdown::ParseOptions::default(),
+            &base_markdown::Options {
+                parse: base_markdown::ParseOptions::default(),
                 ..Default::default()
             }
         ),

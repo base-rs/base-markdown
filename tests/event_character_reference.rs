@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{
+use base_markdown::{
     render_events,
     stream::{EventKind, Text},
     Document, EventParser, Options,
@@ -40,7 +40,7 @@ fn references_keep_their_meaning_across_regions_and_rendering_paths() {
             for configured in [false, true] {
                 options.parse.inline_code_info = configured;
                 assert_eq!(
-                    core_markdown::to_html_with_options(source, &options),
+                    base_markdown::to_html_with_options(source, &options),
                     expected,
                     "source={source:?}, configured={configured}"
                 );

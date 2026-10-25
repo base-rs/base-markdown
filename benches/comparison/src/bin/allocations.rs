@@ -62,9 +62,9 @@ fn main() {
         "unknown profile"
     );
     let mut options = if args[1] == "gfm" {
-        core_markdown::Options::gfm()
+        base_markdown::Options::gfm()
     } else {
-        core_markdown::Options::default()
+        base_markdown::Options::default()
     };
     options.compile.allow_dangerous_html = true;
     options.compile.allow_dangerous_protocol = true;
@@ -76,7 +76,7 @@ fn main() {
     for case in cases {
         let source = case["markdown"].as_str().unwrap();
         let (mut parser, prepare) =
-            measure(|| core_markdown::EventParser::new(source, &options.parse));
+            measure(|| base_markdown::EventParser::new(source, &options.parse));
         let (event_count, pull) = measure(|| {
             parser
                 .by_ref()
@@ -88,19 +88,19 @@ fn main() {
         });
         drop(parser);
         let (document, arena) =
-            measure(|| core_markdown::Document::parse(source, &options.parse).unwrap());
+            measure(|| base_markdown::Document::parse(source, &options.parse).unwrap());
         let (_, traversal) = measure(|| {
             document.events().for_each(|event| {
                 black_box(event.unwrap());
             })
         });
         let (html, html_cold) =
-            measure(|| core_markdown::to_html_with_options(source, &options));
+            measure(|| base_markdown::to_html_with_options(source, &options));
         let mut output = String::with_capacity(html.len());
         let (_, html_reserved) = measure(|| {
-            core_markdown::render_events(
+            base_markdown::render_events(
                 source,
-                core_markdown::EventParser::new(source, &options.parse),
+                base_markdown::EventParser::new(source, &options.parse),
                 &options.compile,
                 &mut output,
             )
@@ -112,10 +112,10 @@ fn main() {
             document.render_html(&options.compile,&mut output).unwrap();
             output
         });
-        let (_, markdown) = measure(|| core_markdown::to_markdown(&document).unwrap());
+        let (_, markdown) = measure(|| base_markdown::to_markdown(&document).unwrap());
         println!(
             "{}",
-            json!({"document": case["name"], "bytes": source.len(), "events": event_count, "nodes": document.nodes().len(), "node_bytes": std::mem::size_of::<core_markdown::DocumentNode>(), "prepare": prepare, "pull_after_prepare": pull, "arena_total": arena, "arena_traversal": traversal, "html_total": html_cold, "html_reserved_output": html_reserved, "ast_html":ast_html,"ast_markdown":markdown})
+            json!({"document": case["name"], "bytes": source.len(), "events": event_count, "nodes": document.nodes().len(), "node_bytes": std::mem::size_of::<base_markdown::DocumentNode>(), "prepare": prepare, "pull_after_prepare": pull, "arena_total": arena, "arena_traversal": traversal, "html_total": html_cold, "html_reserved_output": html_reserved, "ast_html":ast_html,"ast_markdown":markdown})
         );
     }
 }
