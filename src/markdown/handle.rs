@@ -743,22 +743,36 @@ fn image_alt<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> Cow<'_, str
 }
 
 fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
-    let mut endings = super::util::scan::line_endings(value);
-    let Some(first) = endings.next() else {
+    if super::util::scan::line_endings(value).next().is_none() {
         return Cow::Borrowed(value);
-    };
+    }
     let mut result = String::with_capacity(value.len());
-    let mut start = 0;
-    for ending in core::iter::once(first).chain(endings) {
-        result.push_str(&value[start..ending.start]);
-        result.truncate(result.trim_end_matches([' ', '\t']).len());
-        result.push(' ');
-        start = ending.end;
-        while matches!(value.as_bytes().get(start), Some(b' ' | b'\t')) {
-            start += 1;
+    let mut characters = value.chars().peekable();
+
+    while let Some(character) = characters.next() {
+        match character {
+            '\r' | '\n' => {
+                if character == '\r' && characters.peek() == Some(&'\n') {
+                    characters.next();
+                }
+
+                while matches!(result.chars().next_back(), Some(' ' | '\t')) {
+                    result.pop();
+                }
+
+                while characters
+                    .peek()
+                    .is_some_and(|next| matches!(*next, ' ' | '\t'))
+                {
+                    characters.next();
+                }
+
+                result.push(' ');
+            }
+            _ => result.push(character),
         }
     }
-    result.push_str(&value[start..]);
+
     Cow::Owned(result)
 }
 
