@@ -3,10 +3,7 @@
 
 //! Source-backed text construction and syntax-aware string decoding.
 use crate::{stream::Text, util::constant::CHARACTER_REFERENCES};
-use alloc::{
-    borrow::Cow,
-    string::{String, ToString},
-};
+use alloc::{borrow::Cow, string::String};
 use core::ops::Range;
 
 static STRING_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\\&\0");
@@ -15,30 +12,18 @@ static UNPADDED_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet
 /// Keep a contiguous source range until normalization actually requires an owned string.
 pub(crate) struct ValueBuilder<'a> {
     source: &'a str,
-    range: Option<Range<usize>>,
-    owned: Option<String>,
+    value: Option<Text<'static>>,
 }
 impl<'a> ValueBuilder<'a> {
     pub(crate) fn new(source: &'a str) -> Self {
         Self {
             source,
-            range: None,
-            owned: None,
+            value: None,
         }
     }
     pub(crate) fn append(&mut self, text: Text<'_>) {
-        if self.range.is_none() && self.owned.is_none() {
-            if let Text::Value(alloc::borrow::Cow::Owned(value)) = text {
-                self.owned = Some(value);
-                return;
-            }
-        }
-        if let Some(owned) = &mut self.owned {
-            owned.push_str(text.resolve(self.source).unwrap());
-            return;
-        }
-        if let Text::Source(range) = &text {
-            if let Some(previous) = &mut self.range {
+        if let Some(value) = &mut self.value {
+            if let (Text::Source(previous), Text::Source(range)) = (&mut *value, &text) {
                 // Empty fragments retain their origin only for an entirely empty value.
                 if range.start == range.end {
                     return;
@@ -51,23 +36,24 @@ impl<'a> ValueBuilder<'a> {
                     previous.end = range.end;
                     return;
                 }
-            } else {
-                self.range = Some(range.clone());
-                return;
             }
+            value
+                .to_mut(self.source)
+                .unwrap()
+                .push_str(text.resolve(self.source).unwrap());
+        } else {
+            self.value = Some(match text {
+                Text::Literal(value) | Text::Value(Cow::Borrowed(value)) => {
+                    let mut owned = String::new();
+                    owned.push_str(value);
+                    Text::from(owned)
+                }
+                text => text.owned(),
+            });
         }
-        let mut owned = self
-            .range
-            .take()
-            .map_or_else(String::new, |range| self.source[range].to_string());
-        owned.push_str(text.resolve(self.source).unwrap());
-        self.owned = Some(owned);
     }
     pub(crate) fn finish(self) -> Text<'static> {
-        match self.owned {
-            Some(owned) => Text::from(owned),
-            None => self.range.map_or(Text::Literal(""), Text::Source),
-        }
+        self.value.unwrap_or(Text::Literal(""))
     }
 }
 
@@ -183,6 +169,57 @@ mod tests {
     use super::{decode_string_with_options, decode_unpadded, ValueBuilder};
     use crate::{stream::Text, ParseOptions};
     use alloc::{borrow::Cow, string::String};
+
+    #[test]
+    fn initial_literal_and_borrowed_fragments_become_owned_values() {
+        let source = "abc";
+        let mut literal = ValueBuilder::new(source);
+        literal.append(Text::Literal("&"));
+        assert_eq!(literal.finish(), Text::from(String::from("&")));
+
+        let borrowed = {
+            let fragment = String::from("&");
+            let mut value = ValueBuilder::new(source);
+            value.append(Text::Value(Cow::Borrowed(&fragment)));
+            value.append(Text::Source(0..3));
+            value.finish()
+        };
+        assert_eq!(borrowed, Text::from(String::from("&abc")));
+    }
+
+    #[test]
+    fn initial_small_fragments_keep_the_existing_growth_policy() {
+        for text in [Text::Literal(" "), Text::Value(Cow::Borrowed(" "))] {
+            let mut value = ValueBuilder::new("abc");
+            value.append(text);
+            let allocation = value
+                .value
+                .as_ref()
+                .unwrap()
+                .resolve("abc")
+                .unwrap()
+                .as_ptr();
+            value.append(Text::Source(0..3));
+            let value = value.finish();
+            let resolved = value.resolve("abc").unwrap();
+            assert_eq!(resolved, " abc");
+            assert_eq!(resolved.as_ptr(), allocation);
+        }
+    }
+
+    #[test]
+    fn initial_owned_fragment_reuses_its_allocation() {
+        let mut fragment = String::with_capacity(64);
+        fragment.push('&');
+        let allocation = fragment.as_ptr();
+        let mut value = ValueBuilder::new("abc");
+        value.append(Text::from(fragment));
+        value.append(Text::Source(0..3));
+        let value = value.finish();
+        let resolved = value.resolve("abc").unwrap();
+        assert_eq!(resolved, "&abc");
+        assert_eq!(resolved.as_ptr(), allocation);
+    }
 
     #[test]
     fn empty_fragments_preserve_contiguous_source_values() {
