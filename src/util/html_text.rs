@@ -1,11 +1,9 @@
 // Released under the MIT License.
-// Copyright, 2022-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
 //! Byte recognition for raw inline HTML and complete HTML block tags.
 //! Input starts immediately after `<`. Grammar callers supply normalized bytes;
 //! compact callers stop at physical line boundaries and retain source ranges.
-
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) enum HtmlText {
     #[default]

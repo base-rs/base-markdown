@@ -2,7 +2,9 @@
 
 See [socketry-markdown release history](releases/socketry-markdown.md) for releases before the rename.
 
-## Unreleased
+## v0.2.0
+
+- Document downstream migration details for heading spans, frontmatter values, and resolved reference destinations. Update fuzz targets to the sole `Document` AST.
 
 - Fuse inline-title continuation normalization and decoding, share semantic heading text and terminal line-ending rules, and remove infallible API wrappers. `EventParser::new` now returns the parser directly and `to_html_with_options` returns `String`; remove `?`, `.unwrap()` or `.expect(...)` from those calls. This is a breaking API change; checked event consumers, document validation and Markdown serialization retain their errors. See the migration in `context/pull-parser.md`.
 

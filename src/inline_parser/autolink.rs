@@ -1,5 +1,4 @@
 // Released under the MIT License.
-// Copyright, 2022-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
 //! Literal URL and email recognition over source bytes, without tokens or owned strings.

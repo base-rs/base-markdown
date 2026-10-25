@@ -1,6 +1,8 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 // Copyright 2015-2018 Google Inc. and Google LLC.
 // Copyright 2026 Samuel Williams.
-// Released under the MIT License; see license.md.
 // Block/container algorithms adapted from pulldown-cmark revision 38e4d08f14ec4bd9783270e9623db7681ebed968.
 
 //! Compact block preparation with source fragments and deferred inline scanning.
