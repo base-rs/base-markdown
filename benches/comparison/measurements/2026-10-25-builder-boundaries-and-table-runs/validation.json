@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check": "format",
+      "command": "cargo fmt --all -- --check",
+      "exit_code": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "check": "clippy",
+      "command": "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+      "log_sha256": "ee7f86a1c79717ec7da4a914dd6acb57b7af353868adb71a5d6b9e69e58cc2ef",
+      "tail": "    Checking core-markdown v0.2.0 (/private/tmp/core-markdown-refine-continuation-2026-10-25)\n    Finished `dev` profile [unoptimized] target(s) in 2.73s\n",
+      "exit_code": 0
+    },
+    {
+      "check": "coverage",
+      "command": "rustup run stable cargo bake --locked test:coverage --package core-markdown --all-targets true --all-features true",
+      "log_sha256": "8676535771339df592d03741ce81b0dbcb43eb1d9054de2062d0eac6ef8e1c35",
+      "tail": " ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running tests/text.rs (target/llvm-cov-target/debug/deps/text-7172050841022602)\n\nrunning 2 tests\ntest text ... ok\ntest ordinary_marker_at_chunk_start ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running tests/thematic_break.rs (target/llvm-cov-target/debug/deps/thematic_break-6d8c4bc8c8ebcb7c)\n\nrunning 1 test\ntest thematic_break ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running benches/bench.rs (target/llvm-cov-target/debug/deps/bench-ec3b0601846d08e8)\nGnuplot not found, using plotters backend\nTesting readme/readme\nSuccess\n\n     Running unittests examples/lib.rs (target/llvm-cov-target/debug/examples/lib-094cd886cb7a5473)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\n    Finished report saved to /var/folders/b4/k49s9q3d669dvwxdm0j6jm7m0000gn/T/bake-test-coverage-36914-0/coverage.json\nRegion coverage passed: 14135/14135 measured source regions covered (excluded: 21 unreachable regions)\n",
+      "exit_code": 0
+    },
+    {
+      "check": "workspace",
+      "command": "cargo bake --locked test",
+      "log_sha256": "2ee1d75299d41b004b9ea094ee2b20481e3beeec8a02589b03328b4f4042d087",
+      "tail": "25) ... ok\ntest src/util/normalize_identifier.rs - util::normalize_identifier::normalize_identifier (line 34) ... ignored\ntest src/util/sanitize_uri.rs - util::sanitize_uri::sanitize (line 28) ... ignored\ntest src/configuration.rs - configuration::Constructs (line 18) ... ok\ntest src/configuration.rs - configuration::CompileOptions::default_line_ending (line 535) ... ok\ntest src/configuration.rs - configuration::ParseOptions (line 904) ... ok\ntest src/configuration.rs - configuration::Options (line 1129) ... ok\ntest src/configuration.rs - configuration::ParseOptions::math_text_single_dollar (line 1047) ... ok\ntest src/configuration.rs - configuration::CompileOptions::footnote_label (line 754) ... ok\ntest src/configuration.rs - configuration::ParseOptions::constructs (line 929) ... ok\ntest src/util/line_ending.rs - util::line_ending::LineEnding (line 47) ... ok\ntest src/lib.rs - to_html (line 76) ... ok\ntest src/lib.rs - to_html_with_options (line 91) ... ok\ntest src/configuration.rs - configuration::ParseOptions::strikethrough_single_tilde (line 994) ... ok\n\ntest result: ok. 21 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 1.47s\n\nCargo workspace tests passed\n",
+      "exit_code": 0
+    }
+  ],
+  "profile_environment": {
+    "CARGO_PROFILE_DEV_DEBUG": "0",
+    "CARGO_PROFILE_TEST_DEBUG": "0",
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_BUILD_JOBS": "2"
+  },
+  "input_reproduction": "All four frozen input groups reproduce byte-for-byte using prepare.py."
+}

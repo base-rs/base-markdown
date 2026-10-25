@@ -52,7 +52,17 @@ def prepare(work):
     path = work / "data/focused.json"
     focused = json.loads(path.read_text()) + extra_cases()
     path.write_bytes((json.dumps(focused, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
-    print(f"{path}: {len(focused)} cases including new boundary/table-run fixtures")
+    lists = [
+        {"name": f"list-blocks-{count}", "profile": "commonmark",
+         "markdown": ("- first\n\n" + "  paragraph\n\n" * (count - 1)) * 128}
+        for count in (2, 8, 32)
+    ] + [
+        {"name": f"list-gap-{count}", "profile": "commonmark",
+         "markdown": "- first\n" + "\n" * count + "  second\n"}
+        for count in (2, 4096, 65536)
+    ]
+    (work / "data/lists.json").write_text(json.dumps(lists, indent=2) + "\n")
+    print(f"{path}: {len(focused)} cases; six list-spacing controls")
 
 
 if __name__ == "__main__":

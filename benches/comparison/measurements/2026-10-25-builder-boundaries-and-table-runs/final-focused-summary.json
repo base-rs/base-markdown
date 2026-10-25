@@ -1,0 +1,433 @@
+{
+  "metadata": {
+    "utc": "2026-10-25T06:15:30.508863+00:00",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "binaries": {
+      "baseline": {
+        "path": "/private/tmp/core-markdown-refine-next-study-2026-10-25/baseline-bench",
+        "sha256": "d6cd5daaf3e4985d8a2bc740698911929754c9fbbed71d762de6a9b129b2bf86"
+      },
+      "final": {
+        "path": "/private/tmp/core-markdown-refine-next-study-2026-10-25/final-bench",
+        "sha256": "e892f2ae169fcbacaa1cfe8646a8742c862a80d3390309cd7250d8c527cb8821"
+      }
+    },
+    "datasets": {
+      "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json": "606d426afc70bc7c9ad0a3a115bf94f9746454e9481810d181b1216025003bfb"
+    },
+    "rounds": 5,
+    "warmup_ms": 100,
+    "order": "alternating per round"
+  },
+  "summary": [
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "reference-labels-slash-heavy-800",
+      "mode": "html",
+      "median_seconds": 0.00010351862510602205,
+      "min_seconds": 8.606265903307889e-05,
+      "max_seconds": 0.00010992316963528413,
+      "samples_seconds": [
+        0.00010351862510602205,
+        8.606265903307889e-05,
+        0.00010992316963528413,
+        0.00010673494486853264,
+        9.81602705682782e-05
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "final",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "reference-labels-slash-heavy-800",
+      "mode": "html",
+      "median_seconds": 0.00010105795843935538,
+      "min_seconds": 8.859474809160305e-05,
+      "max_seconds": 0.0001300651687871077,
+      "samples_seconds": [
+        0.0001300651687871077,
+        0.00010105795843935538,
+        0.00012160273536895675,
+        9.445469296013571e-05,
+        8.859474809160305e-05
+      ],
+      "ratio_to_baseline": 0.9762297203605004
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "reference-labels-slash-heavy-800",
+      "mode": "markdown",
+      "median_seconds": 0.012647312499999999,
+      "min_seconds": 0.012223229200000001,
+      "max_seconds": 0.016568933299999998,
+      "samples_seconds": [
+        0.0123691667,
+        0.012647312499999999,
+        0.013316120800000001,
+        0.012223229200000001,
+        0.016568933299999998
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "final",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "reference-labels-slash-heavy-800",
+      "mode": "markdown",
+      "median_seconds": 0.00035669170000000004,
+      "min_seconds": 0.000346,
+      "max_seconds": 0.00036557909999999997,
+      "samples_seconds": [
+        0.00036089170000000003,
+        0.00035669170000000004,
+        0.000354275,
+        0.000346,
+        0.00036557909999999997
+      ],
+      "ratio_to_baseline": 0.028202964068453285
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "reference-labels-slash-heavy-800",
+      "mode": "syntax",
+      "median_seconds": 0.012650481444444445,
+      "min_seconds": 0.011917907444444445,
+      "max_seconds": 0.014989671222222223,
+      "samples_seconds": [
+        0.012864513888888889,
+        0.014989671222222223,
+        0.011917907444444445,
+        0.012318199,
+        0.012650481444444445
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "final",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "reference-labels-slash-heavy-800",
+      "mode": "syntax",
+      "median_seconds": 4.495366666666667e-05,
+      "min_seconds": 3.469911111111111e-05,
+      "max_seconds": 4.573611111111111e-05,
+      "samples_seconds": [
+        4.495366666666667e-05,
+        3.469911111111111e-05,
+        4.568522222222222e-05,
+        3.518055555555556e-05,
+        4.573611111111111e-05
+      ],
+      "ratio_to_baseline": 0.003553514296201621
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "tables-long-unicode-far-pipes",
+      "mode": "html",
+      "median_seconds": 2.213567384444032e-05,
+      "min_seconds": 2.2071158901058103e-05,
+      "max_seconds": 2.225050269166512e-05,
+      "samples_seconds": [
+        2.214310692407648e-05,
+        2.209026359754966e-05,
+        2.2071158901058103e-05,
+        2.213567384444032e-05,
+        2.225050269166512e-05
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "final",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "tables-long-unicode-far-pipes",
+      "mode": "html",
+      "median_seconds": 2.2125904956376463e-05,
+      "min_seconds": 2.209524466307778e-05,
+      "max_seconds": 2.2205997586782995e-05,
+      "samples_seconds": [
+        2.2096103397067014e-05,
+        2.2205997586782995e-05,
+        2.209524466307778e-05,
+        2.2125904956376463e-05,
+        2.2148266010766663e-05
+      ],
+      "ratio_to_baseline": 0.9995586812431142
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "tables-long-unicode-far-pipes",
+      "mode": "markdown",
+      "median_seconds": 0.00012498409211873082,
+      "min_seconds": 0.00012238404094165814,
+      "max_seconds": 0.0001301010747185261,
+      "samples_seconds": [
+        0.00012498409211873082,
+        0.00012535150153531217,
+        0.00012238404094165814,
+        0.000124514329580348,
+        0.0001301010747185261
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "final",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "tables-long-unicode-far-pipes",
+      "mode": "markdown",
+      "median_seconds": 3.8430783009211875e-05,
+      "min_seconds": 3.807459058341863e-05,
+      "max_seconds": 3.8980082906857726e-05,
+      "samples_seconds": [
+        3.807459058341863e-05,
+        3.865289150460594e-05,
+        3.808832343909929e-05,
+        3.8430783009211875e-05,
+        3.8980082906857726e-05
+      ],
+      "ratio_to_baseline": 0.3074853956030171
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "tables-long-unicode-far-pipes",
+      "mode": "syntax",
+      "median_seconds": 1.31290875465115e-06,
+      "min_seconds": 1.3025331515198357e-06,
+      "max_seconds": 1.3349559451909594e-06,
+      "samples_seconds": [
+        1.31290875465115e-06,
+        1.3349559451909594e-06,
+        1.3025331515198357e-06,
+        1.3174002694078547e-06,
+        1.3108113703364285e-06
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "final",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "tables-long-unicode-far-pipes",
+      "mode": "syntax",
+      "median_seconds": 1.2961945146794157e-06,
+      "min_seconds": 1.2802076317503781e-06,
+      "max_seconds": 1.3025119853371464e-06,
+      "samples_seconds": [
+        1.2999600635979198e-06,
+        1.2802076317503781e-06,
+        1.2942940410074087e-06,
+        1.3025119853371464e-06,
+        1.2961945146794157e-06
+      ],
+      "ratio_to_baseline": 0.9872693057209635
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "email-long-prefix-valid",
+      "mode": "html",
+      "median_seconds": 0.00012120269774590163,
+      "min_seconds": 0.00012043280430327868,
+      "max_seconds": 0.00012179649077868853,
+      "samples_seconds": [
+        0.00012168421311475411,
+        0.00012120269774590163,
+        0.00012043280430327868,
+        0.00012104691803278688,
+        0.00012179649077868853
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "final",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "email-long-prefix-valid",
+      "mode": "html",
+      "median_seconds": 0.00010052676741803279,
+      "min_seconds": 9.848031967213115e-05,
+      "max_seconds": 0.00010155067520491803,
+      "samples_seconds": [
+        9.848031967213115e-05,
+        0.00010052676741803279,
+        0.00010019164036885246,
+        0.00010155067520491803,
+        0.00010058841393442623
+      ],
+      "ratio_to_baseline": 0.8294103125392851
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "email-long-prefix-valid",
+      "mode": "markdown",
+      "median_seconds": 0.0021557708392857143,
+      "min_seconds": 0.0021457589285714287,
+      "max_seconds": 0.00217218825,
+      "samples_seconds": [
+        0.00217218825,
+        0.0021457589285714287,
+        0.0021555959821428572,
+        0.002160678571428571,
+        0.0021557708392857143
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "final",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "email-long-prefix-valid",
+      "mode": "markdown",
+      "median_seconds": 0.002147388392857143,
+      "min_seconds": 0.0021309389821428572,
+      "max_seconds": 0.0021508541785714287,
+      "samples_seconds": [
+        0.0021477574464285713,
+        0.0021449888392857143,
+        0.002147388392857143,
+        0.0021508541785714287,
+        0.0021309389821428572
+      ],
+      "ratio_to_baseline": 0.996111624540135
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "email-long-prefix-valid",
+      "mode": "syntax",
+      "median_seconds": 2.2546254534287853e-06,
+      "min_seconds": 2.2360260829510776e-06,
+      "max_seconds": 2.286167149684279e-06,
+      "samples_seconds": [
+        2.286167149684279e-06,
+        2.2695750148743837e-06,
+        2.2360260829510776e-06,
+        2.247478552098728e-06,
+        2.2546254534287853e-06
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "final",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "email-long-prefix-valid",
+      "mode": "syntax",
+      "median_seconds": 2.0248018348271693e-06,
+      "min_seconds": 1.9941334280175804e-06,
+      "max_seconds": 2.055267930829319e-06,
+      "samples_seconds": [
+        2.0248018348271693e-06,
+        2.0085935550736044e-06,
+        2.0407893979233442e-06,
+        1.9941334280175804e-06,
+        2.055267930829319e-06
+      ],
+      "ratio_to_baseline": 0.8980657216248024
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "email-long-prefix-no-marker",
+      "mode": "html",
+      "median_seconds": 7.283244613511869e-05,
+      "min_seconds": 7.259309677419355e-05,
+      "max_seconds": 7.292341205112599e-05,
+      "samples_seconds": [
+        7.292341205112599e-05,
+        7.259309677419355e-05,
+        7.27777948874011e-05,
+        7.283964759586123e-05,
+        7.283244613511869e-05
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "final",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "email-long-prefix-no-marker",
+      "mode": "html",
+      "median_seconds": 7.266149300060864e-05,
+      "min_seconds": 7.237129762629336e-05,
+      "max_seconds": 7.30701710286062e-05,
+      "samples_seconds": [
+        7.266867011564212e-05,
+        7.266149300060864e-05,
+        7.30701710286062e-05,
+        7.262444248326233e-05,
+        7.237129762629336e-05
+      ],
+      "ratio_to_baseline": 0.9976527887832726
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "email-long-prefix-no-marker",
+      "mode": "markdown",
+      "median_seconds": 0.002123682754385965,
+      "min_seconds": 0.002114261701754386,
+      "max_seconds": 0.002137449561403509,
+      "samples_seconds": [
+        0.002116272649122807,
+        0.002114261701754386,
+        0.002130890350877193,
+        0.002123682754385965,
+        0.002137449561403509
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "final",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "email-long-prefix-no-marker",
+      "mode": "markdown",
+      "median_seconds": 0.002127347210526316,
+      "min_seconds": 0.0021150957543859647,
+      "max_seconds": 0.002129331140350877,
+      "samples_seconds": [
+        0.0021264532280701755,
+        0.002129331140350877,
+        0.0021150957543859647,
+        0.002127347210526316,
+        0.0021285102280701753
+      ],
+      "ratio_to_baseline": 1.0017255195639663
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "email-long-prefix-no-marker",
+      "mode": "syntax",
+      "median_seconds": 8.272891291771713e-07,
+      "min_seconds": 8.22081133005278e-07,
+      "max_seconds": 8.332107315540256e-07,
+      "samples_seconds": [
+        8.238005599320083e-07,
+        8.319992715170301e-07,
+        8.272891291771713e-07,
+        8.332107315540256e-07,
+        8.22081133005278e-07
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "final",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/focused.json",
+      "name": "email-long-prefix-no-marker",
+      "mode": "syntax",
+      "median_seconds": 7.744622081604377e-07,
+      "min_seconds": 7.709117464307905e-07,
+      "max_seconds": 7.807037145489477e-07,
+      "samples_seconds": [
+        7.807037145489477e-07,
+        7.744622081604377e-07,
+        7.795598034524379e-07,
+        7.718940700057851e-07,
+        7.709117464307905e-07
+      ],
+      "ratio_to_baseline": 0.9361445483161663
+    }
+  ],
+  "sample_count": 120
+}

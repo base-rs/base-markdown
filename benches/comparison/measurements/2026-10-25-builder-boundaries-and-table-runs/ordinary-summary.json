@@ -1,0 +1,1166 @@
+{
+  "metadata": {
+    "utc": "2026-10-25T06:00:55.809535+00:00",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "binaries": {
+      "baseline": {
+        "path": "/private/tmp/core-markdown-refine-next-study-2026-10-25/baseline-bench",
+        "sha256": "d6cd5daaf3e4985d8a2bc740698911929754c9fbbed71d762de6a9b129b2bf86"
+      },
+      "candidate": {
+        "path": "/private/tmp/core-markdown-refine-next-study-2026-10-25/candidate-bench",
+        "sha256": "0ded64c2c9451aafdbffbab60da1573184a41d16cc3e12ab39fb605f66aa5c78"
+      }
+    },
+    "datasets": {
+      "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json": "36022cf73025704a75ea911f3554637f753a9fbd70ec99104e08b456b29adf8f",
+      "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json": "774be5e92ccd11765b8ce585b3bb4c09dff9d3ed84cb8d61ac730a254669b68c"
+    },
+    "rounds": 7,
+    "warmup_ms": 100,
+    "order": "alternating per round"
+  },
+  "summary": [
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "readme",
+      "mode": "html",
+      "median_seconds": 1.3336270560590802e-05,
+      "min_seconds": 1.3329044086382456e-05,
+      "max_seconds": 1.4157603222557903e-05,
+      "samples_seconds": [
+        1.3336270560590802e-05,
+        1.3329044086382456e-05,
+        1.3436238894483608e-05,
+        1.3428853865950543e-05,
+        1.4157603222557903e-05,
+        1.3335431352802954e-05,
+        1.3333384580955578e-05
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "readme",
+      "mode": "html",
+      "median_seconds": 1.3130571444556338e-05,
+      "min_seconds": 1.308971131252098e-05,
+      "max_seconds": 1.3171492111446794e-05,
+      "samples_seconds": [
+        1.3135191675058745e-05,
+        1.3119428667338033e-05,
+        1.3123909029875797e-05,
+        1.3171492111446794e-05,
+        1.3149663309835515e-05,
+        1.308971131252098e-05,
+        1.3130571444556338e-05
+      ],
+      "ratio_to_baseline": 0.9845759640898174
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "readme",
+      "mode": "ast-html",
+      "median_seconds": 8.252286850326612e-06,
+      "min_seconds": 8.189236580516898e-06,
+      "max_seconds": 8.311399460380574e-06,
+      "samples_seconds": [
+        8.211984095427435e-06,
+        8.198526057938086e-06,
+        8.252286850326612e-06,
+        8.311399460380574e-06,
+        8.189236580516898e-06,
+        8.293767182618574e-06,
+        8.293069014484521e-06
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "readme",
+      "mode": "ast-html",
+      "median_seconds": 8.207599616586197e-06,
+      "min_seconds": 8.187325475717126e-06,
+      "max_seconds": 8.31418332859983e-06,
+      "samples_seconds": [
+        8.297139804032946e-06,
+        8.199585274069866e-06,
+        8.207599616586197e-06,
+        8.285965776767964e-06,
+        8.31418332859983e-06,
+        8.192277833001989e-06,
+        8.187325475717126e-06
+      ],
+      "ratio_to_baseline": 0.9945848666495826
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "readme",
+      "mode": "markdown",
+      "median_seconds": 6.444808324439702e-05,
+      "min_seconds": 6.379838153681964e-05,
+      "max_seconds": 0.000122666333511206,
+      "samples_seconds": [
+        6.437624493062967e-05,
+        6.379838153681964e-05,
+        6.381877001067236e-05,
+        6.444808324439702e-05,
+        6.470210779082178e-05,
+        7.984585112059766e-05,
+        0.000122666333511206
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "readme",
+      "mode": "markdown",
+      "median_seconds": 6.365855122732124e-05,
+      "min_seconds": 6.274695410885805e-05,
+      "max_seconds": 9.290859605122732e-05,
+      "samples_seconds": [
+        6.274695410885805e-05,
+        6.337546691568837e-05,
+        6.365855122732124e-05,
+        6.344167982924226e-05,
+        6.387037513340448e-05,
+        6.393020704375667e-05,
+        9.290859605122732e-05
+      ],
+      "ratio_to_baseline": 0.9877493328376928
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "mixed-100k",
+      "mode": "html",
+      "median_seconds": 0.00039246383498349837,
+      "min_seconds": 0.0003897354257425743,
+      "max_seconds": 0.00040078327722772275,
+      "samples_seconds": [
+        0.00040078327722772275,
+        0.00039758498349834985,
+        0.00039246383498349837,
+        0.0003897354257425743,
+        0.0003913862772277228,
+        0.0003910171881188119,
+        0.0003931710660066007
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "mixed-100k",
+      "mode": "html",
+      "median_seconds": 0.0003953044554455446,
+      "min_seconds": 0.0003919070396039604,
+      "max_seconds": 0.0003984795115511551,
+      "samples_seconds": [
+        0.0003984795115511551,
+        0.0003935779702970297,
+        0.0003953044554455446,
+        0.0003921146864686469,
+        0.0003959590198019802,
+        0.0003955726072607261,
+        0.0003919070396039604
+      ],
+      "ratio_to_baseline": 1.0072379164876826
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "mixed-100k",
+      "mode": "ast-html",
+      "median_seconds": 0.0002626897852348993,
+      "min_seconds": 0.00025781972483221476,
+      "max_seconds": 0.00026700037136465326,
+      "samples_seconds": [
+        0.000265369966442953,
+        0.0002626897852348993,
+        0.00026581394407158837,
+        0.00025781972483221476,
+        0.00026129278523489934,
+        0.00026700037136465326,
+        0.00026265315212527967
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "mixed-100k",
+      "mode": "ast-html",
+      "median_seconds": 0.0002593447046979866,
+      "min_seconds": 0.00025714047427293066,
+      "max_seconds": 0.00026350493959731544,
+      "samples_seconds": [
+        0.00025838944742729306,
+        0.0002583602706935123,
+        0.00026212024608501116,
+        0.0002593447046979866,
+        0.00026350493959731544,
+        0.0002595435302013423,
+        0.00025714047427293066
+      ],
+      "ratio_to_baseline": 0.9872660425911821
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "mixed-100k",
+      "mode": "markdown",
+      "median_seconds": 0.0014067291627906978,
+      "min_seconds": 0.0013849549418604651,
+      "max_seconds": 0.0014239428255813952,
+      "samples_seconds": [
+        0.0013997131860465117,
+        0.0014117117325581395,
+        0.0014067291627906978,
+        0.0013849549418604651,
+        0.0014239428255813952,
+        0.0014070673488372092,
+        0.0013967902209302326
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "mixed-100k",
+      "mode": "markdown",
+      "median_seconds": 0.0014011744186046512,
+      "min_seconds": 0.001380921023255814,
+      "max_seconds": 0.0014188226744186047,
+      "samples_seconds": [
+        0.0013906041627906977,
+        0.0014188226744186047,
+        0.0014011744186046512,
+        0.001392296034883721,
+        0.001380921023255814,
+        0.0014082998953488372,
+        0.0014025048488372092
+      ],
+      "ratio_to_baseline": 0.9960513051602435
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "mixed-1m",
+      "mode": "html",
+      "median_seconds": 0.004071366666666667,
+      "min_seconds": 0.003995258333333333,
+      "max_seconds": 0.004117238866666667,
+      "samples_seconds": [
+        0.004082316666666666,
+        0.004082951400000001,
+        0.004117238866666667,
+        0.004071366666666667,
+        0.0040093486000000005,
+        0.004036755566666666,
+        0.003995258333333333
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "mixed-1m",
+      "mode": "html",
+      "median_seconds": 0.004047029166666666,
+      "min_seconds": 0.003984184733333333,
+      "max_seconds": 0.004124768066666667,
+      "samples_seconds": [
+        0.0040255125,
+        0.004124768066666667,
+        0.004047029166666666,
+        0.004095895833333333,
+        0.0040901097,
+        0.003984184733333333,
+        0.0040026361
+      ],
+      "ratio_to_baseline": 0.994022277531705
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "mixed-1m",
+      "mode": "ast-html",
+      "median_seconds": 0.002622383152173913,
+      "min_seconds": 0.0025822780652173913,
+      "max_seconds": 0.002664905804347826,
+      "samples_seconds": [
+        0.0026103641304347823,
+        0.002597574260869565,
+        0.002628220108695652,
+        0.0026237518260869568,
+        0.0025822780652173913,
+        0.002664905804347826,
+        0.002622383152173913
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "mixed-1m",
+      "mode": "ast-html",
+      "median_seconds": 0.0025550153913043478,
+      "min_seconds": 0.002538509043478261,
+      "max_seconds": 0.0025876422173913044,
+      "samples_seconds": [
+        0.0025436983695652175,
+        0.0025612219347826088,
+        0.0025876422173913044,
+        0.0025550153913043478,
+        0.002573702891304348,
+        0.0025518134130434783,
+        0.002538509043478261
+      ],
+      "ratio_to_baseline": 0.974310481359782
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "mixed-1m",
+      "mode": "markdown",
+      "median_seconds": 0.013810435111111111,
+      "min_seconds": 0.013584865666666666,
+      "max_seconds": 0.01415293988888889,
+      "samples_seconds": [
+        0.013780907444444443,
+        0.013810435111111111,
+        0.013831532333333334,
+        0.013584865666666666,
+        0.01415293988888889,
+        0.013841916666666667,
+        0.013789041666666666
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "mixed-1m",
+      "mode": "markdown",
+      "median_seconds": 0.013855523111111111,
+      "min_seconds": 0.013634583333333332,
+      "max_seconds": 0.013991736111111113,
+      "samples_seconds": [
+        0.013991736111111113,
+        0.013634583333333332,
+        0.013713921333333334,
+        0.013911106444444444,
+        0.013920518555555554,
+        0.013808273111111111,
+        0.013855523111111111
+      ],
+      "ratio_to_baseline": 1.0032647776581438
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "gfm-100k",
+      "mode": "html",
+      "median_seconds": 0.0006207443645833334,
+      "min_seconds": 0.00061073003125,
+      "max_seconds": 0.0008746588541666666,
+      "samples_seconds": [
+        0.00061073003125,
+        0.0007118515625,
+        0.0006180993958333333,
+        0.0006170104166666666,
+        0.0008746588541666666,
+        0.0006207443645833334,
+        0.0007095138958333333
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "gfm-100k",
+      "mode": "html",
+      "median_seconds": 0.00062926215625,
+      "min_seconds": 0.0006046818541666667,
+      "max_seconds": 0.0014137517395833334,
+      "samples_seconds": [
+        0.0014137517395833334,
+        0.00062926215625,
+        0.0006046818541666667,
+        0.0006224466145833334,
+        0.0009812890625,
+        0.0006277183125,
+        0.0010569908854166667
+      ],
+      "ratio_to_baseline": 1.0137218993077515
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "gfm-100k",
+      "mode": "ast-html",
+      "median_seconds": 0.00037618503673469386,
+      "min_seconds": 0.0003680265306122449,
+      "max_seconds": 0.0003878690448979592,
+      "samples_seconds": [
+        0.0003878690448979592,
+        0.00037469591836734693,
+        0.0003774751714285714,
+        0.0003735954081632653,
+        0.00037618503673469386,
+        0.0003680265306122449,
+        0.00037883741224489797
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "gfm-100k",
+      "mode": "ast-html",
+      "median_seconds": 0.0003762433673469388,
+      "min_seconds": 0.00037077806122448977,
+      "max_seconds": 0.00037936224489795923,
+      "samples_seconds": [
+        0.00037077806122448977,
+        0.0003752311224489796,
+        0.00037896309387755103,
+        0.0003762433673469388,
+        0.000376625,
+        0.00037936224489795923,
+        0.0003743858816326531
+      ],
+      "ratio_to_baseline": 1.0001550582999028
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "gfm-100k",
+      "mode": "markdown",
+      "median_seconds": 0.0016041893896103897,
+      "min_seconds": 0.0015929383116883116,
+      "max_seconds": 0.0016342808441558443,
+      "samples_seconds": [
+        0.0015929383116883116,
+        0.0016041893896103897,
+        0.0016016185064935064,
+        0.001606836038961039,
+        0.0016342808441558443,
+        0.001598856051948052,
+        0.0016069572467532467
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/original.json",
+      "name": "gfm-100k",
+      "mode": "markdown",
+      "median_seconds": 0.0015843014155844156,
+      "min_seconds": 0.0015684199090909093,
+      "max_seconds": 0.001599635272727273,
+      "samples_seconds": [
+        0.0015684199090909093,
+        0.0015780995584415585,
+        0.0015843014155844156,
+        0.001588125,
+        0.0015917900389610389,
+        0.0015784204545454545,
+        0.001599635272727273
+      ],
+      "ratio_to_baseline": 0.9876024775161963
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "commonmark-spec",
+      "mode": "html",
+      "median_seconds": 0.0005173351201716739,
+      "min_seconds": 0.0005115661673819742,
+      "max_seconds": 0.0005342922017167382,
+      "samples_seconds": [
+        0.0005115661673819742,
+        0.0005131913433476395,
+        0.0005175874463519313,
+        0.0005342922017167382,
+        0.0005198184892703863,
+        0.0005173351201716739,
+        0.0005129760343347639
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "commonmark-spec",
+      "mode": "html",
+      "median_seconds": 0.0005164767553648068,
+      "min_seconds": 0.0005066162360515021,
+      "max_seconds": 0.0005723070472103005,
+      "samples_seconds": [
+        0.0005314715665236051,
+        0.0005239334763948498,
+        0.0005164767553648068,
+        0.0005723070472103005,
+        0.0005141124849785408,
+        0.0005106929527896996,
+        0.0005066162360515021
+      ],
+      "ratio_to_baseline": 0.9983407954082409
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "commonmark-spec",
+      "mode": "ast-html",
+      "median_seconds": 0.00028294467703349283,
+      "min_seconds": 0.00028023913397129185,
+      "max_seconds": 0.0002855690789473684,
+      "samples_seconds": [
+        0.00028023913397129185,
+        0.00028392144976076554,
+        0.00028382805023923445,
+        0.0002826236052631579,
+        0.0002855690789473684,
+        0.00028294467703349283,
+        0.00028193161961722485
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "commonmark-spec",
+      "mode": "ast-html",
+      "median_seconds": 0.00028220813397129184,
+      "min_seconds": 0.00027893151913875597,
+      "max_seconds": 0.00028583123923444975,
+      "samples_seconds": [
+        0.00028220813397129184,
+        0.00027893151913875597,
+        0.0002813246626794258,
+        0.00028583123923444975,
+        0.00028219058851674644,
+        0.00028282884688995215,
+        0.000283405004784689
+      ],
+      "ratio_to_baseline": 0.9973968654582118
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "commonmark-spec",
+      "mode": "markdown",
+      "median_seconds": 0.0017957841940298507,
+      "min_seconds": 0.0017884297164179105,
+      "max_seconds": 0.0018182506268656716,
+      "samples_seconds": [
+        0.0018182506268656716,
+        0.0017901455223880596,
+        0.0018115659253731342,
+        0.0017957841940298507,
+        0.0017998837014925374,
+        0.0017884297164179105,
+        0.0017928202686567163
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "commonmark-spec",
+      "mode": "markdown",
+      "median_seconds": 0.0017791815970149255,
+      "min_seconds": 0.0017631722686567164,
+      "max_seconds": 0.0017984204029850746,
+      "samples_seconds": [
+        0.0017791815970149255,
+        0.001791848880597015,
+        0.0017631722686567164,
+        0.0017659284925373136,
+        0.0017983644179104478,
+        0.001774881223880597,
+        0.0017984204029850746
+      ],
+      "ratio_to_baseline": 0.9907546813976194
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "rust-readme",
+      "mode": "html",
+      "median_seconds": 9.661882386736704e-06,
+      "min_seconds": 9.643873768877216e-06,
+      "max_seconds": 9.689726280367695e-06,
+      "samples_seconds": [
+        9.661882386736704e-06,
+        9.644461999343402e-06,
+        9.643873768877216e-06,
+        9.669183601444517e-06,
+        9.689726280367695e-06,
+        9.675585439921208e-06,
+        9.660514445173998e-06
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "rust-readme",
+      "mode": "html",
+      "median_seconds": 9.627516989494418e-06,
+      "min_seconds": 9.609097997373604e-06,
+      "max_seconds": 9.679959372948129e-06,
+      "samples_seconds": [
+        9.609097997373604e-06,
+        9.635785948785291e-06,
+        9.627516989494418e-06,
+        9.618669977019042e-06,
+        9.62327642810243e-06,
+        9.679959372948129e-06,
+        9.676799491135916e-06
+      ],
+      "ratio_to_baseline": 0.9964431985542009
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "rust-readme",
+      "mode": "ast-html",
+      "median_seconds": 4.349773190993223e-06,
+      "min_seconds": 4.326409130656562e-06,
+      "max_seconds": 4.410544013699629e-06,
+      "samples_seconds": [
+        4.327874152882023e-06,
+        4.410544013699629e-06,
+        4.4035014209720905e-06,
+        4.32892315820156e-06,
+        4.393795999417037e-06,
+        4.326409130656562e-06,
+        4.349773190993223e-06
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "rust-readme",
+      "mode": "ast-html",
+      "median_seconds": 4.354849814180573e-06,
+      "min_seconds": 4.332033811848721e-06,
+      "max_seconds": 4.404647598921519e-06,
+      "samples_seconds": [
+        4.404647598921519e-06,
+        4.334098484296437e-06,
+        4.354849814180573e-06,
+        4.352279640020404e-06,
+        4.400392261167383e-06,
+        4.372308350943671e-06,
+        4.332033811848721e-06
+      ],
+      "ratio_to_baseline": 1.0011671006658145
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "rust-readme",
+      "mode": "markdown",
+      "median_seconds": 3.586248125937032e-05,
+      "min_seconds": 3.570397301349326e-05,
+      "max_seconds": 3.7693453373313345e-05,
+      "samples_seconds": [
+        3.579267886056971e-05,
+        3.584652653673163e-05,
+        3.624257871064468e-05,
+        3.7693453373313345e-05,
+        3.586248125937032e-05,
+        3.5957483658170915e-05,
+        3.570397301349326e-05
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "rust-readme",
+      "mode": "markdown",
+      "median_seconds": 3.5403310944527735e-05,
+      "min_seconds": 3.51690155922039e-05,
+      "max_seconds": 3.573400809595202e-05,
+      "samples_seconds": [
+        3.5656484257871066e-05,
+        3.5359245577211396e-05,
+        3.573400809595202e-05,
+        3.5444590404797596e-05,
+        3.5403310944527735e-05,
+        3.51690155922039e-05,
+        3.5377348725637184e-05
+      ],
+      "ratio_to_baseline": 0.9871963595736252
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "clap-readme",
+      "mode": "html",
+      "median_seconds": 5.7082827910585266e-06,
+      "min_seconds": 5.649877175968579e-06,
+      "max_seconds": 5.753729670755952e-06,
+      "samples_seconds": [
+        5.697202928768851e-06,
+        5.693273287106628e-06,
+        5.753729670755952e-06,
+        5.719461669010328e-06,
+        5.7082827910585266e-06,
+        5.740520292876885e-06,
+        5.649877175968579e-06
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "clap-readme",
+      "mode": "html",
+      "median_seconds": 5.625121223876254e-06,
+      "min_seconds": 5.597379139795374e-06,
+      "max_seconds": 5.673820928089997e-06,
+      "samples_seconds": [
+        5.673820928089997e-06,
+        5.603294864956602e-06,
+        5.666092857489211e-06,
+        5.597379139795374e-06,
+        5.625121223876254e-06,
+        5.636203122727052e-06,
+        5.610899626630461e-06
+      ],
+      "ratio_to_baseline": 0.9854314212826777
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "clap-readme",
+      "mode": "ast-html",
+      "median_seconds": 3.4542388265291173e-06,
+      "min_seconds": 3.4312300342897337e-06,
+      "max_seconds": 3.475382960640075e-06,
+      "samples_seconds": [
+        3.4731836698807186e-06,
+        3.4730664400222736e-06,
+        3.4531898537557518e-06,
+        3.4312300342897337e-06,
+        3.475382960640075e-06,
+        3.4542388265291173e-06,
+        3.445241464200932e-06
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "clap-readme",
+      "mode": "ast-html",
+      "median_seconds": 3.47568825649893e-06,
+      "min_seconds": 3.443181383898479e-06,
+      "max_seconds": 3.488107265320477e-06,
+      "samples_seconds": [
+        3.443181383898479e-06,
+        3.475777380498813e-06,
+        3.4649311567656284e-06,
+        3.488107265320477e-06,
+        3.465755458515284e-06,
+        3.47568825649893e-06,
+        3.48766645174526e-06
+      ],
+      "ratio_to_baseline": 1.006209596685984
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "clap-readme",
+      "mode": "markdown",
+      "median_seconds": 1.4818558712352151e-05,
+      "min_seconds": 1.4708302889891478e-05,
+      "max_seconds": 1.5200260090232898e-05,
+      "samples_seconds": [
+        1.4750924643336179e-05,
+        1.4708302889891478e-05,
+        1.4771735154249482e-05,
+        1.488068528228265e-05,
+        1.4900449091574199e-05,
+        1.5200260090232898e-05,
+        1.4818558712352151e-05
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "clap-readme",
+      "mode": "markdown",
+      "median_seconds": 1.4971507499085478e-05,
+      "min_seconds": 1.4658100597488111e-05,
+      "max_seconds": 1.5109752835020119e-05,
+      "samples_seconds": [
+        1.4864808194122668e-05,
+        1.4993964150713328e-05,
+        1.4971507499085478e-05,
+        1.49864803072796e-05,
+        1.5109752835020119e-05,
+        1.4658100597488111e-05,
+        1.4677117668577002e-05
+      ],
+      "ratio_to_baseline": 1.0103214347428968
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "tokio-changelog",
+      "mode": "html",
+      "median_seconds": 0.0011004831743119266,
+      "min_seconds": 0.0010807733119266056,
+      "max_seconds": 0.0011064101651376147,
+      "samples_seconds": [
+        0.0011004831743119266,
+        0.0011030997706422017,
+        0.0010807733119266056,
+        0.0010982385321100917,
+        0.0011064101651376147,
+        0.001092960623853211,
+        0.0011026754587155963
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "tokio-changelog",
+      "mode": "html",
+      "median_seconds": 0.0010929957981651375,
+      "min_seconds": 0.00108388876146789,
+      "max_seconds": 0.0011057610825688073,
+      "samples_seconds": [
+        0.0010966043577981652,
+        0.0010894690366972477,
+        0.0010921131467889907,
+        0.0010995508440366972,
+        0.00108388876146789,
+        0.0010929957981651375,
+        0.0011057610825688073
+      ],
+      "ratio_to_baseline": 0.9931962829404725
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "tokio-changelog",
+      "mode": "ast-html",
+      "median_seconds": 0.00043749318181818183,
+      "min_seconds": 0.00043131394181818183,
+      "max_seconds": 0.00043986045454545453,
+      "samples_seconds": [
+        0.00043773969818181816,
+        0.00043986045454545453,
+        0.0004332060618181818,
+        0.00043131394181818183,
+        0.00043867363636363637,
+        0.00043749318181818183,
+        0.00043677
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "tokio-changelog",
+      "mode": "ast-html",
+      "median_seconds": 0.00043240227272727276,
+      "min_seconds": 0.0004313080327272727,
+      "max_seconds": 0.0004383710581818182,
+      "samples_seconds": [
+        0.00043178833454545455,
+        0.0004313080327272727,
+        0.0004334981818181818,
+        0.0004321256072727273,
+        0.0004341260618181818,
+        0.0004383710581818182,
+        0.00043240227272727276
+      ],
+      "ratio_to_baseline": 0.9883634550148834
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "tokio-changelog",
+      "mode": "markdown",
+      "median_seconds": 0.0034950262,
+      "min_seconds": 0.0034021702285714286,
+      "max_seconds": 0.004434013085714286,
+      "samples_seconds": [
+        0.00347535,
+        0.0034682630857142856,
+        0.0034950262,
+        0.003569708314285714,
+        0.0034021702285714286,
+        0.004434013085714286,
+        0.004015678571428571
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "tokio-changelog",
+      "mode": "markdown",
+      "median_seconds": 0.003464570257142857,
+      "min_seconds": 0.003365992857142857,
+      "max_seconds": 0.0034981178571428574,
+      "samples_seconds": [
+        0.003393991657142857,
+        0.003365992857142857,
+        0.0034981178571428574,
+        0.003488189285714286,
+        0.0034139392857142855,
+        0.0034852964285714285,
+        0.003464570257142857
+      ],
+      "ratio_to_baseline": 0.9912859185842031
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "rust-nll-rfc",
+      "mode": "html",
+      "median_seconds": 0.00019185687025948103,
+      "min_seconds": 0.00018847330339321358,
+      "max_seconds": 0.00024274135129740519,
+      "samples_seconds": [
+        0.00024274135129740519,
+        0.00019510013373253492,
+        0.00018847330339321358,
+        0.0001885719381237525,
+        0.00019185687025948103,
+        0.00019264886826347307,
+        0.0001898457245508982
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "rust-nll-rfc",
+      "mode": "html",
+      "median_seconds": 0.0001905993013972056,
+      "min_seconds": 0.00018680788423153694,
+      "max_seconds": 0.00019354923353293412,
+      "samples_seconds": [
+        0.00018680788423153694,
+        0.0001934334650698603,
+        0.00019304532534930138,
+        0.0001905993013972056,
+        0.00019354923353293412,
+        0.00018921515369261477,
+        0.00019007202395209582
+      ],
+      "ratio_to_baseline": 0.993445275842483
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "rust-nll-rfc",
+      "mode": "ast-html",
+      "median_seconds": 0.00010726052028854825,
+      "min_seconds": 0.00010568425067628495,
+      "max_seconds": 0.00010960903246167719,
+      "samples_seconds": [
+        0.00010761019747520289,
+        0.00010568425067628495,
+        0.00010960903246167719,
+        0.00010726052028854825,
+        0.00010783464833183048,
+        0.0001062689738503156,
+        0.00010618740667267808
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "rust-nll-rfc",
+      "mode": "ast-html",
+      "median_seconds": 0.00010639758070333635,
+      "min_seconds": 0.00010391771866546439,
+      "max_seconds": 0.00011069875293056808,
+      "samples_seconds": [
+        0.00011069875293056808,
+        0.00010709783588818756,
+        0.00010529459783588819,
+        0.00010391771866546439,
+        0.00010781398467087467,
+        0.00010560035347159603,
+        0.00010639758070333635
+      ],
+      "ratio_to_baseline": 0.9919547324319288
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "rust-nll-rfc",
+      "mode": "markdown",
+      "median_seconds": 0.0010474572521739132,
+      "min_seconds": 0.0010274673913043479,
+      "max_seconds": 0.0010579206521739131,
+      "samples_seconds": [
+        0.001046389852173913,
+        0.0010525268086956521,
+        0.0010274673913043479,
+        0.0010579206521739131,
+        0.0010462405739130435,
+        0.0010481826086956522,
+        0.0010474572521739132
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "rust-nll-rfc",
+      "mode": "markdown",
+      "median_seconds": 0.001046776452173913,
+      "min_seconds": 0.0010376786173913043,
+      "max_seconds": 0.0010639192,
+      "samples_seconds": [
+        0.0010376786173913043,
+        0.0010528967391304348,
+        0.0010397333304347826,
+        0.0010531163043478262,
+        0.0010453989130434784,
+        0.0010639192,
+        0.001046776452173913
+      ],
+      "ratio_to_baseline": 0.9993500450747873
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "awesome-rust-readme",
+      "mode": "html",
+      "median_seconds": 0.00105514025,
+      "min_seconds": 0.001041903642857143,
+      "max_seconds": 0.0010882819999999999,
+      "samples_seconds": [
+        0.0010595119107142856,
+        0.0010490301339285714,
+        0.00105514025,
+        0.0010448943482142857,
+        0.001041903642857143,
+        0.0010882819999999999,
+        0.0010690450178571429
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "awesome-rust-readme",
+      "mode": "html",
+      "median_seconds": 0.001043732142857143,
+      "min_seconds": 0.0010296183035714286,
+      "max_seconds": 0.0010642098214285714,
+      "samples_seconds": [
+        0.0010296183035714286,
+        0.001043732142857143,
+        0.0010314278303571428,
+        0.0010339761964285714,
+        0.0010642098214285714,
+        0.001056747767857143,
+        0.001044181919642857
+      ],
+      "ratio_to_baseline": 0.9891880656217434
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "awesome-rust-readme",
+      "mode": "ast-html",
+      "median_seconds": 0.0005639067813953488,
+      "min_seconds": 0.0005542720930232558,
+      "max_seconds": 0.0005662032930232558,
+      "samples_seconds": [
+        0.0005542720930232558,
+        0.0005662032930232558,
+        0.0005658391488372093,
+        0.0005610709302325581,
+        0.0005639067813953488,
+        0.0005626829441860465,
+        0.000564036823255814
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "awesome-rust-readme",
+      "mode": "ast-html",
+      "median_seconds": 0.0005554968976744186,
+      "min_seconds": 0.0005524703488372093,
+      "max_seconds": 0.0005574748046511628,
+      "samples_seconds": [
+        0.0005574748046511628,
+        0.0005563835255813954,
+        0.0005570348837209302,
+        0.0005537554232558139,
+        0.0005554968976744186,
+        0.0005524703488372093,
+        0.0005527170558139535
+      ],
+      "ratio_to_baseline": 0.9850863937118817
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "awesome-rust-readme",
+      "mode": "markdown",
+      "median_seconds": 0.00490064664,
+      "min_seconds": 0.00484298332,
+      "max_seconds": 0.00492357336,
+      "samples_seconds": [
+        0.00492357336,
+        0.00490064664,
+        0.00489643,
+        0.00487486668,
+        0.00491857668,
+        0.00491740836,
+        0.00484298332
+      ],
+      "ratio_to_baseline": 1.0
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-next-study-2026-10-25/data/real.json",
+      "name": "awesome-rust-readme",
+      "mode": "markdown",
+      "median_seconds": 0.004908265,
+      "min_seconds": 0.004860213360000001,
+      "max_seconds": 0.00497268836,
+      "samples_seconds": [
+        0.004908265,
+        0.00497268836,
+        0.00487408164,
+        0.00490236168,
+        0.00492090668,
+        0.004860213360000001,
+        0.004915315
+      ],
+      "ratio_to_baseline": 1.0015545621954902
+    }
+  ],
+  "sample_count": 420
+}

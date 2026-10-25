@@ -1,0 +1,34 @@
+[
+  {
+    "input": "original.json",
+    "input_sha256": "36022cf73025704a75ea911f3554637f753a9fbd70ec99104e08b456b29adf8f",
+    "cases": 4,
+    "baseline_output_sha256": "67b39a5e202a1d99277ec6f5ea6826072b3c79ed563f3eabacd9e90e0b1337e0",
+    "candidate_output_sha256": "67b39a5e202a1d99277ec6f5ea6826072b3c79ed563f3eabacd9e90e0b1337e0",
+    "mismatches": 0
+  },
+  {
+    "input": "real.json",
+    "input_sha256": "774be5e92ccd11765b8ce585b3bb4c09dff9d3ed84cb8d61ac730a254669b68c",
+    "cases": 6,
+    "baseline_output_sha256": "03aebfa7b4d177ba7028ad2a2f419ad5d35edf9d972c4f8d40982370a5963d85",
+    "candidate_output_sha256": "03aebfa7b4d177ba7028ad2a2f419ad5d35edf9d972c4f8d40982370a5963d85",
+    "mismatches": 0
+  },
+  {
+    "input": "focused.json",
+    "input_sha256": "606d426afc70bc7c9ad0a3a115bf94f9746454e9481810d181b1216025003bfb",
+    "cases": 51,
+    "baseline_output_sha256": "eb750e066e3d930a57b12c1c3b0ac61b1e9f2f03514ebb7bd2a626d4756ea18b",
+    "candidate_output_sha256": "eb750e066e3d930a57b12c1c3b0ac61b1e9f2f03514ebb7bd2a626d4756ea18b",
+    "mismatches": 0
+  },
+  {
+    "input": "containers.json",
+    "input_sha256": "427ae8a8ceaa0b156585a8d8c0ce7d5c6a8c00eea58fdbac4245d1d2486cbf5a",
+    "cases": 9468,
+    "baseline_output_sha256": "c4177b46fdfb8380b33890fb289c2388a76f542d9ebb281496c38f04fc983349",
+    "candidate_output_sha256": "c4177b46fdfb8380b33890fb289c2388a76f542d9ebb281496c38f04fc983349",
+    "mismatches": 0
+  }
+]

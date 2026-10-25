@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Consolidate text construction into one semantic value state, share physical line-ending scans and terminal boundaries, and avoid repeated reference-label, email-prefix and table-cell scans. Preserve output, authored syntax and source spans.
+
 - Avoid intermediate escaped image-title strings, retain source-backed values across empty decoding fragments, borrow semantic text when choosing heading syntax, and skip Markdown table-cell rewrites when no pipe needs escaping. Preserve rendered output and source spans.
 
 ## v0.2.0
