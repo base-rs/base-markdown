@@ -4,6 +4,8 @@ This harness compares the public Markdown-to-HTML APIs of core-markdown, markdow
 
 ## Recorded comparison
 
+The latest [scope, frontmatter and heading-anchor cleanup](measurements/2026-10-25-scopes-frontmatter-and-anchors/readme.md) removes 477 net production lines and the obsolete hidden entity-decoding exports. Original HTML/Markdown changes stay within approximately 1.4%; unique-name heading HTML takes 32.4% less time and prepared heading enumeration 40.2% less time. Heading controls avoid 404–591 allocations per 512 headings; the repeated-name control requests 4,624 more cumulative bytes. This pass does not retime Inkmark.
+
 The latest [footnote, definition-index and escape-context consolidation](measurements/2026-10-25-footnotes-indexes-and-escape-context/readme.md) borrows serializer context and writes footnote backlinks through the shared HTML writer. Prepared-document Markdown takes 24.6–32.3% less time on the original four, and footnote controls take 14.7–34.1% less time. Original direct HTML ranges from 0.4% less to 1.3% more time. Fenced-body reservation removes a measured reallocation; all initial regressions, final results and process spreads are retained in the report. This pass does not retime Inkmark.
 
 The earlier [scratch rewrite and scanner consolidation](measurements/2026-10-25-serializer-rewrites-and-lookahead/readme.md) shares inline normalization, marker runs and conservative text lookahead. Prepared-document Markdown takes 5.0–8.3% less time on the original four; code-fence/math/table controls take 46.9–95.3% less time. Complete HTML ranges from 0.4% less to 1.8% more time; the mixed-1m regression is retained in the report. Output and diagnostics are preserved, with fewer scratch allocations on applicable controls. This pass does not retime Inkmark.
@@ -110,3 +112,5 @@ Historical directories retain their original measurements, source identities, va
 - [Serializer scratch rewrites, marker scanning, and literal lookahead](measurements/2026-10-25-serializer-rewrites-and-lookahead/readme.md).
 
 - [Footnote output, definition indexes, and borrowed escape context](measurements/2026-10-25-footnotes-indexes-and-escape-context/readme.md).
+
+- [Serializer scopes, frontmatter fence checks, and heading anchors](measurements/2026-10-25-scopes-frontmatter-and-anchors/readme.md).

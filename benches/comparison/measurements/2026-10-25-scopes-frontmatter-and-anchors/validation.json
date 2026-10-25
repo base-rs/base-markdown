@@ -1,0 +1,49 @@
+{
+  "source": {
+    "commit": "daeb8762d4baa725a0cd723031c69e1f2757719d",
+    "src_tree": "021efa886d6357e7d8178022373b3b76d06fda09"
+  },
+  "coverage": {
+    "covered": 13712,
+    "measured": 13712,
+    "unreachable_exclusions": 22
+  },
+  "checks": [
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test:coverage --package core-markdown --all-targets true --all-features true",
+      "scope": "native runtime",
+      "passed": true,
+      "log_sha256": "5826ccf2d5adeeb37579fbfe72c9b4a0ea55e4430f9f52147af35e8d1543147f"
+    },
+    {
+      "command": "cargo bake --locked test",
+      "scope": "default workspace",
+      "passed": true,
+      "log_sha256": "e7f664b11f560d5271d2cb27cfc4baf55ffce2614bfd80b24cfadbcec1d64a30"
+    },
+    {
+      "command": "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+      "scope": "lint",
+      "passed": true,
+      "log_sha256": "9eb51a2d0e9ae23c5feb48520dcd2cd2f9b1bc4ef367c251e96abc888846b358"
+    },
+    {
+      "command": "rustup run stable cargo check --lib --all-features --target x86_64-unknown-linux-gnu --locked",
+      "scope": "compile-only",
+      "passed": true,
+      "log_sha256": "fabd937d593b59b109c72540b46500440890924777f29316732bce515bd621ff"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "scope": "formatting",
+      "passed": true,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "python3 benches/comparison/measurements/2026-10-25-scopes-frontmatter-and-anchors/verify.py --work WORK",
+      "scope": "preservation",
+      "passed": true,
+      "log_sha256": "6e539f93c8d7ba266b88e0938902186a500e54f83a0fd4c3000db98c643c438f"
+    }
+  ]
+}

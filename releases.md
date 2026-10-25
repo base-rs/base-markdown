@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Remove unused Markdown serializer scopes, share frontmatter fence validation, and reserve heading anchors and suffix counters in one map, preserving output and collision behavior.
+
 - Remove the hidden public `decode_named` and `decode_numeric` compatibility helpers and their HTML 4 entity table. This is a breaking API removal; Markdown character-reference decoding continues to use HTML 5.
 
 - Share reference/footnote index construction and lookup, write footnote backlinks directly through the HTML writer, and borrow Markdown escape context instead of copying it. Skip irrelevant escape scans and reserve fenced-body/closing-marker capacity together, preserving output and diagnostic behavior.
