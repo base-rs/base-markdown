@@ -3,6 +3,8 @@
 import argparse
 import importlib.util
 import json
+import sys
+sys.dont_write_bytecode = True
 from pathlib import Path
 
 root = Path(__file__).resolve().parent
@@ -32,6 +34,8 @@ def extra_cases():
             '[display][label]\r\n\r\n[label]: /destination "title"\r\n'})
     cases.append({"name": "partial-tab-code-fragments", "profile": "commonmark",
         "markdown": ("> \t\ta\n\n- \t\tq\n\n  ```\n\tq\n  ```\n\n" * 512)})
+    for marker, name in [("first@example.com then second@example.org", "valid"), ("a@b_ nope@例え.example first@example.com", "invalid-then-valid"), ("ordinary ending", "no-marker")]:
+        cases.append({"name": f"email-long-prefix-{name}", "profile": "gfm", "markdown": (("ordinary α prose " * 512) + marker + "\n\n") * 64})
     empty_cases = ["-\n  foo", "-\n\n  foo", "* a\n*\n\n  \n\t\n* b", "- 1.\n-", "> -\n> \n>   foo",
         "-\n\n", "-\n  [x]: /target\n\n  foo", "-\n  >\n\n- next", "* - +\n\n* -", "-\n  ```\n\n  ```\n\n- b"]
     for index, value in enumerate(empty_cases):
