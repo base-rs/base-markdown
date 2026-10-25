@@ -844,10 +844,11 @@ impl InlineParser {
                         end = self.nodes[next].end;
                         next = self.nodes[next].next;
                     }
-                    if !source.as_bytes()[run_start..end].contains(&b'@') {
+                    let Some(first) = memchr::memchr(b'@', &source.as_bytes()[run_start..end])
+                    else {
                         cursor = next;
                         continue;
-                    }
+                    };
                     // Keep the escaped punctuation outside the data run without
                     // adding another candidate for ordinary escaped prose.
                     if run_start != node.start {
@@ -863,8 +864,8 @@ impl InlineParser {
                     } else {
                         self.nodes[next].previous = cursor;
                     }
-                    let mut at = run_start;
-                    let mut min = at;
+                    let mut at = run_start + first;
+                    let mut min = run_start;
                     let mut tail = cursor;
                     while let Some(offset) = memchr::memchr(b'@', &source.as_bytes()[at..end]) {
                         let marker = at + offset;
