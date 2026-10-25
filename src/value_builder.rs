@@ -39,6 +39,14 @@ impl<'a> ValueBuilder<'a> {
         }
         if let Text::Source(range) = &text {
             if let Some(previous) = &mut self.range {
+                // Empty fragments retain their origin only for an entirely empty value.
+                if range.start == range.end {
+                    return;
+                }
+                if previous.start == previous.end {
+                    *previous = range.clone();
+                    return;
+                }
                 if previous.end == range.start {
                     previous.end = range.end;
                     return;
@@ -172,8 +180,108 @@ fn decode<const UNPAD: bool>(
 
 #[cfg(test)]
 mod tests {
-    use super::decode_unpadded;
+    use super::{decode_string_with_options, decode_unpadded, ValueBuilder};
     use crate::{stream::Text, ParseOptions};
+    use alloc::{borrow::Cow, string::String};
+
+    #[test]
+    fn empty_fragments_preserve_contiguous_source_values() {
+        let source = "abcdef";
+        for (ranges, expected) in [
+            ([0..0, 1..6, 6..6], 1..6),
+            ([1..3, 0..0, 3..6], 1..6),
+            ([1..3, 3..6, 0..0], 1..6),
+            ([0..2, 2..4, 4..6], 0..6),
+            ([0..0, 5..5, 2..2], 0..0),
+            ([3..3, 5..5, 5..5], 3..3),
+        ] {
+            let mut value = ValueBuilder::new(source);
+            for range in ranges {
+                value.append(Text::Source(range));
+            }
+            assert_eq!(value.finish(), Text::Source(expected));
+        }
+        let mut value = ValueBuilder::new(source);
+        value.append(Text::Source(3..3));
+        assert_eq!(value.finish(), Text::Source(3..3));
+        assert_eq!(ValueBuilder::new(source).finish(), Text::Literal(""));
+    }
+
+    #[test]
+    fn discontinuous_fragments_still_materialize_their_value() {
+        let source = "abcdef";
+        let mut value = ValueBuilder::new(source);
+        for range in [4..4, 0..1, 3..6, 0..0] {
+            value.append(Text::Source(range));
+        }
+        assert_eq!(
+            value.finish(),
+            Text::Value(Cow::Owned(String::from("adef")))
+        );
+    }
+
+    #[test]
+    fn literal_and_owned_values_preserve_contents_across_empty_fragments() {
+        let source = "abc";
+        for text in [
+            Text::Literal("&"),
+            Text::Value(Cow::Borrowed("&")),
+            Text::Value(Cow::Owned(String::from("&"))),
+        ] {
+            let mut value = ValueBuilder::new(source);
+            value.append(Text::Source(1..1));
+            value.append(text);
+            value.append(Text::Source(3..3));
+            value.append(Text::Source(0..3));
+            assert_eq!(
+                value.finish(),
+                Text::Value(Cow::Owned(String::from("&abc")))
+            );
+        }
+        let mut value = ValueBuilder::new(source);
+        value.append(Text::Value(Cow::Owned(String::new())));
+        value.append(Text::Source(1..1));
+        assert_eq!(value.finish(), Text::Value(Cow::Owned(String::new())));
+    }
+
+    #[test]
+    fn leading_escaped_punctuation_keeps_a_source_range() {
+        let options = ParseOptions::default();
+        for source in [r"\*word", r"\*"] {
+            assert_eq!(
+                decode_string_with_options(source, 0..source.len(), &options),
+                Text::Source(1..source.len())
+            );
+        }
+        assert_eq!(
+            decode_string_with_options("abc", 2..2, &options),
+            Text::Source(2..2)
+        );
+        let source = r"\*word";
+        let mut options = options;
+        options.constructs.character_escape = false;
+        assert_eq!(
+            decode_string_with_options(source, 0..source.len(), &options),
+            Text::Source(0..source.len())
+        );
+    }
+
+    #[test]
+    fn decoded_replacements_and_discontinuous_escapes_keep_their_contents() {
+        for (source, expected) in [
+            (r"\*\!", "*!"),
+            (r"word\*", "word*"),
+            (r"a\*b", "a*b"),
+            ("&amp;", "&"),
+            ("&#42;", "*"),
+            ("\0", "�"),
+        ] {
+            assert_eq!(
+                decode_string_with_options(source, 0..source.len(), &ParseOptions::default()),
+                Text::Value(Cow::Owned(String::from(expected)))
+            );
+        }
+    }
 
     #[test]
     fn continuation_padding_is_removed_before_entity_and_escape_decoding() {
