@@ -2,10 +2,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 use crate::NodeId;
-use alloc::{
-    collections::{BTreeMap, BTreeSet},
-    string::String,
-};
+use alloc::{collections::BTreeMap, string::String};
 
 /// Heading levels to include when building a table of contents.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -39,22 +36,26 @@ pub struct HeadingEntry {
 #[derive(Default)]
 pub(crate) struct AnchorGenerator {
     next_suffix: BTreeMap<String, usize>,
-    used: BTreeSet<String>,
 }
 
 impl AnchorGenerator {
     pub(crate) fn anchor_for(&mut self, text: &str) -> String {
         let base = slug(text);
-        let mut suffix = self.next_suffix.get(&base).copied().unwrap_or(2);
-        let mut anchor = base.clone();
+        let Some(mut suffix) = self.next_suffix.get(&base).copied() else {
+            self.next_suffix.insert(base.clone(), 2);
+            return base;
+        };
 
-        while self.used.contains(&anchor) {
-            anchor = alloc::format!("{base}-{suffix}");
+        let anchor = loop {
+            let candidate = alloc::format!("{base}-{suffix}");
             suffix += 1;
-        }
+            if !self.next_suffix.contains_key(&candidate) {
+                break candidate;
+            }
+        };
 
         self.next_suffix.insert(base, suffix);
-        self.used.insert(anchor.clone());
+        self.next_suffix.insert(anchor.clone(), 2);
         anchor
     }
 }

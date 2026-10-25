@@ -391,6 +391,33 @@ fn heading_anchors_follow_the_shared_html_writer_after_edits() {
 }
 
 #[test]
+fn heading_anchors_reserve_authored_and_generated_suffixes() {
+    let titles = [
+        "A", "A-2", "A", "A-3", "A", "A-2", "A-2-2", "A-2", "", "", "-2", "",
+    ];
+    let source = titles.map(|title| format!("# {title}\n\n")).concat();
+    let document = Document::parse(&source, &ParseOptions::default()).unwrap();
+    let anchors: Vec<_> = document
+        .headings(&HeadingOptions::default())
+        .into_iter()
+        .map(|heading| heading.anchor)
+        .collect();
+    assert_eq!(
+        anchors,
+        ["a", "a-2", "a-3", "a-3-2", "a-4", "a-2-2", "a-2-2-2", "a-2-3", "", "-2", "-2-2", "-3",]
+    );
+    let options = CompileOptions {
+        heading_ids: true,
+        ..CompileOptions::default()
+    };
+    let mut output = String::new();
+    document.render_html(&options, &mut output).unwrap();
+    for anchor in anchors {
+        assert!(output.contains(&format!("id=\"{anchor}\"")));
+    }
+}
+
+#[test]
 fn structural_edits_refresh_list_tightness_and_item_endings() {
     let mut document =
         Document::parse("- first\n- second\n\noutside", &ParseOptions::default()).unwrap();
