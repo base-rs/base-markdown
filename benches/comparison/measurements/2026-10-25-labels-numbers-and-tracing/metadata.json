@@ -1,0 +1,48 @@
+{
+  "recorded_utc": "2026-10-25T04:03:24.139445+00:00",
+  "baseline_commit": "0e6a3cf5b9489dbd31f98e5cce6fe1a47bca578f",
+  "candidate_commit": "09224baa56e781def69f6e4cac88f7ca73c4e554",
+  "candidate_src_tree": "309f535dde30588b1c65e12bdecc41ec5b8087fb",
+  "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.3",
+  "host": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "machine": "Apple M4 Pro"
+  },
+  "binary_sha256": {
+    "baseline-bench": "aae7784e9f83120e7d46806de4b4111818a9db70d9aac3946895aa6c27b0d971",
+    "baseline-html": "4cbb8e756c34305e947315b3d5e7c53e751abaca786cfe6d3ae0436274142e11",
+    "baseline-driver": "3ebb08202409f358eb36057fe5906797e8f453b90cd990b303faed2b732519bb",
+    "baseline-allocations": "48fba1cdcec73c9d7f2001337b138f068efb6a9f9f6c760d62f2bf63daa836e9",
+    "candidate-bench": "9ea816eab391371bc2616586e4f9de2c7a785c0c6775784625c885d1411d68bb",
+    "candidate-html": "da954e719c9a57432428b76ffe8be1695d665c6a9c00d1ca78262e7d18fb6608",
+    "candidate-driver": "95871d9dcb6f6e5b266b126d68d35547cd185773f3db8e1a45769875a0d0bd98",
+    "candidate-allocations": "3a5e849097f742b8258bd6bc2d088f8a3fc61dfe3a9c135e3901a25d6b469ad7"
+  },
+  "file_sha256": {
+    "Cargo.toml": "d1bfa13cadbca239eb25beac9e84f5f00907f30cc35867a958f2ab911f604571",
+    "Cargo.lock": "b00a3a3d06287d4790cc6fa5e222e0ba04c26fdc6c1e1f648af5bd5754cc46e3",
+    "benches/comparison/Cargo.toml": "d736a0096b5562e92182c6cbd57e8e889a3e1e201e5102d3c7fb2fb7aa138d94",
+    "benches/comparison/Cargo.lock": "f5e800843ee0953d706b17e637b17645604493bc2f331190518fd12989b169a2",
+    "benches/comparison/src/main.rs": "9d0f4bfb924c90feaa5e1f0ed5a2f7fdd073292f9c40b15a6a67e3bcce5792e0",
+    "benches/comparison/measurements/2026-10-25-footnotes-indexes-and-escape-context/build.py": "889358b2d795ecd7ab7f5e8e14c2b3be4cfa27a9d15ef3c3a9ebbab86f37923a",
+    "benches/comparison/measurements/2026-10-25-footnotes-indexes-and-escape-context/measure.py": "e71e2540a8d40ee7f511ede97801586b4e4728eb3ae75cfcac3aae30cd647626",
+    "benches/comparison/measurements/2026-10-25-footnotes-indexes-and-escape-context/bench.rs": "8eba019434e49bc669f2994cdbaceeb0a467bd7c3cb691480eddff9ca94da9c7",
+    "benches/comparison/measurements/2026-10-25-serializer-and-edits/bench.rs": "1c9aef5dc9e9d1416e04d3f9323311134bbb4ba0320b0b2b9c93f50031c892a2",
+    "benches/comparison/measurements/2026-10-25-serializer-and-edits/verify.py": "341c656052d0ef47ddeb3a58e219db7b00e3db1e1631f7f92c0d72e1444f828b",
+    "benches/comparison/measurements/2026-10-25-text-delimiters-and-footnotes/verify.py": "6c6252f6d967806ce1e1b6e60689f0c0544d33b29c0ca6831cc7c6cd9d75bb15",
+    "benches/comparison/measurements/2026-10-25-normalize-identifiers/summarize.py": "792c0152b103af41678aae64fdfa2fdf7683af1bc3a1daa8553d24b4b77d60f3",
+    "benches/comparison/measurements/2026-10-25-labels-numbers-and-tracing/verify.py": "7d11055b241c0f89cbc1066d3d9527a06c5c9fd9609be36464b64922b71eb077",
+    "benches/comparison/measurements/2026-10-25-labels-numbers-and-tracing/prepare.py": "8eb1b221722d94fd090994b8d0566c50e390043d9270b6d7c49444d9f290d43e"
+  },
+  "input_sha256": {
+    "benches/comparison/measurements/2026-10-25-footnotes-indexes-and-escape-context/original.json": "bcc25b304657ef9a179b4f87b70e22b2fa8ad728723176e207908b3a9e6101cd",
+    "benches/comparison/measurements/2026-10-25-labels-numbers-and-tracing/serializer.json": "c196ce8133190123221633e44ea2b96901b4b00d35eff959b02a74569bf561ea",
+    "benches/comparison/measurements/2026-10-25-labels-numbers-and-tracing/numbers.json": "76bbbaa98b40ca23d6043e2a53914a200df0b670204cef494cff162e2d36f852"
+  },
+  "records": 24,
+  "document_process_results": 90,
+  "samples_per_result": 7,
+  "batch_samples": 630,
+  "raw_sha256": "9214c60f9d60dcceb752fd517cee48ecaa8ff60a20680b09c370f8cc8f0c0439",
+  "method": "Three alternating sequential rounds, reversing engine order in round two; 200 ms warmup and seven approximately 150 ms calibrated batches. Fresh executable inodes. Median of process medians. Native allocator for timing, separate instrumented executables for allocation diagnostics. Shared host without isolation; own builds, tests, reviews and diagnostics completed before timing. All final samples retained; no repeat cohort."
+}

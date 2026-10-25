@@ -1,0 +1,44 @@
+{
+  "candidate_commit": "09224baa56e781def69f6e4cac88f7ca73c4e554",
+  "candidate_src_tree": "309f535dde30588b1c65e12bdecc41ec5b8087fb",
+  "target": "aarch64-apple-darwin",
+  "coverage": {
+    "covered": 13833,
+    "measured": 13833,
+    "excluded_invariant_regions": 21
+  },
+  "formatting": "cargo fmt --all -- --check passed",
+  "checks": [
+    {
+      "command": "PATH=\"/Users/samuel/.cargo/bin:$PATH\" CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test:coverage --package core-markdown --all-targets true --all-features true",
+      "exit_code": 0,
+      "log": "/tmp/core-markdown-cleanup62/coverage.log",
+      "log_sha256": "d0cf3d9bd83a2dcdbf97220f555e886b20e726d6a17965380e31ca6c8fbf98ff"
+    },
+    {
+      "command": "cargo bake --locked test",
+      "exit_code": 0,
+      "log": "/tmp/core-markdown-cleanup62/workspace-tests.log",
+      "log_sha256": "afad45c41ff2c8ce46caf39361d353437a1637e1d5ed9b5dcd01bb161f9623e3"
+    },
+    {
+      "command": "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+      "exit_code": 0,
+      "log": "/tmp/core-markdown-cleanup62/clippy.log",
+      "log_sha256": "995ef6c3447980914be05335a1e9ac1ad3052949000885eb9ea6c4bf4b7778f9"
+    },
+    {
+      "command": "python3 benches/comparison/measurements/2026-10-25-text-delimiters-and-footnotes/verify.py --work /tmp/core-markdown-cleanup62",
+      "exit_code": 0,
+      "log": "/tmp/core-markdown-cleanup62/preservation.log",
+      "log_sha256": "21a9efda81ad3c88b60a375500ddf95cac2f883d2aa75099f4406eac5479971c"
+    },
+    {
+      "command": "python3 benches/comparison/measurements/2026-10-25-labels-numbers-and-tracing/verify.py --work /tmp/core-markdown-cleanup62",
+      "exit_code": 0,
+      "log": "/tmp/core-markdown-cleanup62/focused-preservation.log",
+      "log_sha256": "93d7df77feaf8b2be45e1e16ba55a529892d1869985a24e42f368d649834b08c"
+    }
+  ],
+  "linux": "Pending CI; no Linux runtime result claimed here."
+}

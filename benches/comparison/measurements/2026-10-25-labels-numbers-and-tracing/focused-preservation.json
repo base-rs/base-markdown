@@ -1,0 +1,16 @@
+[
+  {
+    "input": "serializer.json",
+    "mode": "controls",
+    "cases": 3,
+    "input_sha256": "c196ce8133190123221633e44ea2b96901b4b00d35eff959b02a74569bf561ea",
+    "output_sha256": "b574d5f2727ef3cd6bd821d3024fb6411c368fbd3334cad501fc98b57f5c6269"
+  },
+  {
+    "input": "numbers.json",
+    "mode": "features",
+    "cases": 4,
+    "input_sha256": "76bbbaa98b40ca23d6043e2a53914a200df0b670204cef494cff162e2d36f852",
+    "output_sha256": "51ea05b2ca0eb635dd2ecf08887e81b361862b1f934c7146ba1af3709cb50f64"
+  }
+]
