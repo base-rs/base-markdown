@@ -1,0 +1,194 @@
+{
+  "features/footnotes-1-calls-256-definitions": {
+    "baseline": {
+      "median_ms": 0.060209838669950735,
+      "process_medians_ms": [
+        0.05963685791217896,
+        0.060209838669950735,
+        0.060455204872204474
+      ],
+      "process_spread_percent": 1.372216761034939,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.0661755871725384,
+      "process_medians_ms": [
+        0.0661755871725384,
+        0.0656752564567286,
+        0.06635162037037036
+      ],
+      "process_spread_percent": 1.0298610924913465,
+      "control_engine": "baseline",
+      "time_change_percent": 9.908261896016368
+    }
+  },
+  "features/footnotes-2-calls-256-definitions": {
+    "baseline": {
+      "median_ms": 0.06105896016260163,
+      "process_medians_ms": [
+        0.06066341592562652,
+        0.06105896016260163,
+        0.061487146661204424
+      ],
+      "process_spread_percent": 1.3578706754459713,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.06702845544111062,
+      "process_medians_ms": [
+        0.06706247206079571,
+        0.06687450571177506,
+        0.06702845544111062
+      ],
+      "process_spread_percent": 0.2810732535815319,
+      "control_engine": "baseline",
+      "time_change_percent": 9.776608154826194
+    }
+  },
+  "features/footnotes-4-calls-256-definitions": {
+    "baseline": {
+      "median_ms": 0.061869094214876026,
+      "process_medians_ms": [
+        0.06098437053941909,
+        0.061869094214876026,
+        0.06212794908940397
+      ],
+      "process_spread_percent": 1.8751993992390137,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.06771243124165555,
+      "process_medians_ms": [
+        0.06771243124165555,
+        0.06702697721179625,
+        0.0679503475305845
+      ],
+      "process_spread_percent": 1.3776099672084596,
+      "control_engine": "baseline",
+      "time_change_percent": 9.444678479508962
+    }
+  },
+  "features/footnotes-16-calls-256-definitions": {
+    "baseline": {
+      "median_ms": 0.06907687668683109,
+      "process_medians_ms": [
+        0.06907687668683109,
+        0.06885632542218165,
+        0.0695485917132216
+      ],
+      "process_spread_percent": 1.005377918143946,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 0.07197387973484848,
+      "process_medians_ms": [
+        0.07206342877906977,
+        0.07179322825564632,
+        0.07197387973484848
+      ],
+      "process_spread_percent": 0.3763593447299707,
+      "control_engine": "baseline",
+      "time_change_percent": 4.193882507385682
+    }
+  },
+  "features/footnotes-1-calls-4096-definitions": {
+    "baseline": {
+      "median_ms": 0.9811337124183007,
+      "process_medians_ms": [
+        0.9693322580645162,
+        0.9831279740259738,
+        0.9811337124183007
+      ],
+      "process_spread_percent": 1.4232184936260994,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 1.1000469111111109,
+      "process_medians_ms": [
+        1.0911038602941179,
+        1.1000469111111109,
+        1.1035966074074075
+      ],
+      "process_spread_percent": 1.1449640651002735,
+      "control_engine": "baseline",
+      "time_change_percent": 12.119978876244364
+    }
+  },
+  "features/footnotes-2-calls-4096-definitions": {
+    "baseline": {
+      "median_ms": 0.9857713815789474,
+      "process_medians_ms": [
+        0.9779145161290324,
+        0.9868034539473685,
+        0.9857713815789474
+      ],
+      "process_spread_percent": 0.9089687975511351,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 1.0992484744525546,
+      "process_medians_ms": [
+        1.0992484744525546,
+        1.0990659999999999,
+        1.100098731884058
+      ],
+      "process_spread_percent": 0.09396450113625665,
+      "control_engine": "baseline",
+      "time_change_percent": 11.51150205759135
+    }
+  },
+  "features/footnotes-4-calls-4096-definitions": {
+    "baseline": {
+      "median_ms": 0.9913388157894738,
+      "process_medians_ms": [
+        0.9905581184210526,
+        0.9913388157894738,
+        0.9960844370860927
+      ],
+      "process_spread_percent": 0.5578994873969734,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 1.10295499270073,
+      "process_medians_ms": [
+        1.0993417826086958,
+        1.10295499270073,
+        1.1149209558823527
+      ],
+      "process_spread_percent": 1.4171364647569629,
+      "control_engine": "baseline",
+      "time_change_percent": 11.259135134577413
+    }
+  },
+  "features/footnotes-16-calls-4096-definitions": {
+    "baseline": {
+      "median_ms": 1.0602225177304965,
+      "process_medians_ms": [
+        1.0565751748251748,
+        1.0602225177304965,
+        1.068362676056338
+      ],
+      "process_spread_percent": 1.115632991577109,
+      "control_engine": "baseline",
+      "time_change_percent": 0.0
+    },
+    "candidate": {
+      "median_ms": 1.1066871865671641,
+      "process_medians_ms": [
+        1.108390125925926,
+        1.0942941333333334,
+        1.1066871865671641
+      ],
+      "process_spread_percent": 1.2881356267217425,
+      "control_engine": "baseline",
+      "time_change_percent": 4.382539331095292
+    }
+  }
+}

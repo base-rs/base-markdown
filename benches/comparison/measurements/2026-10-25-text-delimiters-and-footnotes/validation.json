@@ -1,0 +1,50 @@
+{
+  "source": {
+    "commit": "7ace4c156ab61b05351712067b421159a21a6aa6",
+    "src_tree": "b0810c8cd90c07227973f5c64d24883ffb1d17a4",
+    "tests_tree": "6f2e85f2c8efebfd195f46409c7019dd421cb10b"
+  },
+  "coverage": {
+    "covered": 13812,
+    "measured": 13812,
+    "unreachable_exclusions": 21
+  },
+  "checks": [
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test:coverage --package core-markdown --all-features true --all-targets true",
+      "scope": "native runtime",
+      "passed": true,
+      "log_sha256": "262385e6a84e7b6a60b3801ebc88f5e15b107ba1416fb50d173d7c3d00664fdb"
+    },
+    {
+      "command": "cargo bake --locked test",
+      "scope": "default workspace",
+      "passed": true,
+      "log_sha256": "b025b84b8c2f39df19d28aff8e5c5a377217493db53b6d4f6b1cb8451678fd5c"
+    },
+    {
+      "command": "cargo clippy --workspace --all-features --all-targets --locked -- -D warnings",
+      "scope": "lint",
+      "passed": true,
+      "log_sha256": "74565bf20a16b624d1e94539368411cea72ebda824ef02f88e997a687f7c95b8"
+    },
+    {
+      "command": "rustup run stable cargo check --lib --all-features --target x86_64-unknown-linux-gnu --locked",
+      "scope": "compile-only",
+      "passed": true,
+      "log_sha256": "f34c4caab9673270e65bfa697599d18e72717b3810a2de8c339f4e2f9110c9ed"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "scope": "formatting",
+      "passed": true,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "python3 benches/comparison/measurements/2026-10-25-text-delimiters-and-footnotes/verify.py --work WORK",
+      "scope": "preservation",
+      "passed": true,
+      "log_sha256": "21a9efda81ad3c88b60a375500ddf95cac2f883d2aa75099f4406eac5479971c"
+    }
+  ]
+}

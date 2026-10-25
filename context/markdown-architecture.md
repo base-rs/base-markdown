@@ -36,6 +36,8 @@ The Markdown serializer writes its three possible block separators directly from
 
 Code, math and frontmatter formatting share one byte iterator over complete marker runs. Inline delimiters choose the first absent run length; block fences choose a length above the longest run. Table escaping shares run continuation for a known backtick start and the iterator for exact matching of later runs. Keep these selection policies distinct even though the byte scanning is shared. Code/frontmatter bodies reserve space for the body, closing fence and terminating line ending together to avoid immediate growth after a large body.
 
+Inline delimiter selection records short run lengths in one machine-word bitset and collects only longer lengths, all in one scan. Ordinary contents avoid a temporary allocation; long lengths are sorted only if the word is full. This preserves the first absent length without repeatedly scanning dense contents.
+
 The Markdown serializer writes recursively into one output string. Output ranges provide preceding context without copying parent strings; reusable scratch handles indentation and table escaping. Escape rules read a borrowed three-part byte view of preceding context, current input and following context. A preflight check uses the same rule predicate to skip rules that cannot affect the input or its immediately preceding escape; possible matches retain the full prefix walk to preserve non-overlapping neighbor consumption. Only those relevant escape positions are collected and sorted. This removes the assembled context string, but escape-heavy adjacent nodes can still rescan preceding context. The serializer tracks only contexts used by escape rules or nested-list marker selection. Formatting and escaping use byte scanners and static scope rules; regex is a test-only dependency. Ordered-list markers use ASCII digits.
 
 Inline code/math normalization uses the same scratch rewrite helper as table escaping and indentation, and skips rewriting values without CR/LF. Phrasing lookahead can return a text value's first character directly when it is outside every escape rule's candidate byte. ASCII spaces/tabs, physical line endings and other context-sensitive prefixes retain speculative rendering, preserving task trimming, wrapping and diagnostic order.
@@ -46,6 +48,8 @@ items. Serializing an attached item on its own scans its source-list siblings on
 to retain its original number and uses the configured ordered marker.
 
 Footnote backreferences write through the shared HTML writer instead of assembling intermediate markup and escaped option strings. Each repeated backlink formats its number once and reuses it for the ID suffix and superscript; footnote bodies remain buffered until document completion.
+
+The HTML renderer retains footnote definitions in completion order and calls in first-use order, caching each called label's escaped ID. At completion, the parser's shared indexing helpers index only called labels. One walk matches definitions in completion order and stops when every called label has a body. Duplicate definitions retain the first completed body, including an empty body. Documents without calls skip indexing, and unused labels consume no index storage. Call lookup remains linear in distinct called labels.
 
 Diagnostics use static identifiers, borrowed or owned reasons, and optional
 half-open byte spans. `Message::span` replaces the former boxed `Place`; public

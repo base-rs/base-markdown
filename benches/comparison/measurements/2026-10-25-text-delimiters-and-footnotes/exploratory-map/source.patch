@@ -1,0 +1,441 @@
+diff --git a/src/document.rs b/src/document.rs
+index fc3dfd0..7134337 100644
+--- a/src/document.rs
++++ b/src/document.rs
+@@ -7,7 +7,7 @@ use crate::{
+     stream::{Tag, TagKind},
+     NodeSyntax,
+ };
+-use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
++use alloc::{collections::BTreeMap, string::String, vec::Vec};
+ use core::{num::NonZeroUsize, ops::Range};
+ 
+ /// A stable index into a document's contiguous node arena.
+@@ -321,26 +321,7 @@ impl<S: AsRef<str>> Document<S> {
+         if let Some(body) = body {
+             *text = Text::from(body);
+         }
+-        if let Text::Source(range) = text {
+-            *text = Text::Value(Cow::Owned(
+-                self.source
+-                    .as_ref()
+-                    .get(range.clone())
+-                    .ok_or(StreamError::InvalidRange)?
+-                    .into(),
+-            ));
+-        }
+-        match text {
+-            Text::Value(value) => Ok(value.to_mut()),
+-            Text::Literal(value) => {
+-                *text = Text::Value(Cow::Owned((*value).into()));
+-                match text {
+-                    Text::Value(value) => Ok(value.to_mut()),
+-                    _ => unreachable!("literal was materialized above"),
+-                }
+-            }
+-            Text::Source(_) => unreachable!("source text was materialized above"),
+-        }
++        text.to_mut(self.source.as_ref())
+     }
+ 
+     /// Traverse without a heap-allocated traversal stack or cloned owned strings.
+diff --git a/src/event_html_renderer.rs b/src/event_html_renderer.rs
+index f3d5be9..6e94611 100644
+--- a/src/event_html_renderer.rs
++++ b/src/event_html_renderer.rs
+@@ -10,6 +10,7 @@ use crate::util::{
+ };
+ use crate::{CompileOptions, LineEnding};
+ use alloc::{
++    collections::BTreeMap,
+     string::{String, ToString},
+     vec::Vec,
+ };
+@@ -25,6 +26,14 @@ struct HeadingCapture {
+     output: String,
+     text: String,
+ }
++#[derive(Default)]
++struct Footnote {
++    body: Option<String>,
++    id: String,
++    number: usize,
++    count: usize,
++}
++
+ struct Capture {
+     key: String,
+     output: String,
+@@ -44,8 +53,8 @@ pub struct EventHtmlRenderer<'a, W> {
+     images: usize,
+     image_titles: Vec<String>,
+     captures: Vec<Capture>,
+-    notes: Vec<(String, String)>,
+-    calls: Vec<(String, usize)>,
++    notes: BTreeMap<String, Footnote>,
++    calls: usize,
+     started: bool,
+     ended: bool,
+     heading: Option<HeadingCapture>,
+@@ -65,8 +74,8 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+             images: 0,
+             image_titles: Vec::new(),
+             captures: Vec::new(),
+-            notes: Vec::new(),
+-            calls: Vec::new(),
++            notes: BTreeMap::new(),
++            calls: 0,
+             started: false,
+             ended: false,
+             heading: None,
+@@ -432,7 +441,11 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+             TagKind::FootnoteDefinition => {
+                 let capture = self.captures.pop().unwrap();
+                 self.last = capture.previous;
+-                self.notes.push((capture.key, capture.output));
++                // Duplicate definitions keep the first completed body, including an empty one.
++                let note = self.notes.entry(capture.key).or_default();
++                if note.body.is_none() {
++                    note.body = Some(capture.output);
++                }
+             }
+             TagKind::Image => {
+                 unreachable!("images were handled before suppressing tags in alt text")
+@@ -690,34 +703,47 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+     }
+ 
+     fn footnote_call(&mut self, key: &str) -> Result<(), StreamError> {
+-        let index = self
+-            .calls
+-            .iter()
+-            .position(|(id, _)| id == key)
+-            .unwrap_or_else(|| {
+-                self.calls.push((key.into(), 0));
+-                self.calls.len() - 1
+-            });
+-        self.calls[index].1 += 1;
+-        let count = self.calls[index].1;
++        if !self.notes.contains_key(key) {
++            self.notes.insert(key.into(), Footnote::default());
++        }
++        let note = self.notes.get_mut(key).unwrap();
++        if note.count == 0 {
++            self.calls += 1;
++            note.number = self.calls;
++            note.id = sanitize(&key.to_lowercase());
++        }
++        note.count += 1;
++        let (number, count) = (note.number, note.count);
+         if self.images != 0 {
+             return Ok(());
+         }
+-        let safe = sanitize(&key.to_lowercase());
++        // Temporarily move the cached ID out so writes can borrow the renderer. Restore it even when the caller's writer fails.
++        let safe = core::mem::take(&mut note.id);
++        let result = self.write_footnote_call(&safe, number, count);
++        self.notes.get_mut(key).unwrap().id = safe;
++        result
++    }
++
++    fn write_footnote_call(
++        &mut self,
++        safe: &str,
++        number: usize,
++        count: usize,
++    ) -> Result<(), StreamError> {
+         self.write("<sup><a href=\"#")?;
+         self.prefix()?;
+         self.write("fn-")?;
+-        self.write(&safe)?;
++        self.write(safe)?;
+         self.write("\" id=\"")?;
+         self.prefix()?;
+         self.write("fnref-")?;
+-        self.write(&safe)?;
++        self.write(safe)?;
+         if count > 1 {
+             self.write("-")?;
+             self.write(&count.to_string())?;
+         }
+         self.write("\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">")?;
+-        self.write(&(index + 1).to_string())?;
++        self.write(&number.to_string())?;
+         self.write("</a></sup>")
+     }
+ 
+@@ -755,7 +781,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+     }
+ 
+     fn footnotes(&mut self) -> Result<(), StreamError> {
+-        if self.calls.is_empty() {
++        if self.calls == 0 {
+             return Ok(());
+         }
+         self.terminate()?;
+@@ -786,16 +812,15 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
+         self.write(">")?;
+         self.newline()?;
+         self.write("<ol>")?;
+-        for index in 0..self.calls.len() {
+-            let (key, count) = &self.calls[index];
+-            let safe = sanitize(&key.to_lowercase());
+-            let note = self
+-                .notes
+-                .iter()
+-                .position(|(id, _)| id == key)
+-                .ok_or(StreamError::Unbalanced)?;
+-            let count = *count;
+-            let value = core::mem::take(&mut self.notes[note].1);
++        let mut notes: Vec<_> = core::mem::take(&mut self.notes)
++            .into_values()
++            .filter(|note| note.count != 0)
++            .collect();
++        notes.sort_unstable_by_key(|note| note.number);
++        for note in notes {
++            let value = note.body.ok_or(StreamError::Unbalanced)?;
++            let safe = note.id;
++            let count = note.count;
+             self.newline()?;
+             self.write("<li id=\"")?;
+             self.prefix()?;
+diff --git a/src/markdown/util/scan.rs b/src/markdown/util/scan.rs
+index 4878859..d7afd04 100644
+--- a/src/markdown/util/scan.rs
++++ b/src/markdown/util/scan.rs
+@@ -46,12 +46,24 @@ pub fn longest_run(value: &str, marker: u8) -> usize {
+ 
+ // A delimiter must have a length absent from the content's complete marker runs.
+ pub fn delimiter_size(value: &str, marker: u8, minimum: usize) -> usize {
+-    let mut lengths = Vec::new();
++    let mut used = 0_usize;
+     for run in marker_runs(value.as_bytes(), marker) {
+-        lengths.push(run.len());
++        if let Some(offset) = run.len().checked_sub(minimum) {
++            if offset < usize::BITS as usize {
++                used |= 1 << offset;
++            }
++        }
+     }
++    if used != usize::MAX {
++        return minimum + used.trailing_ones() as usize;
++    }
++    // Only dense contents exhaust the word. Collect longer runs in a bounded second pass rather than repeatedly scanning the whole value.
++    let mut size = minimum + usize::BITS as usize;
++    let mut lengths: Vec<_> = marker_runs(value.as_bytes(), marker)
++        .map(|run| run.len())
++        .filter(|&length| length >= size)
++        .collect();
+     lengths.sort_unstable();
+-    let mut size = minimum;
+     for length in lengths {
+         if length == size {
+             size += 1;
+@@ -89,6 +101,30 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn delimiter_selection_preserves_gaps_across_bitset_windows() {
++        use alloc::string::String;
++        for marker in *b"`$" {
++            let mut value = String::new();
++            for length in 1..=2 * usize::BITS as usize + 1 {
++                value.extend(core::iter::repeat(char::from(marker)).take(length));
++                value.push(' ');
++                assert_eq!(delimiter_size(&value, marker, 1), length + 1);
++                assert_eq!(delimiter_size(&value, marker, 2), length + 1);
++            }
++            for gap in [1, 2, usize::BITS as usize, usize::BITS as usize + 1] {
++                let mut value = String::new();
++                for length in (1..=2 * usize::BITS as usize + 1).rev() {
++                    if length != gap {
++                        value.extend(core::iter::repeat(char::from(marker)).take(length));
++                        value.push(' ');
++                    }
++                }
++                assert_eq!(delimiter_size(&value, marker, 1), gap);
++            }
++        }
++    }
++
+     #[test]
+     fn backslash_scanning_matches_punctuation_rules_across_context_boundaries() {
+         use super::super::safe::escape_backslashes;
+diff --git a/src/stream.rs b/src/stream.rs
+index 339cf05..52cfda4 100644
+--- a/src/stream.rs
++++ b/src/stream.rs
+@@ -64,6 +64,16 @@ impl Text<'_> {
+         }
+     }
+ 
++    pub(crate) fn to_mut(&mut self, source: &str) -> Result<&mut String, StreamError> {
++        if !matches!(self, Self::Value(_)) {
++            *self = Self::Value(Cow::Owned(self.resolve(source)?.into()));
++        }
++        match self {
++            Self::Value(value) => Ok(value.to_mut()),
++            _ => unreachable!("source and literal text were materialized above"),
++        }
++    }
++
+     pub(crate) fn materialized(self, source: &str) -> Text<'static> {
+         match self {
+             Self::Source(range) => Text::from(String::from(
+diff --git a/tests/document.rs b/tests/document.rs
+index afebf68..cd1b4e3 100644
+--- a/tests/document.rs
++++ b/tests/document.rs
+@@ -17,6 +17,35 @@ fn empty() -> Document {
+     Document::parse(String::new(), &ParseOptions::default()).unwrap()
+ }
+ 
++#[test]
++fn text_edits_materialize_source_and_literals_once() {
++    let source = "source";
++    let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
++    let paragraph = document.children(document.root()).next().unwrap();
++    let parsed = document.children(paragraph).next().unwrap();
++    let literal = document
++        .append_child(paragraph, EventKind::Text(Text::Literal("literal")))
++        .unwrap();
++    let owned = document
++        .append_child(
++            paragraph,
++            EventKind::Text(Text::from(String::from("owned"))),
++        )
++        .unwrap();
++    for (id, original) in [(parsed, "source"), (literal, "literal"), (owned, "owned")] {
++        let text = document.text_mut(id).unwrap();
++        assert_eq!(text, original);
++        text.reserve(16);
++        let allocation = text.as_ptr();
++        text.push('!');
++        let text = document.text_mut(id).unwrap();
++        assert_eq!(text.as_ptr(), allocation);
++        text.push('?');
++    }
++    assert_eq!(document.source(), source);
++    assert_eq!(html(&document), "<p>source!?literal!?owned!?</p>");
++}
++
+ #[test]
+ fn node_ids_remain_stable_when_subtrees_are_reordered_detached_and_reattached() {
+     let mut document = empty();
+diff --git a/tests/event_contract.rs b/tests/event_contract.rs
+index 274bb39..eb56fd8 100644
+--- a/tests/event_contract.rs
++++ b/tests/event_contract.rs
+@@ -17,6 +17,112 @@ fn document(body: Vec<EventKind<'static>>) -> Vec<Result<Event<'static>, StreamE
+     events
+ }
+ 
++#[test]
++fn footnotes_keep_call_order_and_the_first_completed_definition() {
++    let definition = |key| EventKind::Start(Tag::FootnoteDefinition(Text::Literal(key)));
++    let end = || EventKind::End(TagKind::FootnoteDefinition);
++    let body = vec![
++        definition("unused"),
++        EventKind::Text(Text::Literal("hidden")),
++        end(),
++        EventKind::FootnoteReference(Text::Literal("B")),
++        EventKind::FootnoteReference(Text::Literal("Z")),
++        EventKind::FootnoteReference(Text::Literal("ΟΣ")),
++        EventKind::FootnoteReference(Text::Literal("B")),
++        definition("Z"),
++        end(),
++        definition("Z"),
++        EventKind::Text(Text::Literal("ignored")),
++        end(),
++        definition("B"),
++        EventKind::Text(Text::Literal("outer")),
++        definition("B"),
++        EventKind::Text(Text::Literal("inner")),
++        end(),
++        end(),
++        definition("ΟΣ"),
++        EventKind::Text(Text::Literal("unicode")),
++        end(),
++    ];
++    let mut output = String::new();
++    render_events("", document(body), &Options::default().compile, &mut output).unwrap();
++    assert!(output.contains("id=\"user-content-fnref-b-2\""));
++    assert!(output.contains("id=\"user-content-fn-%CE%BF%CF%82\""));
++    let first = output.find("<li id=\"user-content-fn-b\"").unwrap();
++    let second = output.find("<li id=\"user-content-fn-z\"").unwrap();
++    let third = output
++        .find("<li id=\"user-content-fn-%CE%BF%CF%82\"")
++        .unwrap();
++    assert!(first < second && second < third);
++    assert!(output.contains("inner"));
++    assert!(output.contains("unicode"));
++    for omitted in ["hidden", "ignored", "outer"] {
++        assert!(!output.contains(omitted));
++    }
++}
++
++#[test]
++fn footnote_ids_survive_a_call_writer_failure() {
++    struct Writer {
++        calls: usize,
++        fail_at: usize,
++        output: String,
++    }
++    impl std::fmt::Write for Writer {
++        fn write_str(&mut self, value: &str) -> std::fmt::Result {
++            let call = self.calls;
++            self.calls += 1;
++            if call == self.fail_at {
++                return Err(std::fmt::Error);
++            }
++            self.output.push_str(value);
++            Ok(())
++        }
++    }
++    let mut writer = Writer {
++        calls: 0,
++        fail_at: usize::MAX,
++        output: String::new(),
++    };
++    let options = Options::default();
++    {
++        let mut renderer = core_markdown::EventHtmlRenderer::new("", &options.compile, &mut writer);
++        renderer
++            .event(event(EventKind::Start(Tag::Document(None))).unwrap())
++            .unwrap();
++        renderer
++            .event(event(EventKind::FootnoteReference(Text::Literal("É"))).unwrap())
++            .unwrap();
++    }
++    let writes = writer.calls;
++    for fail_at in 0..writes {
++        let mut writer = Writer {
++            calls: 0,
++            fail_at,
++            output: String::new(),
++        };
++        let mut renderer = core_markdown::EventHtmlRenderer::new("", &options.compile, &mut writer);
++        renderer
++            .event(event(EventKind::Start(Tag::Document(None))).unwrap())
++            .unwrap();
++        assert!(matches!(
++            renderer.event(event(EventKind::FootnoteReference(Text::Literal("É"))).unwrap()),
++            Err(StreamError::Write(_))
++        ));
++        for kind in [
++            EventKind::FootnoteReference(Text::Literal("É")),
++            EventKind::Start(Tag::FootnoteDefinition(Text::Literal("É"))),
++            EventKind::Text(Text::Literal("body")),
++            EventKind::End(TagKind::FootnoteDefinition),
++            EventKind::End(TagKind::Document),
++        ] {
++            renderer.event(event(kind).unwrap()).unwrap();
++        }
++        assert!(writer.output.contains("id=\"user-content-fnref-%C3%A9-2\""));
++        assert!(writer.output.contains("<li id=\"user-content-fn-%C3%A9\""));
++    }
++}
++
+ #[test]
+ fn all_invalid_metadata_is_rejected_before_rendering_or_editing() {
+     let bad = || Text::Source(1..2);

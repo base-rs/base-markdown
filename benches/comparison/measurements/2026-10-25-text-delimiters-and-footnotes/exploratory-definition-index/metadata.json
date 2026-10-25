@@ -1,0 +1,13 @@
+{
+  "commit": "3d31086a0e8861dd36a3cf63619e143566e9e80f",
+  "src_tree": "766820b8abfde222c771155ea6457ddf99d98b89",
+  "binaries": {
+    "candidate-bench": "0666306894db4bd54541f7c94e4769904d9fa1f3b8d41c3a463e81ae988fdc40",
+    "candidate-allocations": "231313d5ddeddc1fae23ccfa31fbaaeca02348bf5329fe2f2642cfb765ec4345",
+    "candidate-html": "22baa5b590f3fcda1d58d5c1fce06ec4f354034beb3967c70eece40c73dab426",
+    "candidate-driver": "51d2a0968eadf0d7e3258aa36e259d1599ba9ac6e720c41204f64036c7240a45"
+  },
+  "note": "Rejected indexing of all definitions: few calls among many unused definitions regresses ~10%.",
+  "base": "174813e0fe63a57005c1582a43649c4b57248a62",
+  "patch_sha256": "f671c78277bed559ebe2c655bde3bcf8f329afcdff2e6e5c999c16666fc30eaa"
+}
