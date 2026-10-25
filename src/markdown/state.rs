@@ -467,7 +467,9 @@ impl<'a> State<'a> {
             }
             let start = self.output.len();
             self.container_phrasing(document, cell, &Info::new("", ""))?;
-            self.rewrite(start, |value, output| write_table_pipes(value, output));
+            if self.output[start..].contains('|') {
+                self.rewrite(start, |value, output| write_table_pipes(value, output));
+            }
         }
         self.output.push_str(" |");
         Ok(())
