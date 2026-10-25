@@ -358,9 +358,9 @@ mod tests {
             for &start in &boundaries {
                 for &end in boundaries.iter().filter(|&&end| end >= start) {
                     let context = Context([
-                        value[..start].as_bytes(),
-                        value[start..end].as_bytes(),
-                        value[end..].as_bytes(),
+                        &value.as_bytes()[..start],
+                        &value.as_bytes()[start..end],
+                        &value.as_bytes()[end..],
                     ]);
                     for single in [false, true] {
                         for rule in RULES {
