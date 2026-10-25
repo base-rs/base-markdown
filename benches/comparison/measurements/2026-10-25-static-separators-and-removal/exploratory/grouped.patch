@@ -1,0 +1,36 @@
+diff --git a/src/markdown/handle.rs b/src/markdown/handle.rs
+index f396909..fc812db 100644
+--- a/src/markdown/handle.rs
++++ b/src/markdown/handle.rs
+@@ -743,20 +743,26 @@ fn image_alt<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> Cow<'_, str
+ }
+ 
+ fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
+-    let mut endings = super::util::scan::line_endings(value);
+-    let Some(first) = endings.next() else {
++    let Some(mut ending) = super::util::scan::line_endings(value).next() else {
+         return Cow::Borrowed(value);
+     };
+     let mut result = String::with_capacity(value.len());
+     let mut start = 0;
+-    for ending in core::iter::once(first).chain(endings) {
++    loop {
+         result.push_str(&value[start..ending.start]);
+-        result.truncate(result.trim_end_matches([' ', '\t']).len());
++        while matches!(result.as_bytes().last(), Some(b' ' | b'\t')) {
++            result.truncate(result.len() - 1);
++        }
+         result.push(' ');
+         start = ending.end;
+-        while matches!(value.as_bytes().get(start), Some(b' ' | b'\t')) {
++        // Every following physical break and its adjacent spaces collapse into this separator.
++        while matches!(value.as_bytes().get(start), Some(b' ' | b'\t' | b'\r' | b'\n')) {
+             start += 1;
+         }
++        let Some(next) = super::util::scan::line_endings(&value[start..]).next() else {
++            break;
++        };
++        ending = start + next.start..start + next.end;
+     }
+     result.push_str(&value[start..]);
+     Cow::Owned(result)

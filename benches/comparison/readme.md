@@ -101,3 +101,4 @@ Historical directories retain their original measurements, source identities, va
 - [Parser ownership and event-delivery consolidation](measurements/2026-10-25-parser-consolidation/readme.md).
 
 - [Markdown serializer and AST edit consolidation](measurements/2026-10-25-serializer-and-edits/readme.md).
+- [Static separators, borrowed unwrapping, and section-range removal](measurements/2026-10-25-static-separators-and-removal/readme.md).

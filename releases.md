@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Write Markdown block separators from static strings, borrow unchanged text when unwrapping soft line breaks, and splice removed heading sections as one sibling range. Preserve output, stable node IDs, detached subtrees, and edit-context hints.
+
 - Consolidate Markdown destination/title formatting and construct-specific option checks. Share AST linking and preorder advancement; copy sections without per-subtree mapping stacks or repeated insertion-position scans, while preserving rendered output, edit semantics, and diagnostics.
 
 - Simplify parser ownership and event delivery: remove the private inline workspace wrapper, keep document completion outside the hot event loop, and share allocation-free block-child traversal while preserving the semantic event and document APIs.

@@ -14,7 +14,7 @@ MDX is no longer supported. JavaScript expressions and import/export statements 
 - `Document` is the only AST. Markdown serialization traverses its node IDs directly; HTML rendering traverses semantic events through `EventHtmlRenderer`. Custom renderers consume events or node IDs.
 - AST helpers include stack-free traversal, `text_content`, code-fence metadata, subtree detachment/attachment, and heading lookup and section replacement. Detached nodes remain in their document arena and retain stable IDs. See [Document AST and migration](document.md).
 
-AST edits share private arena-link operations. Moves refresh subtree context after reaching their final position. Section copies carry the insertion position and ascend corresponding source/destination parent links without a mapping stack, materializing source-backed values before releasing the replacement document. Preorder traversal and edit refreshes use the same subtree-bounded successor helper.
+AST edits share private arena-link operations. Moves refresh subtree context after reaching their final position. Section replacement discovers its predecessor during heading selection and splices the removed contiguous sibling range once, refreshing each detached subtree and the retained parent item's hints. Empty removal ranges do not refresh context. Section copies carry the insertion position and ascend corresponding source/destination parent links without a mapping stack, materializing source-backed values before releasing the replacement document. Preorder traversal and edit refreshes use the same subtree-bounded successor helper.
 
 `EventParser` directly owns its compact block arena, prepared definition indexes, source/configuration references and reusable `InlineParser`. Reference specialization is selected beside block preparation; no separate workspace wrapper mediates ownership. Start and end handling, including the final separator policy, share a cold document-boundary handler. Prepared child walks use one cloneable, allocation-free iterator over the block arena's sibling links.
 
@@ -32,6 +32,8 @@ Unicode identifier folding shares a helper that skips the intermediate lowercase
 
 The Markdown serializer shares destination/title formatting for definitions, links and images. Formatting-option checks live beside their options and run only at the original construct-specific call sites.
 
+The Markdown serializer writes its three possible block separators directly from static strings, without an intermediate join representation or per-boundary newline allocation.
+
 The Markdown serializer writes recursively into one output string. Output ranges
 provide preceding context without copying parent strings; reusable scratch handles
 indentation and table escaping. Formatting and escaping use byte scanners and static scope rules; regex is a test-only dependency. The escape matcher retains non-overlapping neighbor consumption and uses ASCII digits for ordered-list markers.
@@ -48,7 +50,7 @@ producers can still return `StreamError::Parse(Message)`.
 
 The Markdown serializer lives in `src/markdown/`. Keep its construct handlers and safety logic separate from the parser's event-to-HTML compiler. Serializer changes should preserve references, extensions, and formatting options when possible.
 
-`MarkdownOptions::line_wrapping` controls soft source line breaks in text. `Preserve` is the default and keeps round-trip behavior; `Unwrap` joins those breaks with spaces. Explicit hard-break nodes, code, and block boundaries are not unwrapped. The serializer does not currently enforce a line width.
+`MarkdownOptions::line_wrapping` controls soft source line breaks in text. `Preserve` is the default and keeps round-trip behavior; `Unwrap` joins those breaks with spaces. Unwrapping uses the shared line-ending scanner to borrow text without CR/LF, retaining scalar normalization for multiline values; only adjacent ASCII spaces and tabs are trimmed. Explicit hard-break nodes, code, and block boundaries are not unwrapped. The serializer does not currently enforce a line width.
 
 ## Code fences
 
