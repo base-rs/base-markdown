@@ -1,8 +1,34 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use crate::NodeId;
+use crate::{stream::EventKind, NodeId};
 use alloc::{collections::BTreeMap, string::String};
+
+/// Append semantic text with the same inline rules for heading IDs and AST text.
+pub(crate) fn append_text<const HEADING: bool>(
+    kind: &EventKind<'_>,
+    source: &str,
+    text: &mut String,
+) {
+    let value = match kind {
+        EventKind::Text(value)
+        | EventKind::SoftBreak(value)
+        | EventKind::Math(value)
+        | EventKind::Code { value, .. }
+        | EventKind::Html { value, .. } => value,
+        EventKind::CodeBlock { value, .. } if !HEADING => value,
+        EventKind::HardBreak => {
+            text.push('\n');
+            return;
+        }
+        _ => return,
+    };
+    text.push_str(
+        value
+            .resolve(source)
+            .expect("semantic text values are validated"),
+    );
+}
 
 /// Heading levels to include when building a table of contents.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

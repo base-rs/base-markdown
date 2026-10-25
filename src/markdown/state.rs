@@ -18,7 +18,10 @@ use crate::markdown::{
 use crate::{
     message::Message,
     stream::{EventKind, Tag},
-    util::normalize_identifier::{normalize_identifier, normalize_identifier_into},
+    util::{
+        line_ending::trim_terminal_ending,
+        normalize_identifier::{normalize_identifier, normalize_identifier_into},
+    },
     AlignKind, Document, NodeId, NodeSyntax,
 };
 use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
@@ -777,13 +780,6 @@ fn normalize_nul(value: &str) -> Cow<'_, str> {
     } else {
         Cow::Borrowed(value)
     }
-}
-
-pub(super) fn trim_terminal_ending(value: &str) -> &str {
-    value
-        .strip_suffix("\r\n")
-        .or_else(|| value.strip_suffix(['\r', '\n']))
-        .unwrap_or(value)
 }
 
 pub(super) fn unsupported_content() -> Message {

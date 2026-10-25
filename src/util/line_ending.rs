@@ -5,6 +5,14 @@
 
 use alloc::{str::FromStr, string::String};
 
+/// Remove one terminal physical line ending, preserving preceding line endings.
+pub(crate) fn trim_terminal_ending(value: &str) -> &str {
+    value
+        .strip_suffix("\r\n")
+        .or_else(|| value.strip_suffix(['\r', '\n']))
+        .unwrap_or(value)
+}
+
 /// Type of line endings in markdown.
 ///
 /// Particularly when working with Windows, you might want to use
