@@ -1,0 +1,60 @@
+{
+  "commit": "c88e46aafe672ec44f0c15f27fece7221981a87e",
+  "src_tree": "fc6a3b57ae9ed031fdce806d10f760b1889d7c8b",
+  "coverage": {
+    "measured": 13538,
+    "covered": 13538,
+    "unreachable_exclusions": 22,
+    "target": "aarch64-apple-darwin",
+    "features": "all"
+  },
+  "checks": [
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test:coverage --package core-markdown --all-targets true --all-features true",
+      "scope": "native runtime",
+      "passed": true,
+      "log_sha256": "6665f4901833901a50b0c59e005ed351121fbe3bf7dd895d9ab5b546508edcfa",
+      "commit": "c88e46aafe672ec44f0c15f27fece7221981a87e",
+      "src_tree": "fc6a3b57ae9ed031fdce806d10f760b1889d7c8b"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test",
+      "scope": "default workspace",
+      "passed": true,
+      "log_sha256": "dfa2f6e5052583abd6448a391e7a696f94cc28acea09fc94b28af04aba272b28",
+      "commit": "c88e46aafe672ec44f0c15f27fece7221981a87e",
+      "src_tree": "fc6a3b57ae9ed031fdce806d10f760b1889d7c8b"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+      "scope": "all features/targets",
+      "passed": true,
+      "log_sha256": "98b59a153be4e87e3287218605b7da1a20f850c78af98167a14541d90ae32bae",
+      "commit": "c88e46aafe672ec44f0c15f27fece7221981a87e",
+      "src_tree": "fc6a3b57ae9ed031fdce806d10f760b1889d7c8b"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo check --lib --all-features --target x86_64-unknown-linux-gnu --locked",
+      "scope": "compile-only",
+      "passed": true,
+      "log_sha256": "439969807f687d9251816ec58e31b77e29b835e33f2867e1ba1682414861321a",
+      "commit": "c88e46aafe672ec44f0c15f27fece7221981a87e",
+      "src_tree": "fc6a3b57ae9ed031fdce806d10f760b1889d7c8b"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "passed": true,
+      "commit": "c88e46aafe672ec44f0c15f27fece7221981a87e",
+      "src_tree": "fc6a3b57ae9ed031fdce806d10f760b1889d7c8b",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "preservation": {
+    "log_sha256": "96b6142c1337f7ce3117609fae2300121df64d8e47b303a589689145306d181a",
+    "corpus_outputs": 8468,
+    "diagnostic_results": 58596,
+    "edited_arenas": 120,
+    "new_serializer_results": 21098,
+    "allocation_records": 32
+  }
+}
