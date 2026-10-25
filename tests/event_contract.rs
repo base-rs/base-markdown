@@ -825,3 +825,65 @@ fn individual_event_delivery_matches_whole_stream_rendering() {
         .is_err());
     assert!(output.is_empty());
 }
+
+#[test]
+fn deferred_image_titles_retain_values_until_the_image_closes() {
+    use std::borrow::Cow;
+    let source = "<&\"\0é";
+    let options = Options::default();
+    for title in [
+        Text::Source(0..source.len()),
+        Text::Literal("<&\"\0é"),
+        Text::from(source.to_string()),
+    ] {
+        let body = vec![
+            EventKind::Start(Tag::Image {
+                destination: Text::Literal("image"),
+                title: Some(title),
+            }),
+            EventKind::Text(Text::Literal("outer ")),
+            EventKind::Start(Tag::Image {
+                destination: Text::Literal("nested"),
+                title: Some(Text::Literal("ignored")),
+            }),
+            EventKind::Text(Text::Literal("inner")),
+            EventKind::End(TagKind::Image),
+            EventKind::End(TagKind::Image),
+        ];
+        let mut output = String::new();
+        render_events(source, document(body), &options.compile, &mut output).unwrap();
+        assert_eq!(
+            output,
+            "<img src=\"image\" alt=\"outer inner\" title=\"&lt;&amp;&quot;�é\" />"
+        );
+    }
+
+    let mut output = String::new();
+    let mut renderer = core_markdown::EventHtmlRenderer::new("", &options.compile, &mut output);
+    renderer
+        .event(event(EventKind::Start(Tag::Document(None))).unwrap())
+        .unwrap();
+    {
+        // A custom producer may discard the borrowed title immediately after this call.
+        let title = String::from("temporary & title");
+        renderer
+            .event(Event {
+                span: 0..0,
+                kind: EventKind::Start(Tag::Image {
+                    destination: Text::Literal("image"),
+                    title: Some(Text::Value(Cow::Borrowed(&title))),
+                }),
+            })
+            .unwrap();
+    }
+    renderer
+        .event(event(EventKind::End(TagKind::Image)).unwrap())
+        .unwrap();
+    renderer
+        .event(event(EventKind::End(TagKind::Document)).unwrap())
+        .unwrap();
+    assert_eq!(
+        output,
+        "<img src=\"image\" alt=\"\" title=\"temporary &amp; title\" />"
+    );
+}
