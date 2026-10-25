@@ -216,14 +216,15 @@ impl<'a> State<'a> {
                 Tag::BlockQuote => self.blockquote(document, id),
                 Tag::List { start, .. } => self.list(document, id, start.is_some()),
                 Tag::Item { .. } => self.list_item(document, id),
-                Tag::Emphasis => self.emphasis(document, id, info),
-                Tag::Strong => self.strong(document, id, info),
-                Tag::Delete => {
-                    self.output.push_str("~~");
-                    self.container_phrasing(document, id, info)?;
-                    self.output.push_str("~~");
-                    Ok(())
+                Tag::Emphasis => {
+                    let marker = self.options.check_emphasis()?;
+                    self.delimited_phrasing(document, id, info, marker, 1)
                 }
+                Tag::Strong => {
+                    let marker = self.options.check_strong()?;
+                    self.delimited_phrasing(document, id, info, marker, 2)
+                }
+                Tag::Delete => self.delimited_phrasing(document, id, info, '~', 2),
                 Tag::Link { destination, title } | Tag::Image { destination, title } => {
                     let image = matches!(tag, Tag::Image { .. });
                     let destination = destination.resolve(source).unwrap();
