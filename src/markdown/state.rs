@@ -622,6 +622,9 @@ impl<'a> State<'a> {
 
     fn peek_node<S: AsRef<str>>(&mut self, document: &Document<S>, id: NodeId) -> Option<char> {
         match &document.node(id).unwrap().kind {
+            EventKind::Text(value) | EventKind::SoftBreak(value) => {
+                super::escape::literal_prefix(value.resolve(document.source()).unwrap())
+            }
             EventKind::Start(Tag::Emphasis) => Some(self.options.emphasis),
             EventKind::Start(Tag::Strong) => Some(self.options.strong),
             EventKind::Start(Tag::Image { .. }) => Some('!'),

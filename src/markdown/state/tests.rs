@@ -78,6 +78,52 @@ fn handles_adjacent_text_nodes_and_phrasing_lookahead_errors() {
 }
 
 #[test]
+fn literal_lookahead_matches_rendering_across_scopes_and_wrapping_modes() {
+    use crate::markdown::{construct_name::ConstructName, LineWrapping};
+    let mut document = empty();
+    let text = document
+        .append_child(document.root(), EventKind::Text(Text::Literal("")))
+        .unwrap();
+    assert_eq!(
+        State::new(&Options::default()).peek_node(&document, text),
+        None
+    );
+    let scopes = [
+        ConstructName::Phrasing,
+        ConstructName::Label,
+        ConstructName::DestinationRaw,
+        ConstructName::HeadingAtx,
+        ConstructName::CodeFencedLangGraveAccent,
+    ];
+    for line_wrapping in [LineWrapping::Preserve, LineWrapping::Unwrap] {
+        let options = Options {
+            line_wrapping,
+            ..Options::default()
+        };
+        for scope in scopes {
+            for first in (0..=127).map(char::from).chain(['é', 'α', '\u{a0}', '世']) {
+                for after in ["", "ordinary", "*", "\\!", "\r\n# two", "\n12. two"] {
+                    document
+                        .set_kind(
+                            text,
+                            EventKind::Text(Text::from(alloc::format!("{first}{after}"))),
+                        )
+                        .unwrap();
+                    let mut state = State::new(&options);
+                    state.enter(scope);
+                    if let Some(prefix) = state.peek_node(&document, text) {
+                        state
+                            .write_node(&document, text, &Info::new("", ""))
+                            .unwrap();
+                        assert_eq!(state.output.chars().next(), Some(prefix));
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn joins_code_and_spread_items_consistently() {
     let options = Options {
         fences: false,

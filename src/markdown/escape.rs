@@ -120,6 +120,13 @@ static RULES: &[Rule] = &[
     rule!(b'$', Line, Set(b"$"), 0, 0),
 ];
 
+// A first character outside every escape rule stays literal in any formatting scope.
+// CR/LF and ASCII spaces/tabs also stay on the full-render path for unwrap/task trimming.
+pub(super) fn literal_prefix(value: &str) -> Option<char> {
+    let first = value.chars().next()?;
+    (!RULES.iter().any(|rule| char::from(rule.byte) == first)).then_some(first)
+}
+
 fn scopes(stack: &[ConstructName]) -> u32 {
     stack.iter().fold(0, |mask, name| mask | bit(*name))
 }
