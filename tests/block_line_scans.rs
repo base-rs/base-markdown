@@ -3,8 +3,8 @@
 
 use core_markdown::{
     render_events,
-    stream::{EventKind, Text},
-    to_html_with_options, Document, EventParser, Options,
+    stream::{EventKind, Tag, Text},
+    to_html_with_options, Document, EventParser, Options, ParseOptions,
 };
 
 fn assert_rendering_paths(source: &str, options: &Options, expected: &str) {
@@ -122,5 +122,25 @@ fn paragraph_boundaries_distinguish_block_markers_from_ordinary_text() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn nested_empty_items_preserve_the_outer_boundary_before_a_blank_line() {
+    for ending in ["\n", "\r", "\r\n"] {
+        let source = "- > - a\n  >\n  > -\n\noutside\n".replace('\n', ending);
+        let expected_end = source.find(&format!("{ending}{ending}")).unwrap() + ending.len();
+        let document =
+            core_markdown::Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+        let item = document
+            .descendants(document.root())
+            .find(|id| {
+                matches!(
+                    document.node(*id).unwrap().kind,
+                    EventKind::Start(Tag::Item { .. })
+                )
+            })
+            .unwrap();
+        assert_eq!(document.node(item).unwrap().span, 0..expected_end);
     }
 }
