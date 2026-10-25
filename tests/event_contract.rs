@@ -18,6 +18,112 @@ fn document(body: Vec<EventKind<'static>>) -> Vec<Result<Event<'static>, StreamE
 }
 
 #[test]
+fn footnotes_keep_call_order_and_the_first_completed_definition() {
+    let definition = |key| EventKind::Start(Tag::FootnoteDefinition(Text::Literal(key)));
+    let end = || EventKind::End(TagKind::FootnoteDefinition);
+    let body = vec![
+        definition("unused"),
+        EventKind::Text(Text::Literal("hidden")),
+        end(),
+        EventKind::FootnoteReference(Text::Literal("B")),
+        EventKind::FootnoteReference(Text::Literal("Z")),
+        EventKind::FootnoteReference(Text::Literal("ΟΣ")),
+        EventKind::FootnoteReference(Text::Literal("B")),
+        definition("Z"),
+        end(),
+        definition("Z"),
+        EventKind::Text(Text::Literal("ignored")),
+        end(),
+        definition("B"),
+        EventKind::Text(Text::Literal("outer")),
+        definition("B"),
+        EventKind::Text(Text::Literal("inner")),
+        end(),
+        end(),
+        definition("ΟΣ"),
+        EventKind::Text(Text::Literal("unicode")),
+        end(),
+    ];
+    let mut output = String::new();
+    render_events("", document(body), &Options::default().compile, &mut output).unwrap();
+    assert!(output.contains("id=\"user-content-fnref-b-2\""));
+    assert!(output.contains("id=\"user-content-fn-%CE%BF%CF%82\""));
+    let first = output.find("<li id=\"user-content-fn-b\"").unwrap();
+    let second = output.find("<li id=\"user-content-fn-z\"").unwrap();
+    let third = output
+        .find("<li id=\"user-content-fn-%CE%BF%CF%82\"")
+        .unwrap();
+    assert!(first < second && second < third);
+    assert!(output.contains("inner"));
+    assert!(output.contains("unicode"));
+    for omitted in ["hidden", "ignored", "outer"] {
+        assert!(!output.contains(omitted));
+    }
+}
+
+#[test]
+fn footnote_ids_survive_a_call_writer_failure() {
+    struct Writer {
+        calls: usize,
+        fail_at: usize,
+        output: String,
+    }
+    impl std::fmt::Write for Writer {
+        fn write_str(&mut self, value: &str) -> std::fmt::Result {
+            let call = self.calls;
+            self.calls += 1;
+            if call == self.fail_at {
+                return Err(std::fmt::Error);
+            }
+            self.output.push_str(value);
+            Ok(())
+        }
+    }
+    let mut writer = Writer {
+        calls: 0,
+        fail_at: usize::MAX,
+        output: String::new(),
+    };
+    let options = Options::default();
+    {
+        let mut renderer = core_markdown::EventHtmlRenderer::new("", &options.compile, &mut writer);
+        renderer
+            .event(event(EventKind::Start(Tag::Document(None))).unwrap())
+            .unwrap();
+        renderer
+            .event(event(EventKind::FootnoteReference(Text::Literal("É"))).unwrap())
+            .unwrap();
+    }
+    let writes = writer.calls;
+    for fail_at in 0..writes {
+        let mut writer = Writer {
+            calls: 0,
+            fail_at,
+            output: String::new(),
+        };
+        let mut renderer = core_markdown::EventHtmlRenderer::new("", &options.compile, &mut writer);
+        renderer
+            .event(event(EventKind::Start(Tag::Document(None))).unwrap())
+            .unwrap();
+        assert!(matches!(
+            renderer.event(event(EventKind::FootnoteReference(Text::Literal("É"))).unwrap()),
+            Err(StreamError::Write(_))
+        ));
+        for kind in [
+            EventKind::FootnoteReference(Text::Literal("É")),
+            EventKind::Start(Tag::FootnoteDefinition(Text::Literal("É"))),
+            EventKind::Text(Text::Literal("body")),
+            EventKind::End(TagKind::FootnoteDefinition),
+            EventKind::End(TagKind::Document),
+        ] {
+            renderer.event(event(kind).unwrap()).unwrap();
+        }
+        assert!(writer.output.contains("id=\"user-content-fnref-%C3%A9-2\""));
+        assert!(writer.output.contains("<li id=\"user-content-fn-%C3%A9\""));
+    }
+}
+
+#[test]
 fn all_invalid_metadata_is_rejected_before_rendering_or_editing() {
     let bad = || Text::Source(1..2);
     let kinds = vec![
