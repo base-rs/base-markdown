@@ -18,18 +18,32 @@ pub fn line_endings(value: &str) -> impl Iterator<Item = Range<usize>> + '_ {
     })
 }
 
-// A delimiter must have a length absent from the content's complete marker runs.
-pub fn delimiter_size(value: &str, marker: u8, minimum: usize) -> usize {
-    let bytes = value.as_bytes();
-    let mut lengths = Vec::new();
+/// Complete runs of an ASCII syntax marker, skipping ordinary bytes together.
+pub fn marker_runs(bytes: &[u8], marker: u8) -> impl Iterator<Item = Range<usize>> + '_ {
     let mut at = 0;
-    while let Some(offset) = memchr::memchr(marker, &bytes[at..]) {
+    core::iter::from_fn(move || {
+        let offset = memchr::memchr(marker, &bytes[at..])?;
         let start = at + offset;
         at = start + 1;
         while bytes.get(at) == Some(&marker) {
             at += 1;
         }
-        lengths.push(at - start);
+        Some(start..at)
+    })
+}
+
+pub fn longest_run(value: &str, marker: u8) -> usize {
+    marker_runs(value.as_bytes(), marker)
+        .map(|run| run.len())
+        .max()
+        .unwrap_or(0)
+}
+
+// A delimiter must have a length absent from the content's complete marker runs.
+pub fn delimiter_size(value: &str, marker: u8, minimum: usize) -> usize {
+    let mut lengths = Vec::new();
+    for run in marker_runs(value.as_bytes(), marker) {
+        lengths.push(run.len());
     }
     lengths.sort_unstable();
     let mut size = minimum;
@@ -43,7 +57,7 @@ pub fn delimiter_size(value: &str, marker: u8, minimum: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{delimiter_size, line_endings};
+    use super::{delimiter_size, line_endings, longest_run, marker_runs};
     use alloc::vec::Vec;
 
     #[test]
@@ -59,6 +73,15 @@ mod tests {
         assert_eq!(delimiter_size("`` é ` ```` `", b'`', 1), 3);
         assert_eq!(delimiter_size("$$ x $$$", b'$', 2), 4);
         assert_eq!(delimiter_size("$$$ $$$", b'$', 2), 2);
+        assert_eq!(longest_run("", b'`'), 0);
+        assert_eq!(longest_run("plain é α", b'`'), 0);
+        assert_eq!(longest_run("`é``α````", b'`'), 4);
+        assert_eq!(longest_run("~~~ é ~~", b'~'), 3);
+        assert_eq!(longest_run("$$ α $$$$", b'$'), 4);
+        assert_eq!(
+            marker_runs(b"`a``b```", b'`').collect::<Vec<_>>(),
+            [0..1, 2..4, 5..8]
+        );
     }
 
     #[test]

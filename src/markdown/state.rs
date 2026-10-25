@@ -806,9 +806,10 @@ fn write_table_pipes(value: &str, result: &mut String) {
     while index < bytes.len() {
         if bytes[index] == b'`' {
             let start = index;
-            while index < bytes.len() && bytes[index] == b'`' {
-                index += 1;
-            }
+            index += super::util::scan::marker_runs(&bytes[index..], b'`')
+                .next()
+                .expect("the current byte begins a backtick run")
+                .len();
             let ticks = index - start;
             if code_ticks == Some(ticks) {
                 code_ticks = None;
@@ -842,21 +843,8 @@ fn escape_table_pipes(value: &str) -> String {
     output
 }
 
-fn has_matching_ticks(bytes: &[u8], mut index: usize, ticks: usize) -> bool {
-    while index < bytes.len() {
-        if bytes[index] == b'`' {
-            let start = index;
-            while index < bytes.len() && bytes[index] == b'`' {
-                index += 1;
-            }
-            if index - start == ticks {
-                return true;
-            }
-        } else {
-            index += 1;
-        }
-    }
-    false
+fn has_matching_ticks(bytes: &[u8], index: usize, ticks: usize) -> bool {
+    super::util::scan::marker_runs(&bytes[index..], b'`').any(|run| run.len() == ticks)
 }
 
 #[cfg(test)]
