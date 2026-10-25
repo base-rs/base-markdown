@@ -7,14 +7,14 @@ use core_markdown::{
 
 fn assert_html(source: &str, options: &Options, expected: &str) {
     assert_eq!(
-        to_html_with_options(source, options).unwrap(),
+        to_html_with_options(source, options),
         expected,
         "{source:?}"
     );
     let mut output = String::new();
     render_events(
         source,
-        EventParser::new(source, &options.parse).unwrap(),
+        EventParser::new(source, &options.parse),
         &options.compile,
         &mut output,
     )
@@ -222,7 +222,7 @@ fn definition_label_limits_include_expanded_tabs_and_escaped_brackets() {
     for count in [998, 999, 1000] {
         let label = "a".repeat(count);
         let source = format!("[{label}]: /d\n\n[{label}]");
-        let output = to_html_with_options(&source, &Options::default()).unwrap();
+        let output = to_html_with_options(&source, &Options::default());
         assert_eq!(output.contains("href=\"/d\""), count <= 999);
     }
 }

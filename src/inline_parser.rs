@@ -9,7 +9,7 @@ use crate::util::character_reference::{scan as scan_character_reference, Referen
 use crate::util::normalize_identifier::{
     normalize_identifier_into, normalize_reference_identifier_into,
 };
-use crate::value_builder::decode_string_with_options;
+use crate::value_builder::{decode_string_with_options, decode_unpadded};
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -973,39 +973,8 @@ impl InlineParser {
         }
     }
 
-    /// Inline HTML and title continuations omit paragraph prefix whitespace.
-    /// This operates on the active source view before ranges map back to source.
-    fn unpadded_text(source: &str, range: Range<usize>) -> Text<'static> {
-        let bytes = source.as_bytes();
-        let mut builder = crate::value_builder::ValueBuilder::new(source);
-        let mut start = range.start;
-        let mut at = start;
-        while at < range.end {
-            if bytes[at] == 0 {
-                builder.append(Text::Source(start..at));
-                builder.append(Text::Literal("�"));
-                at += 1;
-                start = at;
-            } else if matches!(bytes[at], b'\r' | b'\n') {
-                at += 1 + usize::from(bytes[at] == b'\r' && bytes.get(at + 1) == Some(&b'\n'));
-                let end = at;
-                while at < range.end && matches!(bytes[at], b' ' | b'\t') {
-                    at += 1;
-                }
-                if end != at {
-                    builder.append(Text::Source(start..end));
-                    start = at;
-                }
-            } else {
-                at += 1;
-            }
-        }
-        builder.append(Text::Source(start..range.end));
-        builder.finish()
-    }
-
     fn html_text(&self, source: &str, range: Range<usize>) -> Text<'static> {
-        match Self::unpadded_text(source, range) {
+        match decode_unpadded(source, range, None) {
             Text::Source(range) => self.text(source, range),
             value => value,
         }
@@ -1017,15 +986,9 @@ impl InlineParser {
         range: Range<usize>,
         options: &crate::ParseOptions,
     ) -> Text<'static> {
-        match Self::unpadded_text(source, range) {
-            Text::Source(range) => self.decoded(source, range, options),
-            value => {
-                let resolved = value.resolve(source).expect("normalized title is owned");
-                match decode_string_with_options(resolved, 0..resolved.len(), options) {
-                    Text::Source(_) => value,
-                    decoded => decoded,
-                }
-            }
+        match decode_unpadded(source, range, Some(options)) {
+            Text::Source(range) => self.text(source, range),
+            value => value,
         }
     }
 

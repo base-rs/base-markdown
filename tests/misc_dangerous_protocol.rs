@@ -214,19 +214,19 @@ fn dangerous_protocol_image_with_option() {
         ..Default::default()
     };
 
-    let result = to_html_with_options("![](javascript:alert(1))", &options).unwrap();
+    let result = to_html_with_options("![](javascript:alert(1))", &options);
     assert_eq!(
         result, "<p><img src=\"javascript:alert(1)\" alt=\"\" /></p>",
         "should allow javascript protocol with allow_any_img_src option"
     );
 
-    let result = to_html_with_options("![](irc:///help)", &options).unwrap();
+    let result = to_html_with_options("![](irc:///help)", &options);
     assert_eq!(
         result, "<p><img src=\"irc:///help\" alt=\"\" /></p>",
         "should allow irc protocol with allow_any_img_src option"
     );
 
-    let result = to_html_with_options("![](mailto:a)", &options).unwrap();
+    let result = to_html_with_options("![](mailto:a)", &options);
     assert_eq!(
         result, "<p><img src=\"mailto:a\" alt=\"\" /></p>",
         "should allow mailto protocol with allow_any_img_src option"

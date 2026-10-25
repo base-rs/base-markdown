@@ -284,7 +284,7 @@ fn code_fenced() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>```</p>",
         "should support turning off code (fenced)"
     );

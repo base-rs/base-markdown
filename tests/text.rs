@@ -46,7 +46,7 @@ fn ordinary_marker_at_chunk_start() {
         ..Default::default()
     };
     assert_eq!(
-        to_html_with_options("]unmatched [link](/url)", &options).unwrap(),
+        to_html_with_options("]unmatched [link](/url)", &options),
         "<p>]unmatched [link](/url)</p>"
     );
 }

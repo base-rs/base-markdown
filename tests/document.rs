@@ -643,7 +643,7 @@ fn escaped_footnote_labels_and_nul_code_info_roundtrip() {
     assert!(markdown.contains("[^a\\]b]"));
     assert_eq!(
         html(&document),
-        core_markdown::to_html_with_options(&markdown, &options).unwrap()
+        core_markdown::to_html_with_options(&markdown, &options)
     );
     let source = "```r\0ust extra &amp;\nx\n```\n";
     let document = Document::parse(source, &ParseOptions::default()).unwrap();
@@ -734,9 +734,7 @@ fn copied_sections_materialize_frontmatter_footnotes_and_edited_values() {
     );
     assert_eq!(
         html(&document).trim_end(),
-        core_markdown::to_html_with_options(&markdown, &options)
-            .unwrap()
-            .trim_end()
+        core_markdown::to_html_with_options(&markdown, &options).trim_end()
     );
 }
 

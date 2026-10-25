@@ -5,7 +5,7 @@ The [Pull Parser Architecture](pull-parser.md) specifies the source-backed seman
 
 Extensions use their syntax names throughout configuration and implementation: `table`, `strikethrough`, `autolink_literal`, `task_list_item`, and footnote constructs. Each can be enabled independently through `Constructs`; `Options::gfm()` remains a convenient preset. See [Extension configuration](extensions.md) for examples and the configuration-name migration.
 
-MDX is no longer supported. JavaScript expressions and import/export statements are ordinary Markdown, and angle-bracket syntax follows CommonMark HTML rules. There are no MDX presets, callback hooks, tokenizer states, or AST variants. Markdown parsing itself has no syntax errors; public result-returning APIs remain compatible while custom event consumers can still report invalid streams or output failures.
+MDX is no longer supported. JavaScript expressions and import/export statements are ordinary Markdown, and angle-bracket syntax follows CommonMark HTML rules. There are no MDX presets, callback hooks, tokenizer states, or AST variants. `EventParser::new` returns the parser directly, and `to_html_with_options` returns a string: Markdown has no syntax errors. Checked event consumers, document validation and Markdown serialization retain their meaningful errors. See the [API migration](pull-parser.md#infallible-construction-and-html-conversion).
 
 ## Main paths
 
@@ -21,6 +21,10 @@ AST edits share private arena-link operations. Moves refresh subtree context aft
 The parser does not produce a document-wide grammar token stream or select a compatibility backend. Block and inline syntax handlers consume source bytes directly, and HTML/autolink recognizers are small shared byte state machines.
 
 Ordinary inline regions scan physical source fragments without copying them. Constructs that span stripped container prefixes use a lazily constructed logical view and source-segment map with the same scanner. Semantic values map back to source ranges when contiguous, or materialize only the value that requires normalization. Logical-view offsets never escape in public events.
+
+Inline HTML and titles share source-backed value construction. Physical continuation indentation is removed in the same pass as optional escape/entity decoding and NUL replacement. Entity-produced line endings do not remove following whitespace. Numeric references use a stack UTF-8 buffer instead of a temporary owned string.
+
+HTML heading IDs and AST heading enumeration share semantic text extraction and terminal-line-ending trimming. General AST text also includes code-block values; heading text excludes them. The Markdown serializer uses the same one-terminal-line-ending trim rule.
 
 Bare inline link destinations use the shared candidate-byte scanner to skip ordinary URL runs. Scalar handling retains escapes, balanced parentheses, whitespace and control-byte rules; NUL remains destination data until value decoding replaces it. This uses NEON on supported AArch64 targets and the existing scalar fallback elsewhere, without extra parser state or allocation.
 

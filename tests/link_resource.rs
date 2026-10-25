@@ -105,7 +105,7 @@ fn link_resource() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("[link](<foo\nbar>)", &danger)?,
+        to_html_with_options("[link](<foo\nbar>)", &danger),
         "<p>[link](<foo\nbar>)</p>",
         "should not support links w/ line endings in enclosed destination"
     );
@@ -123,7 +123,7 @@ fn link_resource() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("[a](<b)c\n[a](<b)c>\n[a](<b>c)", &danger)?,
+        to_html_with_options("[a](<b)c\n[a](<b)c>\n[a](<b>c)", &danger),
         "<p>[a](&lt;b)c\n[a](&lt;b)c&gt;\n[a](<b>c)</p>",
         "should not support links w/ unmatched enclosed destinations"
     );
@@ -153,7 +153,7 @@ fn link_resource() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("[link](foo\\)\\:)", &danger)?,
+        to_html_with_options("[link](foo\\)\\:)", &danger),
         "<p><a href=\"foo):\">link</a></p>",
         "should support links w/ escapes in destinations"
     );
@@ -327,7 +327,7 @@ fn link_resource() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("[foo <bar attr=\"](baz)\">", &danger)?,
+        to_html_with_options("[foo <bar attr=\"](baz)\">", &danger),
         "<p>[foo <bar attr=\"](baz)\"></p>",
         "should prefer HTML over links"
     );
@@ -365,7 +365,7 @@ fn link_resource() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("[a](<b>\"c\")", &danger)?,
+        to_html_with_options("[a](<b>\"c\")", &danger),
         "<p>[a](<b>&quot;c&quot;)</p>",
         "should require whitespace between enclosed destination and title"
     );

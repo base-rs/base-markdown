@@ -68,7 +68,7 @@ fn character_escape() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("<a href=\"/bar\\/)\">", &danger)?,
+        to_html_with_options("<a href=\"/bar\\/)\">", &danger),
         "<a href=\"/bar\\/)\">",
         "should not escape in flow html"
     );
@@ -104,7 +104,7 @@ fn character_escape() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>\\&gt; a</p>",
         "should support turning off character escapes"
     );

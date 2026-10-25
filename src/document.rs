@@ -236,7 +236,7 @@ impl<S: AsRef<str>> Document<S> {
     pub fn parse(source: S, options: &crate::ParseOptions) -> Result<Self, StreamError> {
         let mut builder = AstBuilder::new();
         {
-            let mut events = crate::EventParser::prepare(source.as_ref(), options);
+            let mut events = crate::EventParser::new(source.as_ref(), options);
             if builder.consume(&mut events, usize::MAX).is_err() {
                 unreachable!("the built-in Markdown producer yields a balanced semantic stream");
             }
@@ -530,24 +530,11 @@ impl<S: AsRef<str>> Document<S> {
     fn collect_text<const HEADING: bool>(&self, id: NodeId) -> String {
         let mut text = String::new();
         for child in self.descendants(id) {
-            match &self.nodes[child.index()].kind {
-                EventKind::Text(value)
-                | EventKind::SoftBreak(value)
-                | EventKind::Math(value)
-                | EventKind::Code { value, .. }
-                | EventKind::Html { value, .. } => text.push_str(
-                    value
-                        .resolve(self.source())
-                        .expect("document text is validated"),
-                ),
-                EventKind::CodeBlock { value, .. } if !HEADING => text.push_str(
-                    value
-                        .resolve(self.source())
-                        .expect("document text is validated"),
-                ),
-                EventKind::HardBreak => text.push('\n'),
-                _ => {}
-            }
+            crate::headings::append_text::<HEADING>(
+                &self.nodes[child.index()].kind,
+                self.source(),
+                &mut text,
+            );
         }
         text
     }
@@ -558,11 +545,7 @@ impl<S: AsRef<str>> Document<S> {
         for id in self.descendants(self.root()) {
             if let EventKind::Start(Tag::Heading(level)) = self.nodes[id.index()].kind {
                 let mut text = self.collect_text::<true>(id);
-                if text.ends_with("\r\n") {
-                    text.truncate(text.len() - 2);
-                } else if text.ends_with(['\r', '\n']) {
-                    text.pop();
-                }
+                text.truncate(crate::util::line_ending::trim_terminal_ending(&text).len());
                 let anchor = anchors.anchor_for(&text);
                 if (options.min_level..=options.max_level).contains(&level) {
                     entries.push(crate::HeadingEntry {

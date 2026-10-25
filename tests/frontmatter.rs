@@ -33,115 +33,115 @@ fn frontmatter() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("---\ntitle: Jupyter\n---", &frontmatter)?,
+        to_html_with_options("---\ntitle: Jupyter\n---", &frontmatter),
         "",
         "should support frontmatter (yaml)"
     );
 
     assert_eq!(
-        to_html_with_options("+++\ntitle = \"Jupyter\"\n+++", &frontmatter)?,
+        to_html_with_options("+++\ntitle = \"Jupyter\"\n+++", &frontmatter),
         "",
         "should support frontmatter (toml)"
     );
 
     assert_eq!(
-        to_html_with_options("---\n---", &frontmatter)?,
+        to_html_with_options("---\n---", &frontmatter),
         "",
         "should support empty frontmatter"
     );
 
     assert_eq!(
-        to_html_with_options("--\n---", &frontmatter)?,
+        to_html_with_options("--\n---", &frontmatter),
         "<h2>--</h2>",
         "should not support 2 markers in an opening fence"
     );
 
     assert_eq!(
-        to_html_with_options("----\n---", &frontmatter)?,
+        to_html_with_options("----\n---", &frontmatter),
         "<hr />\n<hr />",
         "should not support 4 markers in an opening fence"
     );
 
     assert_eq!(
-        to_html_with_options("---\n--", &frontmatter)?,
+        to_html_with_options("---\n--", &frontmatter),
         "<hr />\n<p>--</p>",
         "should not support 2 markers in a closing fence"
     );
 
     assert_eq!(
-        to_html_with_options("---\n--\n", &frontmatter)?,
+        to_html_with_options("---\n--\n", &frontmatter),
         "<hr />\n<p>--</p>\n",
         "should not panic if newline after 2 marker closing fence"
     );
 
     assert_eq!(
-        to_html_with_options("---\n----", &frontmatter)?,
+        to_html_with_options("---\n----", &frontmatter),
         "<hr />\n<hr />",
         "should not support 4 markers in a closing fence"
     );
 
     assert_eq!(
-        to_html_with_options("---\n---\n## Neptune", &frontmatter)?,
+        to_html_with_options("---\n---\n## Neptune", &frontmatter),
         "<h2>Neptune</h2>",
         "should support content after frontmatter"
     );
 
     assert_eq!(
-        to_html_with_options("--- \t\n---", &frontmatter)?,
+        to_html_with_options("--- \t\n---", &frontmatter),
         "",
         "should support spaces and tabs after opening fence"
     );
 
     assert_eq!(
-        to_html_with_options("---\n---\t ", &frontmatter)?,
+        to_html_with_options("---\n---\t ", &frontmatter),
         "",
         "should support spaces and tabs after closing fence"
     );
 
     assert_eq!(
-        to_html_with_options("---\n---\na\nb", &frontmatter)?,
+        to_html_with_options("---\n---\na\nb", &frontmatter),
         "<p>a\nb</p>",
         "should support line endings after frontmatter"
     );
 
     assert_eq!(
-        to_html_with_options("--- a\n---", &frontmatter)?,
+        to_html_with_options("--- a\n---", &frontmatter),
         "",
         "should support a format hint after the opening fence"
     );
 
     assert_eq!(
-        to_html_with_options("---\n--- b", &frontmatter)?,
+        to_html_with_options("---\n--- b", &frontmatter),
         "<hr />\n<p>--- b</p>",
         "should not support content after closing fence"
     );
 
     assert_eq!(
-        to_html_with_options("## Neptune\n---\n---", &frontmatter)?,
+        to_html_with_options("## Neptune\n---\n---", &frontmatter),
         "<h2>Neptune</h2>\n<hr />\n<hr />",
         "should not support frontmatter after content"
     );
 
     assert_eq!(
-        to_html_with_options("> ---\n> ---\n> ## Neptune", &frontmatter)?,
+        to_html_with_options("> ---\n> ---\n> ## Neptune", &frontmatter),
         "<blockquote>\n<hr />\n<hr />\n<h2>Neptune</h2>\n</blockquote>",
         "should not support frontmatter in a container"
     );
 
     assert_eq!(
-        to_html_with_options("---", &frontmatter)?,
+        to_html_with_options("---", &frontmatter),
         "<hr />",
         "should not support just an opening fence"
     );
 
     assert_eq!(
-        to_html_with_options("---\ntitle: Neptune", &frontmatter)?,
+        to_html_with_options("---\ntitle: Neptune", &frontmatter),
         "<hr />\n<p>title: Neptune</p>",
         "should not support a missing closing fence"
     );
 
     assert_eq!(
-        to_html_with_options("---\na\n\nb\n \t\nc\n---", &frontmatter)?,
+        to_html_with_options("---\na\n\nb\n \t\nc\n---", &frontmatter),
         "",
         "should support blank lines in frontmatter"
     );
@@ -418,7 +418,7 @@ fn both_html_paths_omit_frontmatter_and_keep_later_code() {
     };
     let source = "--- json\n{}\n---\n\n# Neptune\n\n```rust\nlet x = 1;\n```";
     let expected = "<h1>Neptune</h1>\n<pre><code class=\"language-rust\">let x = 1;\n</code></pre>";
-    assert_eq!(to_html_with_options(source, &options).unwrap(), expected);
+    assert_eq!(to_html_with_options(source, &options), expected);
     let document = parse_document(source, &options.parse);
     let mut output = String::new();
     document.render_html(&options.compile, &mut output).unwrap();
@@ -567,8 +567,8 @@ fn rejected_multiline_frontmatter_restores_line_positions() {
     let mut options = Options::gfm();
     options.parse.constructs.frontmatter = true;
     for source in ["---\n\n>", "---\r\r>", "---x\n\n>x", "+++\n\n> x"] {
-        let expected = to_html_with_options(source, &Options::gfm()).unwrap();
-        assert_eq!(to_html_with_options(source, &options).unwrap(), expected);
+        let expected = to_html_with_options(source, &Options::gfm());
+        assert_eq!(to_html_with_options(source, &options), expected);
         let document = core_markdown::Document::parse(source, &options.parse).unwrap();
         let mut output = String::new();
         core_markdown::render_events(source, document.events(), &options.compile, &mut output)

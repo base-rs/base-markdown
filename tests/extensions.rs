@@ -55,12 +55,9 @@ fn syntax_extensions_can_be_enabled_without_a_preset() {
             },
             ..Options::default()
         };
-        let actual = to_html_with_options(source, &options).unwrap();
+        let actual = to_html_with_options(source, &options);
         assert!(actual.contains(expected), "{}: {}", source, actual);
-        assert_eq!(
-            actual,
-            to_html_with_options(source, &Options::gfm()).unwrap()
-        );
+        assert_eq!(actual, to_html_with_options(source, &Options::gfm()));
         assert_ne!(actual, to_html(source));
 
         let document = Document::parse(source, &options.parse).unwrap();

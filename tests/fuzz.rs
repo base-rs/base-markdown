@@ -4,11 +4,11 @@
 // Copyright, 2023, by Mick van Gelderen.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{message, to_html, to_html_with_options, Document, Options};
+use core_markdown::{to_html, to_html_with_options, Document, Options};
 use pretty_assertions::assert_eq;
 
 #[test]
-fn fuzz() -> Result<(), message::Message> {
+fn fuzz() {
     assert_eq!(
         to_html("[\n~\na\n-\n\n"),
         "<h2>[\n~\na</h2>\n",
@@ -18,7 +18,7 @@ fn fuzz() -> Result<(), message::Message> {
     // The first link is stopped by the `+` (so it’s `a@b.c`), but the next
     // link overlaps it (`b.c+d@e.f`).
     assert_eq!(
-        to_html_with_options("a@b.c+d@e.f", &Options::gfm())?,
+        to_html_with_options("a@b.c+d@e.f", &Options::gfm()),
         "<p><a href=\"mailto:a@b.c\">a@b.c</a><a href=\"mailto:+d@e.f\">+d@e.f</a></p>",
         "2: gfm: email autolink literals running into each other"
     );
@@ -48,7 +48,7 @@ fn fuzz() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("a ~ ", &Options::gfm())?,
+        to_html_with_options("a ~ ", &Options::gfm()),
         "<p>a ~</p>",
         "4-c: trailing whitespace and broken data (GH-14)"
     );
@@ -74,43 +74,43 @@ fn fuzz() -> Result<(), message::Message> {
     // GFM now shares the compact CommonMark behavior here (also matching Comrak).
     assert_eq!(
         to_html_with_options("> x\n``", &Options::gfm()),
-        Ok("<blockquote>\n<p>x\n``</p>\n</blockquote>".into()),
+        "<blockquote>\n<p>x\n``</p>\n</blockquote>",
         "7: lazy container lines almost starting fenced code (GH-19)"
     );
 
     assert_eq!(
         to_html_with_options("a\tb@c.d", &Options::gfm()),
-        Ok("<p>a\t<a href=\"mailto:b@c.d\">b@c.d</a></p>".into()),
+        "<p>a\t<a href=\"mailto:b@c.d\">b@c.d</a></p>",
         "8-a: autolink literals after tabs (GH-18)"
     );
 
     assert_eq!(
         to_html_with_options("aa\tb@c.d", &Options::gfm()),
-        Ok("<p>aa\t<a href=\"mailto:b@c.d\">b@c.d</a></p>".into()),
+        "<p>aa\t<a href=\"mailto:b@c.d\">b@c.d</a></p>",
         "8-b: autolink literals after tabs (GH-18)"
     );
 
     assert_eq!(
         to_html_with_options("aaa\tb@c.d", &Options::gfm()),
-        Ok("<p>aaa\t<a href=\"mailto:b@c.d\">b@c.d</a></p>".into()),
+        "<p>aaa\t<a href=\"mailto:b@c.d\">b@c.d</a></p>",
         "8-c: autolink literals after tabs (GH-18)"
     );
 
     assert_eq!(
         to_html_with_options("aaaa\tb@c.d", &Options::gfm()),
-        Ok("<p>aaaa\t<a href=\"mailto:b@c.d\">b@c.d</a></p>".into()),
+        "<p>aaaa\t<a href=\"mailto:b@c.d\">b@c.d</a></p>",
         "8-d: autolink literals after tabs (GH-18)"
     );
 
     assert_eq!(
         to_html_with_options("| a |\n| - |\n| www.a|", &Options::gfm()),
-        Ok("<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"http://www.a\">www.a</a></td>\n</tr>\n</tbody>\n</table>".into()),
+        "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"http://www.a\">www.a</a></td>\n</tr>\n</tbody>\n</table>",
         "9: autolink literals that end in table cell delimiter (GH-20)"
     );
 
     assert_eq!(
         to_html_with_options("[*]() [*]()", &Options::gfm()),
-        Ok("<p><a href=\"\">*</a> <a href=\"\">*</a></p>".into()),
+        "<p><a href=\"\">*</a> <a href=\"\">*</a></p>",
         "10: attention in different links (GH-21)"
     );
 
@@ -127,9 +127,7 @@ fn fuzz() -> Result<(), message::Message> {
                 ..Default::default()
             }
         ),
-        Ok("<p>&lt;</p>".to_string()),
+        "<p>&lt;</p>".to_string(),
         "12: incomplete HTML without panic (GH-26)"
     );
-
-    Ok(())
 }

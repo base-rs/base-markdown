@@ -13,7 +13,7 @@ fn assert_configured_html(source: &str, expected: &str, gfm: bool) {
     options.parse.html_tag_namespaces = true;
     options.parse.inline_code_info = true;
     assert_eq!(
-        to_html_with_options(source, &options).unwrap(),
+        to_html_with_options(source, &options),
         expected,
         "{source:?}"
     );
@@ -124,7 +124,7 @@ fn mixed_inline_regions_preserve_one_document_lifecycle() {
         let mut options = Options::default();
         options.parse.html_tag_namespaces = extended_options;
         options.parse.inline_code_info = extended_options;
-        let mut parser = EventParser::new(source, &options.parse).unwrap();
+        let mut parser = EventParser::new(source, &options.parse);
         let events: Vec<_> = parser.by_ref().map(Result::unwrap).collect();
         assert_eq!(
             events
@@ -151,6 +151,6 @@ fn mixed_inline_regions_preserve_one_document_lifecycle() {
             &mut checked,
         )
         .unwrap();
-        assert_eq!(checked, to_html_with_options(source, &options).unwrap());
+        assert_eq!(checked, to_html_with_options(source, &options));
     }
 }

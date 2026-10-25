@@ -3,11 +3,11 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{message, to_html, to_html_with_options, CompileOptions, LineEnding, Options};
+use core_markdown::{to_html, to_html_with_options, CompileOptions, LineEnding, Options};
 use pretty_assertions::assert_eq;
 
 #[test]
-fn default_line_ending() -> Result<(), message::Message> {
+fn default_line_ending() {
     assert_eq!(
         to_html("> a"),
         "<blockquote>\n<p>a</p>\n</blockquote>",
@@ -42,7 +42,7 @@ fn default_line_ending() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<blockquote>\r<p>a</p>\r</blockquote>",
         "should support the given line ending"
     );
@@ -57,12 +57,10 @@ fn default_line_ending() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         // To do: is this a bug in `to_html.js` that it uses `\r` for earlier line endings?
         // "<blockquote>\r<p>a</p>\r</blockquote>\n",
         "<blockquote>\n<p>a</p>\n</blockquote>\n",
         "should support the given line ending, even if line endings exist"
     );
-
-    Ok(())
 }

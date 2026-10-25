@@ -218,7 +218,7 @@ fn block_quote() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>&gt; # a\n&gt; b\n&gt; c</p>",
         "should support turning off block quotes"
     );

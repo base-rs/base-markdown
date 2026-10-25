@@ -23,7 +23,7 @@ fn options_preserve_bom_like_unicode() {
     options.parse.constructs.math_flow = true;
     for source in ["\u{fffd}", "\u{fec0}"] {
         assert_eq!(
-            core_markdown::to_html_with_options(source, &options).unwrap(),
+            core_markdown::to_html_with_options(source, &options),
             format!("<p>{source}</p>")
         );
     }

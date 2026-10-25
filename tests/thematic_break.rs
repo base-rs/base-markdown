@@ -187,7 +187,7 @@ fn thematic_break() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>***</p>",
         "should support turning off thematic breaks"
     );

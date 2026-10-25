@@ -54,7 +54,7 @@ fn autolink() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("<a+b+c:d>", &danger)?,
+        to_html_with_options("<a+b+c:d>", &danger),
         "<p><a href=\"a+b+c:d\">a+b+c:d</a></p>",
         "should support protocol autolinks w/ incorrect URIs (1, danger)"
     );
@@ -66,7 +66,7 @@ fn autolink() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("<made-up-scheme://foo,bar>", &danger)?,
+        to_html_with_options("<made-up-scheme://foo,bar>", &danger),
         "<p><a href=\"made-up-scheme://foo,bar\">made-up-scheme://foo,bar</a></p>",
         "should support protocol autolinks w/ incorrect URIs (2, danger)"
     );
@@ -78,7 +78,7 @@ fn autolink() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("<localhost:5001/foo>", &danger)?,
+        to_html_with_options("<localhost:5001/foo>", &danger),
         "<p><a href=\"localhost:5001/foo\">localhost:5001/foo</a></p>",
         "should support protocol autolinks w/ incorrect URIs (4)"
     );
@@ -276,7 +276,7 @@ fn autolink() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>&lt;a@b.co&gt;</p>",
         "should support turning off autolinks"
     );

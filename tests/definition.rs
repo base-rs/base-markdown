@@ -98,11 +98,10 @@ fn definitions_preserve_values_across_parser_options() {
     many.push_str("[REF0]: /ignored\n");
     sources.push(many);
     for source in sources {
-        let expected = to_html_with_options(&source, &configured).unwrap();
+        let expected = to_html_with_options(&source, &configured);
         assert_eq!(to_html(&source), expected, "{source:?}");
         let definitions = |parse: &ParseOptions| {
             EventParser::new(&source, parse)
-                .unwrap()
                 .filter_map(|event| {
                     let event = event.unwrap();
                     if let EventKind::Definition {
@@ -131,7 +130,7 @@ fn definitions_preserve_values_across_parser_options() {
         let mut checked = String::new();
         render_events(
             &source,
-            EventParser::new(&source, &options.parse).unwrap(),
+            EventParser::new(&source, &options.parse),
             &options.compile,
             &mut checked,
         )
@@ -222,7 +221,7 @@ fn definition() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("[foo]: <bar>(baz)\n\n[foo]", &danger)?,
+        to_html_with_options("[foo]: <bar>(baz)\n\n[foo]", &danger),
         "<p>[foo]: <bar>(baz)</p>\n<p>[foo]</p>",
         "should not support definitions w/ no whitespace between destination and title"
     );
@@ -520,7 +519,7 @@ fn definition() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("[a]\n\n[a]: <b<c>", &danger)?,
+        to_html_with_options("[a]\n\n[a]: <b<c>", &danger),
         "<p>[a]</p>\n<p>[a]: &lt;b<c></p>",
         "should not support a less than in an enclosed destination"
     );
@@ -640,7 +639,7 @@ fn definition() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>[foo]: /url &quot;title&quot;</p>",
         "should support turning off definitions"
     );
@@ -673,11 +672,11 @@ fn inline_regions_share_prepared_references_across_options() {
         options.compile.allow_dangerous_html = true;
         options.parse.html_tag_namespaces = extended_options;
         options.parse.inline_code_info = extended_options;
-        assert_eq!(to_html_with_options(source, &options).unwrap(), expected);
+        assert_eq!(to_html_with_options(source, &options), expected);
         let mut checked = String::new();
         render_events(
             source,
-            EventParser::new(source, &options.parse).unwrap(),
+            EventParser::new(source, &options.parse),
             &options.compile,
             &mut checked,
         )

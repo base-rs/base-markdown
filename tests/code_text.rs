@@ -121,7 +121,7 @@ fn code_text() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("<a href=\"`\">`", &danger)?,
+        to_html_with_options("<a href=\"`\">`", &danger),
         "<p><a href=\"`\">`</p>",
         "should have same precedence as HTML (2)"
     );
@@ -182,7 +182,7 @@ fn code_text() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>`a`</p>",
         "should support turning off code (text)"
     );
@@ -249,7 +249,7 @@ fn code_text() -> Result<(), message::Message> {
 }
 
 #[test]
-fn parses_inline_code_info_and_removes_its_prefix() -> Result<(), message::Message> {
+fn parses_inline_code_info_and_removes_its_prefix() {
     let options = Options {
         parse: ParseOptions {
             inline_code_info: true,
@@ -258,7 +258,7 @@ fn parses_inline_code_info_and_removes_its_prefix() -> Result<(), message::Messa
         ..Options::default()
     };
     assert_eq!(
-        to_html_with_options("`plain code`", &options)?,
+        to_html_with_options("`plain code`", &options),
         "<p><code>plain code</code></p>"
     );
 
@@ -281,5 +281,4 @@ fn parses_inline_code_info_and_removes_its_prefix() -> Result<(), message::Messa
             format!("{expected_prefix}code")
         );
     }
-    Ok(())
 }

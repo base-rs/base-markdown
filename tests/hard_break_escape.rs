@@ -61,7 +61,7 @@ fn hard_break_escape() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>a\\\nb</p>",
         "should support turning off hard break (escape)"
     );

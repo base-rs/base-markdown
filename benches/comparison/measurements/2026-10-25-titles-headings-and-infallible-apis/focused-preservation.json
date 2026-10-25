@@ -1,0 +1,9 @@
+[
+  {
+    "input": "features.json",
+    "mode": "features",
+    "cases": 11,
+    "input_sha256": "72cb376fc35f32e10fc99aba2701507cfca09c0a029bfabacec00e2feb356169",
+    "output_sha256": "e1a341ef48dad9f0bb8fefdf7fc6d7144a14c0afb610634e0be3bd785c8b12a6"
+  }
+]

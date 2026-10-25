@@ -7,11 +7,11 @@
 
 // To do: clippy introduced this in 1.72 but breaks when it fixes it.
 // Remove when solved.
-use core_markdown::{message, to_html_with_options, CompileOptions, Options};
+use core_markdown::{to_html_with_options, CompileOptions, Options};
 use pretty_assertions::assert_eq;
 
 #[test]
-fn tagfilter() -> Result<(), message::Message> {
+fn tagfilter() {
     assert_eq!(
         to_html_with_options(
             "<iframe>",
@@ -22,7 +22,7 @@ fn tagfilter() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<iframe>",
         "should not filter by default"
     );
@@ -37,7 +37,7 @@ fn tagfilter() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>a &lt;i&gt;</p>\n&lt;script&gt;",
         "should not turn `allow_dangerous_html` on"
     );
@@ -53,7 +53,7 @@ fn tagfilter() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "&lt;iframe>",
         "should filter"
     );
@@ -69,7 +69,7 @@ fn tagfilter() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "&lt;iframe\n>",
         "should filter when followed by a line ending (1)"
     );
@@ -85,7 +85,7 @@ fn tagfilter() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<div\n>",
         "should filter when followed by a line ending (2)"
     );
@@ -143,7 +143,7 @@ javascript:/*--></title></style></textarea></script></xmp><svg/onload='+/"/+/onm
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         r###"&lt;title>
 <div title="&lt;title>"></div>
 <p><span title="&lt;title>"></span></p>
@@ -170,8 +170,6 @@ javascript:/*--></title></style></textarea></script></xmp><svg/onload='+/"/+/onm
 "###,
         "should handle things like GitHub"
     );
-
-    Ok(())
 }
 
 #[test]
@@ -181,13 +179,13 @@ fn filtered_html_uses_the_same_heading_and_footnote_captures() {
     options.compile.allow_dangerous_html = true;
     options.compile.heading_ids = true;
     let source = "# <iframe>é</iframe>\n\nCall[^x].\n\n[^x]: <style>😀</style>\n";
-    let expected = to_html_with_options(source, &options).unwrap();
+    let expected = to_html_with_options(source, &options);
     assert!(expected.contains("&lt;iframe>é&lt;/iframe>"));
     assert!(expected.contains("&lt;style>😀&lt;/style>"));
     let mut checked = String::new();
     render_events(
         source,
-        EventParser::new(source, &options.parse).unwrap(),
+        EventParser::new(source, &options.parse),
         &options.compile,
         &mut checked,
     )

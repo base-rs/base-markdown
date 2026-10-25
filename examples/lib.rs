@@ -3,7 +3,7 @@
 // Copyright, 2022-2025, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-fn main() -> Result<(), core_markdown::message::Message> {
+fn main() {
     // Safely turn (untrusted?) markdown into HTML.
     println!("{:?}", core_markdown::to_html("## Hello, *world*!"));
 
@@ -29,7 +29,7 @@ fn main() -> Result<(), core_markdown::message::Message> {
         core_markdown::to_html_with_options(
             "* [x] contact ~Mercury~Venus at hi@venus.com!",
             &core_markdown::Options::gfm()
-        )?
+        )
     );
 
     // Access the syntax tree:
@@ -41,6 +41,4 @@ fn main() -> Result<(), core_markdown::message::Message> {
         )
         .unwrap()
     );
-
-    Ok(())
 }

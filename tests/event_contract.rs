@@ -398,7 +398,7 @@ fn writer_failures_propagate_from_every_output_position() {
             let render = |writer: &mut Writer| {
                 render_events(
                     source,
-                    core_markdown::EventParser::new(source, &options.parse).unwrap(),
+                    core_markdown::EventParser::new(source, &options.parse),
                     &options.compile,
                     writer,
                 )
@@ -448,7 +448,7 @@ fn heading_ids_use_normalized_semantic_code_text() {
         ("a`\nb `\n---", "<h2 id=\"ab\">a<code>b</code></h2>"),
     ] {
         assert_eq!(
-            core_markdown::to_html_with_options(source, &options).unwrap(),
+            core_markdown::to_html_with_options(source, &options),
             expected
         );
         let ast = Document::parse(source, &options.parse).unwrap();
@@ -477,7 +477,7 @@ fn document_completion_yields_one_terminal_separator_and_end() {
         ("> <!--\n> body\n", None),
         ("<!-- closed -->\r\n", Some(("\r\n", false))),
     ] {
-        let mut parser = core_markdown::EventParser::new(source, &options.parse).unwrap();
+        let mut parser = core_markdown::EventParser::new(source, &options.parse);
         assert!(matches!(
             parser.next().unwrap().unwrap().kind,
             EventKind::Start(Tag::Document(_))
@@ -521,7 +521,6 @@ fn paragraph_tightness_follows_its_own_list() {
         ("- a\n\n  b\n- c", vec![false, false, false]),
     ] {
         let actual: Vec<_> = core_markdown::EventParser::new(source, &options.parse)
-            .unwrap()
             .filter_map(|event| match event.unwrap().kind {
                 EventKind::Start(Tag::Paragraph { tight }) => Some(tight),
                 _ => None,
@@ -649,7 +648,7 @@ fn extensions_and_unclosed_container_fences_keep_their_boundaries() {
         "---\nx\n---\n\n>",
         "+++\nx\n+++\n\n>",
     ] {
-        let output = core_markdown::to_html_with_options(source, &options).unwrap();
+        let output = core_markdown::to_html_with_options(source, &options);
         let ast = Document::parse(source, &options.parse).unwrap();
         let mut actual = String::new();
         render_events(source, ast.events(), &options.compile, &mut actual).unwrap();
@@ -812,7 +811,7 @@ fn individual_event_delivery_matches_whole_stream_rendering() {
     let options = Options::default();
     let mut output = String::new();
     let mut renderer = EventHtmlRenderer::new(source, &options.compile, &mut output);
-    for event in EventParser::new(source, &options.parse).unwrap() {
+    for event in EventParser::new(source, &options.parse) {
         renderer.event(event.unwrap()).unwrap();
     }
     assert_eq!(output, core_markdown::to_html(source));

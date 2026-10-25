@@ -395,12 +395,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             }
             TagKind::Heading => {
                 if let Some(heading) = self.heading.take() {
-                    let text = heading
-                        .text
-                        .strip_suffix("\r\n")
-                        .or_else(|| heading.text.strip_suffix('\n'))
-                        .or_else(|| heading.text.strip_suffix('\r'))
-                        .unwrap_or(&heading.text);
+                    let text = crate::util::line_ending::trim_terminal_ending(&heading.text);
                     let anchor = self.anchors.anchor_for(text);
                     self.write(
                         [
@@ -485,7 +480,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         &mut self,
         options: &crate::ParseOptions,
     ) -> Result<(), StreamError> {
-        let events = crate::EventParser::prepare(self.source, options);
+        let events = crate::EventParser::new(self.source, options);
         self.render_inner::<false>(events)
     }
 
@@ -523,21 +518,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             event.validate(Some(self.source))?;
         }
         if let Some(heading) = &mut self.heading {
-            match &event.kind {
-                EventKind::Text(value)
-                | EventKind::SoftBreak(value)
-                | EventKind::Math(value)
-                | EventKind::Code { value, .. }
-                | EventKind::Html { value, .. } => {
-                    heading.text.push_str(
-                        value
-                            .resolve(self.source)
-                            .expect("event values are source-valid"),
-                    );
-                }
-                EventKind::HardBreak => heading.text.push('\n'),
-                _ => {}
-            }
+            crate::headings::append_text::<true>(&event.kind, self.source, &mut heading.text);
         }
         match &event.kind {
             EventKind::Start(tag) => self.start(tag, event.span.end),

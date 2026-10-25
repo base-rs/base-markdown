@@ -64,7 +64,7 @@ fn character_reference() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<a href=\"&ouml;&ouml;.html\">",
         "should not care about character references in html"
     );
@@ -215,7 +215,7 @@ fn character_reference() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>&amp;amp;</p>",
         "should support turning off character references"
     );

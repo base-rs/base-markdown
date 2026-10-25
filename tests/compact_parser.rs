@@ -142,7 +142,7 @@ fn resources_and_multiline_regions_agree_with_arena_rendering() {
     for source in ["#", "\t<x>", "a\n\t<b>"] {
         let expected = arena_html(source, &options.parse);
         assert_eq!(
-            core_markdown::to_html_with_options(source, &options).unwrap(),
+            core_markdown::to_html_with_options(source, &options),
             expected
         );
     }
@@ -308,13 +308,13 @@ fn ordinary_regions_preserve_extension_boundaries() {
         let mut configured = Options::gfm();
         // Enabling math must not change these sources without math delimiters.
         configured.parse.constructs.math_flow = true;
-        let direct = core_markdown::to_html_with_options(source, &options).unwrap();
-        let expected = core_markdown::to_html_with_options(source, &configured).unwrap();
+        let direct = core_markdown::to_html_with_options(source, &options);
+        let expected = core_markdown::to_html_with_options(source, &configured);
         assert_eq!(direct, expected, "source: {source:?}");
         let mut checked = String::new();
         render_events(
             source,
-            EventParser::new(source, &options.parse).unwrap(),
+            EventParser::new(source, &options.parse),
             &options.compile,
             &mut checked,
         )
@@ -331,7 +331,7 @@ fn ordinary_regions_preserve_extension_boundaries() {
 fn uses_commonmark_attention_boundaries_when_no_extension_is_present() {
     for source in ["[a]*a**_\n\n[a]: /a", "[a](path) *a**_ [a]*a**_\n\n[a]: /a"] {
         assert_eq!(
-            core_markdown::to_html_with_options(source, &core_markdown::Options::gfm()).unwrap(),
+            core_markdown::to_html_with_options(source, &core_markdown::Options::gfm()),
             core_markdown::to_html(source)
         );
     }
@@ -345,7 +345,7 @@ fn preserves_the_same_literal_line_endings_as_commonmark() {
         "intro\n\n```\r\ncode\r\n```\n",
     ] {
         assert_eq!(
-            core_markdown::to_html_with_options(source, &core_markdown::Options::gfm()).unwrap(),
+            core_markdown::to_html_with_options(source, &core_markdown::Options::gfm()),
             core_markdown::to_html(source)
         );
     }
@@ -361,7 +361,7 @@ fn extensions_preserve_virtual_spaces_in_code() {
         "- a\n\n  \t\tcode",
         "- ```\n\tcode\n  ```",
     ] {
-        let direct = core_markdown::to_html_with_options(source, &options).unwrap();
+        let direct = core_markdown::to_html_with_options(source, &options);
         // Enabling an unrelated extension preserves container indentation and code values.
         assert_eq!(direct, core_markdown::to_html(source));
         let document = Document::parse(source, &options.parse).unwrap();
@@ -411,9 +411,9 @@ fn inline_angles_preserve_syntax_and_authored_ranges() {
         let mut configured = Options::default();
         // Code metadata does not change these inputs without language prefixes.
         configured.parse.inline_code_info = true;
-        let expected = to_html_with_options(&source, &configured).unwrap();
+        let expected = to_html_with_options(&source, &configured);
         assert_eq!(
-            to_html_with_options(&source, &options).unwrap(),
+            to_html_with_options(&source, &options),
             expected,
             "{source:?}"
         );
