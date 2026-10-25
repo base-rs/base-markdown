@@ -15,16 +15,6 @@ pub(super) fn trim(bytes: &[u8], mut range: Range<usize>) -> Range<usize> {
     range
 }
 
-pub(super) fn line_end(bytes: &[u8], mut end: usize) -> usize {
-    if bytes.get(end.wrapping_sub(1)) == Some(&b'\n') {
-        end -= 1;
-    }
-    if bytes.get(end.wrapping_sub(1)) == Some(&b'\r') {
-        end -= 1;
-    }
-    end
-}
-
 pub(super) struct Cells<'a> {
     bytes: &'a [u8],
     start: usize,

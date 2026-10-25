@@ -6,6 +6,7 @@ use crate::block_parser::{Blocks, Body};
 use crate::definitions::Definitions;
 use crate::inline_parser::InlineParser;
 use crate::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
+use crate::util::line_ending::terminal_ending_start;
 use crate::value_builder::ValueBuilder;
 use crate::{LineEnding, ParseOptions};
 use alloc::string::ToString;
@@ -365,13 +366,7 @@ impl EventParser<'_> {
                     title: definition.title.clone(),
                 };
                 self.advance();
-                let mut end = node.end;
-                if self.source.as_bytes().get(end - 1) == Some(&b'\n') {
-                    end -= 1;
-                }
-                if self.source.as_bytes().get(end - 1) == Some(&b'\r') {
-                    end -= 1;
-                }
+                let end = terminal_ending_start(self.source.as_bytes(), node.end);
                 return Some(Ok(Event {
                     kind,
                     span: node.start..end,

@@ -13,6 +13,7 @@ mod scanners;
 mod table;
 use crate::definitions::Definitions;
 use crate::stream::Text;
+use crate::util::line_ending::terminal_ending_start;
 use crate::ParseOptions;
 use crate::{AlignKind, CodeFence};
 use alloc::vec;
@@ -71,7 +72,7 @@ impl Node {
             self.body,
             Body::Table | Body::TableHead | Body::TableBody | Body::TableRow
         ) {
-            table::line_end(source.as_bytes(), self.end)
+            terminal_ending_start(source.as_bytes(), self.end)
         } else {
             self.end
         }
@@ -638,7 +639,7 @@ impl Builder<'_> {
             return None;
         }
         let end = at + scan_nextline(&bytes[at..]);
-        let delimiter_end = table::line_end(bytes, end);
+        let delimiter_end = terminal_ending_start(bytes, end);
         let delimiter = &bytes[at..delimiter_end];
         if !delimiter.contains(&b'|') && !delimiter.contains(&b':') {
             return None;
@@ -648,7 +649,7 @@ impl Builder<'_> {
             table::alignment(&bytes[content])?;
             columns += 1;
         }
-        let header_end = table::line_end(bytes, next);
+        let header_end = terminal_ending_start(bytes, next);
         if &bytes[table::trim(bytes, start..header_end)] == b"|"
             || table::Cells::new(bytes, start..header_end).count() != columns
         {
@@ -669,7 +670,7 @@ impl Builder<'_> {
     }
     fn table_row(&mut self, start: usize, next: usize, header: bool) {
         let bytes = self.source.as_bytes();
-        let end = table::line_end(bytes, next);
+        let end = terminal_ending_start(bytes, next);
         self.append(start, next, Body::TableRow);
         self.push();
         let mut cells = table::Cells::new(bytes, start..end);
@@ -807,12 +808,7 @@ impl Builder<'_> {
         let last = &mut self.blocks.nodes[self.current];
         let bytes = self.source.as_bytes();
         if !retain_ending {
-            if bytes.get(last.end.wrapping_sub(1)) == Some(&b'\n') {
-                last.end -= 1;
-            }
-            if bytes.get(last.end.wrapping_sub(1)) == Some(&b'\r') {
-                last.end -= 1;
-            }
+            last.end = terminal_ending_start(bytes, last.end);
         }
         let end = last.end;
         self.pop(next);

@@ -5,12 +5,21 @@
 
 use alloc::{str::FromStr, string::String};
 
+/// Start of one terminal physical line ending before `end`, or `end` itself.
+#[inline]
+pub(crate) fn terminal_ending_start(bytes: &[u8], mut end: usize) -> usize {
+    if bytes.get(end.wrapping_sub(1)) == Some(&b'\n') {
+        end -= 1;
+    }
+    if bytes.get(end.wrapping_sub(1)) == Some(&b'\r') {
+        end -= 1;
+    }
+    end
+}
+
 /// Remove one terminal physical line ending, preserving preceding line endings.
 pub(crate) fn trim_terminal_ending(value: &str) -> &str {
-    value
-        .strip_suffix("\r\n")
-        .or_else(|| value.strip_suffix(['\r', '\n']))
-        .unwrap_or(value)
+    &value[..terminal_ending_start(value.as_bytes(), value.len())]
 }
 
 /// Type of line endings in markdown.
@@ -110,6 +119,30 @@ impl FromStr for LineEnding {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn trims_only_one_terminal_physical_line_ending() {
+        for (source, expected) in [
+            ("", ""),
+            ("é", "é"),
+            ("\n", ""),
+            ("\r", ""),
+            ("\r\n", ""),
+            ("é\n", "é"),
+            ("é\r", "é"),
+            ("é\r\n", "é"),
+            ("é\n\n", "é\n"),
+            ("é\r\r\n", "é\r"),
+            ("é\n\r", "é\n"),
+        ] {
+            assert_eq!(trim_terminal_ending(source), expected);
+            let with_suffix = alloc::format!("{source}suffix");
+            assert_eq!(
+                terminal_ending_start(with_suffix.as_bytes(), source.len()),
+                expected.len(),
+            );
+        }
+    }
 
     #[test]
     fn detects_the_first_source_line_ending() {
