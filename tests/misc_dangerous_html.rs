@@ -3,11 +3,11 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{message, to_html, to_html_with_options, CompileOptions, Options};
+use core_markdown::{to_html, to_html_with_options, CompileOptions, Options};
 use pretty_assertions::assert_eq;
 
 #[test]
-fn dangerous_html() -> Result<(), message::Message> {
+fn dangerous_html() {
     let danger = &Options {
         compile: CompileOptions {
             allow_dangerous_html: true,
@@ -30,10 +30,8 @@ fn dangerous_html() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("<x>", danger)?,
+        to_html_with_options("<x>", danger),
         "<x>",
         "should be unsafe w/ `allowDangerousHtml`"
     );
-
-    Ok(())
 }

@@ -17,7 +17,7 @@ let options = Options {
     ..Options::default()
 };
 
-let html = to_html_with_options("~~removed~~", &options).unwrap();
+let html = to_html_with_options("~~removed~~", &options);
 assert_eq!(html, "<p><del>removed</del></p>");
 ```
 

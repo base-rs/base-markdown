@@ -778,25 +778,25 @@ fn attention() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("*<img src=\"foo\" title=\"*\"/>", &danger)?,
+        to_html_with_options("*<img src=\"foo\" title=\"*\"/>", &danger),
         "<p>*<img src=\"foo\" title=\"*\"/></p>",
         "should not end inside HTML"
     );
 
     assert_eq!(
-        to_html_with_options("*<img src=\"foo\" title=\"*\"/>", &danger)?,
+        to_html_with_options("*<img src=\"foo\" title=\"*\"/>", &danger),
         "<p>*<img src=\"foo\" title=\"*\"/></p>",
         "should not end emphasis inside HTML"
     );
 
     assert_eq!(
-        to_html_with_options("**<a href=\"**\">", &danger)?,
+        to_html_with_options("**<a href=\"**\">", &danger),
         "<p>**<a href=\"**\"></p>",
         "should not end strong inside HTML (1)"
     );
 
     assert_eq!(
-        to_html_with_options("__<a href=\"__\">", &danger)?,
+        to_html_with_options("__<a href=\"__\">", &danger),
         "<p>__<a href=\"__\"></p>",
         "should not end strong inside HTML (2)"
     );
@@ -838,7 +838,7 @@ fn attention() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>*a*</p>",
         "should support turning off attention"
     );

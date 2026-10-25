@@ -21,199 +21,199 @@ fn table() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |\n| b |", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |\n| b |", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>b</td>\n</tr>\n</tbody>\n</table>",
         "should support tables"
     );
 
     assert_eq!(
-        to_html_with_options("| a |", &Options::gfm())?,
+        to_html_with_options("| a |", &Options::gfm()),
         "<p>| a |</p>",
         "should not support a table w/ the head row ending in an eof (1)"
     );
 
     assert_eq!(
-        to_html_with_options("| a", &Options::gfm())?,
+        to_html_with_options("| a", &Options::gfm()),
         "<p>| a</p>",
         "should not support a table w/ the head row ending in an eof (2)"
     );
 
     assert_eq!(
-        to_html_with_options("a |", &Options::gfm())?,
+        to_html_with_options("a |", &Options::gfm()),
         "<p>a |</p>",
         "should not support a table w/ the head row ending in an eof (3)"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>",
         "should support a table w/ a delimiter row ending in an eof (1)"
     );
 
     assert_eq!(
-        to_html_with_options("| a\n| -", &Options::gfm())?,
+        to_html_with_options("| a\n| -", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>",
         "should support a table w/ a delimiter row ending in an eof (2)"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |\n| b |", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |\n| b |", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>b</td>\n</tr>\n</tbody>\n</table>",
         "should support a table w/ a body row ending in an eof (1)"
     );
 
     assert_eq!(
-        to_html_with_options("| a\n| -\n| b", &Options::gfm())?,
+        to_html_with_options("| a\n| -\n| b", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>b</td>\n</tr>\n</tbody>\n</table>",
         "should support a table w/ a body row ending in an eof (2)"
     );
 
     assert_eq!(
-        to_html_with_options("a|b\n-|-\nc|d", &Options::gfm())?,
+        to_html_with_options("a|b\n-|-\nc|d", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>c</td>\n<td>d</td>\n</tr>\n</tbody>\n</table>",
         "should support a table w/ a body row ending in an eof (3)"
     );
 
     assert_eq!(
-        to_html_with_options("| a  \n| -\t\n| b |     ", &Options::gfm())?,
+        to_html_with_options("| a  \n| -\t\n| b |     ", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>b</td>\n</tr>\n</tbody>\n</table>",
         "should support rows w/ trailing whitespace (1)"
     );
 
     assert_eq!(
-        to_html_with_options("| a | \n| - |", &Options::gfm())?,
+        to_html_with_options("| a | \n| - |", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>",
         "should support rows w/ trailing whitespace (2)"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - | ", &Options::gfm())?,
+        to_html_with_options("| a |\n| - | ", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>",
         "should support rows w/ trailing whitespace (3)"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |\n| b | ", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |\n| b | ", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>b</td>\n</tr>\n</tbody>\n</table>",
         "should support rows w/ trailing whitespace (4)"
     );
 
     assert_eq!(
-        to_html_with_options("||a|\n|-|-|", &Options::gfm())?,
+        to_html_with_options("||a|\n|-|-|", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th></th>\n<th>a</th>\n</tr>\n</thead>\n</table>",
         "should support empty first header cells"
     );
 
     assert_eq!(
-        to_html_with_options("|a||\n|-|-|", &Options::gfm())?,
+        to_html_with_options("|a||\n|-|-|", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n<th></th>\n</tr>\n</thead>\n</table>",
         "should support empty last header cells"
     );
 
     assert_eq!(
-        to_html_with_options("a||b\n-|-|-", &Options::gfm())?,
+        to_html_with_options("a||b\n-|-|-", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n<th></th>\n<th>b</th>\n</tr>\n</thead>\n</table>",
         "should support empty header cells"
     );
 
     assert_eq!(
-        to_html_with_options("|a|b|\n|-|-|\n||c|", &Options::gfm())?,
+        to_html_with_options("|a|b|\n|-|-|\n||c|", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td></td>\n<td>c</td>\n</tr>\n</tbody>\n</table>",
         "should support empty first body cells"
     );
 
     assert_eq!(
-        to_html_with_options("|a|b|\n|-|-|\n|c||", &Options::gfm())?,
+        to_html_with_options("|a|b|\n|-|-|\n|c||", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>c</td>\n<td></td>\n</tr>\n</tbody>\n</table>",
         "should support empty last body cells"
     );
 
     assert_eq!(
-        to_html_with_options("a|b|c\n-|-|-\nd||e", &Options::gfm())?,
+        to_html_with_options("a|b|c\n-|-|-\nd||e", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n<th>c</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>d</td>\n<td></td>\n<td>e</td>\n</tr>\n</tbody>\n</table>",
         "should support empty body cells"
     );
 
     assert_eq!(
-        to_html_with_options(":\n|-|\n|a|\n\nb\n|-|\n|c|\n\n|\n|-|\n|d|\n\n|\n|-|\n|e|\n\n|:\n|-|\n|f|\n\n||\n|-|\n|g|\n\n| |\n|-|\n|h|\n", &Options::gfm())?,
+        to_html_with_options(":\n|-|\n|a|\n\nb\n|-|\n|c|\n\n|\n|-|\n|d|\n\n|\n|-|\n|e|\n\n|:\n|-|\n|f|\n\n||\n|-|\n|g|\n\n| |\n|-|\n|h|\n", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>:</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>a</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>c</td>\n</tr>\n</tbody>\n</table>\n<p>|\n|-|\n|d|</p>\n<p>|\n|-|\n|e|</p>\n<table>\n<thead>\n<tr>\n<th>:</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>f</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th></th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>g</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th></th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>h</td>\n</tr>\n</tbody>\n</table>\n",
         "should need any character other than a single pipe in the header row"
     );
 
     assert_eq!(
-        to_html_with_options("a\n|-\n\nb\n||\n\nc\n|-|\n\nd\n|:|\n\ne\n| |\n\nf\n| -|\n\ng\n|- |\n", &Options::gfm())?,
+        to_html_with_options("a\n|-\n\nb\n||\n\nc\n|-|\n\nd\n|:|\n\ne\n| |\n\nf\n| -|\n\ng\n|- |\n", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n<p>b\n||</p>\n<table>\n<thead>\n<tr>\n<th>c</th>\n</tr>\n</thead>\n</table>\n<p>d\n|:|</p>\n<p>e\n| |</p>\n<table>\n<thead>\n<tr>\n<th>f</th>\n</tr>\n</thead>\n</table>\n<table>\n<thead>\n<tr>\n<th>g</th>\n</tr>\n</thead>\n</table>\n",
         "should need a dash in the delimimter row"
     );
 
     assert_eq!(
-        to_html_with_options("|\n|", &Options::gfm())?,
+        to_html_with_options("|\n|", &Options::gfm()),
         "<p>|\n|</p>",
         "should need something"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |\n- b", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |\n- b", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n<ul>\n<li>b</li>\n</ul>",
         "should support a list after a table"
     );
 
     assert_eq!(
-        to_html_with_options("> | a |\n| - |", &Options::gfm())?,
+        to_html_with_options("> | a |\n| - |", &Options::gfm()),
         "<blockquote>\n<p>| a |\n| - |</p>\n</blockquote>",
         "should not support a lazy delimiter row (1)"
     );
 
     assert_eq!(
-        to_html_with_options("> a\n> | b |\n| - |", &Options::gfm())?,
+        to_html_with_options("> a\n> | b |\n| - |", &Options::gfm()),
         "<blockquote>\n<p>a\n| b |\n| - |</p>\n</blockquote>",
         "should not support a lazy delimiter row (2)"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n> | - |", &Options::gfm())?,
+        to_html_with_options("| a |\n> | - |", &Options::gfm()),
         "<p>| a |</p>\n<blockquote>\n<p>| - |</p>\n</blockquote>",
         "should not support a piercing delimiter row"
     );
 
     assert_eq!(
-        to_html_with_options("> a\n> | b |\n|-", &Options::gfm())?,
+        to_html_with_options("> a\n> | b |\n|-", &Options::gfm()),
         "<blockquote>\n<p>a\n| b |\n|-</p>\n</blockquote>",
         "should not support a lazy body row (2)"
     );
 
     assert_eq!(
-        to_html_with_options("> | a |\n> | - |\n| b |", &Options::gfm())?,
+        to_html_with_options("> | a |\n> | - |\n| b |", &Options::gfm()),
         "<blockquote>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</blockquote>\n<p>| b |</p>",
         "should not support a lazy body row (1)"
     );
 
     assert_eq!(
-        to_html_with_options("> a\n> | b |\n> | - |\n| c |", &Options::gfm())?,
+        to_html_with_options("> a\n> | b |\n> | - |\n| c |", &Options::gfm()),
         "<blockquote>\n<p>a</p>\n<table>\n<thead>\n<tr>\n<th>b</th>\n</tr>\n</thead>\n</table>\n</blockquote>\n<p>| c |</p>",
         "should not support a lazy body row (2)"
     );
 
     assert_eq!(
-        to_html_with_options("> | A |\n> | - |\n> | 1 |\n| 2 |", &Options::gfm())?,
+        to_html_with_options("> | A |\n> | - |\n> | 1 |\n| 2 |", &Options::gfm()),
         "<blockquote>\n<table>\n<thead>\n<tr>\n<th>A</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>1</td>\n</tr>\n</tbody>\n</table>\n</blockquote>\n<p>| 2 |</p>",
         "should not support a lazy body row (3)"
     );
 
     assert_eq!(
-        to_html_with_options("   - d\n    - e", &Options::gfm())?,
+        to_html_with_options("   - d\n    - e", &Options::gfm()),
         to_html("   - d\n    - e"),
         "should not change how lists and lazyness work"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n   | - |", &Options::gfm())?,
+        to_html_with_options("| a |\n   | - |", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>",
         "should form a table if the delimiter row is indented w/ 3 spaces"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n    | - |", &Options::gfm())?,
+        to_html_with_options("| a |\n    | - |", &Options::gfm()),
         "<p>| a |\n| - |</p>",
         "should not form a table if the delimiter row is indented w/ 4 spaces"
     );
@@ -228,31 +228,31 @@ fn table() -> Result<(), message::Message> {
                     ..ParseOptions::gfm()
                 },
                 ..Options::gfm()
-            })?,
+            }),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>",
         "should form a table if the delimiter row is indented w/ 4 spaces and indented code is turned off"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |\n> block quote?", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |\n> block quote?", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n<blockquote>\n<p>block quote?</p>\n</blockquote>",
         "should be interrupted by a block quote"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |\n>", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |\n>", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n<blockquote>\n</blockquote>",
         "should be interrupted by a block quote (empty)"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |\n- list?", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |\n- list?", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n<ul>\n<li>list?</li>\n</ul>",
         "should be interrupted by a list"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |\n-", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |\n-", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n<ul>\n<li></li>\n</ul>",
         "should be interrupted by a list (empty)"
     );
@@ -268,7 +268,7 @@ fn table() -> Result<(), message::Message> {
                 },
                 ..Options::gfm()
             }
-        )?,
+        ),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n<!-- HTML? -->",
         "should be interrupted by HTML (flow)"
     );
@@ -281,7 +281,7 @@ fn table() -> Result<(), message::Message> {
                     ..CompileOptions::gfm()
                 },
                 ..Options::gfm()
-            })?,
+            }),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n<pre><code>code?\n</code></pre>",
         "should be interrupted by code (indented)"
     );
@@ -294,7 +294,7 @@ fn table() -> Result<(), message::Message> {
                     ..CompileOptions::gfm()
                 },
                 ..Options::gfm()
-            })?,
+            }),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n<pre><code class=\"language-js\">code?\n</code></pre>\n",
         "should be interrupted by code (fenced)"
     );
@@ -310,73 +310,73 @@ fn table() -> Result<(), message::Message> {
                 },
                 ..Options::gfm()
             }
-        )?,
+        ),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n<hr />",
         "should be interrupted by a thematic break"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |\n# heading?", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |\n# heading?", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n<h1>heading?</h1>",
         "should be interrupted by a heading (ATX)"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |\nheading\n=", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |\nheading\n=", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>heading</td>\n</tr>\n<tr>\n<td>=</td>\n</tr>\n</tbody>\n</table>",
         "should *not* be interrupted by a heading (setext)"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |\nheading\n---", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |\nheading\n---", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>heading</td>\n</tr>\n</tbody>\n</table>\n<hr />",
         "should *not* be interrupted by a heading (setext), but interrupt if the underline is also a thematic break"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n| - |\nheading\n-", &Options::gfm())?,
+        to_html_with_options("| a |\n| - |\nheading\n-", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>heading</td>\n</tr>\n</tbody>\n</table>\n<ul>\n<li></li>\n</ul>",
         "should *not* be interrupted by a heading (setext), but interrupt if the underline is also an empty list item bullet"
     );
 
     assert_eq!(
-        to_html_with_options("a\nb\n-:", &Options::gfm())?,
+        to_html_with_options("a\nb\n-:", &Options::gfm()),
         "<p>a</p>\n<table>\n<thead>\n<tr>\n<th align=\"right\">b</th>\n</tr>\n</thead>\n</table>",
         "should support a single head row"
     );
 
     assert_eq!(
-        to_html_with_options("> | a |\n> | - |", &Options::gfm())?,
+        to_html_with_options("> | a |\n> | - |", &Options::gfm()),
         "<blockquote>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</blockquote>",
         "should support a table in a container"
     );
 
     assert_eq!(
-        to_html_with_options("> | a |\n| - |", &Options::gfm())?,
+        to_html_with_options("> | a |\n| - |", &Options::gfm()),
         "<blockquote>\n<p>| a |\n| - |</p>\n</blockquote>",
         "should not support a lazy delimiter row if the head row is in a container"
     );
 
     assert_eq!(
-        to_html_with_options("| a |\n> | - |", &Options::gfm())?,
+        to_html_with_options("| a |\n> | - |", &Options::gfm()),
         "<p>| a |</p>\n<blockquote>\n<p>| - |</p>\n</blockquote>",
         "should not support a “piercing” container for the delimiter row, if the head row was not in that container"
     );
 
     assert_eq!(
-        to_html_with_options("> | a |\n> | - |\n| c |", &Options::gfm())?,
+        to_html_with_options("> | a |\n> | - |\n| c |", &Options::gfm()),
         "<blockquote>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</blockquote>\n<p>| c |</p>",
         "should not support a lazy body row if the head row and delimiter row are in a container"
     );
 
     assert_eq!(
-        to_html_with_options("> | a |\n| - |\n> | c |", &Options::gfm())?,
+        to_html_with_options("> | a |\n| - |\n> | c |", &Options::gfm()),
         "<blockquote>\n<p>| a |\n| - |\n| c |</p>\n</blockquote>",
         "should not support a lazy delimiter row if the head row and a further body row are in a container"
     );
 
     assert_eq!(
-        to_html_with_options("[\na\n:-\n]: b", &Options::gfm())?,
+        to_html_with_options("[\na\n:-\n]: b", &Options::gfm()),
         "<p>[</p>\n<table>\n<thead>\n<tr>\n<th align=\"left\">a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td align=\"left\">]: b</td>\n</tr>\n</tbody>\n</table>",
         "should prefer GFM tables over definitions"
     );
@@ -391,7 +391,7 @@ fn table() -> Result<(), message::Message> {
                     ..ParseOptions::gfm()
                 },
                 ..Options::gfm()
-            })?,
+            }),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>b</td>\n</tr>\n</tbody>\n</table>",
         "should support indented rows if code (indented) is off"
     );
@@ -477,7 +477,7 @@ a
 | f |
 "###,
             &Options::gfm()
-        )?,
+        ),
         r#"<h1>Align</h1>
 <h2>An empty initial cell</h2>
 <table>
@@ -606,7 +606,7 @@ a
 | b |
 "###,
             &Options::gfm()
-        )?,
+        ),
         r###"<h1>Tables</h1>
 <table>
 <thead>
@@ -708,7 +708,7 @@ a
 |-
 "###,
             &Options::gfm()
-        )?,
+        ),
         r###"<h1>Tables in things</h1>
 <h2>In lists</h2>
 <ul>
@@ -853,7 +853,7 @@ a
 | 1 |
 "###,
             &Options::gfm()
-        )?,
+        ),
         r###"<table>
 <thead>
 <tr>
@@ -931,7 +931,7 @@ bar
 | --- | --- |
 ",
             &Options::gfm()
-        )?,
+        ),
         r#"<h1>Examples from GFM</h1>
 <h2>A</h2>
 <table>
@@ -1096,7 +1096,7 @@ bar
                 },
                 ..Options::gfm()
             }
-        )?,
+        ),
         r"<h1>Grave accents</h1>
 <h2>Grave accent in cell</h2>
 <table>
@@ -1207,7 +1207,7 @@ a
     | E |
 "###,
             &Options::gfm()
-        )?,
+        ),
         r###"<h1>Code</h1>
 <h2>Indented delimiter row</h2>
 <table>
@@ -1408,7 +1408,7 @@ b
                 },
                 ..Options::gfm()
             }
-        )?,
+        ),
         r#"<h2>Blank line</h2>
 <table>
 <thead>
@@ -1759,7 +1759,7 @@ a
 | - |
 "###,
             &Options::gfm()
-        )?,
+        ),
         r###"<h1>Loose</h1>
 <h2>Loose</h2>
 <table>
@@ -1811,7 +1811,7 @@ Note: GH has a bug where in case C and E, the escaped escape is treated as a
 normal escape: <https://github.com/github/cmark-gfm/issues/277>.
 ",
             &Options::gfm()
-        )?,
+        ),
         r#"<h1>Some more escapes</h1>
 <table>
 <thead>
@@ -2032,8 +2032,8 @@ fn compact_tables_preserve_cells_spans_and_rendering_paths() {
                 format!("- {}", case.replace('\n', "\n  ")),
                 format!(">\t{}", case.replace('\n', "\n>\t")),
             ] {
-                let direct = to_html_with_options(&source, &options).unwrap();
-                let expected = to_html_with_options(&source, &configured).unwrap();
+                let direct = to_html_with_options(&source, &options);
+                let expected = to_html_with_options(&source, &configured);
                 // Enabling unrelated math must preserve table output. Full
                 // rendering-path parity is checked below.
                 let table_html = |html: &str| {
@@ -2049,7 +2049,6 @@ fn compact_tables_preserve_cells_spans_and_rendering_paths() {
                 );
                 let tables = |parse: &ParseOptions| {
                     EventParser::new(&source, parse)
-                        .unwrap()
                         .filter_map(|event| {
                             let event = event.unwrap();
                             let kind = match &event.kind {
@@ -2077,7 +2076,7 @@ fn compact_tables_preserve_cells_spans_and_rendering_paths() {
                 let mut checked = String::new();
                 render_events(
                     &source,
-                    EventParser::new(&source, &options.parse).unwrap(),
+                    EventParser::new(&source, &options.parse),
                     &options.compile,
                     &mut checked,
                 )

@@ -79,24 +79,20 @@ use alloc::string::String;
 /// assert_eq!(to_html("# Hi Mercury!"), "<h1>Hi Mercury!</h1>");
 /// ```
 pub fn to_html(value: &str) -> String {
-    to_html_with_options(value, &Options::default()).unwrap()
+    to_html_with_options(value, &Options::default())
 }
 
 /// Turn markdown into HTML, with configuration.
 ///
-/// ## Errors
-///
-/// `to_html_with_options()` never errors with normal markdown because markdown
-/// does not have syntax errors, so feel free to `unwrap()`.
+/// Markdown has no syntax errors, so this returns the rendered string directly.
 ///
 /// ## Examples
 ///
 /// ```
 /// use core_markdown::{to_html_with_options, CompileOptions, Options};
-/// # fn main() -> Result<(), core_markdown::message::Message> {
 ///
 /// // Use GFM:
-/// let result = to_html_with_options("~Venus~Mars!", &Options::gfm())?;
+/// let result = to_html_with_options("~Venus~Mars!", &Options::gfm());
 ///
 /// assert_eq!(result, "<p><del>Venus</del>Mars!</p>");
 ///
@@ -108,19 +104,17 @@ pub fn to_html(value: &str) -> String {
 ///       ..CompileOptions::default()
 ///     },
 ///     ..Options::default()
-/// })?;
+/// });
 ///
 /// assert_eq!(result, "<div>\n<h1>Hi Jupiter!</h1>\n</div>");
-/// # Ok(())
-/// # }
 /// ```
-pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, message::Message> {
+pub fn to_html_with_options(value: &str, options: &Options) -> String {
     // Skip early growth steps while bounding spare capacity for mostly invisible input.
     let mut output = String::with_capacity(value.len().min(4096));
     let result = EventHtmlRenderer::new(value, &options.compile, &mut output)
         .render_markdown(&options.parse);
     match result {
-        Ok(()) => Ok(output),
+        Ok(()) => output,
         Err(_) => unreachable!(
             "parser events are balanced and source-valid; writing to String cannot fail"
         ),

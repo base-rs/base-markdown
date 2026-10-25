@@ -86,6 +86,20 @@ The algorithmic references are pulldown-cmark's [two-pass pull design](https://p
 
 `EventParser::new(source, options)` prepares source-backed block records and definition indexes with the single parser. `render_events(source, events, compile_options, output)` pulls any producer through `EventHtmlRenderer`. `Document::parse(source_buffer, parse_options)` moves a caller-owned buffer into a source-backed AST, and `Document::events()` traverses it without allocating a traversal stack or cloning edited strings.
 
+## Infallible construction and HTML conversion
+
+`EventParser::new` now returns `EventParser` directly, and `to_html_with_options` returns `String`. Remove `?`, `.unwrap()` or `.expect(...)` from those two calls. This is a breaking API change that removes error wrappers retained after MDX removal.
+
+```rust
+use core_markdown::{EventParser, Options, to_html_with_options};
+
+let options = Options::default();
+let html: String = to_html_with_options("# Heading", &options);
+let parser = EventParser::new("# Heading", &options.parse);
+```
+
+The event iterator still yields `Result<Event, StreamError>` for the shared consumer contract. `render_events`, incremental AST construction, document parsing/editing and Markdown serialization retain errors for custom producers, invalid streams or source ranges, output failures and invalid serialization options. These calls still use normal error handling.
+
 For bounded construction, retain an `AstBuilder` and call `consume(&mut events, event_budget)` until it returns `BuildProgress::Complete`. `Pending` means the budget was exhausted without probing for another event. Drop the parser before calling `finish(source_buffer)` to move the original buffer into the resulting document. `text_mut(node_id)` materializes only the edited value; node metadata can also be assigned through checked `set_kind`. Publicly supplied event streams and source ranges are checked. Direct Markdown-to-HTML rendering creates its parser from the renderer’s own source and uses that producer’s range and tag invariants instead of repeating range validation for every event; it retains the same renderer, balance checks, and safe string resolution. The checked parser → events → HTML and arena paths are compared with this internal path in regression testing. Fixed HTML tags and adjacent attribute delimiters are emitted together from static strings; dynamic values retain the same escaping and URI sanitization. This reduces logical `fmt::Write` calls without constructing temporary strings. Write-call boundaries are an implementation detail; writer errors still propagate.
 
 ## Borrowed implementation techniques

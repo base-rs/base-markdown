@@ -23,49 +23,49 @@ fn strikethrough() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("a ~b~", &Options::gfm())?,
+        to_html_with_options("a ~b~", &Options::gfm()),
         "<p>a <del>b</del></p>",
         "should support strikethrough w/ one tilde"
     );
 
     assert_eq!(
-        to_html_with_options("a ~~b~~", &Options::gfm())?,
+        to_html_with_options("a ~~b~~", &Options::gfm()),
         "<p>a <del>b</del></p>",
         "should support strikethrough w/ two tildes"
     );
 
     assert_eq!(
-        to_html_with_options("a ~~~b~~~", &Options::gfm())?,
+        to_html_with_options("a ~~~b~~~", &Options::gfm()),
         "<p>a ~~~b~~~</p>",
         "should not support strikethrough w/ three tildes"
     );
 
     assert_eq!(
-        to_html_with_options("a \\~~~b~~ c", &Options::gfm())?,
+        to_html_with_options("a \\~~~b~~ c", &Options::gfm()),
         "<p>a ~<del>b</del> c</p>",
         "should support strikethrough after an escaped tilde"
     );
 
     assert_eq!(
-        to_html_with_options("a ~~b ~~c~~ d~~ e", &Options::gfm())?,
+        to_html_with_options("a ~~b ~~c~~ d~~ e", &Options::gfm()),
         "<p>a <del>b <del>c</del> d</del> e</p>",
         "should support nested strikethrough"
     );
 
     assert_eq!(
-        to_html_with_options("a ~-1~ b", &Options::gfm())?,
+        to_html_with_options("a ~-1~ b", &Options::gfm()),
         "<p>a <del>-1</del> b</p>",
         "should open if preceded by whitespace and followed by punctuation"
     );
 
     assert_eq!(
-        to_html_with_options("a ~b.~ c", &Options::gfm())?,
+        to_html_with_options("a ~b.~ c", &Options::gfm()),
         "<p>a <del>b.</del> c</p>",
         "should close if preceded by punctuation and followed by whitespace"
     );
 
     assert_eq!(
-        to_html_with_options("~b.~.", &Options::gfm())?,
+        to_html_with_options("~b.~.", &Options::gfm()),
         "<p><del>b.</del>.</p>",
         "should close if preceded and followed by punctuation"
     );
@@ -130,7 +130,7 @@ a ~~two b one~ c two~~ d
 a ~~two b two~~ c one~ d
 "###,
             &Options::gfm()
-        )?,
+        ),
         r###"<h1>Balanced</h1>
 <p>a <del>one</del> b</p>
 <p>a <del>two</del> b</p>
@@ -199,7 +199,7 @@ a ~~twoLeft b ~~twoLeft c twoRight~~ d
 a ~~twoLeft b ~~twoLeft c ~~twoLeft d
 "###,
             &Options::gfm()
-        )?,
+        ),
         r###"<h1>Flank</h1>
 <p>a oneRight~ b oneRight~ c oneRight~ d</p>
 <p>a oneRight~ b oneRight~ c ~oneLeft d</p>
@@ -316,7 +316,7 @@ t ~~**xxx**~~ zzz
 u ~**xxx**~ zzz
 "###,
             &Options::gfm()
-        )?,
+        ),
         r###"<h1>Interlpay</h1>
 <h2>Interleave with attention</h2>
 <p>a <del>two <em>emphasis</em> two</del> b</p>
@@ -367,7 +367,7 @@ u ~**xxx**~ zzz
     );
 
     assert_eq!(
-        to_html_with_options("a*~b~*c\n\na*.b.*c", &Options::gfm())?,
+        to_html_with_options("a*~b~*c\n\na*.b.*c", &Options::gfm()),
         "<p>a<em><del>b</del></em>c</p>\n<p>a*.b.*c</p>",
         "should handle interplay w/ other attention markers (GFM)"
     );
@@ -388,7 +388,7 @@ u ~**xxx**~ zzz
                 },
                 ..Options::gfm()
             }
-        )?,
+        ),
         "<p>a ~b~ <del>c</del> d</p>",
         "should not support strikethrough w/ one tilde if `singleTilde: false`"
     );
@@ -403,7 +403,7 @@ u ~**xxx**~ zzz
                 },
                 ..Options::gfm()
             }
-        )?,
+        ),
         "<p>a <del>b</del> <del>c</del> d</p>",
         "should support strikethrough w/ one tilde if `singleTilde: true`"
     );
@@ -467,16 +467,16 @@ fn strikethrough_is_invariant_under_unrelated_options() {
                         [("", ""), ("a", "b"), ("a ", " b"), ("(", ")"), ("中", "文")]
                     {
                         let source = format!("prefix {before}{open}{content}{close}{after}");
-                        let direct = to_html_with_options(&source, &options).unwrap();
+                        let direct = to_html_with_options(&source, &options);
                         assert_eq!(
                             direct,
-                            to_html_with_options(&source, &configured).unwrap(),
+                            to_html_with_options(&source, &configured),
                             "{source:?}, single={single}"
                         );
                         let mut checked = String::new();
                         render_events(
                             &source,
-                            EventParser::new(&source, &options.parse).unwrap(),
+                            EventParser::new(&source, &options.parse),
                             &options.compile,
                             &mut checked,
                         )
@@ -500,9 +500,6 @@ fn mixed_adjacent_delimiters_preserve_partial_match_precedence() {
         ("*b***~*", "<p><em>b</em>**~*</p>"),
         ("**a***~**", "<p><strong>a</strong>*~**</p>"),
     ] {
-        assert_eq!(
-            to_html_with_options(source, &Options::gfm()).unwrap(),
-            expected
-        );
+        assert_eq!(to_html_with_options(source, &Options::gfm()), expected);
     }
 }

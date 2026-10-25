@@ -480,7 +480,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         &mut self,
         options: &crate::ParseOptions,
     ) -> Result<(), StreamError> {
-        let events = crate::EventParser::prepare(self.source, options);
+        let events = crate::EventParser::new(self.source, options);
         self.render_inner::<false>(events)
     }
 

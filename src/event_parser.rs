@@ -24,15 +24,8 @@ pub struct EventParser<'a> {
 }
 impl<'a> EventParser<'a> {
     /// Prepare Markdown for pull consumption.
-    ///
-    /// # Errors
-    /// Markdown preparation is currently infallible; the result is retained for API compatibility.
-    pub fn new(source: &'a str, options: &'a ParseOptions) -> Result<Self, StreamError> {
-        Ok(Self::prepare(source, options))
-    }
-
     /// Built-in Markdown preparation has no syntax errors.
-    pub(crate) fn prepare(source: &'a str, options: &'a ParseOptions) -> Self {
+    pub fn new(source: &'a str, options: &'a ParseOptions) -> Self {
         let (blocks, definitions) = Blocks::parse(source, options);
         Self {
             blocks,

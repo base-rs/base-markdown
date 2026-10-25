@@ -86,12 +86,12 @@ fn compact_references_preserve_resolution_and_event_roundtrips() {
         }
     }
     for source in sources {
-        let expected = to_html_with_options(&source, &configured).unwrap();
+        let expected = to_html_with_options(&source, &configured);
         assert_eq!(to_html(&source), expected, "{source:?}");
         let mut checked = String::new();
         render_events(
             &source,
-            EventParser::new(&source, &options.parse).unwrap(),
+            EventParser::new(&source, &options.parse),
             &options.compile,
             &mut checked,
         )
@@ -170,7 +170,7 @@ fn link_reference() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("[ref]: /uri\n\n[foo <bar attr=\"][ref]\">", &danger)?,
+        to_html_with_options("[ref]: /uri\n\n[foo <bar attr=\"][ref]\">", &danger),
         "<p>[foo <bar attr=\"][ref]\"></p>",
         "should prefer HTML over link references"
     );
@@ -500,7 +500,7 @@ fn link_reference() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>[x]()</p>",
         "should support turning off label start (link)"
     );
@@ -518,7 +518,7 @@ fn link_reference() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>[x]()</p>",
         "should support turning off label end"
     );

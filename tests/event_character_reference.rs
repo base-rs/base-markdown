@@ -40,14 +40,14 @@ fn references_keep_their_meaning_across_regions_and_rendering_paths() {
             for configured in [false, true] {
                 options.parse.inline_code_info = configured;
                 assert_eq!(
-                    core_markdown::to_html_with_options(source, &options).unwrap(),
+                    core_markdown::to_html_with_options(source, &options),
                     expected,
                     "source={source:?}, configured={configured}"
                 );
                 let mut checked = String::new();
                 render_events(
                     source,
-                    EventParser::new(source, &options.parse).unwrap(),
+                    EventParser::new(source, &options.parse),
                     &options.compile,
                     &mut checked,
                 )
@@ -66,7 +66,7 @@ fn references_keep_their_meaning_across_regions_and_rendering_paths() {
 fn a_pulled_numeric_value_survives_dropping_unconsumed_entities() {
     let source = "&#65; &NotEqualTilde; &#66;";
     let options = Options::default();
-    let mut parser = EventParser::new(source, &options.parse).unwrap();
+    let mut parser = EventParser::new(source, &options.parse);
     let first = parser
         .find_map(|event| {
             let event = event.unwrap();

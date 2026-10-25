@@ -223,7 +223,7 @@ fn heading_atx() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p># a</p>",
         "should support turning off heading (atx)"
     );

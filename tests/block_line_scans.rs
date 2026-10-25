@@ -9,14 +9,14 @@ use core_markdown::{
 
 fn assert_rendering_paths(source: &str, options: &Options, expected: &str) {
     assert_eq!(
-        to_html_with_options(source, options).unwrap(),
+        to_html_with_options(source, options),
         expected,
         "{source:?}"
     );
     let mut output = String::new();
     render_events(
         source,
-        EventParser::new(source, &options.parse).unwrap(),
+        EventParser::new(source, &options.parse),
         &options.compile,
         &mut output,
     )
@@ -67,7 +67,6 @@ fn definition_offsets_include_the_authored_indentation() {
             "<p><a href=\"/target\" title=\"title\">ref</a></p>",
         );
         let event = EventParser::new(source, &options.parse)
-            .unwrap()
             .map(Result::unwrap)
             .find(|event| matches!(event.kind, EventKind::Definition { .. }))
             .unwrap();

@@ -296,7 +296,7 @@ fn heading_setext() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>a\n-</p>",
         "should support turning off setext underlines"
     );
@@ -338,7 +338,7 @@ fn literal_underlines_join_the_following_setext_heading() {
                 (format!("{source}\n\n[id]: /url"), "\n"),
             ] {
                 let expected = format!("{expected}{suffix}");
-                assert_eq!(to_html_with_options(&input, &options).unwrap(), expected);
+                assert_eq!(to_html_with_options(&input, &options), expected);
                 let document = Document::parse(input.as_str(), &options.parse).unwrap();
                 let mut output = String::new();
                 render_events(&input, document.events(), &options.compile, &mut output).unwrap();

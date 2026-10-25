@@ -44,7 +44,7 @@ Enable GFM constructs with `Options::gfm()`:
 ```rust
 use core_markdown::{to_html_with_options, Options};
 
-let html = to_html_with_options("* [x] done", &Options::gfm()).unwrap();
+let html = to_html_with_options("* [x] done", &Options::gfm());
 ```
 
 ### Pull events and build a source-backed AST

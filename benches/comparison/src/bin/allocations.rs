@@ -73,7 +73,7 @@ fn main() {
     for case in cases {
         let source = case["markdown"].as_str().unwrap();
         let (mut parser, prepare) =
-            measure(|| core_markdown::EventParser::new(source, &options.parse).unwrap());
+            measure(|| core_markdown::EventParser::new(source, &options.parse));
         let (event_count, pull) = measure(|| {
             parser
                 .by_ref()
@@ -92,12 +92,12 @@ fn main() {
             })
         });
         let (html, html_cold) =
-            measure(|| core_markdown::to_html_with_options(source, &options).unwrap());
+            measure(|| core_markdown::to_html_with_options(source, &options));
         let mut output = String::with_capacity(html.len());
         let (_, html_reserved) = measure(|| {
             core_markdown::render_events(
                 source,
-                core_markdown::EventParser::new(source, &options.parse).unwrap(),
+                core_markdown::EventParser::new(source, &options.parse),
                 &options.compile,
                 &mut output,
             )

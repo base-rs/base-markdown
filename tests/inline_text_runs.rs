@@ -9,14 +9,14 @@ use core_markdown::{
 
 fn assert_rendering_paths(source: &str, options: &Options, expected: &str) {
     assert_eq!(
-        to_html_with_options(source, options).unwrap(),
+        to_html_with_options(source, options),
         expected,
         "{source:?}"
     );
     let mut output = String::new();
     render_events(
         source,
-        EventParser::new(source, &options.parse).unwrap(),
+        EventParser::new(source, &options.parse),
         &options.compile,
         &mut output,
     )
@@ -33,7 +33,7 @@ fn escaped_text_runs_retain_source_offsets_and_support_bounded_ast_edits() {
     let source = r"\*stars\* and \_世界\_";
     for options in [Options::default(), Options::gfm()] {
         let mut runs = Vec::new();
-        for event in EventParser::new(source, &options.parse).unwrap() {
+        for event in EventParser::new(source, &options.parse) {
             let event = event.unwrap();
             if let EventKind::Text(value) = event.kind {
                 let Text::Source(range) = value else {
@@ -52,7 +52,7 @@ fn escaped_text_runs_retain_source_offsets_and_support_bounded_ast_edits() {
         );
 
         let mut builder = AstBuilder::new();
-        let mut events = EventParser::new(source, &options.parse).unwrap();
+        let mut events = EventParser::new(source, &options.parse);
         while builder.consume(&mut events, 1).unwrap() == BuildProgress::Pending {}
         assert_eq!(builder.len(), 6); // Document, paragraph, and four source-backed text nodes.
         let mut document = builder.finish(source.to_owned()).unwrap();
@@ -125,7 +125,6 @@ fn structured_details_keep_their_own_source_ranges() {
     let source = r#"\*label [text](<https://example.com/p> "a title") and ` code `"#;
     let options = Options::default();
     let events = EventParser::new(source, &options.parse)
-        .unwrap()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     let link = events

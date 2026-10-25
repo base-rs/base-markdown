@@ -3,11 +3,11 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{message, to_html, to_html_with_options, CompileOptions, Options};
+use core_markdown::{to_html, to_html_with_options, CompileOptions, Options};
 use pretty_assertions::assert_eq;
 
 #[test]
-fn line_ending() -> Result<(), message::Message> {
+fn line_ending() {
     let danger = &Options {
         compile: CompileOptions {
             allow_dangerous_html: true,
@@ -138,58 +138,56 @@ fn line_ending() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("<div\n", danger)?,
+        to_html_with_options("<div\n", danger),
         "<div\n",
         "should support a line feed after html"
     );
 
     assert_eq!(
-        to_html_with_options("<div\r", danger)?,
+        to_html_with_options("<div\r", danger),
         "<div\r",
         "should support a carriage return after html"
     );
 
     assert_eq!(
-        to_html_with_options("<div\r\n", danger)?,
+        to_html_with_options("<div\r\n", danger),
         "<div\r\n",
         "should support a carriage return + line feed after html"
     );
 
     assert_eq!(
-        to_html_with_options("<div>\n\nx", danger)?,
+        to_html_with_options("<div>\n\nx", danger),
         "<div>\n<p>x</p>",
         "should support a blank line w/ line feeds after html"
     );
 
     assert_eq!(
-        to_html_with_options("<div>\r\rx", danger)?,
+        to_html_with_options("<div>\r\rx", danger),
         "<div>\r<p>x</p>",
         "should support a blank line w/ carriage returns after html"
     );
 
     assert_eq!(
-        to_html_with_options("<div>\r\n\r\nx", danger)?,
+        to_html_with_options("<div>\r\n\r\nx", danger),
         "<div>\r\n<p>x</p>",
         "should support a blank line w/ carriage return + line feeds after html"
     );
 
     assert_eq!(
-        to_html_with_options("<div>\nx", danger)?,
+        to_html_with_options("<div>\nx", danger),
         "<div>\nx",
         "should support a non-blank line w/ line feed in html"
     );
 
     assert_eq!(
-        to_html_with_options("<div>\rx", danger)?,
+        to_html_with_options("<div>\rx", danger),
         "<div>\rx",
         "should support a non-blank line w/ carriage return in html"
     );
 
     assert_eq!(
-        to_html_with_options("<div>\r\nx", danger)?,
+        to_html_with_options("<div>\r\nx", danger),
         "<div>\r\nx",
         "should support a non-blank line w/ carriage return + line feed in html"
     );
-
-    Ok(())
 }

@@ -236,7 +236,7 @@ impl<S: AsRef<str>> Document<S> {
     pub fn parse(source: S, options: &crate::ParseOptions) -> Result<Self, StreamError> {
         let mut builder = AstBuilder::new();
         {
-            let mut events = crate::EventParser::prepare(source.as_ref(), options);
+            let mut events = crate::EventParser::new(source.as_ref(), options);
             if builder.consume(&mut events, usize::MAX).is_err() {
                 unreachable!("the built-in Markdown producer yields a balanced semantic stream");
             }

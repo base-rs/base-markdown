@@ -398,14 +398,13 @@ pub struct CompileOptions {
     ///
     /// ```
     /// use core_markdown::{to_html_with_options, CompileOptions, Options};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // By default, some protocols in image sources are dropped:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "![](data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==)",
     ///         &Options::default()
-    ///     )?,
+    ///     ),
     ///     "<p><img src=\"\" alt=\"\" /></p>"
     /// );
     ///
@@ -421,11 +420,9 @@ pub struct CompileOptions {
     ///             },
     ///             ..Options::default()
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p><img src=\"javascript:alert(1)\" alt=\"\" /></p>"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     pub allow_any_img_src: bool,
 
@@ -443,7 +440,6 @@ pub struct CompileOptions {
     ///
     /// ```
     /// use core_markdown::{to_html, to_html_with_options, CompileOptions, Options};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // `markdown-rs` is safe by default:
     /// assert_eq!(
@@ -462,11 +458,9 @@ pub struct CompileOptions {
     ///             },
     ///             ..Options::default()
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p>Hi, <i>venus</i>!</p>"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     pub allow_dangerous_html: bool,
 
@@ -497,7 +491,6 @@ pub struct CompileOptions {
     ///
     /// ```
     /// use core_markdown::{to_html, to_html_with_options, CompileOptions, Options};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // `markdown-rs` is safe by default:
     /// assert_eq!(
@@ -516,11 +509,9 @@ pub struct CompileOptions {
     ///             },
     ///             ..Options::default()
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p><a href=\"javascript:alert(1)\">javascript:alert(1)</a></p>"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     pub allow_dangerous_protocol: bool,
 
@@ -543,7 +534,6 @@ pub struct CompileOptions {
     ///
     /// ```
     /// use core_markdown::{to_html, to_html_with_options, CompileOptions, LineEnding, Options};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // `markdown-rs` uses `\n` by default:
     /// assert_eq!(
@@ -562,11 +552,9 @@ pub struct CompileOptions {
     ///             },
     ///             ..Options::default()
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<blockquote>\r\n<p>a</p>\r\n</blockquote>"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     pub default_line_ending: LineEnding,
 
@@ -583,14 +571,13 @@ pub struct CompileOptions {
     ///
     /// ```
     /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // `"Back to content"` is used by default:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "[^a]\n\n[^a]: b",
     ///         &Options::gfm()
-    ///     )?,
+    ///     ),
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
     ///
@@ -605,11 +592,9 @@ pub struct CompileOptions {
     ///               ..CompileOptions::gfm()
     ///             }
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Arrière\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     pub footnote_back_label: Option<String>,
 
@@ -639,14 +624,13 @@ pub struct CompileOptions {
     ///
     /// ```
     /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // `"user-content-"` is used by default:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "[^a]\n\n[^a]: b",
     ///         &Options::gfm()
-    ///     )?,
+    ///     ),
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
     ///
@@ -661,11 +645,9 @@ pub struct CompileOptions {
     ///               ..CompileOptions::gfm()
     ///             }
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p><sup><a href=\"#fn-a\" id=\"fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n<ol>\n<li id=\"fn-a\">\n<p>b <a href=\"#fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     pub footnote_clobber_prefix: Option<String>,
 
@@ -687,14 +669,13 @@ pub struct CompileOptions {
     ///
     /// ```
     /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // `"class=\"sr-only\""` is used by default:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "[^a]\n\n[^a]: b",
     ///         &Options::gfm()
-    ///     )?,
+    ///     ),
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
     ///
@@ -709,11 +690,9 @@ pub struct CompileOptions {
     ///               ..CompileOptions::gfm()
     ///             }
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"footnote-heading\">Footnotes</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     pub footnote_label_attributes: Option<String>,
 
@@ -732,14 +711,13 @@ pub struct CompileOptions {
     ///
     /// ```
     /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // `"h2"` is used by default:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "[^a]\n\n[^a]: b",
     ///         &Options::gfm()
-    ///     )?,
+    ///     ),
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
     ///
@@ -754,11 +732,9 @@ pub struct CompileOptions {
     ///               ..CompileOptions::gfm()
     ///             }
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h1 id=\"footnote-label\" class=\"sr-only\">Footnotes</h1>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     pub footnote_label_tag_name: Option<String>,
 
@@ -777,14 +753,13 @@ pub struct CompileOptions {
     ///
     /// ```
     /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // `"Footnotes"` is used by default:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "[^a]\n\n[^a]: b",
     ///         &Options::gfm()
-    ///     )?,
+    ///     ),
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
     ///
@@ -799,11 +774,9 @@ pub struct CompileOptions {
     ///               ..CompileOptions::gfm()
     ///             }
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p><sup><a href=\"#user-content-fn-a\" id=\"user-content-fnref-a\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>\n<section data-footnotes=\"\" class=\"footnotes\"><h2 id=\"footnote-label\" class=\"sr-only\">Notes de bas de page</h2>\n<ol>\n<li id=\"user-content-fn-a\">\n<p>b <a href=\"#user-content-fnref-a\" data-footnote-backref=\"\" aria-label=\"Back to content\" class=\"data-footnote-backref\">↩</a></p>\n</li>\n</ol>\n</section>\n"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     pub footnote_label: Option<String>,
 
@@ -816,7 +789,6 @@ pub struct CompileOptions {
     ///
     /// ```
     /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // With `task_list_item_checkable`, generated `<input type="checkbox" />`
     /// // tags do not contain the attribute `disabled=""` and are thus toggleable by
@@ -831,11 +803,9 @@ pub struct CompileOptions {
     ///                 ..CompileOptions::gfm()
     ///             }
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<ul>\n<li><input type=\"checkbox\" checked=\"\" /> y.</li>\n</ul>"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     pub task_list_item_checkable: bool,
 
@@ -853,7 +823,6 @@ pub struct CompileOptions {
     ///
     /// ```
     /// use core_markdown::{to_html_with_options, CompileOptions, Options, ParseOptions};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // With `allow_dangerous_html`, `markdown-rs` passes HTML through untouched:
     /// assert_eq!(
@@ -866,7 +835,7 @@ pub struct CompileOptions {
     ///               ..CompileOptions::default()
     ///             }
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<iframe>"
     /// );
     ///
@@ -882,11 +851,9 @@ pub struct CompileOptions {
     ///               ..CompileOptions::default()
     ///             }
     ///         }
-    ///     )?,
+    ///     ),
     ///     "&lt;iframe>"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     ///
     /// ## References
@@ -961,7 +928,6 @@ pub struct ParseOptions {
     ///
     /// ```
     /// use core_markdown::{to_html, to_html_with_options, Constructs, Options, ParseOptions};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // `markdown-rs` follows CommonMark by default:
     /// assert_eq!(
@@ -983,11 +949,9 @@ pub struct ParseOptions {
     ///             },
     ///             ..Options::default()
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p>indented code?</p>"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     #[cfg_attr(feature = "serde", serde(default))]
     pub constructs: Constructs,
@@ -1029,7 +993,6 @@ pub struct ParseOptions {
     ///
     /// ```
     /// use core_markdown::{to_html_with_options, Constructs, Options, ParseOptions};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // `markdown-rs` supports single tildes by default:
     /// assert_eq!(
@@ -1042,7 +1005,7 @@ pub struct ParseOptions {
     ///             },
     ///             ..Options::default()
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p><del>a</del></p>"
     /// );
     ///
@@ -1058,11 +1021,9 @@ pub struct ParseOptions {
     ///             },
     ///             ..Options::default()
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p>~a~</p>"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     #[cfg_attr(feature = "serde", serde(default))]
     pub strikethrough_single_tilde: bool,
@@ -1085,7 +1046,6 @@ pub struct ParseOptions {
     ///
     /// ```
     /// use core_markdown::{to_html_with_options, Constructs, Options, ParseOptions};
-    /// # fn main() -> Result<(), core_markdown::message::Message> {
     ///
     /// // `markdown-rs` supports single dollars by default:
     /// assert_eq!(
@@ -1101,7 +1061,7 @@ pub struct ParseOptions {
     ///             },
     ///             ..Options::default()
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p><code class=\"language-math math-inline\">a</code></p>"
     /// );
     ///
@@ -1120,11 +1080,9 @@ pub struct ParseOptions {
     ///             },
     ///             ..Options::default()
     ///         }
-    ///     )?,
+    ///     ),
     ///     "<p>$a$</p>"
     /// );
-    /// # Ok(())
-    /// # }
     /// ```
     #[cfg_attr(feature = "serde", serde(default))]
     pub math_text_single_dollar: bool,

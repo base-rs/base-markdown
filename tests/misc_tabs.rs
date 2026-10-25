@@ -3,11 +3,11 @@
 // Copyright, 2022-2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-use core_markdown::{message, to_html, to_html_with_options, CompileOptions, Options};
+use core_markdown::{to_html, to_html_with_options, CompileOptions, Options};
 use pretty_assertions::assert_eq;
 
 #[test]
-fn tabs_flow() -> Result<(), message::Message> {
+fn tabs_flow() {
     let danger = &Options {
         compile: CompileOptions {
             allow_dangerous_html: true,
@@ -120,7 +120,7 @@ fn tabs_flow() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("<x\ty\tz\t=\t\"\tx\t\">", danger)?,
+        to_html_with_options("<x\ty\tz\t=\t\"\tx\t\">", danger),
         "<x\ty\tz\t=\t\"\tx\t\">",
         "should support tabs in HTML (if whitespace is allowed)"
     );
@@ -136,8 +136,6 @@ fn tabs_flow() -> Result<(), message::Message> {
         "<hr />",
         "should support arbitrary tabs in thematic breaks"
     );
-
-    Ok(())
 }
 
 #[test]

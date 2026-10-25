@@ -22,7 +22,7 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                 options.parse.constructs.label_start_footnote = false;
             }
             Box::new(move |s| {
-                let events = core_markdown::EventParser::new(s, &options.parse).unwrap();
+                let events = core_markdown::EventParser::new(s, &options.parse);
                 let mut output = String::new();
                 core_markdown::render_events(s, events, &options.compile, &mut output).unwrap();
                 output
@@ -48,7 +48,7 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
             }
             Box::new(move |s| {
                 if prepare || events {
-                    let parser = core_markdown::EventParser::new(s, &options.parse).unwrap();
+                    let parser = core_markdown::EventParser::new(s, &options.parse);
                     if events {
                         for event in parser {
                             black_box(event.unwrap());
@@ -72,7 +72,7 @@ fn renderer(parser: &str, profile: &str) -> Box<dyn Fn(&str) -> String> {
                     .unwrap();
                     output
                 } else {
-                    core_markdown::to_html_with_options(s, &options).unwrap()
+                    core_markdown::to_html_with_options(s, &options)
                 }
             })
         }

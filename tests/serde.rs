@@ -274,7 +274,7 @@ fn extension_configuration_uses_syntax_names() {
     let restored: Options = serde_json::from_value(wire.clone()).unwrap();
     assert_eq!(serde_json::to_value(&restored).unwrap(), wire);
     let source = "note[^a]\n\n[^a]: explanation\n\n- [x] done";
-    let html = core_markdown::to_html_with_options(source, &restored).unwrap();
+    let html = core_markdown::to_html_with_options(source, &restored);
     assert!(html.contains("<h3 id=\"footnote-label\" class=\"notes\">Notes</h3>"));
     assert!(html.contains("id=\"notes-fn-a\""));
     assert!(html.contains("aria-label=\"Back to the note\""));

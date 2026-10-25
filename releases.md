@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Fuse inline-title continuation normalization and decoding, share semantic heading text and terminal line-ending rules, and remove infallible API wrappers. `EventParser::new` now returns the parser directly and `to_html_with_options` returns `String`; remove `?`, `.unwrap()` or `.expect(...)` from those calls. This is a breaking API change; checked event consumers, document validation and Markdown serialization retain their errors. See the migration in `context/pull-parser.md`.
+
 - Share Markdown delimiter and link-label rendering, and format HTML list numbers and footnote counters without temporary strings. Preserve rendered output and diagnostics. Remove the no-op `log` feature and the example's unused logger dependency; callers must stop requesting `features = ["log"]`.
 
 - Centralize editable text materialization, avoid temporary run-length allocations for ordinary inline-code and math delimiters, and cache footnote IDs while sharing definition lookup indexing. Preserve output, first-call numbering, duplicate-definition precedence, and source-range errors.

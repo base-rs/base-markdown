@@ -378,13 +378,13 @@ fn list() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("- foo\n- bar\n\n<!-- -->\n\n- baz\n- bim", &danger)?,
+        to_html_with_options("- foo\n- bar\n\n<!-- -->\n\n- baz\n- bim", &danger),
         "<ul>\n<li>foo</li>\n<li>bar</li>\n</ul>\n<!-- -->\n<ul>\n<li>baz</li>\n<li>bim</li>\n</ul>",
         "should support HTML comments between lists"
     );
 
     assert_eq!(
-        to_html_with_options("-   foo\n\n    notcode\n\n-   foo\n\n<!-- -->\n\n    code", &danger)?,
+        to_html_with_options("-   foo\n\n    notcode\n\n-   foo\n\n<!-- -->\n\n    code", &danger),
         "<ul>\n<li>\n<p>foo</p>\n<p>notcode</p>\n</li>\n<li>\n<p>foo</p>\n</li>\n</ul>\n<!-- -->\n<pre><code>code\n</code></pre>",
         "should support HTML comments between lists and indented code"
     );
@@ -572,7 +572,7 @@ fn list() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("* a\n\n<!---->\n\n* b", &danger)?,
+        to_html_with_options("* a\n\n<!---->\n\n* b", &danger),
         "<ul>\n<li>a</li>\n</ul>\n<!---->\n<ul>\n<li>b</li>\n</ul>",
         "should support the common list breaking comment method"
     );
@@ -590,7 +590,7 @@ fn list() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>- one</p>\n<p>two</p>",
         "should support turning off lists"
     );

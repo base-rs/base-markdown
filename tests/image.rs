@@ -218,7 +218,7 @@ fn image() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p>!<a href=\"\">x</a></p>",
         "should support turning off label start (image)"
     );
@@ -239,7 +239,7 @@ fn image() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p><img src=\"javascript:alert(1)\" alt=\"\" /></p>",
         "should allow non-http protocols w/ `allowDangerousProtocol`"
     );
@@ -255,7 +255,7 @@ fn image() -> Result<(), message::Message> {
                 },
                 ..Default::default()
             }
-        )?,
+        ),
         "<p><img src=\"javascript:alert(1)\" alt=\"\" /></p>",
         "should allow non-http protocols with the `allow_any_img_src` option"
     );

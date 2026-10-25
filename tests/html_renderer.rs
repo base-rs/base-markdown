@@ -172,7 +172,7 @@ fn renders_constructed_nodes_and_subtrees() {
 }
 
 #[test]
-fn covers_parser_html_options_and_generated_heading_ids() -> Result<(), message::Message> {
+fn covers_parser_html_options_and_generated_heading_ids() {
     let mut parse_options = ParseOptions::gfm();
     parse_options.inline_code_info = true;
     parse_options.constructs.math_text = true;
@@ -188,7 +188,7 @@ fn covers_parser_html_options_and_generated_heading_ids() -> Result<(), message:
     let html = to_html_with_options(
         "# Same\n\n# Same\n\nUse ruby:`puts 1` and $x$.\n\n- [x] done\n\n$$\nx^2\n$$",
         &options,
-    )?;
+    );
 
     assert!(html.contains("<h1 id=\"same\">Same</h1>"));
     assert!(html.contains("<h1 id=\"same-2\">Same</h1>"));
@@ -196,8 +196,6 @@ fn covers_parser_html_options_and_generated_heading_ids() -> Result<(), message:
     assert!(html.contains("<code class=\"language-math math-inline\">x</code>"));
     assert!(html.contains("disabled=\"\""), "{:?}", html);
     assert!(html.contains("<code class=\"language-math math-display\">x^2"));
-
-    Ok(())
 }
 
 #[test]
@@ -214,11 +212,9 @@ fn renders_unchecked_items_and_header_only_tables() {
 }
 
 #[test]
-fn suppresses_inline_markup_inside_image_alt_text() -> Result<(), message::Message> {
+fn suppresses_inline_markup_inside_image_alt_text() {
     assert_eq!(
-        to_html_with_options("![`code`](image)", &Options::default())?,
+        to_html_with_options("![`code`](image)", &Options::default()),
         "<p><img src=\"image\" alt=\"code\" /></p>"
     );
-
-    Ok(())
 }

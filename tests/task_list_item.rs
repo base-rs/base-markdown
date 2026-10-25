@@ -22,13 +22,13 @@ fn task_list_item() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("* [x] y.", &Options::gfm())?,
+        to_html_with_options("* [x] y.", &Options::gfm()),
         "<ul>\n<li><input type=\"checkbox\" disabled=\"\" checked=\"\" /> y.</li>\n</ul>",
         "should support task list item checks"
     );
 
     assert_eq!(
-        to_html_with_options("* [ ] z.", &Options::gfm())?,
+        to_html_with_options("* [ ] z.", &Options::gfm()),
         "<ul>\n<li><input type=\"checkbox\" disabled=\"\" /> z.</li>\n</ul>",
         "should support unchecked task list item checks"
     );
@@ -43,19 +43,19 @@ fn task_list_item() -> Result<(), message::Message> {
                     ..CompileOptions::gfm()
                 }
             }
-        )?,
+        ),
         "<ul>\n<li><input type=\"checkbox\" checked=\"\" /> y.</li>\n</ul>",
         "should support option for enabled (checkable) task list item checks"
     );
 
     assert_eq!(
-        to_html_with_options("*\n    [x]", &Options::gfm())?,
+        to_html_with_options("*\n    [x]", &Options::gfm()),
         "<ul>\n<li>[x]</li>\n</ul>",
         "should not support laziness (1)"
     );
 
     assert_eq!(
-        to_html_with_options("*\n[x]", &Options::gfm())?,
+        to_html_with_options("*\n[x]", &Options::gfm()),
         "<ul>\n<li></li>\n</ul>\n<p>[x]</p>",
         "should not support laziness (2)"
     );
@@ -143,7 +143,7 @@ EOL after:
             .replace('␠', " ")
             .replace('␉', "\t"),
             &Options::gfm()
-        )?,
+        ),
         r#"<ul>
 <li><input type="checkbox" disabled="" /> foo</li>
 <li><input type="checkbox" disabled="" checked="" /> bar</li>
@@ -392,13 +392,12 @@ fn tasks_preserve_markers_and_whitespace_across_options() {
         "- - [x] nested\n\n> - [ ] quote",
     ] {
         assert_eq!(
-            to_html_with_options(source, &options).unwrap(),
-            to_html_with_options(source, &configured).unwrap(),
+            to_html_with_options(source, &options),
+            to_html_with_options(source, &configured),
             "{source:?}"
         );
         let markers = |parse: &ParseOptions| {
             EventParser::new(source, parse)
-                .unwrap()
                 .filter_map(|event| {
                     let event = event.unwrap();
                     matches!(event.kind, EventKind::TaskMarker(_)).then_some(event)

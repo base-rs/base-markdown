@@ -8,7 +8,7 @@ use core_markdown::{
 };
 
 fn assert_paths(source: &str, options: &Options, expected: &str) {
-    assert_eq!(to_html_with_options(source, options).unwrap(), expected);
+    assert_eq!(to_html_with_options(source, options), expected);
     let document = Document::parse(source, &options.parse).unwrap();
     let mut output = String::new();
     render_events(source, document.events(), &options.compile, &mut output).unwrap();
@@ -20,7 +20,6 @@ fn multiline_raw_values_keep_the_surrounding_text_source_backed() {
     let source = "> before `first\n> second` after\n> plain **bold** line";
     let options = Options::default();
     let events = EventParser::new(source, &options.parse)
-        .unwrap()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     let mut raw = 0;
@@ -87,7 +86,6 @@ fn footnote_calls_obey_the_independent_label_end_switch() {
     let mut options = Options::gfm();
     options.parse.constructs.label_end = false;
     assert!(EventParser::new(source, &options.parse)
-        .unwrap()
         .all(|event| !matches!(event.unwrap().kind, EventKind::FootnoteReference(_))));
 }
 
