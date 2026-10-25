@@ -1,0 +1,51 @@
+{
+  "commit": "a141c028a6e92bfc0b28699d5417257e3ea9c32a",
+  "src_tree": "fa48cbd5902efbdf379f4676b3a5b388134501e8",
+  "coverage": {
+    "measured": 13535,
+    "covered": 13535,
+    "unreachable_exclusions": 22,
+    "target": "aarch64-apple-darwin",
+    "features": "all"
+  },
+  "checks": [
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test:coverage --package core-markdown --all-targets true --all-features true",
+      "scope": "native runtime",
+      "passed": true,
+      "log_sha256": "9cd3b36226316e95e3765aad8bde4cd0c7bbf3573c9831624b0e2b565fc7a2fd",
+      "commit": "a141c028a6e92bfc0b28699d5417257e3ea9c32a",
+      "src_tree": "fa48cbd5902efbdf379f4676b3a5b388134501e8"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo bake --locked test",
+      "scope": "default workspace",
+      "passed": true,
+      "log_sha256": "e9f108bf736e00a55f31157f6c100b740dda99f36f9f817339044716a23ef148",
+      "commit": "a141c028a6e92bfc0b28699d5417257e3ea9c32a",
+      "src_tree": "fa48cbd5902efbdf379f4676b3a5b388134501e8"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+      "scope": "all features/targets",
+      "passed": true,
+      "log_sha256": "ddf9df50056466b8473743e252c9c5bcbaf4d72ed9b09f4887b80e147e6c5a83",
+      "commit": "a141c028a6e92bfc0b28699d5417257e3ea9c32a",
+      "src_tree": "fa48cbd5902efbdf379f4676b3a5b388134501e8"
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 rustup run stable cargo check --lib --all-features --target x86_64-unknown-linux-gnu --locked",
+      "scope": "compile-only",
+      "passed": true,
+      "log_sha256": "8695a537cdacfd1ca818a4e3b170f9204e91cfa65885db11e0fd9d77521cd305",
+      "commit": "a141c028a6e92bfc0b28699d5417257e3ea9c32a",
+      "src_tree": "fa48cbd5902efbdf379f4676b3a5b388134501e8"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "passed": true,
+      "commit": "a141c028a6e92bfc0b28699d5417257e3ea9c32a",
+      "src_tree": "fa48cbd5902efbdf379f4676b3a5b388134501e8"
+    }
+  ]
+}

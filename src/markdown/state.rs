@@ -464,19 +464,23 @@ impl<'a> State<'a> {
             }
             let start = self.output.len();
             self.container_phrasing(document, cell, &Info::new("", ""))?;
-            self.rewrite(start, write_table_pipes);
+            self.rewrite(start, |value, output| write_table_pipes(value, output));
         }
         self.output.push_str(" |");
         Ok(())
     }
 
     // Transform only the newly written range; nested formatting reuses this buffer after its children finish.
-    pub(super) fn rewrite(&mut self, start: usize, transform: impl FnOnce(&str, &mut String)) {
+    pub(super) fn rewrite(
+        &mut self,
+        start: usize,
+        transform: impl FnOnce(&mut String, &mut String),
+    ) {
         let mut scratch = core::mem::take(&mut self.scratch);
         scratch.clear();
         scratch.push_str(&self.output[start..]);
         self.output.truncate(start);
-        transform(&scratch, &mut self.output);
+        transform(&mut scratch, &mut self.output);
         self.scratch = scratch;
     }
 
@@ -618,6 +622,9 @@ impl<'a> State<'a> {
 
     fn peek_node<S: AsRef<str>>(&mut self, document: &Document<S>, id: NodeId) -> Option<char> {
         match &document.node(id).unwrap().kind {
+            EventKind::Text(value) | EventKind::SoftBreak(value) => {
+                super::escape::literal_prefix(value.resolve(document.source()).unwrap())
+            }
             EventKind::Start(Tag::Emphasis) => Some(self.options.emphasis),
             EventKind::Start(Tag::Strong) => Some(self.options.strong),
             EventKind::Start(Tag::Image { .. }) => Some('!'),
@@ -802,9 +809,7 @@ fn write_table_pipes(value: &str, result: &mut String) {
     while index < bytes.len() {
         if bytes[index] == b'`' {
             let start = index;
-            while index < bytes.len() && bytes[index] == b'`' {
-                index += 1;
-            }
+            index = super::util::scan::marker_run_end(bytes, index + 1, b'`');
             let ticks = index - start;
             if code_ticks == Some(ticks) {
                 code_ticks = None;
@@ -838,21 +843,8 @@ fn escape_table_pipes(value: &str) -> String {
     output
 }
 
-fn has_matching_ticks(bytes: &[u8], mut index: usize, ticks: usize) -> bool {
-    while index < bytes.len() {
-        if bytes[index] == b'`' {
-            let start = index;
-            while index < bytes.len() && bytes[index] == b'`' {
-                index += 1;
-            }
-            if index - start == ticks {
-                return true;
-            }
-        } else {
-            index += 1;
-        }
-    }
-    false
+fn has_matching_ticks(bytes: &[u8], index: usize, ticks: usize) -> bool {
+    super::util::scan::marker_runs(&bytes[index..], b'`').any(|run| run.len() == ticks)
 }
 
 #[cfg(test)]

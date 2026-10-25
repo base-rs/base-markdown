@@ -4,6 +4,8 @@ See [socketry-markdown release history](releases/socketry-markdown.md) for relea
 
 ## Unreleased
 
+- Share Markdown scratch rewrites and marker-run scanning across code, math, frontmatter and tables. Skip inline normalization copies without line endings and avoid speculative rendering for literal text prefixes, preserving output and diagnostic behavior.
+
 - Write Markdown block separators from static strings, borrow unchanged text when unwrapping soft line breaks, and splice removed heading sections as one sibling range. Preserve output, stable node IDs, detached subtrees, and edit-context hints.
 
 - Consolidate Markdown destination/title formatting and construct-specific option checks. Share AST linking and preorder advancement; copy sections without per-subtree mapping stacks or repeated insertion-position scans, while preserving rendered output, edit semantics, and diagnostics.

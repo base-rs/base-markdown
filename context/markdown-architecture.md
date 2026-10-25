@@ -34,9 +34,13 @@ The Markdown serializer shares destination/title formatting for definitions, lin
 
 The Markdown serializer writes its three possible block separators directly from static strings, without an intermediate join representation or per-boundary newline allocation.
 
+Code, math and frontmatter formatting share one byte iterator over complete marker runs. Inline delimiters choose the first absent run length; block fences choose a length above the longest run. Table escaping shares run continuation for a known backtick start and the iterator for exact matching of later runs. Keep these selection policies distinct even though the byte scanning is shared.
+
 The Markdown serializer writes recursively into one output string. Output ranges
 provide preceding context without copying parent strings; reusable scratch handles
 indentation and table escaping. Formatting and escaping use byte scanners and static scope rules; regex is a test-only dependency. The escape matcher retains non-overlapping neighbor consumption and uses ASCII digits for ordered-list markers.
+
+Inline code/math normalization uses the same scratch rewrite helper as table escaping and indentation, and skips rewriting values without CR/LF. Phrasing lookahead can return a text value's first character directly when it is outside every escape rule's candidate byte. ASCII spaces/tabs, physical line endings and other context-sensitive prefixes retain speculative rendering, preserving task trimming, wrapping and diagnostic order.
 
 List markers are written directly into the shared output. Ordered items reuse the
 current traversal position, making sibling numbering linear in the number of

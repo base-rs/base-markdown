@@ -1,0 +1,105 @@
+{
+  "sources": {
+    "baseline": {
+      "commit": "225cc0b8704e1c53dfeb060b16f6cae7551dc2dc",
+      "src_tree": "413a2dc9cabb8d410bd45f4195c4ed00a1a9e330"
+    },
+    "rewrite": {
+      "commit": "b668e4b8184605976a1b996b04ff33ee01bf09f9",
+      "src_tree": "12025326aaec8cf573aa01a9a4131214ee738761"
+    },
+    "scanner": {
+      "commit": "172c7cfe0cde1c8dc3c8ad9ecccbf8b7e9b5ab72",
+      "src_tree": "b9fc852b6a33ff080af0a26eb98d5a89d8934a40"
+    },
+    "candidate": {
+      "commit": "a141c028a6e92bfc0b28699d5417257e3ea9c32a",
+      "src_tree": "fa48cbd5902efbdf379f4676b3a5b388134501e8"
+    }
+  },
+  "source_review": {
+    "commit": "a141c028a6e92bfc0b28699d5417257e3ea9c32a",
+    "src_tree": "fa48cbd5902efbdf379f4676b3a5b388134501e8"
+  },
+  "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.3",
+  "validation_compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "host": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "machine": "Apple M4 Pro",
+    "isolation": "Shared host, no affinity. Unrelated Fantail uses about one core; Yugabyte and macOS activity present. No unrelated processes stopped. Own builds, tests, diagnostics and source review completed before timing."
+  },
+  "binaries": {
+    "baseline-bench": {
+      "sha256": "4820ff75defa106d46826e03ba209c715eadcb884614484d35d0cf59776d7099",
+      "bytes": 1848736
+    },
+    "baseline-allocations": {
+      "sha256": "04d5c9f6d75995ac866e77c0ea958fd6070bafa50f596211cb376a3fa107d50b",
+      "bytes": 1865280
+    },
+    "baseline-html": {
+      "sha256": "ec626b31ebe53f315d5d7e8dfa74cc38885d9aa697419c5cf6cf90a3b69efec4",
+      "bytes": 3218192
+    },
+    "baseline-driver": {
+      "sha256": "495f6c650d106a78732b33b347ad2c6630a5e74cc27a6b077d7a7011e4c0dd56",
+      "bytes": 1646272
+    },
+    "rewrite-bench": {
+      "sha256": "2a994f653699d6e797a4fad38b50b498a6f7faf7491b4c86c69d12b87bc3dff9",
+      "bytes": 1849248
+    },
+    "scanner-bench": {
+      "sha256": "c6c3e3b169a6880800f7505a42f6db13354a590aee23783da1d1bddc7ac7eee9",
+      "bytes": 1850528
+    },
+    "candidate-bench": {
+      "sha256": "5da56f94025c4815b8042f38553be81ed3396b836384d9655468f7d5d354e69c",
+      "bytes": 1851184
+    },
+    "candidate-allocations": {
+      "sha256": "c4e277631e4ac6b52560eef4d74e7a7d270d667255b80a29bd15ed715e8f1a7a",
+      "bytes": 1883872
+    },
+    "candidate-html": {
+      "sha256": "fea01eb785eef03b5cc7a17150b9faec4135da8fee3e28153b6a878ccea4e15f",
+      "bytes": 3236768
+    },
+    "candidate-driver": {
+      "sha256": "5e9ba5b209e4a22f0dbdc99b7861616bfdb2b4abb75fa7e9e6ba8ce24d7000f0",
+      "bytes": 1648560
+    }
+  },
+  "inputs": {
+    "original.json": {
+      "sha256": "bcc25b304657ef9a179b4f87b70e22b2fa8ad728723176e207908b3a9e6101cd",
+      "cases": 4
+    },
+    "controls.json": {
+      "sha256": "ee4dd9312eaed8f334ec24306547fc12267e3f90639f0c0d1d0adce7d701843e",
+      "cases": 11
+    },
+    "probes.json": {
+      "sha256": "7f3154636a65e61993b25b346c8b6978aee0fba9dde2805f044aba32b028852b",
+      "cases": 21082
+    },
+    "small-controls.json": {
+      "sha256": "05a4bbb8d2469068c3138a5f82412f384c69f92dfd2b0f5467626f3551aee825",
+      "cases": 5
+    }
+  },
+  "locks": {
+    "Cargo.lock": "e6dae993451707ea3208661462f52e8f57b61d9de444e228665527f2b6dd7c1a",
+    "benches/comparison/Cargo.lock": "f5e800843ee0953d706b17e637b17645604493bc2f331190518fd12989b169a2",
+    "benches/comparison/measurements/2026-10-25-parser-consolidation/event-probe.lock": "42ca4ca9eb86fba0acd88e4c49b86d7cccbf88201abe198d079740254e55761b"
+  },
+  "drivers": {
+    "benches/comparison/measurements/2026-10-25-serializer-rewrites-and-lookahead/build.py": "889358b2d795ecd7ab7f5e8e14c2b3be4cfa27a9d15ef3c3a9ebbab86f37923a",
+    "benches/comparison/measurements/2026-10-25-serializer-rewrites-and-lookahead/measure.py": "df008a7554b8a2db3516f9b9d833e8d9bc629b1d9871efbb3f7b7287dbf7420f",
+    "benches/comparison/measurements/2026-10-25-serializer-rewrites-and-lookahead/verify.py": "ca237dc4a6436f8ef62341b7da2b70ba613120a52a0d44b13defcd026ed7bbb5",
+    "benches/comparison/measurements/2026-10-25-serializer-rewrites-and-lookahead/prepare.py": "a4ee3aa6acad77da7532f298815e77a8fa5c446ad157109cf43ef430684c35f8",
+    "benches/comparison/measurements/2026-10-25-serializer-rewrites-and-lookahead/bench.rs": "c1b03241aee7fa65050e3d6539efbe8c67a3a3b43008ee1ffec8730cb84c6b69",
+    "benches/comparison/measurements/2026-10-25-serializer-and-edits/bench.rs": "1c9aef5dc9e9d1416e04d3f9323311134bbb4ba0320b0b2b9c93f50031c892a2",
+    "benches/comparison/measurements/2026-10-25-single-parser/probe-driver.rs": "59fda445a797f70016e546ea519eabdb51e3b3f626991faf272d7f7de4ba7afc"
+  }
+}

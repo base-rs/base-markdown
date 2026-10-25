@@ -12,7 +12,7 @@ use super::{
         contains_control_or_whitespace::contains_control_or_whitespace,
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::format_heading_as_setext,
-        format_link_as_auto_link::auto_link_text, longest_char_streak::longest_char_streak,
+        format_link_as_auto_link::auto_link_text, scan::longest_run,
     },
 };
 use crate::{
@@ -81,7 +81,7 @@ impl State<'_> {
             self.exit();
             return Ok(());
         }
-        let size = (longest_char_streak(content, marker) + 1).max(3);
+        let size = (longest_run(content, marker as u8) + 1).max(3);
         self.enter(ConstructName::CodeFenced);
         self.output.extend(core::iter::repeat(marker).take(size));
         if let Some(language) = language {
@@ -341,18 +341,17 @@ impl State<'_> {
             self.output.push(' ');
         }
         // Flatten a physical line ending only when a block-opening rule would become active.
-        let mut scratch = core::mem::take(&mut self.scratch);
-        scratch.clear();
-        scratch.push_str(&self.output[start..]);
-        super::escape::normalize_inline(&mut scratch);
-        self.output.truncate(start);
-        self.output.push_str(&scratch);
-        self.scratch = scratch;
+        if super::util::scan::line_endings(content).next().is_some() {
+            self.rewrite(start, |value, output| {
+                super::escape::normalize_inline(value);
+                output.push_str(value);
+            });
+        }
         self.output.extend(core::iter::repeat(marker).take(size));
     }
 
     pub(super) fn math(&mut self, content: &str, metadata: Option<&str>) -> Result<(), Message> {
-        let size = (longest_char_streak(content, '$') + 1).max(2);
+        let size = (longest_run(content, b'$') + 1).max(2);
         self.enter(ConstructName::MathFlow);
         let start = self.output.len();
         self.output.extend(core::iter::repeat('$').take(size));
@@ -669,7 +668,7 @@ impl State<'_> {
         let (opening_length, closing_length) = if matches!(marker, '-' | '+') {
             (3, 3)
         } else {
-            let minimum = (longest_char_streak(body, marker) + 1).max(3);
+            let minimum = (longest_run(body, marker as u8) + 1).max(3);
             let opening = fence.length.max(minimum);
             (opening, closing_fence_length.max(opening))
         };

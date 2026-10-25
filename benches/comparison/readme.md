@@ -4,7 +4,9 @@ This harness compares the public Markdown-to-HTML APIs of core-markdown, markdow
 
 ## Recorded comparison
 
-The latest [serializer and AST edit consolidation](measurements/2026-10-25-serializer-and-edits/readme.md) removes 125 net production lines. Section-copy controls are 6.5–71.2× faster and paired subtree moves are 2.0–2.4× faster than #55; HTML conversion and prepared-document Markdown serialization remain within approximately 1.2%. Allocation counts fall for section copying and remain unchanged for the other measured operations. It does not retime Inkmark.
+The latest [scratch rewrite and scanner consolidation](measurements/2026-10-25-serializer-rewrites-and-lookahead/readme.md) shares inline normalization, marker runs and conservative text lookahead. Prepared-document Markdown takes 5.0–8.3% less time on the original four; code-fence/math/table controls take 46.9–95.3% less time. Complete HTML ranges from 0.4% less to 1.8% more time; the mixed-1m regression is retained in the report. Output and diagnostics are preserved, with fewer scratch allocations on applicable controls. This pass does not retime Inkmark.
+
+The earlier [serializer and AST edit consolidation](measurements/2026-10-25-serializer-and-edits/readme.md) removes 125 net production lines. Section-copy controls are 6.5–71.2× faster and paired subtree moves are 2.0–2.4× faster than #55; HTML conversion and prepared-document Markdown serialization remain within approximately 1.2%. Allocation counts fall for section copying and remain unchanged for the other measured operations. It does not retime Inkmark.
 
 The subsequent [parser consolidation study](measurements/2026-10-25-parser-consolidation/readme.md) compares production `561ae1d` with #54 after five simplification rounds: 53 fewer net production lines, unchanged allocations, and identical complete events on 58,596 probes. The original four range from 0.61% less time to 0.67% more in its primary run; mixed-1m is 0.62% slower and 0.65% slower in a separate repeat. That pass does not retime Inkmark; the table below remains the recorded #54 comparison.
 
@@ -102,3 +104,5 @@ Historical directories retain their original measurements, source identities, va
 
 - [Markdown serializer and AST edit consolidation](measurements/2026-10-25-serializer-and-edits/readme.md).
 - [Static separators, borrowed unwrapping, and section-range removal](measurements/2026-10-25-static-separators-and-removal/readme.md).
+
+- [Serializer scratch rewrites, marker scanning, and literal lookahead](measurements/2026-10-25-serializer-rewrites-and-lookahead/readme.md).
