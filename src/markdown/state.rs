@@ -36,7 +36,6 @@ enum Before<'a> {
 pub struct State<'a> {
     pub output: String,
     pub(super) scratch: String,
-    escape_context: String,
     escapes: Vec<(usize, EscapeInfos)>,
     pub bullet_current: Option<char>,
     pub bullet_last_used: Option<char>,
@@ -563,7 +562,6 @@ impl<'a> State<'a> {
         State {
             output: String::new(),
             scratch: String::new(),
-            escape_context: String::new(),
             escapes: Vec::new(),
             bullet_current: None,
             bullet_last_used: None,
@@ -659,15 +657,12 @@ impl<'a> State<'a> {
     pub fn write_safe(&mut self, input: &str, info: &Info, encode: Option<char>) {
         let before = info.before(&self.output);
         let start = before.len();
-        self.escape_context.clear();
-        self.escape_context.push_str(before);
-        self.escape_context.push_str(input);
-        self.escape_context.push_str(info.after);
-        let value = &self.escape_context;
         let end = start + input.len();
         self.escapes.clear();
         super::escape::collect(
-            value,
+            before,
+            input,
+            info.after,
             &self.stack,
             self.options.single_dollar_text_math,
             &mut self.escapes,
@@ -701,9 +696,13 @@ impl<'a> State<'a> {
             {
                 continue;
             }
-            super::util::safe::write_backslashes(&value[cursor..position], "\\", &mut self.output);
+            super::util::safe::write_backslashes(
+                &input[cursor - start..position - start],
+                "\\",
+                &mut self.output,
+            );
             cursor = position;
-            let character = value[position..]
+            let character = input[position - start..]
                 .chars()
                 .next()
                 .expect("escape positions are character boundaries");
@@ -716,7 +715,11 @@ impl<'a> State<'a> {
                 cursor += character.len_utf8();
             }
         }
-        super::util::safe::write_backslashes(&value[cursor..end], info.after, &mut self.output);
+        super::util::safe::write_backslashes(
+            &input[cursor - start..],
+            info.after,
+            &mut self.output,
+        );
     }
 
     fn definition_separator<S: AsRef<str>>(
