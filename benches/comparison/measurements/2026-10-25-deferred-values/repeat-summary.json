@@ -1,0 +1,194 @@
+{
+  "timing": [
+    {
+      "name": "readme",
+      "mode": "html",
+      "baseline_us": 13.183788174067102,
+      "candidate_us": 13.171058908205072,
+      "time_change_percent": -0.09655241493540245,
+      "baseline_spread_percent": 1.6939062461852394,
+      "candidate_spread_percent": 2.0795009706884082
+    },
+    {
+      "name": "readme",
+      "mode": "ast-html",
+      "baseline_us": 8.077903079461095,
+      "candidate_us": 8.065089084410229,
+      "time_change_percent": -0.15863021535190702,
+      "baseline_spread_percent": 2.3437222490759524,
+      "candidate_spread_percent": 2.7762895419187528
+    },
+    {
+      "name": "readme",
+      "mode": "markdown",
+      "baseline_us": 62.80188530655392,
+      "candidate_us": 62.77272727272727,
+      "time_change_percent": -0.046428596345982065,
+      "baseline_spread_percent": 1.8832105774622576,
+      "candidate_spread_percent": 1.580769577348451
+    },
+    {
+      "name": "mixed-100k",
+      "mode": "html",
+      "baseline_us": 389.37879804560265,
+      "candidate_us": 387.21647557003257,
+      "time_change_percent": -0.5553261981451896,
+      "baseline_spread_percent": 1.543198765394349,
+      "candidate_spread_percent": 2.0903664142557954
+    },
+    {
+      "name": "mixed-100k",
+      "mode": "ast-html",
+      "baseline_us": 256.35615711252655,
+      "candidate_us": 258.15534394904455,
+      "time_change_percent": 0.7018309436306103,
+      "baseline_spread_percent": 2.456883283567146,
+      "candidate_spread_percent": 4.316792577035189
+    },
+    {
+      "name": "mixed-100k",
+      "mode": "markdown",
+      "baseline_us": 1401.6475529411766,
+      "candidate_us": 1383.5088235294118,
+      "time_change_percent": -1.294100601374637,
+      "baseline_spread_percent": 1.7902399670828961,
+      "candidate_spread_percent": 2.625693326915979
+    },
+    {
+      "name": "mixed-1m",
+      "mode": "html",
+      "baseline_us": 3936.311838709678,
+      "candidate_us": 3951.654580645161,
+      "time_change_percent": 0.3897745545615283,
+      "baseline_spread_percent": 3.6020895029105215,
+      "candidate_spread_percent": 5.669144743644949
+    },
+    {
+      "name": "mixed-1m",
+      "mode": "ast-html",
+      "baseline_us": 2544.5549574468087,
+      "candidate_us": 2570.480510638298,
+      "time_change_percent": 1.0188639516555353,
+      "baseline_spread_percent": 2.870484232975312,
+      "candidate_spread_percent": 2.641043107570429
+    },
+    {
+      "name": "mixed-1m",
+      "mode": "markdown",
+      "baseline_us": 13804.972222222223,
+      "candidate_us": 13785.324,
+      "time_change_percent": -0.14232714058340923,
+      "baseline_spread_percent": 1.7028055037908718,
+      "candidate_spread_percent": 22.56265276113041
+    },
+    {
+      "name": "gfm-100k",
+      "mode": "html",
+      "baseline_us": 605.011056122449,
+      "candidate_us": 605.2814642857143,
+      "time_change_percent": 0.04469474739823287,
+      "baseline_spread_percent": 2.695928093600708,
+      "candidate_spread_percent": 1.005783740929922
+    },
+    {
+      "name": "gfm-100k",
+      "mode": "ast-html",
+      "baseline_us": 372.5698738461539,
+      "candidate_us": 373.4726923076923,
+      "time_change_percent": 0.24232191728719155,
+      "baseline_spread_percent": 14.09067247878204,
+      "candidate_spread_percent": 2.015090677977338
+    },
+    {
+      "name": "gfm-100k",
+      "mode": "markdown",
+      "baseline_us": 1582.8536184210525,
+      "candidate_us": 1577.3788421052632,
+      "time_change_percent": -0.34588014027796543,
+      "baseline_spread_percent": 1.9976792885949557,
+      "candidate_spread_percent": 2.5146005789339343
+    },
+    {
+      "name": "rust-nll-rfc",
+      "mode": "html",
+      "baseline_us": 182.8806762820513,
+      "candidate_us": 180.86685416666666,
+      "time_change_percent": -1.1011672508684067,
+      "baseline_spread_percent": 2.677358701178023,
+      "candidate_spread_percent": 2.810220543089925
+    },
+    {
+      "name": "rust-nll-rfc",
+      "mode": "ast-html",
+      "baseline_us": 104.86010827464789,
+      "candidate_us": 104.16729049295775,
+      "time_change_percent": -0.6607067197332173,
+      "baseline_spread_percent": 3.0652330238582604,
+      "candidate_spread_percent": 1.7383472874229922
+    },
+    {
+      "name": "rust-nll-rfc",
+      "mode": "markdown",
+      "baseline_us": 1031.0018245614035,
+      "candidate_us": 1019.9820964912279,
+      "time_change_percent": -1.0688369125693153,
+      "baseline_spread_percent": 2.676470330484104,
+      "candidate_spread_percent": 3.572466491100146
+    },
+    {
+      "name": "titles-and-definitions",
+      "mode": "html",
+      "baseline_us": 520.9631853448276,
+      "candidate_us": 513.5294568965517,
+      "time_change_percent": -1.4269201082520833,
+      "baseline_spread_percent": 1.7900886032766294,
+      "candidate_spread_percent": 1.5675586439145572
+    },
+    {
+      "name": "titles-and-definitions",
+      "mode": "ast-html",
+      "baseline_us": 175.93743731343284,
+      "candidate_us": 175.20174179104478,
+      "time_change_percent": -0.41815746189221015,
+      "baseline_spread_percent": 2.386126208070305,
+      "candidate_spread_percent": 5.934687290880136
+    },
+    {
+      "name": "titles-and-definitions",
+      "mode": "markdown",
+      "baseline_us": 845.250892857143,
+      "candidate_us": 856.4967285714285,
+      "time_change_percent": 1.3304730949496024,
+      "baseline_spread_percent": 2.5297413312726835,
+      "candidate_spread_percent": 3.0167388424789943
+    },
+    {
+      "name": "headings",
+      "mode": "html",
+      "baseline_us": 1528.2468354430382,
+      "candidate_us": 1516.632911392405,
+      "time_change_percent": -0.7599507999155208,
+      "baseline_spread_percent": 4.364682361219763,
+      "candidate_spread_percent": 2.464817059682267
+    },
+    {
+      "name": "headings",
+      "mode": "ast-html",
+      "baseline_us": 1349.7853604651161,
+      "candidate_us": 1337.1351744186047,
+      "time_change_percent": -0.9371998257672876,
+      "baseline_spread_percent": 3.1167973585302544,
+      "candidate_spread_percent": 2.6896418884477136
+    },
+    {
+      "name": "headings",
+      "mode": "markdown",
+      "baseline_us": 2032.913847457627,
+      "candidate_us": 1877.1045254237288,
+      "time_change_percent": -7.664334729617506,
+      "baseline_spread_percent": 2.3158631375615135,
+      "candidate_spread_percent": 3.4269793666975357
+    }
+  ],
+  "allocations": []
+}

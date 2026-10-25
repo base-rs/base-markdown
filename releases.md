@@ -2,6 +2,10 @@
 
 See [socketry-markdown release history](releases/socketry-markdown.md) for releases before the rename.
 
+## Unreleased
+
+- Avoid intermediate escaped image-title strings, retain source-backed values across empty decoding fragments, borrow semantic text when choosing heading syntax, and skip Markdown table-cell rewrites when no pipe needs escaping. Preserve rendered output and source spans.
+
 ## v0.2.0
 
 - Document downstream migration details for heading spans, frontmatter values, and resolved reference destinations. Update fuzz targets to the sole `Document` AST.

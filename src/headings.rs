@@ -4,12 +4,11 @@
 use crate::{stream::EventKind, NodeId};
 use alloc::{collections::BTreeMap, string::String};
 
-/// Append semantic text with the same inline rules for heading IDs and AST text.
-pub(crate) fn append_text<const HEADING: bool>(
-    kind: &EventKind<'_>,
-    source: &str,
-    text: &mut String,
-) {
+/// Borrow semantic text with the same inline rules for heading IDs and AST text.
+pub(crate) fn semantic_text<'a, const HEADING: bool>(
+    kind: &'a EventKind<'_>,
+    source: &'a str,
+) -> Option<&'a str> {
     let value = match kind {
         EventKind::Text(value)
         | EventKind::SoftBreak(value)
@@ -17,17 +16,24 @@ pub(crate) fn append_text<const HEADING: bool>(
         | EventKind::Code { value, .. }
         | EventKind::Html { value, .. } => value,
         EventKind::CodeBlock { value, .. } if !HEADING => value,
-        EventKind::HardBreak => {
-            text.push('\n');
-            return;
-        }
-        _ => return,
+        EventKind::HardBreak => return Some("\n"),
+        _ => return None,
     };
-    text.push_str(
+    Some(
         value
             .resolve(source)
             .expect("semantic text values are validated"),
-    );
+    )
+}
+
+pub(crate) fn append_text<const HEADING: bool>(
+    kind: &EventKind<'_>,
+    source: &str,
+    text: &mut String,
+) {
+    if let Some(value) = semantic_text::<HEADING>(kind, source) {
+        text.push_str(value);
+    }
 }
 
 /// Heading levels to include when building a table of contents.

@@ -1,0 +1,357 @@
+{
+  "metadata": {
+    "utc": "2026-10-25T05:29:22.920343+00:00",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "binaries": {
+      "baseline": {
+        "path": "/private/tmp/core-markdown-refine-study-2026-10-25/baseline-diagnostics",
+        "sha256": "80c10f3c0bffad0e1f52ac4ac4138f6ec06af5c2641e4011c482728620d3b54e"
+      },
+      "candidate": {
+        "path": "/private/tmp/core-markdown-refine-study-2026-10-25/candidate-diagnostics",
+        "sha256": "8e7826c5923e80d0f6dbf54d3b71492dbc08b89f6598669a1d062d4b106527e7"
+      }
+    },
+    "datasets": {
+      "/private/tmp/core-markdown-refine-study-2026-10-25/data/original.json": "36022cf73025704a75ea911f3554637f753a9fbd70ec99104e08b456b29adf8f",
+      "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json": "774be5e92ccd11765b8ce585b3bb4c09dff9d3ed84cb8d61ac730a254669b68c",
+      "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json": "1d43e8946ddceb3e8676260eabbb6d23315cf9b7f2ed2353c6095405d7d969a7"
+    },
+    "rounds": 7,
+    "warmup_ms": 100,
+    "order": "alternating per round"
+  },
+  "samples": [],
+  "summary": [],
+  "checks": [
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/original.json",
+      "name": "readme",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "b605e13f9c870aaf5ba8bb89e5259bb5a95906307ff757acb0315cde0c611a80"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/original.json",
+      "name": "readme",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "b605e13f9c870aaf5ba8bb89e5259bb5a95906307ff757acb0315cde0c611a80"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/original.json",
+      "name": "mixed-100k",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "817faa36d99fee4006facac8d8a2910521ae70c80b81140a5ecc07c51ea365f8"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/original.json",
+      "name": "mixed-100k",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "817faa36d99fee4006facac8d8a2910521ae70c80b81140a5ecc07c51ea365f8"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/original.json",
+      "name": "mixed-1m",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "67d8a03022995eb4769cb030df2743b36150fc400cf8cbb1eee97a138fc57636"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/original.json",
+      "name": "mixed-1m",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "67d8a03022995eb4769cb030df2743b36150fc400cf8cbb1eee97a138fc57636"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/original.json",
+      "name": "gfm-100k",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "085237689177aafa9f031085f34c60097630b01e88aa118a4b93ce825e53ffbc"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/original.json",
+      "name": "gfm-100k",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "085237689177aafa9f031085f34c60097630b01e88aa118a4b93ce825e53ffbc"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json",
+      "name": "commonmark-spec",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "12331be3db5fb022ad155a2e28efa7b283b9eb476f31ab5e8d099d8c3f36583f"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json",
+      "name": "commonmark-spec",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "12331be3db5fb022ad155a2e28efa7b283b9eb476f31ab5e8d099d8c3f36583f"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json",
+      "name": "rust-readme",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "558984d63f5c2c5390cd19230d90cf7d60288402992a7089c821f29a10831e31"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json",
+      "name": "rust-readme",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "558984d63f5c2c5390cd19230d90cf7d60288402992a7089c821f29a10831e31"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json",
+      "name": "clap-readme",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "91e6cd902e07b55fd8dcf568c66633a8773af165ea9aa426bfbf022c1fdc9976"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json",
+      "name": "clap-readme",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "91e6cd902e07b55fd8dcf568c66633a8773af165ea9aa426bfbf022c1fdc9976"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json",
+      "name": "tokio-changelog",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "9dc55a28dd080fc31fcccc4afa7c36357518e55d10b8a6fe37adc7794863e300"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json",
+      "name": "tokio-changelog",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "9dc55a28dd080fc31fcccc4afa7c36357518e55d10b8a6fe37adc7794863e300"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json",
+      "name": "rust-nll-rfc",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "afa696ec7d8a56b9b3b81087c112f9241df6c7a4097f24bf0bc94ca7666ecc55"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json",
+      "name": "rust-nll-rfc",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "afa696ec7d8a56b9b3b81087c112f9241df6c7a4097f24bf0bc94ca7666ecc55"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json",
+      "name": "awesome-rust-readme",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "5c6fd50098e738cdb48a9f1dc17d1101de913cd33618f9d7cc2fe1c4c3671496"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/real.json",
+      "name": "awesome-rust-readme",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "5c6fd50098e738cdb48a9f1dc17d1101de913cd33618f9d7cc2fe1c4c3671496"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "images-simple",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "03506a63f52422b44dd0a0f1e36be7c6a857b3647431ea68373489ac17f5951e"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "images-simple",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "03506a63f52422b44dd0a0f1e36be7c6a857b3647431ea68373489ac17f5951e"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "images-rich-alt",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "59cf94708a9d2e3c2b9ea229b5d207a03dcfa8fd50fc4fb58aff07b9f0c33f1e"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "images-rich-alt",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "59cf94708a9d2e3c2b9ea229b5d207a03dcfa8fd50fc4fb58aff07b9f0c33f1e"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "titles-and-definitions",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "dd8bce5e0f8966dc5ee32ce7638336b74a3eb612954d105f4955b476152f1d4a"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "titles-and-definitions",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "dd8bce5e0f8966dc5ee32ce7638336b74a3eb612954d105f4955b476152f1d4a"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "metadata-leading-escapes",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "80400242bbbfe7dd87771363147576a73dcddf495fb5a9ac8e88c0d60734e8b7"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "metadata-leading-escapes",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "80400242bbbfe7dd87771363147576a73dcddf495fb5a9ac8e88c0d60734e8b7"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "leading-escapes",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "4f79031f3e7082fad342dcc1f3eca4a33611608b67afd12ef466720a8ded5bd5"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "leading-escapes",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "4f79031f3e7082fad342dcc1f3eca4a33611608b67afd12ef466720a8ded5bd5"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "headings",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "eba7354ac92a0b8b74cbf7f1a7435983c263c92462edcdc83fba5df403a34da8"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "headings",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "eba7354ac92a0b8b74cbf7f1a7435983c263c92462edcdc83fba5df403a34da8"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "tables-no-pipes",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "33386a42ad4c179499554afdd51de3e061f6b948f7b7137736fca1844b6c5e30"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "tables-no-pipes",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "33386a42ad4c179499554afdd51de3e061f6b948f7b7137736fca1844b6c5e30"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "tables-pipe-heavy",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "6240a84b5a8239f5f1d04eb9d972d09c3966a67624416e33a6ce5ed5aeb8bca2"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "tables-pipe-heavy",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "6240a84b5a8239f5f1d04eb9d972d09c3966a67624416e33a6ce5ed5aeb8bca2"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "headings-forced-setext",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "9de01cda467d872add819d883eeb675bef360883aa7bad1a52d9d7dd5d430aba"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "headings-forced-setext",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "9de01cda467d872add819d883eeb675bef360883aa7bad1a52d9d7dd5d430aba"
+    },
+    {
+      "label": "baseline",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "headings-multiline",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "7ee695bcc4f3d8d15274b5eab7350c2f194cec7478beccf268853d9fdce5568e"
+    },
+    {
+      "label": "candidate",
+      "data": "/private/tmp/core-markdown-refine-study-2026-10-25/data/focused.json",
+      "name": "headings-multiline",
+      "matches_baseline": true,
+      "different_fields": [],
+      "diagnostic_sha256": "7ee695bcc4f3d8d15274b5eab7350c2f194cec7478beccf268853d9fdce5568e"
+    }
+  ],
+  "allocations": [],
+  "compared_fields": [
+    "html",
+    "ast_html",
+    "markdown",
+    "events (resolved values and spans)",
+    "ast_events (resolved values and spans)",
+    "headings"
+  ]
+}

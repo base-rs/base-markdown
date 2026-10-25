@@ -1,0 +1,51 @@
+{
+  "source_commit": "be85ff3",
+  "coverage": "14072/14072 measured source regions;21 invariant-only unreachable exclusions",
+  "checks": [
+    {
+      "label": "focused",
+      "command": "cargo test --locked --all-features --lib --test event_contract --test html_renderer --test markdown_renderer",
+      "log_sha256": "9334dfd478acafc9517e5710fa64a3f312cf13287127a91c09361b61a80e5331",
+      "tail": [
+        "test propagates_errors_from_nested_markdown_nodes ... ok",
+        "test serializes_ast_variants_and_custom_markdown_options ... ok",
+        "",
+        "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        ""
+      ]
+    },
+    {
+      "label": "clippy",
+      "command": "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+      "log_sha256": "49eaad1d831368a943adcef7d839a93ef20b52321dcf25df4c3d1e9377390d3e",
+      "tail": [
+        "    Checking core-markdown v0.2.0 (/private/tmp/core-markdown-refine-2026-10-25)",
+        "    Finished `dev` profile [unoptimized] target(s) in 4.31s"
+      ]
+    },
+    {
+      "label": "coverage",
+      "command": "rustup run stable cargo bake --locked test:coverage --package core-markdown --all-targets true --all-features true",
+      "log_sha256": "d5428bf64a5ea68ef99e6c8600538d4e2abdd6357ec984de39774ee72f9d3dfa",
+      "tail": [
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "",
+        "",
+        "    Finished report saved to /var/folders/b4/k49s9q3d669dvwxdm0j6jm7m0000gn/T/bake-test-coverage-4270-0/coverage.json",
+        "Region coverage passed: 14072/14072 measured source regions covered (excluded: 21 unreachable regions)"
+      ]
+    },
+    {
+      "label": "workspace",
+      "command": "cargo bake --locked test",
+      "log_sha256": "fe008b8db0feae781f0639ffbfecf9003795b8b291ffa634b8c90c3b52af126b",
+      "tail": [
+        "test src/util/line_ending.rs - util::line_ending::LineEnding (line 23) ... ok",
+        "",
+        "test result: ok. 21 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 1.16s",
+        "",
+        "Cargo workspace tests passed"
+      ]
+    }
+  ]
+}

@@ -3,19 +3,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Encode HTML.
-use alloc::string::String;
 use core::fmt::{self, Write};
-
-/// Encode directly into the caller's output buffer.
-pub fn encode_into(value: &str, encode_html: bool, result: &mut String) {
-    let index = find_escape(value.as_bytes(), encode_html);
-    if index == value.len() {
-        result.push_str(value);
-    } else {
-        write_escaped(result, &mut None, value, encode_html, index)
-            .expect("writing into a String cannot fail");
-    }
-}
 
 #[inline]
 pub(crate) fn find_escape(bytes: &[u8], encode: bool) -> usize {
@@ -73,8 +61,9 @@ mod tests {
             let value = alloc::format!("{prefix}é😀<&\"\0>tail\0");
             for encode in [false, true] {
                 let mut output = alloc::string::String::from("existing<&");
-                super::encode_into("", encode, &mut output);
-                super::encode_into(&value, encode, &mut output);
+                assert_eq!(super::find_escape(b"", encode), 0);
+                let index = super::find_escape(value.as_bytes(), encode);
+                super::write_escaped(&mut output, &mut None, &value, encode, index).unwrap();
                 let suffix = if encode {
                     "é😀&lt;&amp;&quot;�&gt;tail�"
                 } else {
@@ -89,7 +78,9 @@ mod tests {
     fn raw_html_still_replaces_null_bytes() {
         for (encode, expected) in [(false, "<&>\"�"), (true, "&lt;&amp;&gt;&quot;�")] {
             let mut output = alloc::string::String::new();
-            super::encode_into("<&>\"\0", encode, &mut output);
+            let value = "<&>\"\0";
+            let index = super::find_escape(value.as_bytes(), encode);
+            super::write_escaped(&mut output, &mut None, value, encode, index).unwrap();
             assert_eq!(output, expected);
         }
     }

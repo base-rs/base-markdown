@@ -204,3 +204,39 @@ fn escapes_pipes_outside_unmatched_code_spans_and_after_even_backslashes() {
     assert_eq!(escape_table_pipes(r"two \\|"), r"two \\\|");
     assert_eq!(escape_table_pipes(r"one \|"), r"one \|");
 }
+
+#[test]
+fn serializes_table_cells_with_and_without_pipe_rewrites() {
+    let mut document = empty();
+    let row = document
+        .append_child(document.root(), EventKind::Start(Tag::TableRow))
+        .unwrap();
+    for kind in [
+        EventKind::Text(Text::Literal("plain α")),
+        EventKind::Code {
+            value: Text::Literal("a`b"),
+            language: None,
+        },
+        EventKind::Text(Text::Literal("a|b")),
+        EventKind::Code {
+            value: Text::Literal("a|b"),
+            language: None,
+        },
+        EventKind::Text(Text::Literal("")),
+    ] {
+        let cell = document
+            .append_child(
+                row,
+                EventKind::Start(Tag::TableCell {
+                    alignment: crate::AlignKind::None,
+                    header: false,
+                }),
+            )
+            .unwrap();
+        document.append_child(cell, kind).unwrap();
+    }
+    let options = Options::default();
+    let mut state = State::new(&options);
+    state.render_table_row(&document, row).unwrap();
+    assert_eq!(state.output, "| plain α | ``a`b`` | a\\|b | `a|b` |  |");
+}

@@ -2,7 +2,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! One HTML writer for parser events and document traversal.
-use crate::stream::{Event, EventKind, StreamError, Tag, TagKind};
+use crate::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
 use crate::util::{
     constant::{SAFE_PROTOCOL_HREF, SAFE_PROTOCOL_SRC},
     encode::{find_escape, write_escaped},
@@ -66,7 +66,7 @@ pub struct EventHtmlRenderer<'a, W> {
     last: Option<u8>,
     stack: Vec<Frame>,
     images: usize,
-    image_titles: Vec<String>,
+    image_titles: Vec<Text<'static>>,
     captures: Vec<Capture>,
     notes: Vec<(String, String)>,
     calls: Vec<FootnoteCall>,
@@ -299,19 +299,11 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     )?;
                     self.write("\" alt=\"")?;
                 }
-                // The title belongs after alt. Keep it in the frame's separate capture only when present.
+                // The title belongs after alt. Retain its value until the image closes.
                 if tags {
                     if let Some(title) = title {
                         frame.level = 1;
-                        let mut output = String::new();
-                        crate::util::encode::encode_into(
-                            title
-                                .resolve(self.source)
-                                .expect("event values are source-valid"),
-                            true,
-                            &mut output,
-                        );
-                        self.image_titles.push(output);
+                        self.image_titles.push(title.borrowed().owned());
                     }
                 }
                 self.images += 1;
@@ -374,7 +366,12 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 if frame.level != 0 {
                     let title = self.image_titles.pop().unwrap();
                     self.write("\" title=\"")?;
-                    self.write(&title)?;
+                    self.escaped(
+                        title
+                            .resolve(self.source)
+                            .expect("event values are source-valid"),
+                        true,
+                    )?;
                 }
                 self.write("\" />")?;
             }
