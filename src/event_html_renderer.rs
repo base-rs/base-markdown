@@ -10,7 +10,6 @@ use crate::util::{
 };
 use crate::{CompileOptions, LineEnding};
 use alloc::{
-    format,
     string::{String, ToString},
     vec::Vec,
 };
@@ -722,6 +721,39 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         self.write("</a></sup>")
     }
 
+    fn backreferences(&mut self, key: &str, count: usize) -> Result<(), StreamError> {
+        for reference in 1..=count {
+            if reference != 1 {
+                self.write(" ")?;
+            }
+            let number = (reference > 1).then(|| reference.to_string());
+            self.write("<a href=\"#")?;
+            self.prefix()?;
+            self.write("fnref-")?;
+            self.write(key)?;
+            if let Some(number) = &number {
+                self.write("-")?;
+                self.write(number)?;
+            }
+            self.write("\" data-footnote-backref=\"\" aria-label=\"")?;
+            self.escaped(
+                self.options
+                    .footnote_back_label
+                    .as_deref()
+                    .unwrap_or("Back to content"),
+                true,
+            )?;
+            self.write("\" class=\"data-footnote-backref\">↩")?;
+            if let Some(number) = &number {
+                self.write("<sup>")?;
+                self.write(number)?;
+                self.write("</sup>")?;
+            }
+            self.write("</a>")?;
+        }
+        Ok(())
+    }
+
     fn footnotes(&mut self) -> Result<(), StreamError> {
         if self.calls.is_empty() {
             return Ok(());
@@ -764,37 +796,6 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 .ok_or(StreamError::Unbalanced)?;
             let count = *count;
             let value = core::mem::take(&mut self.notes[note].1);
-            let mut references = String::new();
-            for reference in 1..=count {
-                if reference != 1 {
-                    references.push(' ');
-                }
-                let prefix = crate::util::encode::encode(
-                    self.options
-                        .footnote_clobber_prefix
-                        .as_deref()
-                        .unwrap_or("user-content-"),
-                    true,
-                );
-                let back = crate::util::encode::encode(
-                    self.options
-                        .footnote_back_label
-                        .as_deref()
-                        .unwrap_or("Back to content"),
-                    true,
-                );
-                let suffix = if reference == 1 {
-                    String::new()
-                } else {
-                    format!("-{reference}")
-                };
-                let number = if reference == 1 {
-                    String::new()
-                } else {
-                    format!("<sup>{reference}</sup>")
-                };
-                let _ = write!(references, "<a href=\"#{prefix}fnref-{safe}{suffix}\" data-footnote-backref=\"\" aria-label=\"{back}\" class=\"data-footnote-backref\">↩{number}</a>");
-            }
             self.newline()?;
             self.write("<li id=\"")?;
             self.prefix()?;
@@ -806,12 +807,12 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             if let Some(before) = trimmed.strip_suffix("</p>") {
                 self.write(before)?;
                 self.write(" ")?;
-                self.write(&references)?;
+                self.backreferences(&safe, count)?;
                 self.write(&value[before.len()..])?;
             } else {
                 self.write(&value)?;
                 self.terminate()?;
-                self.write(&references)?;
+                self.backreferences(&safe, count)?;
             }
             self.terminate()?;
             self.write("</li>")?;
@@ -845,22 +846,23 @@ mod tests {
     use alloc::string::String;
     use core::fmt::{self, Write};
 
+    struct Writer {
+        remaining: usize,
+        output: String,
+    }
+    impl Write for Writer {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            if self.remaining == 0 {
+                return Err(fmt::Error);
+            }
+            self.remaining -= 1;
+            self.output.push_str(value);
+            Ok(())
+        }
+    }
+
     #[test]
     fn filtered_html_preserves_written_prefix_when_a_writer_fails() {
-        struct Writer {
-            remaining: usize,
-            output: String,
-        }
-        impl Write for Writer {
-            fn write_str(&mut self, value: &str) -> fmt::Result {
-                if self.remaining == 0 {
-                    return Err(fmt::Error);
-                }
-                self.remaining -= 1;
-                self.output.push_str(value);
-                Ok(())
-            }
-        }
         let options = CompileOptions {
             allow_dangerous_html: true,
             tagfilter: true,
@@ -900,5 +902,32 @@ mod tests {
             assert_eq!(renderer.last, expected.as_bytes().last().copied());
             assert_eq!(writer.output, expected);
         }
+    }
+
+    #[test]
+    fn footnote_backreferences_escape_options_and_propagate_each_write_failure() {
+        let options = CompileOptions {
+            footnote_clobber_prefix: Some("<&é".into()),
+            footnote_back_label: Some("back \"<&".into()),
+            ..CompileOptions::default()
+        };
+        let expected = "<a href=\"#&lt;&amp;éfnref-note\" data-footnote-backref=\"\" aria-label=\"back &quot;&lt;&amp;\" class=\"data-footnote-backref\">↩</a> <a href=\"#&lt;&amp;éfnref-note-2\" data-footnote-backref=\"\" aria-label=\"back &quot;&lt;&amp;\" class=\"data-footnote-backref\">↩<sup>2</sup></a>";
+        for remaining in 0..64 {
+            let mut writer = Writer {
+                remaining,
+                output: String::new(),
+            };
+            let mut renderer = EventHtmlRenderer::new("", &options, &mut writer);
+            let result = renderer.backreferences("note", 2);
+            let last = renderer.last;
+            assert_eq!(last, writer.output.as_bytes().last().copied());
+            assert!(expected.starts_with(&writer.output));
+            if result.is_ok() {
+                assert_eq!(writer.output, expected);
+                return;
+            }
+            assert!(matches!(result, Err(crate::stream::StreamError::Write(_))));
+        }
+        panic!("backreferences should finish within the write budget");
     }
 }
