@@ -1,0 +1,11 @@
+# Rejected unwrapping experiments
+
+These completed timing cohorts remain separate from the final accepted-source results. No process or batch samples were excluded. The first full cohort also contains a large host-load spike in its last candidate run; read the process spreads, not only aggregate medians.
+
+- [Initial full cohort](initial.jsonl), [summary](initial-summary.json), [metadata](initial-metadata.json): candidate `b1f75e1d07adc35d997c02384c5788323ab4e11d` copies spans around physical line endings and trims output after each ending. All 42 process/mode records and 186 document/process results are retained. Dense short Unicode lines regressed in all three process medians.
+- [ASCII-trim cohort](trim-screen.jsonl), [summary](trim-screen-summary.json), [patch](trim-only.patch): replace character-based output trimming with ASCII byte checks. Six process records cover the seven original unwrap workloads. This did not recover the dense-Unicode performance.
+- [Grouped-break cohort](grouped-screen.jsonl), [summary](grouped-screen-summary.json), [patch](grouped.patch): consume following runs of spaces/tabs/CR/LF after a converted break. Two process records cover the same seven workloads. This reduced the regression but still lost on the dense-Unicode control, so it was rejected without further timing.
+
+Both patches apply to the initial candidate. [Identities](identities.json) pins patch and candidate executable hashes; raw records pin both executable and input hashes. Each experiment passed the baseline output verifier before timing. The final implementation keeps the original scalar normalization loop after checking whether it can borrow the input unchanged.
+
+These cohorts predate the final late-first-newline control. To regenerate their exact inputs, run the parent study's `prepare.py`, then remove the `late-break-100k` entry from `unwrap.json` and write it using `json.dumps(rows) + '\n'`. Other fixture hashes are unchanged. Use the source revisions/patches above with the parent study's build and measurement scripts; the grouped experiment used `--mode unwrap --rounds 1`, and the trim experiment used `--mode unwrap` with the default three rounds. Keep new cohorts in fresh output files.

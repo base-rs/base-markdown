@@ -1,0 +1,15 @@
+diff --git a/src/markdown/handle.rs b/src/markdown/handle.rs
+index f396909..1b32199 100644
+--- a/src/markdown/handle.rs
++++ b/src/markdown/handle.rs
+@@ -751,7 +751,9 @@ fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
+     let mut start = 0;
+     for ending in core::iter::once(first).chain(endings) {
+         result.push_str(&value[start..ending.start]);
+-        result.truncate(result.trim_end_matches([' ', '\t']).len());
++        while matches!(result.as_bytes().last(), Some(b' ' | b'\t')) {
++            result.truncate(result.len() - 1);
++        }
+         result.push(' ');
+         start = ending.end;
+         while matches!(value.as_bytes().get(start), Some(b' ' | b'\t')) {

@@ -1,0 +1,16 @@
+{
+  "trim": {
+    "baseline_commit": "45f9aa3e081fced42b41a64b0f51124bf58249a3",
+    "candidate_patch_base_commit": "b1f75e1d07adc35d997c02384c5788323ab4e11d",
+    "candidate_patch_sha256": "db62157756920fae4b6ec05f67e0c6a706c726615bc133750679a3fa3f00637f",
+    "candidate_bench_sha256": "e1c71d59661828048792c18ac922d41e43b6fce045d20c41bf4f929317601042",
+    "candidate_bench_bytes": 1849680
+  },
+  "grouped": {
+    "baseline_commit": "45f9aa3e081fced42b41a64b0f51124bf58249a3",
+    "candidate_patch_base_commit": "b1f75e1d07adc35d997c02384c5788323ab4e11d",
+    "candidate_patch_sha256": "beffe2309b2bbad7464763f3173f1255e290330e0e56d7a26b08de5acb0f80b8",
+    "candidate_bench_sha256": "79b8c0ab0196fda8185b5a7d9a25576e1a0230674d4efc5e181fcefa7eec7d20",
+    "candidate_bench_bytes": 1849712
+  }
+}
