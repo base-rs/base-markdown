@@ -5,19 +5,6 @@
 use alloc::vec::Vec;
 use core::ops::Range;
 
-pub fn line_endings(value: &str) -> impl Iterator<Item = Range<usize>> + '_ {
-    let bytes = value.as_bytes();
-    let mut at = 0;
-    core::iter::from_fn(move || {
-        let start = at + memchr::memchr2(b'\r', b'\n', &bytes[at..])?;
-        at = start + 1;
-        if bytes[start] == b'\r' && bytes.get(at) == Some(&b'\n') {
-            at += 1;
-        }
-        Some(start..at)
-    })
-}
-
 /// Complete runs of an ASCII syntax marker, skipping ordinary bytes together.
 pub fn marker_runs(bytes: &[u8], marker: u8) -> impl Iterator<Item = Range<usize>> + '_ {
     let mut at = 0;
@@ -73,18 +60,11 @@ pub fn delimiter_size(value: &str, marker: u8, minimum: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{delimiter_size, line_endings, longest_run, marker_runs};
+    use super::{delimiter_size, longest_run, marker_runs};
     use alloc::vec::Vec;
 
     #[test]
-    fn preserves_physical_line_endings_and_marker_runs() {
-        let value = "é\r\nα\rb\n";
-        assert_eq!(
-            line_endings(value)
-                .map(|range| &value[range])
-                .collect::<Vec<_>>(),
-            ["\r\n", "\r", "\n"]
-        );
+    fn preserves_marker_runs() {
         assert_eq!(delimiter_size("ordinary", b'`', 1), 1);
         assert_eq!(delimiter_size("`` é ` ```` `", b'`', 1), 3);
         assert_eq!(delimiter_size("$$ x $$$", b'$', 2), 4);

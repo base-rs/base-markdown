@@ -19,7 +19,7 @@ use crate::{
     message::Message,
     stream::{EventKind, Tag},
     util::{
-        line_ending::trim_terminal_ending,
+        line_ending::{line_endings, trim_terminal_ending},
         normalize_identifier::{normalize_identifier, normalize_identifier_into},
     },
     AlignKind, Document, NodeId, NodeSyntax,
@@ -493,7 +493,7 @@ impl<'a> State<'a> {
         self.rewrite(start, |value, output| {
             let mut start = 0;
             let mut line = 0;
-            for ending in super::util::scan::line_endings(value) {
+            for ending in line_endings(value) {
                 let slice = &value[start..ending.start];
                 map(slice, line, slice.is_empty(), output);
                 output.push_str(&value[ending.clone()]);

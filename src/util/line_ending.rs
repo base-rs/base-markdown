@@ -4,6 +4,21 @@
 // Copyright, 2026, by Samuel Williams.
 
 use alloc::{str::FromStr, string::String};
+use core::ops::Range;
+
+/// Complete physical line endings, treating CRLF as one range.
+pub(crate) fn line_endings(value: &str) -> impl Iterator<Item = Range<usize>> + '_ {
+    let bytes = value.as_bytes();
+    let mut at = 0;
+    core::iter::from_fn(move || {
+        let start = at + memchr::memchr2(b'\r', b'\n', &bytes[at..])?;
+        at = start + 1;
+        if bytes[start] == b'\r' && bytes.get(at) == Some(&b'\n') {
+            at += 1;
+        }
+        Some(start..at)
+    })
+}
 
 /// Start of one terminal physical line ending before `end`, or `end` itself.
 #[inline]
@@ -119,6 +134,17 @@ impl FromStr for LineEnding {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preserves_complete_physical_line_endings() {
+        let value = "é\r\nα\rb\n";
+        assert_eq!(
+            line_endings(value)
+                .map(|range| &value[range])
+                .collect::<alloc::vec::Vec<_>>(),
+            ["\r\n", "\r", "\n"]
+        );
+    }
 
     #[test]
     fn trims_only_one_terminal_physical_line_ending() {
