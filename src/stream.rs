@@ -64,6 +64,16 @@ impl Text<'_> {
         }
     }
 
+    pub(crate) fn to_mut(&mut self, source: &str) -> Result<&mut String, StreamError> {
+        if !matches!(self, Self::Value(_)) {
+            *self = Self::Value(Cow::Owned(self.resolve(source)?.into()));
+        }
+        match self {
+            Self::Value(value) => Ok(value.to_mut()),
+            _ => unreachable!("source and literal text were materialized above"),
+        }
+    }
+
     pub(crate) fn materialized(self, source: &str) -> Text<'static> {
         match self {
             Self::Source(range) => Text::from(String::from(

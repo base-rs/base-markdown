@@ -18,6 +18,35 @@ fn empty() -> Document {
 }
 
 #[test]
+fn text_edits_materialize_source_and_literals_once() {
+    let source = "source";
+    let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+    let paragraph = document.children(document.root()).next().unwrap();
+    let parsed = document.children(paragraph).next().unwrap();
+    let literal = document
+        .append_child(paragraph, EventKind::Text(Text::Literal("literal")))
+        .unwrap();
+    let owned = document
+        .append_child(
+            paragraph,
+            EventKind::Text(Text::from(String::from("owned"))),
+        )
+        .unwrap();
+    for (id, original) in [(parsed, "source"), (literal, "literal"), (owned, "owned")] {
+        let text = document.text_mut(id).unwrap();
+        assert_eq!(text, original);
+        text.reserve(16);
+        let allocation = text.as_ptr();
+        text.push('!');
+        let text = document.text_mut(id).unwrap();
+        assert_eq!(text.as_ptr(), allocation);
+        text.push('?');
+    }
+    assert_eq!(document.source(), source);
+    assert_eq!(html(&document), "<p>source!?literal!?owned!?</p>");
+}
+
+#[test]
 fn node_ids_remain_stable_when_subtrees_are_reordered_detached_and_reattached() {
     let mut document = empty();
     let root = document.root();
