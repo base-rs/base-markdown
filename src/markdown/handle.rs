@@ -187,16 +187,17 @@ impl State<'_> {
         }
     }
 
-    pub(super) fn emphasis<S: AsRef<str>>(
+    pub(super) fn delimited_phrasing<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         node: NodeId,
         info: &Info,
+        marker: char,
+        length: usize,
     ) -> Result<(), Message> {
-        let marker = self.options.check_emphasis()?;
-        self.output.push(marker);
+        self.output.extend(core::iter::repeat(marker).take(length));
         self.container_phrasing(document, node, info)?;
-        self.output.push(marker);
+        self.output.extend(core::iter::repeat(marker).take(length));
         Ok(())
     }
 
@@ -257,21 +258,6 @@ impl State<'_> {
         self.enter(ConstructName::Phrasing);
         self.container_phrasing(document, node, info)?;
         self.exit();
-        Ok(())
-    }
-
-    pub(super) fn strong<S: AsRef<str>>(
-        &mut self,
-        document: &Document<S>,
-        node: NodeId,
-        info: &Info,
-    ) -> Result<(), Message> {
-        let marker = self.options.check_strong()?;
-        self.output.push(marker);
-        self.output.push(marker);
-        self.container_phrasing(document, node, info)?;
-        self.output.push(marker);
-        self.output.push(marker);
         Ok(())
     }
 
@@ -391,16 +377,8 @@ impl State<'_> {
                 return Ok(());
             }
         }
-        self.enter(ConstructName::Label);
-        self.output.push_str(if image { "![" } else { "[" });
-        let info = Info::at(start, self.output.len(), "](");
-        if image {
-            self.write_safe(&image_alt(document, node), &info, None);
-        } else {
-            self.container_phrasing(document, node, &info)?;
-        }
+        self.link_label(document, node, image, "](")?;
         self.output.push_str("](");
-        self.exit();
         self.destination_title(
             start,
             destination,
@@ -421,19 +399,9 @@ impl State<'_> {
         label: &str,
         image: bool,
     ) -> Result<(), Message> {
-        self.enter(ConstructName::Label);
         let start = self.output.len();
-        self.output.push_str(if image { "![" } else { "[" });
-        let text_start = self.output.len();
-        let info = Info::at(start, text_start, "]");
-        if image {
-            self.write_safe(&image_alt(document, node), &info, None);
-        } else {
-            self.container_phrasing(document, node, &info)?;
-        }
-        let text_end = self.output.len();
+        let text = self.link_label(document, node, image, "]")?;
         self.output.push_str("][");
-        self.exit();
         let stack = mem::take(&mut self.stack);
         self.enter(ConstructName::Reference);
         let reference_start = self.output.len();
@@ -441,8 +409,8 @@ impl State<'_> {
         self.exit();
         self.stack = stack;
         if matches!(kind, ReferenceKind::Full)
-            || text_start == text_end
-            || self.output[text_start..text_end] != self.output[reference_start..]
+            || text.is_empty()
+            || self.output[text] != self.output[reference_start..]
         {
             self.output.push(']');
         } else {
@@ -454,6 +422,27 @@ impl State<'_> {
             }
         }
         Ok(())
+    }
+
+    fn link_label<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        node: NodeId,
+        image: bool,
+        after: &str,
+    ) -> Result<core::ops::Range<usize>, Message> {
+        self.enter(ConstructName::Label);
+        let start = self.output.len();
+        self.output.push_str(if image { "![" } else { "[" });
+        let text_start = self.output.len();
+        let info = Info::at(start, text_start, after);
+        if image {
+            self.write_safe(&image_alt(document, node), &info, None);
+        } else {
+            self.container_phrasing(document, node, &info)?;
+        }
+        self.exit();
+        Ok(text_start..self.output.len())
     }
 
     pub(super) fn list<S: AsRef<str>>(

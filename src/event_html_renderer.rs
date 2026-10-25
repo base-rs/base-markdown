@@ -13,7 +13,24 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use core::fmt::{self, Write};
+use core::{
+    convert::TryFrom,
+    fmt::{self, Write},
+};
+
+// Every u64, including the supported targets' usize counters, fits in 20 decimal digits.
+fn decimal(mut value: u64, buffer: &mut [u8; 20]) -> &str {
+    let mut start = buffer.len();
+    loop {
+        start -= 1;
+        buffer[start] = b'0' + u8::try_from(value % 10).expect("a decimal digit fits in u8");
+        value /= 10;
+        if value == 0 {
+            break;
+        }
+    }
+    core::str::from_utf8(&buffer[start..]).expect("decimal digits are ASCII")
+}
 
 struct Frame {
     kind: TagKind,
@@ -118,6 +135,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         let value = self.line_ending.clone();
         self.write(value.as_str())
     }
+    fn number(&mut self, value: u64) -> Result<(), StreamError> {
+        self.write(decimal(value, &mut [0; 20]))
+    }
     fn terminate(&mut self) -> Result<(), StreamError> {
         if !matches!(self.last, None | Some(b'\r' | b'\n')) {
             self.newline()?;
@@ -218,7 +238,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         Some(1) => self.write("<ol>")?,
                         Some(start) => {
                             self.write("<ol start=\"")?;
-                            self.write(&start.to_string())?;
+                            self.number(u64::from(*start))?;
                             self.write("\">")?;
                         }
                     }
@@ -739,10 +759,10 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         self.write(safe)?;
         if count > 1 {
             self.write("-")?;
-            self.write(&count.to_string())?;
+            self.number(count as u64)?;
         }
         self.write("\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">")?;
-        self.write(&number.to_string())?;
+        self.number(number as u64)?;
         self.write("</a></sup>")
     }
 
@@ -751,12 +771,13 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             if reference != 1 {
                 self.write(" ")?;
             }
-            let number = (reference > 1).then(|| reference.to_string());
+            let mut buffer = [0; 20];
+            let number = (reference > 1).then(|| decimal(reference as u64, &mut buffer));
             self.write("<a href=\"#")?;
             self.prefix()?;
             self.write("fnref-")?;
             self.write(key)?;
-            if let Some(number) = &number {
+            if let Some(number) = number {
                 self.write("-")?;
                 self.write(number)?;
             }
@@ -769,7 +790,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 true,
             )?;
             self.write("\" class=\"data-footnote-backref\">↩")?;
-            if let Some(number) = &number {
+            if let Some(number) = number {
                 self.write("<sup>")?;
                 self.write(number)?;
                 self.write("</sup>")?;
@@ -883,6 +904,26 @@ mod tests {
     use crate::CompileOptions;
     use alloc::string::String;
     use core::fmt::{self, Write};
+
+    #[test]
+    fn decimal_formats_zero_boundaries_and_full_width_values() {
+        let mut buffer = [0; 20];
+        for value in [0, 1, 9, 10, 99, 100, u64::from(u32::MAX), u64::MAX] {
+            assert_eq!(
+                super::decimal(value, &mut buffer),
+                alloc::format!("{value}")
+            );
+        }
+        for exponent in 1..=19 {
+            let power = 10_u64.pow(exponent);
+            for value in [power - 1, power, power + 1] {
+                assert_eq!(
+                    super::decimal(value, &mut buffer),
+                    alloc::format!("{value}")
+                );
+            }
+        }
+    }
 
     struct Writer {
         remaining: usize,

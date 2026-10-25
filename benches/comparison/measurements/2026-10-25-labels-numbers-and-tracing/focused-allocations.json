@@ -1,0 +1,156 @@
+[
+  {
+    "mode": "controls",
+    "document": "delimited-256",
+    "baseline": {
+      "allocations": 4,
+      "reallocations": 11,
+      "requested_bytes": 32864,
+      "result": 8704
+    },
+    "candidate": {
+      "allocations": 4,
+      "reallocations": 11,
+      "requested_bytes": 32864,
+      "result": 8704
+    },
+    "deltas": {
+      "allocations": 0,
+      "reallocations": 0,
+      "requested_bytes": 0,
+      "result": 0
+    }
+  },
+  {
+    "mode": "controls",
+    "document": "resources-256",
+    "baseline": {
+      "allocations": 260,
+      "reallocations": 11,
+      "requested_bytes": 34912,
+      "result": 14592
+    },
+    "candidate": {
+      "allocations": 260,
+      "reallocations": 11,
+      "requested_bytes": 34912,
+      "result": 14592
+    },
+    "deltas": {
+      "allocations": 0,
+      "reallocations": 0,
+      "requested_bytes": 0,
+      "result": 0
+    }
+  },
+  {
+    "mode": "controls",
+    "document": "references-256",
+    "baseline": {
+      "allocations": 1287,
+      "reallocations": 11,
+      "requested_bytes": 43483,
+      "result": 13077
+    },
+    "candidate": {
+      "allocations": 1287,
+      "reallocations": 11,
+      "requested_bytes": 43483,
+      "result": 13077
+    },
+    "deltas": {
+      "allocations": 0,
+      "reallocations": 0,
+      "requested_bytes": 0,
+      "result": 0
+    }
+  },
+  {
+    "mode": "features",
+    "document": "ordered-lists-256",
+    "baseline": {
+      "allocations": 261,
+      "reallocations": 7,
+      "requested_bytes": 251744,
+      "result": 16274
+    },
+    "candidate": {
+      "allocations": 5,
+      "reallocations": 7,
+      "requested_bytes": 249440,
+      "result": 16274
+    },
+    "deltas": {
+      "allocations": -256,
+      "reallocations": 0,
+      "requested_bytes": -2304,
+      "result": 0
+    }
+  },
+  {
+    "mode": "features",
+    "document": "footnote-single",
+    "baseline": {
+      "allocations": 21,
+      "reallocations": 9,
+      "requested_bytes": 3314,
+      "result": 432
+    },
+    "candidate": {
+      "allocations": 20,
+      "reallocations": 9,
+      "requested_bytes": 3313,
+      "result": 432
+    },
+    "deltas": {
+      "allocations": -1,
+      "reallocations": 0,
+      "requested_bytes": -1,
+      "result": 0
+    }
+  },
+  {
+    "mode": "features",
+    "document": "footnote-repeated-64",
+    "baseline": {
+      "allocations": 273,
+      "reallocations": 14,
+      "requested_bytes": 93187,
+      "result": 17607
+    },
+    "candidate": {
+      "allocations": 83,
+      "reallocations": 14,
+      "requested_bytes": 92887,
+      "result": 17607
+    },
+    "deltas": {
+      "allocations": -190,
+      "reallocations": 0,
+      "requested_bytes": -300,
+      "result": 0
+    }
+  },
+  {
+    "mode": "features",
+    "document": "footnotes-256",
+    "baseline": {
+      "allocations": 4364,
+      "reallocations": 531,
+      "requested_bytes": 811758,
+      "result": 226940
+    },
+    "candidate": {
+      "allocations": 2572,
+      "reallocations": 531,
+      "requested_bytes": 808754,
+      "result": 226940
+    },
+    "deltas": {
+      "allocations": -1792,
+      "reallocations": 0,
+      "requested_bytes": -3004,
+      "result": 0
+    }
+  }
+]

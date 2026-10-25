@@ -10,15 +10,12 @@ serde = { features = ["derive"], optional = true, version = "1" }
 [dev-dependencies]
 regex = { version = "1" }
 criterion = "0.5"
-env_logger = "0.11"
 pretty_assertions = { workspace = true }
 serde_json = { version = "1" }
 
 [features]
 default = []
 json = ["serde"]
-# Retained for callers that enabled the removed grammar tokenizer's tracing.
-log = []
 serde = ["dep:serde"]
 
 [package]

@@ -30,7 +30,7 @@ Reference keys borrow contiguous canonical ASCII labels from source; other forms
 
 Unicode identifier folding shares a helper that skips the intermediate lowercase string when the label contains no non-ASCII uppercase character. Labels containing those characters retain the full string lower-then-upper conversion, including contextual casing and expansions. Exhaustive scalar and contextual tests preserve the existing matching rules.
 
-The Markdown serializer shares destination/title formatting for definitions, links and images. Formatting-option checks live beside their options and run only at the original construct-specific call sites.
+The Markdown serializer shares destination/title formatting for definitions, links and images. Resource and reference links share label rendering while retaining their distinct following context. Emphasis, strong and strikethrough share delimiter wrapping. Formatting-option checks live beside their options and run only at the original construct-specific call sites.
 
 The Markdown serializer writes its three possible block separators directly from static strings, without an intermediate join representation or per-boundary newline allocation.
 
@@ -47,7 +47,7 @@ current traversal position, making sibling numbering linear in the number of
 items. Serializing an attached item on its own scans its source-list siblings once
 to retain its original number and uses the configured ordered marker.
 
-Footnote backreferences write through the shared HTML writer instead of assembling intermediate markup and escaped option strings. Each repeated backlink formats its number once and reuses it for the ID suffix and superscript; footnote bodies remain buffered until document completion.
+Footnote backreferences write through the shared HTML writer instead of assembling intermediate markup and escaped option strings. Ordered-list attributes and footnote counters format into a stack buffer without temporary strings. Each repeated backlink formats its number once and reuses it for the ID suffix and superscript; footnote bodies remain buffered until document completion.
 
 The HTML renderer retains footnote definitions in completion order and calls in first-use order, caching each called label's escaped ID. At completion, the parser's shared indexing helpers index only called labels. One walk matches definitions in completion order and stops when every called label has a body. Duplicate definitions retain the first completed body, including an empty body. Documents without calls skip indexing, and unused labels consume no index storage. Call lookup remains linear in distinct called labels.
 
@@ -76,4 +76,4 @@ HTML rendering omits frontmatter. All frontmatter uses one Markdown serializatio
 
 Integration tests are organized by Markdown construct in `tests/`; keep regressions close to the behavior they cover. `tests/commonmark.rs` exercises the CommonMark corpus, and `tests/html_renderer.rs`, `tests/markdown_renderer.rs`, and `tests/document.rs` cover document rendering and edits. `tests/markdown_serializer_*.rs` contains the Markdown serializer corpus. Its test-only declarative fixture builder converts constructor descriptions into real documents; it is not a second parser or renderer.
 
-Run formatting, linting, and tests from the workspace root. The standard test workflow requires 100% source-region coverage for the published `core-markdown` package across all targets and features, then runs the workspace test task. This runs the package's tests again with default features and covers the private Bake and generator packages, which are outside the coverage gate. The crate exposes optional `json` and `serde` features. The former tokenizer tracing `log` feature remains accepted as a no-op for compatibility. The `generate/` program refreshes generated CommonMark and Unicode data used by the tests.
+Run formatting, linting, and tests from the workspace root. The standard test workflow requires 100% source-region coverage for the published `core-markdown` package across all targets and features, then runs the workspace test task. This runs the package's tests again with default features and covers the private Bake and generator packages, which are outside the coverage gate. The crate exposes optional `json` and `serde` features. The removed grammar tokenizer's tracing `log` feature is no longer accepted. The `generate/` program refreshes generated CommonMark and Unicode data used by the tests.
