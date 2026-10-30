@@ -422,7 +422,8 @@ fn writes_lf_line_endings_for_source_values() {
         "---\r\na: 1\r\nb: 2\r\n---\r\n",
         "a\rb\r",
         "[a]: <b>\r\n  'c\r\nd'\r\n\r\n[a]\r\n",
-        "> <div>\ra\r> </div>\r",
+        "> <div>\r> a\r> </div>\r",
+        "- ```\r  a\r  ```\r",
     ] {
         let document = base_markdown::Document::parse(source, &options.parse).unwrap();
         let output = base_markdown::to_markdown(&document).unwrap();

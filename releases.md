@@ -5,6 +5,7 @@ Earlier history, from before the package was renamed from `socketry-markdown`, i
 ## Unreleased
 
 - Write every line ending in serialized Markdown as LF. CRLF and lone CR line endings inside code, HTML, math, front matter and titles were previously copied through, which left mixed line endings in otherwise LF output.
+- Return inline subtrees from `to_markdown_node` without a trailing line ending, as cmark does. Text, emphasis, links, code and other phrasing content, including inline opaque nodes, serialize as `*b*` rather than `*b*\n`; non-empty documents and block subtrees still end with a line ending. This changes output for callers serializing inline fragments.
 
 ## v0.1.0
 

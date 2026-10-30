@@ -25,7 +25,7 @@ mod util;
 
 /// Serialize an arena document to Markdown.
 ///
-/// The output always uses LF line endings: CRLF and lone CR line endings in source values, such as code and HTML, are written as LF.
+/// The output always uses LF line endings: CRLF and lone CR line endings in node values, such as code, HTML, and text, are written as LF.
 ///
 /// # Errors
 /// Returns invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
@@ -46,7 +46,7 @@ pub fn to_markdown_with_options<S: AsRef<str>>(
 
 /// Serialize a document subtree with formatting options.
 ///
-/// The output always uses LF line endings.
+/// The output always uses LF line endings. Non-empty block subtrees end with a line ending; inline (phrasing) subtrees, such as text, emphasis, or a link, are returned without an added line ending.
 ///
 /// # Errors
 /// Returns an invalid node index, invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
@@ -58,6 +58,9 @@ pub fn to_markdown_node<S: AsRef<str>>(
     if document.node(node).is_none() {
         return Err(state::invalid_node());
     }
+    let kind = &document.node(node).unwrap().kind;
+    let inline = state::is_phrasing(kind)
+        || matches!(kind, crate::stream::EventKind::Opaque { block: false, .. });
     let mut state = State::new(options);
     state.serialization_root = Some(node);
     let mut result = state.handle(document, node, &Info::new("\n", "\n"))?;
@@ -65,7 +68,8 @@ pub fn to_markdown_node<S: AsRef<str>>(
     if result.contains('\r') {
         result = result.replace("\r\n", "\n").replace('\r', "\n");
     }
-    if !result.is_empty() && !result.ends_with('\n') {
+    // Only block output is line-terminated, matching cmark's renderer.
+    if !inline && !result.is_empty() && !result.ends_with('\n') {
         result.push('\n');
     }
     Ok(result)

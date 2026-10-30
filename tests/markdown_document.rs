@@ -173,7 +173,7 @@ fn detached_nodes_and_invalid_subtree_indices_are_handled() {
     document.detach(text).unwrap();
     assert_eq!(
         to_markdown_node(&document, text, &Default::default()).unwrap(),
-        "a\n"
+        "a"
     );
     let item = document
         .descendants(document.root())
@@ -220,8 +220,8 @@ fn serialized_fragments_support_table_sections_and_nonrendered_metadata() {
     }
     let mut document = empty();
     for (kind, expected) in [
-        (EventKind::TaskMarker(true), "[x]\n"),
-        (EventKind::TaskMarker(false), "[ ]\n"),
+        (EventKind::TaskMarker(true), "[x]"),
+        (EventKind::TaskMarker(false), "[ ]"),
         (
             EventKind::Opaque {
                 value: Text::Literal("raw metadata"),
@@ -230,8 +230,15 @@ fn serialized_fragments_support_table_sections_and_nonrendered_metadata() {
             "raw metadata\n",
         ),
         (
+            EventKind::Opaque {
+                value: Text::Literal("inline metadata"),
+                block: false,
+            },
+            "inline metadata",
+        ),
+        (
             EventKind::FootnoteReference(Text::Literal("NOTE")),
-            "[^NOTE]\n",
+            "[^NOTE]",
         ),
         (
             EventKind::Separator {
