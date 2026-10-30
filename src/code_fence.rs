@@ -3,9 +3,18 @@
 
 /// Opening fence metadata, matching Markly's `Node::Fence` structure.
 ///
-/// This describes the source opening fence. The closing fence can be longer
-/// or absent for ordinary code blocks. Markdown serialization may use a
-/// different fence according to its formatting options and content safety.
+/// This describes the source opening fence. The closing fence can be longer or absent for ordinary code blocks. Markdown serialization may use a different fence according to its formatting options and content safety.
+///
+/// Code-block events retain this metadata independently of source offsets:
+///
+/// ```
+/// use base_markdown::{stream::EventKind, Document, ParseOptions};
+///
+/// let document = Document::parse("  ~~~~rust\n  let x = 1;\n  ~~~~", &ParseOptions::default()).unwrap();
+/// let code = document.children(document.root()).next().unwrap();
+/// let EventKind::CodeBlock { fence: Some(fence), .. } = &document.node(code).unwrap().kind else { panic!() };
+/// assert_eq!((fence.character, fence.length, fence.indent), ('~', 4, 2));
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CodeFence {

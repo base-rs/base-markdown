@@ -111,11 +111,23 @@ pub struct Constructs {
     /// Frontmatter with an unindented opening fence on the first document line,
     /// outside list items and blockquotes, and a matching closing fence.
     ///
-    /// All forms produce a source-backed opaque node with [`NodeSyntax::Frontmatter`][crate::NodeSyntax::Frontmatter] metadata.
-    /// Untagged `---` and `+++` imply YAML and TOML. A format hint after either
-    /// delimiter, or a language-tagged backtick/tilde code fence, supplies an
-    /// explicit language. The parser preserves the raw body and authored info
-    /// string; HTML omits the frontmatter.
+    /// Frontmatter is language-agnostic, following [Markly](https://github.com/socketry/markly) and [cmarkly](https://github.com/socketry/cmarkly). All forms produce a source-backed opaque node with [`NodeSyntax::Frontmatter`][crate::NodeSyntax::Frontmatter] metadata. Untagged `---` and `+++` imply YAML and TOML, with an empty info string. A format hint after either delimiter (such as `--- json` or `---yaml`), or a language-tagged backtick/tilde code fence, supplies an explicit language. The parser preserves the raw body and the full authored info string without parsing the named format; [`Document::frontmatter_value`][crate::Document::frontmatter_value] returns the body. HTML omits the frontmatter. Backtick/tilde fences without a language, fences later in a document, and unclosed fences remain ordinary Markdown.
+    ///
+    /// Markdown serialization retains the stored info string and body while normalizing spacing around the info string. It can lengthen fences or change their marker when edited content would close them prematurely, writing an implied language explicitly when replacing an untagged dash/plus delimiter, and adds a line ending before the closing fence when an edited body needs one. Round trips preserve the body and effective language.
+    ///
+    /// ````
+    /// use base_markdown::{Constructs, Document, NodeSyntax, ParseOptions};
+    ///
+    /// let options = ParseOptions {
+    ///     constructs: Constructs { frontmatter: true, ..Constructs::default() },
+    ///     ..ParseOptions::default()
+    /// };
+    /// let document = Document::parse("```json title=example\n{\"draft\": true}\n```\n\n# Hello", &options).unwrap();
+    /// let node = document.children(document.root()).next().unwrap();
+    /// let Some(NodeSyntax::Frontmatter { info, .. }) = document.syntax(node) else { panic!() };
+    /// assert_eq!(info.resolve(document.source()).unwrap(), "json title=example");
+    /// assert_eq!(document.frontmatter_value(node), Some("{\"draft\": true}\n"));
+    /// ````
     ///
     /// ````markdown
     /// > | ---
@@ -958,23 +970,32 @@ pub struct ParseOptions {
 
     /// Whether to parse a language prefix, such as `ruby:`, before inline code.
     ///
-    /// When enabled, the prefix is removed from the surrounding text and
-    /// stored as the inline code node's `lang` value. The default is `false`.
+    /// When enabled, the prefix is removed from the surrounding text and stored as the inline code's `language`, and HTML rendering emits a `language-*` class. The default is `false`, which retains `CommonMark` behavior.
+    ///
+    /// ```
+    /// use base_markdown::{to_html_with_options, Options, ParseOptions};
+    ///
+    /// let options = Options {
+    ///     parse: ParseOptions { inline_code_info: true, ..ParseOptions::default() },
+    ///     ..Options::default()
+    /// };
+    /// assert_eq!(
+    ///     to_html_with_options("Call rust:`main()`.", &options),
+    ///     "<p>Call <code class=\"language-rust\">main()</code>.</p>"
+    /// );
+    /// ```
     #[cfg_attr(feature = "serde", serde(default))]
     pub inline_code_info: bool,
 
-    /// Whether indented type 6 and type 7 HTML blocks continue across blank
-    /// lines when later content keeps a consistent indentation.
+    /// Whether indented type 6 and type 7 HTML blocks continue across blank lines when later content keeps a consistent indentation.
     ///
-    /// The default is `false`, which follows `CommonMark`'s blank-line rule.
+    /// This keeps indented HTML content together instead of ending the block at the first blank line. The default is `false`, which follows `CommonMark`'s blank-line rule.
     #[cfg_attr(feature = "serde", serde(default))]
     pub html_block_blank_lines: bool,
 
-    /// Whether `:` is allowed in HTML tag names for namespace prefixes such
-    /// as `svg:circle`.
+    /// Whether `:` is allowed in HTML tag names for namespace prefixes such as `<svg:circle />`, in both block and inline HTML.
     ///
-    /// The default is `false` to preserve `CommonMark` parsing of text such as
-    /// `<m:abc>`.
+    /// The default is `false` to preserve `CommonMark` parsing of text such as `<m:abc>`.
     #[cfg_attr(feature = "serde", serde(default))]
     pub html_tag_namespaces: bool,
 
