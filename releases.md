@@ -2,7 +2,7 @@
 
 Earlier history, from before the package was renamed from `socketry-markdown`, is in [releases/socketry-markdown.md](releases/socketry-markdown.md).
 
-## Unreleased
+## v0.1.1
 
 - Keep inline HTML after text unchanged when serializing Markdown. Previously each serialization added a space before inline HTML in paragraphs, including those in block quotes and list items, so repeated normalization kept growing the gap. Only a line ending directly before inline HTML is now replaced with a space.
 - Write every line ending in serialized Markdown as LF. CRLF and lone CR line endings inside code, HTML, math, front matter and titles were previously copied through, which left mixed line endings in otherwise LF output.

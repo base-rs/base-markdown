@@ -31,7 +31,7 @@ name = "base-markdown"
 readme = "readme.md"
 repository = "https://github.com/base-rs/base-markdown"
 rust-version = "1.73"
-version = "0.1.0"
+version = "0.1.1"
 
 [workspace]
 members = ["generate", "bake"]

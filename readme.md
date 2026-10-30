@@ -40,7 +40,14 @@ Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or
 ## Releases
 
 <!-- bake-readme:releases:start -->
+
 See [releases.md](releases.md) for the full release history.
+
+### v0.1.1
+
+- Keep inline HTML after text unchanged when serializing Markdown. Previously each serialization added a space before inline HTML in paragraphs, including those in block quotes and list items, so repeated normalization kept growing the gap. Only a line ending directly before inline HTML is now replaced with a space.
+- Write every line ending in serialized Markdown as LF. CRLF and lone CR line endings inside code, HTML, math, front matter and titles were previously copied through, which left mixed line endings in otherwise LF output.
+- Return inline subtrees from `to_markdown_node` without a trailing line ending, as cmark does. Text, emphasis, links, code and other phrasing content, including inline opaque nodes, serialize as `*b*` rather than `*b*\n`; non-empty documents and block subtrees still end with a line ending. This changes output for callers serializing inline fragments.
 
 ### v0.1.0
 
@@ -56,6 +63,7 @@ See [releases.md](releases.md) for the full release history.
 - Correct parsing: opt-in heading IDs use normalized semantic text, including multiline code and math spans; mixed-list closing tags balance against their semantic openings, correcting previously mismatched closures after unclosed fences; sibling lists after unclosed fences, container indentation tabs, and empty unclosed code bodies are handled correctly; failed multiline frontmatter attempts restore line positions; adjacent setext headings stay balanced when earlier underline text joins a paragraph; retained HTML blank lines stop at their enclosing container boundary, preserving sibling list items when HTML consumes the separating newline; emphasis adjacent to escaped delimiters, and cases such as `[a]*a**_` after a defined reference, resolve correctly; collapsed spaces stay significant in reference labels, so `[a b]` and `[ab]` resolve independently; multiline reference labels inside containers resolve, and tables are recognized after headers or rows beginning with syntax markers. Separators inserted before container closing tags use the document's line-ending style. GFM documents now share the CommonMark corrections for list tightness, literal code endings, emphasis boundaries, and incomplete fences in lazy paragraphs. Documents with same-line reference definitions now use the same container rules as plain CommonMark documents for list tightness, indentation tabs, and contiguous indented code.
 - Correct Markdown serialization: an attached ordered item serialized on its own uses the correct marker, Unicode digits are no longer escaped as ordered-list markers, and Unicode lookalikes in URL schemes serialize as resource links rather than invalid autolinks.
 - Improve parsing, rendering, and serialization throughput and large-document scaling, with fewer allocations and AArch64 NEON scanning for inline candidates and HTML escaping (with a portable scalar fallback). The convenience HTML API reserves up to 4 KiB of output capacity in advance. Rendered output, source spans, diagnostics, duplicate-definition precedence, first-call footnote numbering, expanded-tab label limits, stable node IDs, and edit-context hints are otherwise unchanged.
+
 <!-- bake-readme:releases:end -->
 
 ## See Also
