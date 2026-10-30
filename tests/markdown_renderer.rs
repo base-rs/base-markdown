@@ -64,6 +64,35 @@ fn serializes_extracted_fragments() -> Result<(), base_markdown::message::Messag
 }
 
 #[test]
+fn serializes_inline_fragments_without_a_line_ending() -> Result<(), base_markdown::message::Message>
+{
+    let node = parse("a *b* [c](/d) `e`\r\n", &ParseOptions::default())?;
+    let serialized: Vec<_> = node
+        .descendants(node.root())
+        .map(|id| base_markdown::to_markdown_node(&node, id, &Default::default()).unwrap())
+        .collect();
+
+    assert_eq!(
+        serialized,
+        [
+            "a *b* [c](/d) `e`\n",
+            "a *b* [c](/d) `e`\n",
+            "a ",
+            "*b*",
+            "b",
+            " ",
+            "[c](/d)",
+            "c",
+            " ",
+            "`e`",
+            "",
+        ]
+    );
+
+    Ok(())
+}
+
+#[test]
 fn renders_with_custom_markdown_options() -> Result<(), base_markdown::message::Message> {
     let node = parse("*hello*", &ParseOptions::default())?;
     let options = MarkdownOptions {

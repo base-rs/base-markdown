@@ -140,7 +140,7 @@ fn heading() {
             }
         )
         .unwrap(),
-        "aa\rb\n-\n",
+        "aa\nb\n-\n",
         "should serialize a setext underline as long as the last line (1)"
     );
 
@@ -160,7 +160,7 @@ fn heading() {
             }
         )
         .unwrap(),
-        "a\r\nbbb\n===\n",
+        "a\nbbb\n===\n",
         "should serialize a setext underline as long as the last line (2)"
     );
 

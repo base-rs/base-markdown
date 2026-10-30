@@ -181,6 +181,11 @@ fn frontmatter() -> Result<(), message::Message> {
     Ok(())
 }
 
+/// Serialization writes every line ending as LF.
+fn unix_line_endings(value: &str) -> String {
+    value.replace("\r\n", "\n").replace('\r', "\n")
+}
+
 fn parse_options() -> ParseOptions {
     ParseOptions {
         constructs: Constructs {
@@ -245,7 +250,7 @@ fn delimiter_defaults_keep_the_authored_info_and_body() {
         let reparsed = parse_frontmatter(&output);
         assert_eq!(reparsed.language(), Some(language));
         assert_eq!(reparsed.info, info);
-        assert_eq!(reparsed.value, body);
+        assert_eq!(reparsed.value, unix_line_endings(body));
         let fence = reparsed.fence.to_string().repeat(3);
         let opening = if info.is_empty() {
             fence
@@ -336,7 +341,7 @@ fn tagged_frontmatter_keeps_opaque_info_and_literal_body() {
         let output = base_markdown::to_markdown(&document).unwrap();
         let reparsed = parse_frontmatter(&output);
         assert_eq!(reparsed.info, info);
-        assert_eq!(reparsed.value, body);
+        assert_eq!(reparsed.value, unix_line_endings(body));
         assert_eq!(
             (
                 reparsed.fence,
@@ -466,7 +471,7 @@ fn serialization_protects_edited_frontmatter_bodies() {
         ),
         ("~~~custom\n~~~", "~~~~\n", "~~~~~custom\n~~~~\n~~~~~\n"),
         ("--- json\n---", "--- \t\n", "~~~json\n--- \t\n~~~\n"),
-        ("+++ json\n+++", "+++\rbody\r", "~~~json\n+++\rbody\r~~~\n"),
+        ("+++ json\n+++", "+++\rbody\r", "~~~json\n+++\nbody\n~~~\n"),
         ("--- json\n---", "value", "--- json\nvalue\n---\n"),
         ("~~~json\n~~~~~", "", "~~~json\n~~~~~\n"),
         ("---\n---", "---\n", "~~~yaml\n---\n~~~\n"),
@@ -484,7 +489,7 @@ fn serialization_protects_edited_frontmatter_bodies() {
         assert_eq!(
             parse_frontmatter(&output).value,
             if body.is_empty() || body.ends_with(['\r', '\n']) {
-                body.into()
+                unix_line_endings(body)
             } else {
                 format!("{body}\n")
             }
