@@ -25,6 +25,8 @@ mod util;
 
 /// Serialize an arena document to Markdown.
 ///
+/// The output always uses LF line endings: CRLF and lone CR line endings in source values, such as code and HTML, are written as LF.
+///
 /// # Errors
 /// Returns invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
 pub fn to_markdown<S: AsRef<str>>(document: &Document<S>) -> Result<String, Message> {
@@ -44,6 +46,8 @@ pub fn to_markdown_with_options<S: AsRef<str>>(
 
 /// Serialize a document subtree with formatting options.
 ///
+/// The output always uses LF line endings.
+///
 /// # Errors
 /// Returns an invalid node index, invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
 pub fn to_markdown_node<S: AsRef<str>>(
@@ -57,7 +61,11 @@ pub fn to_markdown_node<S: AsRef<str>>(
     let mut state = State::new(options);
     state.serialization_root = Some(node);
     let mut result = state.handle(document, node, &Info::new("\n", "\n"))?;
-    if !result.is_empty() && !result.ends_with(['\r', '\n']) {
+    // Markdown treats CR, LF, and CRLF alike, so a single line ending keeps output stable across platforms.
+    if result.contains('\r') {
+        result = result.replace("\r\n", "\n").replace('\r', "\n");
+    }
+    if !result.is_empty() && !result.ends_with('\n') {
         result.push('\n');
     }
     Ok(result)

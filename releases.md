@@ -2,6 +2,10 @@
 
 Earlier history, from before the package was renamed from `socketry-markdown`, is in [releases/socketry-markdown.md](releases/socketry-markdown.md).
 
+## Unreleased
+
+- Write every line ending in serialized Markdown as LF. CRLF and lone CR line endings inside code, HTML, math, front matter and titles were previously copied through, which left mixed line endings in otherwise LF output.
+
 ## v0.1.0
 
 - Publish as `base-markdown` in the `base-rs` organization, with version numbering restarted at `0.1.0`. Releases require a `Release: vVERSION` Git trailer on the final release commit; version changes alone no longer trigger publication.
