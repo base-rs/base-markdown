@@ -6,10 +6,43 @@
 
 //! A pull parser, source-backed document AST, and shared HTML writer.
 //!
-//! Use [`to_html`] for direct rendering, [`EventParser`] for custom pull consumers,
-//! and [`Document::parse`] when inspecting or editing a syntax tree. Documents
-//! traverse the same semantic event contract as the parser. [`to_markdown`]
-//! serializes documents; [`render_events`] accepts parser or document events.
+//! Use [`to_html`] for direct rendering, [`EventParser`] for custom pull consumers, and [`Document::parse`] when inspecting or editing a syntax tree. Documents traverse the same semantic event contract as the parser. [`to_markdown`] serializes documents; [`render_events`] accepts parser or document events.
+//!
+//! ## Pull events and build a source-backed AST
+//!
+//! [`EventParser`] yields resolved semantic events on demand. Direct HTML rendering and the source-backed [`Document`] AST use this same contract. A document can own the input buffer, while ordinary text values retain byte ranges into it:
+//!
+//! ```
+//! use base_markdown::{render_events, CompileOptions, Document, ParseOptions};
+//!
+//! let source = String::from("# Introduction\n\nHello, *world*!");
+//! let document = Document::parse(source, &ParseOptions::default()).unwrap();
+//! let mut html = String::new();
+//! render_events(document.source(), document.events(), &CompileOptions::default(), &mut html).unwrap();
+//! assert_eq!(html, "<h1>Introduction</h1>\n<p>Hello, <em>world</em>!</p>");
+//! ```
+//!
+//! [`AstBuilder::consume`] accepts an event budget so callers can build the AST over several steps without collecting the complete stream. Parsing accepts a complete UTF-8 buffer and prepares block structure before yielding events; inline resolution is deferred until consumption.
+//!
+//! ## Edit and serialize a document
+//!
+//! Nodes use stable [`NodeId`] indices. Editing text with [`Document::text_mut`] copies only that value; detaching or moving a subtree retains its IDs and source metadata, and detached arena slots remain available until the document is dropped:
+//!
+//! ```
+//! use base_markdown::{to_markdown, Document, HeadingOptions, ParseOptions};
+//!
+//! let mut document = Document::parse(String::from("# Introduction\n\nHello"), &ParseOptions::default()).unwrap();
+//! let heading = document.headings(&HeadingOptions::default())[0].node;
+//! let text = document.children(heading).next().unwrap();
+//! document.text_mut(text).unwrap().push_str(" updated");
+//! assert!(to_markdown(&document).unwrap().starts_with("# Introduction updated"));
+//! ```
+//!
+//! [`Document::append_child`], [`Document::detach`], and [`Document::attach`] edit structure without rebuilding the tree, and [`Document::replace_heading_section`] copies replacement content from another document. [`Document::render_node`] and [`to_markdown_node`] render individual subtrees. [`NodeSyntax`] carries optional authored formatting, such as reference style, code info strings, and frontmatter fences, so Markdown serialization can preserve it.
+//!
+//! ## Parsing options
+//!
+//! The parser supports `CommonMark` and the GFM, frontmatter, and math constructs inherited from `markdown-rs`; see [`Constructs`] and [`Options::gfm`]. HTML output escapes raw HTML by default. MDX, JSX, and JavaScript expression parsing are not supported. Three additional [`ParseOptions`] are disabled by default, so ordinary parsing retains `CommonMark` behavior: [`ParseOptions::inline_code_info`] recognizes a language prefix before inline code, [`ParseOptions::html_block_blank_lines`] continues indented HTML blocks across blank lines, and [`ParseOptions::html_tag_namespaces`] accepts namespace-prefixed HTML tags. [`Constructs::frontmatter`] accepts language-agnostic frontmatter, and [`CodeFence`] describes authored code fences.
 #![no_std]
 #![deny(clippy::pedantic)]
 #![allow(clippy::doc_link_with_quotes)]
