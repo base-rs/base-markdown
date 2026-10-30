@@ -351,7 +351,7 @@ fn block_quote() {
             children: vec![Node::Paragraph(Paragraph {
                 children: vec![
                     Node::Text(Text {
-                        value: String::from("a"),
+                        value: String::from("a "),
                         position: None
                     }),
                     Node::Html(Html {

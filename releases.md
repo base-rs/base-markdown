@@ -2,6 +2,10 @@
 
 Earlier history, from before the package was renamed from `socketry-markdown`, is in [releases/socketry-markdown.md](releases/socketry-markdown.md).
 
+## Unreleased
+
+- Keep inline HTML after text unchanged when serializing Markdown. Previously each serialization added a space before inline HTML in paragraphs, including those in block quotes and list items, so repeated normalization kept growing the gap. Only a line ending directly before inline HTML is now replaced with a space.
+
 ## v0.1.0
 
 - Publish as `base-markdown` in the `base-rs` organization, with version numbering restarted at `0.1.0`. Releases require a `Release: vVERSION` Git trailer on the final release commit; version changes alone no longer trigger publication.
