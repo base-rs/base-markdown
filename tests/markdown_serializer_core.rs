@@ -418,6 +418,7 @@ fn writes_lf_line_endings_for_source_values() {
         "    a\r\n    b\r\n",
         "<div>\r\na\r\n</div>\r\n",
         "<!--\r\nx\r\n-->\r\n",
+        "a <span\r\nx>\r\n",
         "$$\r\na\r\nb\r\n$$\r\n",
         "---\r\na: 1\r\nb: 2\r\n---\r\n",
         "a\rb\r",

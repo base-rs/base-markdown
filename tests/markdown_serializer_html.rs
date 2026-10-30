@@ -4,6 +4,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
+use base_markdown::{to_markdown, Document, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::to_markdown as to;
 use support::fixture::{Html, Node, Paragraph, Text};
@@ -105,4 +106,17 @@ fn html() {
         "<x>a\n",
         "should serialize html (text)"
     );
+}
+
+#[test]
+fn html_text_after_phrasing_round_trips_unchanged() {
+    for source in [
+        "a <!-- m -->\n",
+        "- `c` <!-- m -->\n",
+        "plain <b>x</b>\n",
+        "a<span>b</span>\n",
+    ] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert_eq!(to_markdown(&document).unwrap(), source, "{source:?}");
+    }
 }

@@ -154,14 +154,12 @@ impl<'a> State<'a> {
                     Before::Literal(value) => Before::Literal(value),
                     Before::Output(range) => Before::Output(range.clone()),
                 }
-            } else if matches!(info.before(&self.output), "\r" | "\n")
-                && matches!(kind, EventKind::Html { .. })
+            } else if self.output.ends_with(['\n', '\r']) && matches!(kind, EventKind::Html { .. })
             {
-                if self.output.ends_with(['\n', '\r']) {
+                // Replace the line ending before inline HTML so it cannot start an HTML block.
+                self.output.pop();
+                if self.output.ends_with('\r') {
                     self.output.pop();
-                    if self.output.ends_with('\r') {
-                        self.output.pop();
-                    }
                 }
                 self.output.push(' ');
                 Before::Literal(" ")
