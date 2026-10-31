@@ -400,11 +400,11 @@ fn pushing_after_finish_panics() {
     let mut parser = IncrementalParser::new(&options);
     assert_eq!(parser.finish().count(), 0);
     assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        parser.push("text");
+        let _ = parser.push("text");
     }))
     .is_err());
     assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        parser.finish();
+        let _ = parser.finish();
     }))
     .is_err());
 }

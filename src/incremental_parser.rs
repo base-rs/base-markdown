@@ -8,7 +8,7 @@ use crate::event_parser::EventParser;
 use crate::stream::{Event, EventKind, Tag, TagKind};
 use crate::ParseOptions;
 use alloc::string::String;
-use alloc::vec::{Drain, Vec};
+use alloc::vec::Vec;
 
 /// Parse Markdown that arrives in pieces, emitting the events of each document-level block once no later text can change them.
 ///
@@ -44,6 +44,7 @@ use alloc::vec::{Drain, Vec};
 /// Reference resolution is scoped to make the output independent of how the text is divided. Inline content in a document-level block resolves against the definitions that begin before the end of that block, including definitions inside the block itself. A reference to a definition in a later document-level block remains literal text, whereas [`EventParser`] resolves forward references across the whole document.
 ///
 /// Container contents are not emitted separately: a list is emitted once it ends, because its tightness depends on every item. Frontmatter holds back all output until its closing fence arrives.
+#[derive(Debug)]
 pub struct IncrementalParser<'a> {
     source: String,
     options: &'a ParseOptions,
@@ -88,12 +89,14 @@ impl<'a> IncrementalParser<'a> {
 
     /// Append text and return the events of blocks that have become stable.
     ///
+    /// The text is parsed before this returns; dropping the iterator discards the events it has not yielded.
+    ///
     /// Only complete lines are prepared, so text without a line ending costs no parsing. Each preparation restarts from the most recent clean document-level block that has been emitted.
     ///
     /// # Panics
     ///
     /// Panics if called after [`IncrementalParser::finish`].
-    pub fn push(&mut self, text: &str) -> Drain<'_, Event<'static>> {
+    pub fn push(&mut self, text: &str) -> impl Iterator<Item = Event<'static>> + '_ {
         assert!(!self.finished, "cannot push after finishing");
         // Earlier text has no line ending after `complete`, except perhaps a final carriage return.
         let from = self.source.len().saturating_sub(1).max(self.complete);
@@ -111,7 +114,7 @@ impl<'a> IncrementalParser<'a> {
     /// # Panics
     ///
     /// Panics if called more than once.
-    pub fn finish(&mut self) -> Drain<'_, Event<'static>> {
+    pub fn finish(&mut self) -> impl Iterator<Item = Event<'static>> + '_ {
         assert!(!self.finished, "cannot finish twice");
         self.finished = true;
         let (blocks, definitions, outline) = Blocks::parse_from(
