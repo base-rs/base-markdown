@@ -316,3 +316,14 @@ fn text_after_an_empty_text_still_follows_the_bare_link() {
     document.attach(paragraph, empty, Some(link)).unwrap();
     assert_serializes(&document, "www.a\\_b.com\n");
 }
+
+#[test]
+fn text_moved_after_strong_around_a_bare_link_does_not_join_it() {
+    let mut document = parse("**bold www.x.y**\n\n-x\n");
+    let paragraphs = paragraphs(&document);
+    let moved = document.children(paragraphs[1]).next().unwrap();
+    document.detach(moved).unwrap();
+    document.attach(paragraphs[0], moved, None).unwrap();
+    document.detach(paragraphs[1]).unwrap();
+    assert_serializes(&document, "**bold www.x.y**\\-x\n");
+}

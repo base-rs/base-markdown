@@ -451,7 +451,11 @@ fn whitespace_inside_constructed_attention_is_always_a_character_reference() {
         ),
     ];
     for (wrap, marker) in attention {
-        for (value, reference) in [(" note", "&#x20;note"), ("\tnote", "&#x9;note")] {
+        for (value, reference) in [
+            (" note", "&#x20;note"),
+            ("\tnote", "&#x9;note"),
+            ("\u{a0}note", "&#xA0;note"),
+        ] {
             let inline = || wrap(vec![text(value)]);
             let trailing = || wrap(vec![text("note ")]);
             for (node, expected) in [
@@ -483,6 +487,15 @@ fn whitespace_inside_constructed_attention_is_always_a_character_reference() {
                         position: None,
                     }),
                     format!("&#x78;{marker}{reference}{marker}\n"),
+                ),
+                // Only the character right before the marker changes, even when the text before
+                // it is split.
+                (
+                    Node::Root(Root {
+                        children: vec![paragraph(vec![text("x"), text(".y"), inline()])],
+                        position: None,
+                    }),
+                    format!("x.&#x79;{marker}{reference}{marker}\n"),
                 ),
                 // An empty text before the whitespace writes nothing.
                 (
@@ -526,6 +539,66 @@ fn whitespace_inside_constructed_attention_is_always_a_character_reference() {
 }
 
 #[test]
+fn whitespace_inside_attention_keeps_the_text_before_it() {
+    // Escapes and references split the text before the marker into several nodes. Looking ahead
+    // at the attention from an earlier node must not change what that node wrote.
+    let options = base_markdown::Options::gfm();
+    for (open, close) in [("*", "*"), ("**", "**"), ("~~", "~~"), ("~", "~")] {
+        for whitespace in ["&#x20;", "&#x9;", "&#xA0;"] {
+            for prefix in [
+                "see e.g.",
+                "v1.2",
+                "word\\*",
+                "Caf&eacute;",
+                "Hi!",
+                "a.b",
+                "x&amp;y",
+            ] {
+                for (start, end) in [("", ""), ("> ", ""), ("- ", ""), ("| a |\n| - |\n| ", " |")] {
+                    for space in [" ", ""] {
+                        let source =
+                            format!("{start}{prefix}{space}{open}{whitespace}x{close}{end}\n");
+                        let (first, second) = two_passes(&source);
+                        assert_eq!(second, first, "{source:?}");
+                        assert_eq!(
+                            base_markdown::to_html_with_options(&first, &options),
+                            base_markdown::to_html_with_options(&source, &options),
+                            "{source:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn text_after_attention_around_a_bare_link_does_not_join_it() {
+    let options = base_markdown::Options::gfm();
+    for (source, expected) in [
+        (
+            "**www.example.com**&amp; more\n",
+            "**www.example.com**\\& more\n",
+        ),
+        ("**bold www.x.y**\\-\n", "**bold www.x.y**\\-\n"),
+        // The link reads on across every closing marker after it.
+        ("~~*www.a.b*~~&amp;\n", "~~*www.a.b*~~\\&\n"),
+        ("~~https://a.b/c~~&amp;\n", "~~https://a.b/c~~\\&\n"),
+        // Text the link would leave out is written as it is.
+        ("*www.a.b*.\n", "*www.a.b*.\n"),
+        ("*www.a.b* x\n", "*www.a.b* x\n"),
+        // An address cannot reach across a marker.
+        ("*a@b.c*.d\n", "*a@b.c*.d\n"),
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+        let html = |value: &str| base_markdown::to_html_with_options(value, &options);
+        assert_eq!(html(&first), html(source), "{source:?}");
+    }
+}
+
+#[test]
 fn characters_a_literal_autolink_would_take_end_it() {
     for (source, expected) in [
         // A backslash ends a web link, so text the link would take is escaped.
@@ -539,6 +612,9 @@ fn characters_a_literal_autolink_would_take_end_it() {
         ("a@b.c&#46;d\n", "a@b.c\\.d\n"),
         ("a@b.c&#46;\n", "a@b.c.\n"),
         ("a@b.c&#x2D;d\n", "a@b.c\\-d\n"),
+        // Only an `xmpp:` address takes a `/resource`.
+        ("xmpp:a@b.c&#x2F;x\n", "xmpp:a@b.c\\/x\n"),
+        ("a@b.c&#x2F;x\n", "a@b.c/x\n"),
         // Only the text written right after the link changes, even when a later node is
         // rendered again from the same place.
         (

@@ -54,12 +54,28 @@ pub struct State<'a> {
     pub serialization_root: Option<NodeId>,
     definitions: Option<BTreeMap<String, NodeId>>,
     reference_key: String,
-    /// Where the last bare link started and ended, and whether it was an email address.
-    pub(super) bare_link_end: Option<(usize, usize, bool)>,
+    /// The last bare link, while text written next could still join it.
+    pub(super) bare_link: Option<BareLink>,
     /// Where attention content starts with whitespace, which is written as a reference.
     pub(super) attention_start: Option<usize>,
     /// Where attention closed after a character reference, so a letter after it is one too.
     pub(super) attention_end: Option<usize>,
+    /// Output before this length is final. A node written only to look at its first character
+    /// starts here and is cut back to it, so it must not change what was written before.
+    pub(super) write_floor: usize,
+}
+
+/// Where a bare link was written, and what text written after it would join.
+#[derive(Clone, Copy)]
+pub(super) struct BareLink {
+    /// Where the link's text starts and ends in the output.
+    pub(super) start: usize,
+    pub(super) end: usize,
+    /// Where text written next starts, past any closing attention markers after the link.
+    pub(super) next: usize,
+    /// Whether the link is an email address, and whether the address may take a `/resource`.
+    pub(super) email: bool,
+    pub(super) resource: bool,
 }
 
 impl<'a> Info<'a> {
@@ -168,12 +184,14 @@ impl<'a> State<'a> {
                     let checkpoint = self.output.len();
                     // The current child is written between them, so the next node is rendered
                     // without the neighbours of the current one.
-                    let neighbours = (self.bare_link_end, self.attention_start, self.attention_end);
+                    let neighbours = (self.bare_link, self.attention_start, self.attention_end);
                     self.clear_neighbours();
+                    let floor = core::mem::replace(&mut self.write_floor, checkpoint);
                     self.write_node(document, next, &Info::new("", ""))?;
+                    self.write_floor = floor;
                     let first = self.output[checkpoint..].chars().next().unwrap_or_default();
                     self.output.truncate(checkpoint);
-                    (self.bare_link_end, self.attention_start, self.attention_end) = neighbours;
+                    (self.bare_link, self.attention_start, self.attention_end) = neighbours;
                     first.encode_utf8(&mut buffer)
                 }
             } else {
@@ -642,14 +660,15 @@ impl<'a> State<'a> {
             serialization_root: None,
             definitions: None,
             reference_key: String::new(),
-            bare_link_end: None,
+            bare_link: None,
             attention_start: None,
             attention_end: None,
+            write_floor: 0,
         }
     }
 
     pub(super) fn clear_neighbours(&mut self) {
-        self.bare_link_end = None;
+        self.bare_link = None;
         self.attention_start = None;
         self.attention_end = None;
     }
@@ -705,6 +724,7 @@ impl<'a> State<'a> {
             }
             EventKind::Start(Tag::Emphasis) => Some(self.options.emphasis),
             EventKind::Start(Tag::Strong) => Some(self.options.strong),
+            EventKind::Start(Tag::Delete) => Some('~'),
             EventKind::Start(Tag::Image { .. }) => Some('!'),
             EventKind::Start(Tag::Link { destination, title }) => Some(
                 if matches!(document.syntax(id), Some(NodeSyntax::Reference { label, .. })

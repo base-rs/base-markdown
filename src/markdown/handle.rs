@@ -5,7 +5,7 @@
 use super::{
     configure::IndentOptions,
     construct_name::ConstructName,
-    state::{flow_children, unsupported_content, Info, State},
+    state::{flow_children, unsupported_content, BareLink, Info, State},
     util::{
         contains_control_or_whitespace::contains_control_or_whitespace,
         format_code_as_indented::format_code_as_indented,
@@ -21,6 +21,7 @@ use crate::{
     util::{
         char::{classify, Kind},
         line_ending::line_endings,
+        scheme::{scheme, SchemeKind},
     },
     CodeFence, Document, NodeId, NodeSyntax, ReferenceKind,
 };
@@ -199,13 +200,12 @@ impl State<'_> {
         // reference. A marker between a reference and a letter neither opens nor closes either, so
         // that letter is a reference too.
         let leading = starts_with_whitespace(document, node);
-        if leading && self.bare_link_end.map(|(_, end, _)| end) != Some(self.output.len()) {
-            if let Some(previous) = self
-                .output
-                .chars()
-                .next_back()
-                .filter(|&previous| classify(previous) == Kind::Other)
-            {
+        if leading && self.bare_link.map(|link| link.next) != Some(self.output.len()) {
+            // Output before the floor is final, so the character is only rewritten above it.
+            if let Some(previous) = self.output.chars().next_back().filter(|&previous| {
+                classify(previous) == Kind::Other
+                    && self.output.len() - previous.len_utf8() >= self.write_floor
+            }) {
                 let end = self.output.len() - previous.len_utf8();
                 self.output.truncate(end);
                 write!(self.output, "&#x{:X};", u32::from(previous))
@@ -222,7 +222,15 @@ impl State<'_> {
         let inner = Info::at(start, content, info.after);
         self.container_phrasing(document, node, &inner)?;
         let trailing = encode_trailing_whitespace(&mut self.output, content);
+        // A web link reads on across the closing marker, so text after it may still join it.
+        let link = self
+            .bare_link
+            .filter(|link| link.next == self.output.len() && !link.email);
         self.output.extend(core::iter::repeat(marker).take(length));
+        self.bare_link = link.map(|link| BareLink {
+            next: self.output.len(),
+            ..link
+        });
         if trailing && info.after.chars().next().map(classify) == Some(Kind::Other) {
             self.attention_end = Some(self.output.len());
         }
@@ -399,13 +407,18 @@ impl State<'_> {
                 .expect("String writing is infallible");
             first.len_utf8()
         } else if let Some(byte) = self
-            .bare_link_end
-            .filter(|&(_, end, _)| Some(end) == at)
-            .and_then(|(start, end, email)| {
-                if email {
-                    joining_byte(&value, info.after)
+            .bare_link
+            .filter(|link| Some(link.next) == at)
+            .and_then(|link| {
+                if link.email {
+                    joining_byte(&value, info.after, link.resource)
                 } else {
-                    extends_web_link(&self.output[start..end], &value, info.after)
+                    extends_web_link(
+                        &self.output[link.start..link.next],
+                        link.end - link.start,
+                        &value,
+                        info.after,
+                    )
                 }
             })
         {
@@ -446,19 +459,27 @@ impl State<'_> {
         if !image {
             match written_link(document, node, destination, title.is_some(), self) {
                 WrittenLink::Bare(text) => {
-                    escape_angle_before(&mut self.output, text);
+                    escape_angle_before(&mut self.output, self.write_floor, text);
                     let text_start = self.output.len();
                     self.output.push_str(text);
                     // GFM splits table cells at `|` before it finds literal autolinks.
                     if self.stack.contains(&ConstructName::TableCell) {
                         escape_table_pipes(&mut self.output, text_start);
                     }
-                    let email = ["mailto:", "xmpp:"].iter().any(|prefix| {
-                        destination
-                            .get(..prefix.len())
-                            .is_some_and(|scheme| scheme.eq_ignore_ascii_case(prefix))
+                    let address = destination
+                        .split_once(':')
+                        .and_then(|(name, _)| scheme(name.as_bytes()))
+                        .and_then(|scheme| match scheme.kind {
+                            SchemeKind::Address { resource } => Some(resource),
+                            _ => None,
+                        });
+                    self.bare_link = Some(BareLink {
+                        start: text_start,
+                        end: self.output.len(),
+                        next: self.output.len(),
+                        email: address.is_some(),
+                        resource: address == Some(true),
                     });
-                    self.bare_link_end = Some((text_start, self.output.len(), email));
                     return Ok(());
                 }
                 WrittenLink::Angle(text) => {
@@ -887,12 +908,14 @@ fn encode_trailing_whitespace(output: &mut String, start: usize) -> bool {
 }
 
 /// The first byte of text after a bare email address, when the address would take it. An address
-/// stops at any escape or character reference.
-fn joining_byte(text: &str, after: &str) -> Option<u8> {
+/// stops at any escape or character reference, and takes a `/` only when its scheme allows a
+/// `/resource`.
+fn joining_byte(text: &str, after: &str, resource: bool) -> Option<u8> {
     let mut bytes = text.bytes().chain(after.bytes());
     let byte = bytes.next();
     let joins = match byte {
         Some(b'-' | b'_' | b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z') => true,
+        Some(b'/') => resource,
         Some(b'.') => bytes
             .next()
             .is_some_and(|next| next.is_ascii_alphanumeric()),
@@ -903,31 +926,33 @@ fn joining_byte(text: &str, after: &str) -> Option<u8> {
 
 /// The first byte of text after a bare web link, when the text would change where the link ends
 /// and a backslash, which ends the link, can escape it. Other characters are left as they are.
-fn extends_web_link(link: &str, text: &str, after: &str) -> Option<u8> {
+/// `written` is the link's text, `length` bytes, then any closing markers written after it.
+fn extends_web_link(written: &str, length: usize, text: &str, after: &str) -> Option<u8> {
     let byte = text.bytes().next().filter(u8::is_ascii_punctuation)?;
-    if web_literal_end(link) != Some(link.len()) {
+    if web_literal_end(&written[..length]) != Some(length) {
         return None;
     }
     // The link can only reach as far as the next whitespace.
     let run = text
         .find(|character: char| character.is_whitespace())
         .unwrap_or(text.len());
-    let mut joined = String::with_capacity(link.len() + run + after.len());
-    joined.push_str(link);
+    let mut joined = String::with_capacity(written.len() + run + after.len());
+    joined.push_str(written);
     joined.push_str(&text[..run]);
     if run == text.len() {
         joined.push_str(after);
     }
-    (web_literal_end(&joined) != Some(link.len())).then_some(byte)
+    (web_literal_end(&joined) != Some(length)).then_some(byte)
 }
 
 /// Escape a `<` that ends `output` when `<text>` would be an autolink, where `text` is a bare link
-/// written next. The `<` was text before the link, since the parser had not linked it.
-fn escape_angle_before(output: &mut String, text: &str) {
+/// written next. The `<` was text before the link, since the parser had not linked it. Output
+/// before `floor` is final, so a `<` there is left as it is.
+fn escape_angle_before(output: &mut String, floor: usize, text: &str) {
     let Some(angle) = output
         .len()
         .checked_sub(1)
-        .filter(|&angle| output.as_bytes()[angle] == b'<')
+        .filter(|&angle| angle >= floor && output.as_bytes()[angle] == b'<')
     else {
         return;
     };

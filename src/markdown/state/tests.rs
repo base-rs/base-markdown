@@ -234,7 +234,13 @@ fn text_after_a_bare_link_keeps_a_literal_context() {
     let options = Options::default();
     let mut state = State::new(&options);
     state.output.push_str("www.a.b");
-    state.bare_link_end = Some((0, state.output.len(), false));
+    state.bare_link = Some(super::BareLink {
+        start: 0,
+        end: state.output.len(),
+        next: state.output.len(),
+        email: false,
+        resource: false,
+    });
     state.text("_c", &Info::new("", "")).unwrap();
     assert_eq!(state.output, "www.a.b\\_c");
 }
