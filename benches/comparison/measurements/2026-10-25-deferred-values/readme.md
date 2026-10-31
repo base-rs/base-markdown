@@ -74,7 +74,6 @@ The same frozen executables repeat the original four workloads, the Rust NLL RFC
 | ast-html / headings | -0.94% | 3.1% / 2.7% |
 | markdown / headings | -7.66% | 2.3% / 3.4% |
 
-
 ## Correctness and allocations
 
 The [preservation report](preservation.json) compares all 20 workloads: direct and AST HTML, Markdown, heading values, and parser/document events with resolved values and authored byte spans. All agree. Semantic text may deliberately change storage from owned strings to source ranges, so storage variants are normalized for this comparison. Diagnostic hashes are retained; complete diagnostics can be regenerated with the driver. Default-feature workspace tests and all-feature tests retain the repository's full construct corpora.

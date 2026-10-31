@@ -27,8 +27,6 @@ All times are milliseconds; lower is faster. Changes are relative to baseline. O
 | markdown/mixed-1m | 13.591413 | 13.529069 | -0.46% | 0.3% / 2.3% |
 | markdown/gfm-100k | 1.547935 | 1.563946 | +1.03% | 1.0% / 1.3% |
 
-
-
 ### Delimiter controls
 
 | Workload | Baseline ms | Candidate ms | Time change | Spread B/C |
@@ -46,8 +44,6 @@ All times are milliseconds; lower is faster. Changes are relative to baseline. O
 | controls/math-dense-4096 | 2.696657 | 2.741327 | +1.66% | 0.6% / 0.4% |
 | controls/math-many-small | 1.240932 | 1.234976 | -0.48% | 1.2% / 0.5% |
 
-
-
 ### Footnote and reference controls
 
 | Workload | Baseline ms | Candidate ms | Time change | Spread B/C |
@@ -62,8 +58,6 @@ All times are milliseconds; lower is faster. Changes are relative to baseline. O
 | features/footnotes-unused-256 | 0.057225 | 0.057436 | +0.37% | 0.2% / 0.2% |
 | features/footnotes-before-calls-256 | 0.320843 | 0.292192 | -8.93% | 1.3% / 2.3% |
 
-
-
 ### Few calls among many definitions
 
 | Workload | Baseline ms | Candidate ms | Time change | Spread B/C |
@@ -76,8 +70,6 @@ All times are milliseconds; lower is faster. Changes are relative to baseline. O
 | features/footnotes-2-calls-4096-definitions | 0.980092 | 0.993460 | +1.36% | 0.8% / 0.9% |
 | features/footnotes-4-calls-4096-definitions | 0.996852 | 0.994131 | -0.27% | 1.6% / 2.9% |
 | features/footnotes-16-calls-4096-definitions | 1.055505 | 1.033131 | -2.12% | 0.6% / 1.8% |
-
-
 
 The [primary samples](primary.jsonl), [targeted samples](targeted.jsonl) and [few-call samples](sparse-calls.jsonl) retain all 30 completed process/mode records and 222 document/process results; no final samples were discarded.
 
