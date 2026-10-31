@@ -131,7 +131,7 @@ pub(super) fn literal_prefix(value: &str) -> Option<char> {
 
 // Borrow neighboring text instead of assembling a copy of the growing output prefix.
 #[derive(Clone, Copy)]
-struct Context<'a>([&'a [u8]; 3]);
+struct Context<'a>([&'a [u8]; 4]);
 
 impl Context<'_> {
     fn get(self, mut position: usize) -> Option<u8> {
@@ -154,6 +154,22 @@ impl Context<'_> {
                 }
             }
             offset += part.len();
+        }
+        None
+    }
+
+    /// The last `byte` in `low..high`.
+    fn rfind(self, byte: u8, low: usize, high: usize) -> Option<usize> {
+        let mut offset = self.0.iter().map(|part| part.len()).sum::<usize>();
+        for part in self.0.iter().rev() {
+            offset -= part.len();
+            let from = low.saturating_sub(offset).min(part.len());
+            let to = high.saturating_sub(offset).min(part.len());
+            if from < to {
+                if let Some(index) = memchr::memrchr(byte, &part[from..to]) {
+                    return Some(offset + from + index);
+                }
+            }
         }
         None
     }
@@ -259,8 +275,18 @@ impl Rule {
         value: Context<'a>,
         single_math: bool,
     ) -> impl Iterator<Item = (Range<usize>, usize)> + 'a {
-        let mut search = 0;
-        let mut minimum = 0;
+        self.matches_from(value, 0, single_math)
+    }
+    /// Matches as a scan from the start finds them, from `from` on, where `from` is a point that no
+    /// candidate before it overlaps.
+    fn matches_from<'a>(
+        &'a self,
+        value: Context<'a>,
+        from: usize,
+        single_math: bool,
+    ) -> impl Iterator<Item = (Range<usize>, usize)> + 'a {
+        let mut search = from;
+        let mut minimum = from;
         core::iter::from_fn(move || {
             while let Some(position) = value.find(self.byte, search) {
                 if let Some(range) = self
@@ -276,24 +302,57 @@ impl Rule {
             None
         })
     }
+    /// Where a scan can start and still accept the same matches as a scan from the start, given
+    /// the first candidate's `range` at `position`. Matches only consume their neighbours through
+    /// overlapping candidates, so this walks back over the overlapping cluster that reaches it.
+    /// A candidate ends at most two bytes after its position, so the walk stays within the cluster.
+    fn restart(
+        &self,
+        value: Context<'_>,
+        range: Range<usize>,
+        position: usize,
+        single_math: bool,
+    ) -> usize {
+        let mut restart = range.start;
+        let mut below = position;
+        while let Some(candidate) = value.rfind(self.byte, restart.saturating_sub(1), below) {
+            below = candidate;
+            if let Some(range) = self
+                .at(value, candidate, single_math)
+                .filter(|range| range.end > restart)
+            {
+                restart = restart.min(range.start);
+            }
+        }
+        restart
+    }
 }
 
+/// Collect the escapes `input` needs between `before`, the text before it, and `after`. Positions
+/// count from the start of `before`, which is the text a construct written before the output
+/// starts with, such as the line ending before a paragraph, and then the output before `input`.
 pub(super) fn collect(
-    before: &str,
+    [lead, before]: [&str; 2],
     input: &str,
     after: &str,
     stack: &[ConstructName],
     single_math: bool,
     output: &mut Vec<(usize, EscapeInfos)>,
 ) {
-    let value = Context([before.as_bytes(), input.as_bytes(), after.as_bytes()]);
-    let start = before.len().saturating_sub(1);
-    let end = before.len() + input.len();
+    let value = Context([
+        lead.as_bytes(),
+        before.as_bytes(),
+        input.as_bytes(),
+        after.as_bytes(),
+    ]);
+    let before = lead.len() + before.len();
+    let start = before.saturating_sub(1);
+    let end = before + input.len();
     let scopes = scopes(stack);
     for rule in RULES.iter().filter(|rule| rule.active(scopes)) {
         // Only input escapes and the immediately preceding escape can affect output.
-        // Test candidates without a consumption boundary first; a possible match still
-        // uses the full prefix walk to preserve non-overlapping neighbor consumption.
+        // Find the first match from there, then walk on from a point where the matches
+        // before it no longer change which neighbours later matches consume.
         let flags = || EscapeInfos {
             before: !matches!(rule.before, Before::Any),
             after: !matches!(rule.after, After::Any)
@@ -301,23 +360,24 @@ pub(super) fn collect(
             email: matches!(rule.after, After::Email),
         };
         let mut at = start;
-        let mut possible = false;
+        let mut first = None;
         while let Some(position) = value.find(rule.byte, at).filter(|position| *position < end) {
-            if rule.at(value, position, single_math).is_some() {
+            if let Some(range) = rule.at(value, position, single_math) {
                 // An email match consumes `<` and one atext byte, never another `<`, so its
-                // matches cannot overlap and need no prefix walk.
+                // matches cannot overlap and need no restart.
                 if !matches!(rule.after, After::Email) {
-                    possible = true;
+                    first = Some((range, position));
                     break;
                 }
                 output.push((position, flags()));
             }
             at = position + 1;
         }
-        if !possible {
+        let Some((range, position)) = first else {
             continue;
-        }
-        for (_, position) in rule.matches(value, single_math) {
+        };
+        let restart = rule.restart(value, range, position, single_math);
+        for (_, position) in rule.matches_from(value, restart, single_math) {
             if position >= start && position < end {
                 output.push((position, flags()));
             }
@@ -336,7 +396,7 @@ pub(super) fn normalize_inline(value: &mut String) {
     {
         loop {
             let first = rule
-                .matches(Context([b"", value.as_bytes(), b""]), false)
+                .matches(Context([b"", b"", value.as_bytes(), b""]), false)
                 .next();
             let Some((range, _)) = first else {
                 break;
@@ -368,6 +428,8 @@ mod tests {
             "\\\r\n\t é\n  # heading\r\n",
             "\n123456) x\r\n",
             "`**__~~$",
+            "a$$$$$ $$$$\n$$$",
+            "\n1)\n22)\n -\n-\n-",
         ] {
             let boundaries: Vec<_> = (0..=value.len())
                 .filter(|&at| value.is_char_boundary(at))
@@ -375,6 +437,7 @@ mod tests {
             for &start in &boundaries {
                 for &end in boundaries.iter().filter(|&&end| end >= start) {
                     let context = Context([
+                        b"",
                         &value.as_bytes()[..start],
                         &value.as_bytes()[start..end],
                         &value.as_bytes()[end..],
@@ -382,7 +445,7 @@ mod tests {
                     for single in [false, true] {
                         for rule in RULES {
                             let expected: Vec<_> = rule
-                                .matches(Context([b"", value.as_bytes(), b""]), single)
+                                .matches(Context([b"", b"", value.as_bytes(), b""]), single)
                                 .collect();
                             let actual: Vec<_> = rule.matches(context, single).collect();
                             assert_eq!(actual, expected, "{value:?}, {start}..{end}");
@@ -396,7 +459,7 @@ mod tests {
                         ] {
                             let mut actual = Vec::new();
                             collect(
-                                &value[..start],
+                                ["", &value[..start]],
                                 &value[start..end],
                                 &value[end..],
                                 &[scope],
@@ -471,7 +534,7 @@ mod tests {
                                 char::from(rule.byte)
                             );
                             let actual: Vec<_> = rule
-                                .matches(Context([b"", value.as_bytes(), b""]), single)
+                                .matches(Context([b"", b"", value.as_bytes(), b""]), single)
                                 .collect();
                             let expected: Vec<_> = expression
                                 .captures_iter(&value)

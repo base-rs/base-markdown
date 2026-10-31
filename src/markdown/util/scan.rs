@@ -108,19 +108,23 @@ mod tests {
     fn backslash_scanning_matches_punctuation_rules_across_context_boundaries() {
         use super::super::safe::escape_backslashes;
         use alloc::{format, string::String};
-        let expression = regex::Regex::new(r"\\[!-/:-@\[-`{-~]").unwrap();
+        // Upstream escapes with `/\\(?=[!-/:-@[-`{-~])/g`: the lookahead consumes nothing, so each
+        // backslash before punctuation, including another backslash, gains an escape.
         for value in ["", "\\", "\\\\", "\\\\\\", "é\\!\\α", "\\!\\# \\"] {
             for after in (0..=127).map(char::from) {
                 let after = String::from(after);
                 let combined = format!("{value}{after}");
                 let mut expected = String::new();
-                let mut start = 0;
-                for found in expression.find_iter(&combined) {
-                    expected.push_str(&value[start..found.start()]);
-                    expected.push('\\');
-                    start = found.start();
+                for (index, character) in value.char_indices() {
+                    if character == '\\'
+                        && combined.as_bytes()[index + 1..]
+                            .first()
+                            .is_some_and(u8::is_ascii_punctuation)
+                    {
+                        expected.push('\\');
+                    }
+                    expected.push(character);
                 }
-                expected.push_str(&value[start..]);
                 assert_eq!(
                     escape_backslashes(value, &after),
                     expected,

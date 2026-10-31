@@ -10,7 +10,8 @@ use super::{
         contains_control_or_whitespace::contains_control_or_whitespace,
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::format_heading_as_setext,
-        format_link_as_auto_link::auto_link_text, scan::longest_run,
+        format_link_as_auto_link::{written_link, WrittenLink},
+        scan::longest_run,
     },
 };
 use crate::{
@@ -47,11 +48,7 @@ impl State<'_> {
 
     pub(super) fn hard_break(&mut self, info: &Info) -> Result<(), Message> {
         if super::escape::unsafe_newline(&self.stack) {
-            if !info
-                .before(&self.output)
-                .chars()
-                .any(|c| matches!(c, '\t' | ' '))
-            {
+            if !info.before(&self.output)[1].contains(['\t', ' ']) {
                 self.output.push(' ');
             }
         } else {
@@ -128,7 +125,7 @@ impl State<'_> {
         let start = self.output.len();
         self.enter(ConstructName::Label);
         self.output.push('[');
-        self.write_safe(label, &Info::at(start, self.output.len(), "]"), None);
+        self.write_label(label, &Info::at(start, self.output.len(), "]"));
         self.output.push_str("]: ");
         self.exit();
         self.destination_title(
@@ -194,8 +191,11 @@ impl State<'_> {
         marker: char,
         length: usize,
     ) -> Result<(), Message> {
+        let start = self.output.len();
         self.output.extend(core::iter::repeat(marker).take(length));
-        self.container_phrasing(document, node, info)?;
+        // The content follows the opening marker, so it never starts a line.
+        let inner = Info::at(start, self.output.len(), info.after);
+        self.container_phrasing(document, node, &inner)?;
         self.output.extend(core::iter::repeat(marker).take(length));
         Ok(())
     }
@@ -375,16 +375,24 @@ impl State<'_> {
         let quote = self.options.check_quote()?;
         let start = self.output.len();
         if !image {
-            if let Some(text) = auto_link_text(document, node, destination, title.is_some(), self) {
-                let stack = mem::take(&mut self.stack);
-                self.enter(ConstructName::Autolink);
-                // Autolinks do not process escapes, and `auto_link_text` only accepts text that reads back unchanged.
-                self.output.push('<');
-                self.output.push_str(text);
-                self.output.push('>');
-                self.exit();
-                self.stack = stack;
-                return Ok(());
+            match written_link(document, node, destination, title.is_some(), self) {
+                WrittenLink::Bare(text) => {
+                    escape_angle_before(&mut self.output, text);
+                    self.output.push_str(text);
+                    return Ok(());
+                }
+                WrittenLink::Angle(text) => {
+                    let stack = mem::take(&mut self.stack);
+                    self.enter(ConstructName::Autolink);
+                    // Autolinks do not process escapes, and `auto_link_text` only accepts text that reads back unchanged.
+                    self.output.push('<');
+                    self.output.push_str(text);
+                    self.output.push('>');
+                    self.exit();
+                    self.stack = stack;
+                    return Ok(());
+                }
+                WrittenLink::Explicit => {}
             }
         }
         self.link_label(document, node, image, "](")?;
@@ -415,7 +423,7 @@ impl State<'_> {
         let stack = mem::take(&mut self.stack);
         self.enter(ConstructName::Reference);
         let reference_start = self.output.len();
-        self.write_safe(label, &Info::at(start, reference_start, "]"), None);
+        self.write_label(label, &Info::at(start, reference_start, "]"));
         self.exit();
         if stack.contains(&ConstructName::TableCell) {
             escape_table_pipes(&mut self.output, reference_start);
@@ -759,6 +767,31 @@ fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
     }
 
     Cow::Owned(result)
+}
+
+/// Escape a `<` that ends `output` when `<text>` would be an autolink, where `text` is a bare link
+/// written next. The `<` was text before the link, since the parser had not linked it.
+fn escape_angle_before(output: &mut String, text: &str) {
+    let Some(angle) = output
+        .len()
+        .checked_sub(1)
+        .filter(|&angle| output.as_bytes()[angle] == b'<')
+    else {
+        return;
+    };
+    let backslashes = output.as_bytes()[..angle]
+        .iter()
+        .rev()
+        .take_while(|&&byte| byte == b'\\')
+        .count();
+    let mut link = crate::util::autolink::Autolink::default();
+    // The link ends before a `>`, so `<text>` would read as an autolink when a `>` completes it.
+    if backslashes % 2 == 0
+        && text.bytes().all(|byte| link.advance(byte) == Some(false))
+        && link.advance(b'>') == Some(true)
+    {
+        output.insert(angle, '\\');
+    }
 }
 
 /// Escape each pipe after `start` that an even run of backslashes leaves splitting a table cell.

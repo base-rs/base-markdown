@@ -3,7 +3,8 @@
 
 use base_markdown::{
     stream::{EventKind, Tag, Text},
-    CompileOptions, Document, HeadingOptions, NodeSyntax, Options, ParseOptions, ReferenceKind,
+    CompileOptions, Document, HeadingOptions, LinkForm, NodeSyntax, Options, ParseOptions,
+    ReferenceKind,
 };
 
 fn html<S: AsRef<str>>(document: &Document<S>) -> String {
@@ -207,12 +208,59 @@ fn source_syntax_is_lazy_and_explicit_edits_can_disconnect_it() {
         document.set_syntax(id, None).unwrap();
         assert!(document.syntax(id).is_none());
     }
-    for source in ["[a](/u)", "<https://example.com>", "www.example.com"] {
-        let document = Document::parse(source, &Options::gfm().parse).unwrap();
-        for id in document.descendants(document.root()) {
-            assert!(document.syntax(id).is_none());
-        }
+    for (source, form) in [
+        ("[a](/u)", LinkForm::Explicit),
+        ("[a](/u 't')", LinkForm::Explicit),
+        ("<https://example.com>", LinkForm::Angle),
+        ("<a@example.com>", LinkForm::Angle),
+        ("www.example.com", LinkForm::Bare),
+        ("https://example.com", LinkForm::Bare),
+        ("a@example.com", LinkForm::Bare),
+    ] {
+        let mut document = Document::parse(source, &Options::gfm().parse).unwrap();
+        let mut forms = document
+            .descendants(document.root())
+            .filter_map(|id| document.syntax(id).map(|syntax| (id, syntax)));
+        let (id, syntax) = forms.next().unwrap();
+        assert_eq!(syntax, NodeSyntax::Link { form }, "{source:?}");
+        assert!(forms.next().is_none());
+        document
+            .set_syntax(
+                id,
+                Some(NodeSyntax::Link {
+                    form: LinkForm::Explicit,
+                }),
+            )
+            .unwrap();
+        assert_eq!(
+            document.syntax(id),
+            Some(NodeSyntax::Link {
+                form: LinkForm::Explicit
+            })
+        );
+        document.set_syntax(id, None).unwrap();
+        assert!(document.syntax(id).is_none());
     }
+    // Images are always written explicitly, so the form belongs to links only.
+    let mut document = Document::parse("![a](/u)", &ParseOptions::default()).unwrap();
+    let image = document
+        .descendants(document.root())
+        .find(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Start(Tag::Image { .. })
+            )
+        })
+        .unwrap();
+    assert!(document.syntax(image).is_none());
+    assert!(document
+        .set_syntax(
+            image,
+            Some(NodeSyntax::Link {
+                form: LinkForm::Bare
+            })
+        )
+        .is_err());
     let mut document =
         Document::parse("```rust key=&amp;\\!\nx\n```", &ParseOptions::default()).unwrap();
     let id = document.children(document.root()).next().unwrap();
@@ -533,11 +581,17 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
             .unwrap();
         builder.finish(raw.to_owned()).unwrap()
     }
-    for raw in ["plain", "[text)", "[x\\]"] {
+    // An autolink's form needs a destination that derives from its text.
+    for (raw, destination) in [
+        ("plain", Text::Literal("u")),
+        ("[text)", Text::Literal("u")),
+        ("[x\\]", Text::Literal("u")),
+        ("<x>", Text::Literal("u")),
+    ] {
         let document = custom(
             raw,
             EventKind::Start(Tag::Link {
-                destination: Text::Literal("u"),
+                destination,
                 title: None,
             }),
         );
