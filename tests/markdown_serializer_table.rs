@@ -37,3 +37,17 @@ fn table_cells_escape_like_paragraphs() {
         );
     }
 }
+
+#[test]
+fn table_cells_escape_pipes_in_reference_labels() {
+    let source = "| [x][a\\|b] |\n| - |\n\n[a\\|b]: c\n";
+    let document = Document::parse(source, &ParseOptions::gfm()).unwrap();
+    let markdown = to_markdown(&document).unwrap();
+    assert_eq!(markdown, "| [x][a\\\\\\|b] |\n| --- |\n\n[a\\\\|b]: c\n");
+    let html = to_html_with_options(&markdown, &Options::gfm());
+    assert!(
+        html.starts_with("<table>"),
+        "a pipe in the label should not split the cell: {:?}",
+        html
+    );
+}

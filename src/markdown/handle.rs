@@ -412,6 +412,10 @@ impl State<'_> {
         let text = self.link_label(document, node, image, "]")?;
         self.output.push_str("][");
         let stack = mem::take(&mut self.stack);
+        // A table cell still splits on a pipe inside the label.
+        if stack.contains(&ConstructName::TableCell) {
+            self.enter(ConstructName::TableCell);
+        }
         self.enter(ConstructName::Reference);
         let reference_start = self.output.len();
         self.write_safe(label, &Info::at(start, reference_start, "]"), None);
