@@ -574,11 +574,11 @@ fn text_angle_bracket_email_scans_stay_linear() {
 
 #[test]
 fn gfm_autolinks_with_pipes_outside_tables_roundtrip() {
-    // A `|` only splits table cells, so these stay autolinks rather than resource links whose literal URL labels gain escapes.
+    // A `|` only splits table cells, so these keep the form they were written in outside tables.
     for (input, expected) in [
         ("<http://a|`>\n", "<http://a|`>\n"),
         ("<www.`|@c>\n", "<www.`|@c>\n"),
-        ("http://a$|\n", "<http://a$|>\n"),
+        ("http://a$|\n", "http://a$|\n"),
     ] {
         let tree = Document::parse(input, &ParseOptions::gfm()).unwrap();
         let first = to(&tree).unwrap();

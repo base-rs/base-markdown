@@ -7,7 +7,7 @@
 
 use base_markdown::{
     stream::{Event, EventKind, Tag, Text},
-    CodeFence, Document, NodeSyntax, Options, ReferenceKind,
+    CodeFence, Document, LinkForm, NodeSyntax, Options, ReferenceKind,
 };
 use serde_json::{json, Value};
 
@@ -93,6 +93,46 @@ fn document_serialization_preserves_source_edits_metadata_and_detached_subtrees(
     let mut wire: Value = serde_json::from_str(&stored).unwrap();
     wire.as_object_mut().unwrap().remove("syntax");
     serde_json::from_value::<Document>(wire).unwrap();
+}
+
+#[test]
+fn link_forms_round_trip() {
+    let mut document = Document::parse(
+        "www.a.b <https://c.d> [e](f)\n".to_owned(),
+        &Options::gfm().parse,
+    )
+    .unwrap();
+    let links: Vec<_> = document
+        .descendants(document.root())
+        .filter(|id| {
+            matches!(
+                document.node(*id).unwrap().kind,
+                EventKind::Start(Tag::Link { .. })
+            )
+        })
+        .collect();
+    // An explicit override is stored, and inferred forms are derived again from the source.
+    document
+        .set_syntax(
+            links[2],
+            Some(NodeSyntax::Link {
+                form: LinkForm::Bare,
+            }),
+        )
+        .unwrap();
+    let stored = serde_json::to_string(&document).unwrap();
+    assert!(stored.contains(r#"{"Link":{"form":"bare"}}"#), "{}", stored);
+    let restored: Document = serde_json::from_str(&stored).unwrap();
+    let forms: Vec<_> = links.iter().map(|&id| restored.syntax(id)).collect();
+    assert_eq!(
+        forms,
+        [LinkForm::Bare, LinkForm::Angle, LinkForm::Bare]
+            .map(|form| Some(NodeSyntax::Link { form }))
+    );
+    assert_eq!(
+        base_markdown::to_markdown(&restored).unwrap(),
+        "www.a.b <https://c.d> e\n"
+    );
 }
 
 #[test]

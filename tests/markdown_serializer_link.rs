@@ -10,7 +10,22 @@ use base_markdown::{
 };
 use pretty_assertions::assert_eq;
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
-use support::fixture::{Link, Node, Table, TableCell, TableRow, Text};
+use support::fixture::{with_link_form, Link, Node, Table, TableCell, TableRow, Text};
+
+/// Serialize a fixture whose links were authored as autolinks in angle brackets.
+fn angle(node: &Node) -> Result<String, base_markdown::message::Message> {
+    to(&with_link_form(node, base_markdown::LinkForm::Angle))
+}
+
+fn angle_with_options(
+    node: &Node,
+    options: &Options,
+) -> Result<String, base_markdown::message::Message> {
+    to_md_with_opts(
+        &with_link_form(node, base_markdown::LinkForm::Angle),
+        options,
+    )
+}
 
 #[test]
 fn text() {
@@ -209,11 +224,11 @@ fn text() {
         }))
         .unwrap(),
         "[tel:123](tel:123)\n",
-        "should use a resource link for schemes the parser does not autolink"
+        "should write a link without a stored form explicitly, even when its text is its url"
     );
 
     assert_eq!(
-        to_md_with_opts(
+        angle_with_options(
             &Node::Link(Link {
                 children: vec![Node::Text(Text {
                     value: String::from("tel:123"),
@@ -234,7 +249,7 @@ fn text() {
     );
 
     assert_eq!(
-        to(&Node::Link(Link {
+        angle(&Node::Link(Link {
             children: vec![Node::Text(Text {
                 value: String::from("a"),
                 position: None
@@ -249,7 +264,7 @@ fn text() {
     );
 
     assert_eq!(
-        to(&Node::Link(Link {
+        angle(&Node::Link(Link {
             children: vec![Node::Text(Text {
                 value: String::from("tel:123"),
                 position: None
@@ -264,7 +279,7 @@ fn text() {
     );
 
     assert_eq!(
-        to(&Node::Link(Link {
+        angle(&Node::Link(Link {
             children: vec![Node::Text(Text {
                 value: String::from("tel:123"),
                 position: None
@@ -279,7 +294,7 @@ fn text() {
     );
 
     assert_eq!(
-        to(&Node::Link(Link {
+        angle(&Node::Link(Link {
             children: vec![Node::Text(Text {
                 value: String::from("a@b.c"),
                 position: None
@@ -294,7 +309,7 @@ fn text() {
     );
 
     assert_eq!(
-        to(&Node::Link(Link {
+        angle(&Node::Link(Link {
             children: vec![Node::Text(Text {
                 value: String::from("a.b-c_d@a.b"),
                 position: None
@@ -424,7 +439,7 @@ fn autolink_schemes_require_the_allowlist() {
         ("http://a\u{85}b", "[http://a\u{85}b](<http://a\u{85}b>)\n"),
     ] {
         assert_eq!(
-            to(&Node::Link(Link {
+            angle(&Node::Link(Link {
                 children: vec![Node::Text(Text {
                     value: destination.into(),
                     position: None,
@@ -453,7 +468,7 @@ fn email_autolinks_require_the_email_form() {
         ("mailto:a@b.co", "mailto:a@b.co", "<mailto:a@b.co>\n"),
     ] {
         assert_eq!(
-            to(&Node::Link(Link {
+            angle(&Node::Link(Link {
                 children: vec![Node::Text(Text {
                     value: text.into(),
                     position: None,
