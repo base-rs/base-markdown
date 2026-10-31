@@ -40,14 +40,32 @@ fn table_cells_escape_like_paragraphs() {
 
 #[test]
 fn table_cells_escape_pipes_in_reference_labels() {
-    let source = "| [x][a\\|b] |\n| - |\n\n[a\\|b]: c\n";
-    let document = Document::parse(source, &ParseOptions::gfm()).unwrap();
-    let markdown = to_markdown(&document).unwrap();
-    assert_eq!(markdown, "| [x][a\\\\\\|b] |\n| --- |\n\n[a\\\\|b]: c\n");
-    let html = to_html_with_options(&markdown, &Options::gfm());
-    assert!(
-        html.starts_with("<table>"),
-        "a pipe in the label should not split the cell: {:?}",
-        html
-    );
+    for (source, expected, linked) in [
+        (
+            "| [x][a\\|b] |\n| - |\n\n[a\\|b]: c\n",
+            "| [x][a\\\\\\|b] |\n| --- |\n\n[a\\\\|b]: c\n",
+            false,
+        ),
+        (
+            "| [x][a\\\\\\|b] |\n| - |\n\n[a\\\\\\|b]: c\n",
+            "| [x][a\\\\\\\\\\|b] |\n| --- |\n\n[a\\\\\\\\\\|b]: c\n",
+            true,
+        ),
+        (
+            "| [a\\\\\\|b] |\n| - |\n\n[a\\\\\\|b]: c\n",
+            "| [a\\\\\\|b][a\\\\\\\\\\|b] |\n| --- |\n\n[a\\\\\\\\\\|b]: c\n",
+            true,
+        ),
+    ] {
+        let document = Document::parse(source, &ParseOptions::gfm()).unwrap();
+        let markdown = to_markdown(&document).unwrap();
+        assert_eq!(markdown, expected, "{:?}", source);
+        let html = to_html_with_options(&markdown, &Options::gfm());
+        assert!(
+            html.starts_with("<table>"),
+            "a pipe in the label should not split the cell: {:?}",
+            html
+        );
+        assert_eq!(html.contains("<a href=\"c\">"), linked, "{:?}", html);
+    }
 }

@@ -412,14 +412,13 @@ impl State<'_> {
         let text = self.link_label(document, node, image, "]")?;
         self.output.push_str("][");
         let stack = mem::take(&mut self.stack);
-        // A table cell still splits on a pipe inside the label.
-        if stack.contains(&ConstructName::TableCell) {
-            self.enter(ConstructName::TableCell);
-        }
         self.enter(ConstructName::Reference);
         let reference_start = self.output.len();
         self.write_safe(label, &Info::at(start, reference_start, "]"), None);
         self.exit();
+        if stack.contains(&ConstructName::TableCell) {
+            escape_table_pipes(&mut self.output, reference_start);
+        }
         self.stack = stack;
         if matches!(kind, ReferenceKind::Full)
             || text.is_empty()
@@ -759,6 +758,25 @@ fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
     }
 
     Cow::Owned(result)
+}
+
+/// Escape each pipe after `start` that an even run of backslashes leaves splitting a table cell.
+fn escape_table_pipes(output: &mut String, start: usize) {
+    let mut position = start;
+    while let Some(offset) = memchr::memchr(b'|', &output.as_bytes()[position..]) {
+        let pipe = position + offset;
+        let backslashes = output.as_bytes()[start..pipe]
+            .iter()
+            .rev()
+            .take_while(|&&byte| byte == b'\\')
+            .count();
+        if backslashes % 2 == 0 {
+            output.insert(pipe, '\\');
+            position = pipe + 2;
+        } else {
+            position = pipe + 1;
+        }
+    }
 }
 
 #[cfg(test)]
