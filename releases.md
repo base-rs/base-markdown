@@ -2,6 +2,10 @@
 
 Earlier history, from before the package was renamed from `socketry-markdown`, is in [releases/socketry-markdown.md](releases/socketry-markdown.md).
 
+## Unreleased
+
+- Keep adjacent emphasis, strong and strikethrough apart when serializing Markdown. Sequences are chosen as `mdast-util-to-markdown` 2.2.1 chooses them: each is checked the way the parser pairs it, and the other marker is used where the preferred one would pair wrongly, so `*a*_b_` and `**a**__b__` no longer become `*a**b*` and `**a****b**`. Characters next to attention are encoded as character references where needed, and a tilde next to a strikethrough sequence is escaped.
+
 ## v0.1.3
 
 - Add `normalize_markdown` and `normalize_markdown_with_options`, which parse Markdown with GFM, frontmatter, and math and serialize it with default formatting and soft line breaks unwrapped. This is the normalization `bake-markdown` applies, so tools that generate Markdown can produce output it leaves unchanged.

@@ -7,6 +7,7 @@
 //!
 //! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L195.
 use crate::markdown::{
+    attention::{self, Record},
     construct_name::ConstructName,
     util::{
         format_code_as_indented::format_code_as_indented,
@@ -40,6 +41,8 @@ pub struct State<'a> {
     pub output: String,
     pub(super) scratch: String,
     escapes: Vec<(usize, EscapeInfos)>,
+    /// Attention written in open phrasing containers, resolved as each container completes.
+    attention: Vec<Record>,
     pub bullet_current: Option<char>,
     pub bullet_last_used: Option<char>,
     pub index_stack: Vec<usize>,
@@ -118,6 +121,80 @@ impl<'a> State<'a> {
         parent: NodeId,
         info: &Info,
     ) -> Result<(), Message> {
+        let scope = self.attention.len();
+        let start = self.output.len();
+        self.phrasing(document, parent, info)?;
+        self.resolve_attention(scope, start, info);
+        Ok(())
+    }
+
+    /// Choose the sequences of attention written since `scope` so that it forms.
+    fn resolve_attention(&mut self, scope: usize, start: usize, info: &Info) {
+        if self.attention.len() == scope {
+            return;
+        }
+        let before = info.before(&self.output).chars().next_back();
+        let after = info.after.chars().next();
+        attention::resolve(
+            &mut self.output,
+            start,
+            &self.attention[scope..],
+            before,
+            after,
+        );
+        self.attention.truncate(scope);
+    }
+
+    /// Write attention with its preferred sequence, recording it for its phrasing container to resolve.
+    ///
+    /// Its children see the preferred sequence around them, as in `mdast-util-to-markdown`.
+    fn attention_item<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        node: NodeId,
+        sequences: &'static [&'static str],
+    ) -> Result<(), Message> {
+        let sequence = sequences[0];
+        let record = self.attention.len();
+        self.attention.push(Record {
+            open: self.output.len(),
+            close: 0,
+            sequences,
+        });
+        self.output.push_str(sequence);
+        self.phrasing(document, node, &Info::new(sequence, sequence))?;
+        self.attention[record].close = self.output.len();
+        self.output.push_str(sequence);
+        Ok(())
+    }
+
+    fn attention_sequences(
+        &self,
+        kind: &EventKind<'_>,
+    ) -> Result<Option<&'static [&'static str]>, Message> {
+        Ok(match kind {
+            EventKind::Start(Tag::Emphasis) => Some(if self.options.check_emphasis()? == '*' {
+                attention::EMPHASIS_ASTERISK
+            } else {
+                attention::EMPHASIS_UNDERSCORE
+            }),
+            EventKind::Start(Tag::Strong) => Some(if self.options.check_strong()? == '*' {
+                attention::STRONG_ASTERISK
+            } else {
+                attention::STRONG_UNDERSCORE
+            }),
+            EventKind::Start(Tag::Delete) => Some(attention::STRIKETHROUGH),
+            _ => None,
+        })
+    }
+
+    /// Serialize phrasing children, leaving their attention to the enclosing container.
+    fn phrasing<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        parent: NodeId,
+        info: &Info,
+    ) -> Result<(), Message> {
         let start = self.output.len();
         let mut children = flow_children(document, parent).peekable();
         self.index_stack.push(0);
@@ -178,7 +255,11 @@ impl<'a> State<'a> {
                 Before::Output(start..self.output.len())
             };
             let length = self.output.len();
-            self.write_node(document, child, &Info { before, after })?;
+            if let Some(sequences) = self.attention_sequences(kind)? {
+                self.attention_item(document, child, sequences)?;
+            } else {
+                self.write_node(document, child, &Info { before, after })?;
+            }
             if self.output.len() != length {
                 hard_break_line = after_hard_break;
             }
@@ -232,15 +313,19 @@ impl<'a> State<'a> {
                 Tag::BlockQuote => self.blockquote(document, id),
                 Tag::List { start, .. } => self.list(document, id, start.is_some()),
                 Tag::Item { .. } => self.list_item(document, id),
-                Tag::Emphasis => {
-                    let marker = self.options.check_emphasis()?;
-                    self.delimited_phrasing(document, id, info, marker, 1)
+                Tag::Emphasis | Tag::Strong | Tag::Delete => {
+                    // Attention outside a phrasing container is resolved on its own.
+                    let sequences = self
+                        .attention_sequences(&node.kind)?
+                        .expect("emphasis, strong and strikethrough are attention");
+                    self.enter(ConstructName::Phrasing);
+                    let scope = self.attention.len();
+                    let start = self.output.len();
+                    self.attention_item(document, id, sequences)?;
+                    self.resolve_attention(scope, start, info);
+                    self.exit();
+                    Ok(())
                 }
-                Tag::Strong => {
-                    let marker = self.options.check_strong()?;
-                    self.delimited_phrasing(document, id, info, marker, 2)
-                }
-                Tag::Delete => self.delimited_phrasing(document, id, info, '~', 2),
                 Tag::Link { destination, title } | Tag::Image { destination, title } => {
                     let image = matches!(tag, Tag::Image { .. });
                     let destination = destination.resolve(source).unwrap();
@@ -593,6 +678,7 @@ impl<'a> State<'a> {
             output: String::new(),
             scratch: String::new(),
             escapes: Vec::new(),
+            attention: Vec::new(),
             bullet_current: None,
             bullet_last_used: None,
             index_stack: Vec::new(),
@@ -655,6 +741,7 @@ impl<'a> State<'a> {
             }
             EventKind::Start(Tag::Emphasis) => Some(self.options.emphasis),
             EventKind::Start(Tag::Strong) => Some(self.options.strong),
+            EventKind::Start(Tag::Delete) => Some('~'),
             EventKind::Start(Tag::Image { .. }) => Some('!'),
             EventKind::Start(Tag::Link { destination, title }) => Some(
                 if matches!(document.syntax(id), Some(NodeSyntax::Reference { label, .. })

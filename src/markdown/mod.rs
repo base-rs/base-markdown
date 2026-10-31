@@ -16,6 +16,7 @@ use crate::{message::Message, Document, NodeId, ParseOptions};
 use alloc::string::String;
 
 extern crate alloc;
+mod attention;
 mod configure;
 mod construct_name;
 mod escape;

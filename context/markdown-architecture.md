@@ -33,7 +33,7 @@ Reference keys borrow contiguous canonical ASCII labels from source; other forms
 
 Unicode identifier folding shares a helper that skips the intermediate lowercase string when the label contains no non-ASCII uppercase character. Labels containing those characters retain the full string lower-then-upper conversion, including contextual casing and expansions. Exhaustive scalar and contextual tests preserve the existing matching rules.
 
-The Markdown serializer shares destination/title formatting for definitions, links and images. Resource and reference links share label rendering while retaining their distinct following context. Emphasis, strong and strikethrough share delimiter wrapping. Formatting-option checks live beside their options and run only at the original construct-specific call sites.
+The Markdown serializer shares destination/title formatting for definitions, links and images. Resource and reference links share label rendering while retaining their distinct following context. Emphasis, strong and strikethrough are written with their preferred sequence and recorded; once a phrasing container is complete, `markdown::attention` checks how the parser would pair the sequences and tries other sequences where they pair wrongly, as `mdast-util-to-markdown` does, so adjacent `*a*_b_` stays two emphasis nodes. Formatting-option checks live beside their options and run only at the original construct-specific call sites.
 
 The Markdown serializer writes its three possible block separators directly from static strings, without an intermediate join representation or per-boundary newline allocation.
 

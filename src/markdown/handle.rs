@@ -186,20 +186,6 @@ impl State<'_> {
         }
     }
 
-    pub(super) fn delimited_phrasing<S: AsRef<str>>(
-        &mut self,
-        document: &Document<S>,
-        node: NodeId,
-        info: &Info,
-        marker: char,
-        length: usize,
-    ) -> Result<(), Message> {
-        self.output.extend(core::iter::repeat(marker).take(length));
-        self.container_phrasing(document, node, info)?;
-        self.output.extend(core::iter::repeat(marker).take(length));
-        Ok(())
-    }
-
     pub(super) fn heading<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
