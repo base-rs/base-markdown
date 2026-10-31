@@ -104,9 +104,6 @@ fn intraword_underscores() {
         ("a\\_**b**\n", "a\\_**b**\n"),
         ("a\\*_b\n", "a\\*\\_b\n"),
         ("a_\\*b\n", "a\\_\\*b\n"),
-        ("x\\@a_b.com\n", "x@a\\_b.com\n"),
-        ("x&#64;a_b.com\n", "x@a\\_b.com\n"),
-        ("x\\@y.co1\\_www.\n", "x@y.co1\\_www.\n"),
         ("x\\@y a_b.com\n", "x@y a_b.com\n"),
     ] {
         let document = Document::parse(source, &base_markdown::ParseOptions::gfm()).unwrap();
@@ -140,8 +137,8 @@ fn intraword_underscores() {
         ("a__b", "a__b\n", "should not escape `__` between letters"),
         (
             "x@a_b.com",
-            "x@a\\_b.com\n",
-            "should escape `_` in email domains",
+            "x@a_b.com\n",
+            "should not escape `_` in email domains",
         ),
         (
             "a__.b",
@@ -208,4 +205,179 @@ fn intraword_underscores() {
         "a\\_\\__x_\n",
         "should escape `__` before emphasis"
     );
+}
+
+/// Serialize `source`, parsed with GFM, and serialize the result again.
+fn two_passes(source: &str) -> (String, String) {
+    let options = base_markdown::ParseOptions::gfm();
+    let first = base_markdown::to_markdown(&Document::parse(source, &options).unwrap()).unwrap();
+    let second =
+        base_markdown::to_markdown(&Document::parse(first.as_str(), &options).unwrap()).unwrap();
+    (first, second)
+}
+
+#[test]
+fn literal_autolinks_are_written_as_authored() {
+    for source in [
+        "www.example.com\n",
+        "https://a.b/c\n",
+        "a@b.co\n",
+        "x@a_b.com www.a.b_c\n",
+        "see www.a.b, then https://c.d/e?f and x@y.co.\n",
+        "(www.a.b) - https://c.d\n",
+        "*www.a.b* (www.c.d) ~~e@f.gh~~\n",
+        "**www.a.b**.\n",
+        "- www.a.b\n- https://c.d\n",
+        "> www.a.b\n",
+        "# www.a.b\n",
+        "| www.a.b |\n| --- |\n| x@y.z |\n",
+        "x@y.z~www.c.d\n",
+        "\\<a@b.c>\n",
+        // A `<` before a bare link stays escaped when `>` would close an autolink around it.
+        "\\<1@a.b> x\n",
+        "\\<1@a.b\n",
+        "\\\\<1@a.b>\n",
+        "\\x@y.z\n",
+        "\\&x@y.z\n",
+        "www.a.b. x\n",
+        "[www.a.b](http://www.a.b) <https://a.b> <a@b.c>\n",
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, source, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn escapes_that_only_kept_text_from_linking_are_dropped() {
+    // Text is not escaped to keep GFM from linking it, so it may link once it is written.
+    for (source, expected) in [
+        ("www\\.example.com\n", "www.example.com\n"),
+        ("http\\://example.com\n", "http://example.com\n"),
+        ("x\\@example.com\n", "x@example.com\n"),
+        ("\\.x@y.z\n", ".x@y.z\n"),
+        ("x@y.z\\.c\n", "x@y.z.c\n"),
+        ("xx@y.z\\-\n", "xx@y.z-\n"),
+        ("x@y.z\\_a.b\n", "x@y.z_a.b\n"),
+        ("\\\\x@y.z\n", "\\x@y.z\n"),
+        // Underscores in an email domain are not escaped either.
+        ("x\\@a_b.com\n", "x@a_b.com\n"),
+        ("x&#64;a_b.com\n", "x@a_b.com\n"),
+        ("x\\@y.co1\\_www.\n", "x@y.co1_www.\n"),
+        // Adjacent escaped backslashes each keep their escape.
+        ("\\\\\\\\.\n", "\\\\\\\\.\n"),
+        ("a\\\\\\\\*b*\n", "a\\\\\\\\*b*\n"),
+        ("\\\\\\\\[a](b)\n", "\\\\\\\\[a](b)\n"),
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn literal_autolinks_are_written_as_their_text_before_escaped_neighbours() {
+    // A bare link is written as its text, and the text after it is escaped as anywhere else. GFM
+    // reads a backslash as part of a www or protocol link's path, so these extend the link until
+    // the parser ends a bare link at a backslash.
+    for (source, expected) in [
+        ("www.com_\n", "www.com\\_\n"),
+        ("www.a.b* x\n", "www.a.b\\* x\n"),
+        ("http://a.b/c_(d)_ x\n", "http://a.b/c_(d)\\_ x\n"),
+        ("www.a.b www.com_ x@y.z\n", "www.a.b www.com\\_ x@y.z\n"),
+        // A character reference after a link is written as its character, which the link takes.
+        ("WWW.www&amp;\n", "WWW.www&\n"),
+    ] {
+        assert_eq!(two_passes(source).0, expected, "{source:?}");
+    }
+    // An email ends at the backslash already.
+    assert_eq!(
+        two_passes("x@y.z_\n"),
+        ("x@y.z\\_\n".into(), "x@y.z\\_\n".into())
+    );
+}
+
+#[test]
+fn text_that_becomes_a_literal_autolink_settles_after_one_pass() {
+    for source in [
+        "> - //&amp;x@y.z9\\_www\n",
+        "mailto:<a@b.c>\\\\www&#64;\\.0\\_a.b\n",
+        "&x&#64;y.z\n",
+        "\\\\x&#64;y.z\n",
+        "&amp;http\\://a.b\n",
+        "\\\\http\\://a.b\n",
+        "x\\\\x\\@y.z\n",
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn literal_autolinks_keep_escapes_their_context_needs() {
+    for source in [
+        "x@y.z\\ \na\n",
+        "_a x@y.z* b_\n",
+        "[www. \\]: /u\n",
+        "[www. \\]\n\n[www. ]: /u\n",
+        "a\n    >x@y.z\n",
+        "~~a \\~~.a@b.c\n",
+        "~~! \\~~!a@b.c\n",
+        "~~# \\~~:a@b.c\n",
+    ] {
+        let (first, second) = two_passes(source);
+        let html = |value: &str| {
+            base_markdown::to_html_with_options(value, &base_markdown::Options::gfm())
+        };
+        assert_eq!(html(&first), html(source), "{source:?} gave {first:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn ordered_list_markers_are_escaped_by_their_place_in_the_line() {
+    // How the parser splits text at an escape does not change whether the marker is escaped.
+    for (source, expected) in [
+        ("1)a\n", "1\\)a\n"),
+        ("1\\)a\n", "1\\)a\n"),
+        ("1\\) a\n", "1\\) a\n"),
+        ("1\\. a\n", "1\\. a\n"),
+        ("x\n1\\) a\n", "x\n1\\) a\n"),
+        ("- 1\\)a\n", "- 1\\)a\n"),
+        ("x 1)a\n", "x 1)a\n"),
+        ("x 1\\)a\n", "x 1)a\n"),
+        ("x 1\\. a\n", "x 1. a\n"),
+        // Text after an opening emphasis marker does not start the line.
+        ("**1.** a\n", "**1.** a\n"),
+        ("*1)a* b\n", "*1)a* b\n"),
+        ("~~1\\. a~~\n", "~~1. a~~\n"),
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn underscores_after_attention_markers_do_not_depend_on_text_splits() {
+    // The parser splits this text at `$` but not at `_`, so the first underscore follows the
+    // opening marker's neighbour in one pass and the text node's start in the next.
+    for (source, expected) in [("*b_1=a$1.:]@\na~*\n", "*b_1=a\\$1.:]@\na~*\n")] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn text_that_gfm_would_link_is_written_verbatim() {
+    for source in [
+        "www.example.com\n",
+        "https://a.b/c\n",
+        "a@b.co\n",
+        "x@a_b.com and http://y.z/w_v\n",
+    ] {
+        let document = Document::parse(source, &base_markdown::ParseOptions::default()).unwrap();
+        assert_eq!(base_markdown::to_markdown(&document).unwrap(), source);
+    }
 }

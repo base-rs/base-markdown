@@ -11,7 +11,8 @@ use crate::markdown::{
     util::{
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::format_heading_as_setext,
-        format_link_as_auto_link::auto_link_text, safe::EscapeInfos,
+        format_link_as_auto_link::{written_link, WrittenLink},
+        safe::EscapeInfos,
     },
     Options,
 };
@@ -33,7 +34,8 @@ pub struct Info<'a> {
 
 enum Before<'a> {
     Literal(&'a str),
-    Output(core::ops::Range<usize>),
+    /// Output, after the text that the construct the output belongs to was written after.
+    Output(&'a str, core::ops::Range<usize>),
 }
 
 pub struct State<'a> {
@@ -63,14 +65,15 @@ impl<'a> Info<'a> {
     }
     pub fn at(start: usize, end: usize, after: &'a str) -> Self {
         Self {
-            before: Before::Output(start..end),
+            before: Before::Output("", start..end),
             after,
         }
     }
-    pub fn before<'o>(&'o self, output: &'o str) -> &'o str {
+    /// The text before, in two parts that are read as one.
+    pub fn before<'o>(&'o self, output: &'o str) -> [&'o str; 2] {
         match &self.before {
-            Before::Literal(value) => value,
-            Before::Output(range) => &output[range.clone()],
+            Before::Literal(value) => ["", value],
+            Before::Output(lead, range) => [lead, &output[range.clone()]],
         }
     }
 }
@@ -158,7 +161,7 @@ impl<'a> State<'a> {
             let before = if self.output.len() == start {
                 match &info.before {
                     Before::Literal(value) => Before::Literal(value),
-                    Before::Output(range) => Before::Output(range.clone()),
+                    Before::Output(lead, range) => Before::Output(lead, range.clone()),
                 }
             } else if self.output.ends_with(['\n', '\r'])
                 && matches!(kind, EventKind::Html { value, .. }
@@ -179,7 +182,14 @@ impl<'a> State<'a> {
                 }
                 Before::Literal(" ")
             } else {
-                Before::Output(start..self.output.len())
+                // The children written so far follow what the container follows, such as the
+                // start of a line, so where text sits in its line does not depend on how it is
+                // split into nodes.
+                let lead = match &info.before {
+                    Before::Literal(value) => value,
+                    Before::Output(..) => "",
+                };
+                Before::Output(lead, start..self.output.len())
             };
             let length = self.output.len();
             self.write_node(document, child, &Info { before, after })?;
@@ -669,18 +679,18 @@ impl<'a> State<'a> {
                         title.as_ref().map(|value| value.resolve(document.source()).unwrap())))
                 {
                     '['
-                } else if auto_link_text(
-                    document,
-                    id,
-                    destination.resolve(document.source()).unwrap(),
-                    title.is_some(),
-                    self,
-                )
-                .is_some()
-                {
-                    '>'
                 } else {
-                    '['
+                    match written_link(
+                        document,
+                        id,
+                        destination.resolve(document.source()).unwrap(),
+                        title.is_some(),
+                        self,
+                    ) {
+                        WrittenLink::Bare(text) => return text.chars().next(),
+                        WrittenLink::Angle(_) => '<',
+                        WrittenLink::Explicit => '[',
+                    }
                 },
             ),
             EventKind::Html { .. } => Some('<'),
@@ -692,7 +702,7 @@ impl<'a> State<'a> {
 
     pub fn write_safe(&mut self, input: &str, info: &Info, encode: Option<char>) {
         let before = info.before(&self.output);
-        let start = before.len();
+        let start = before[0].len() + before[1].len();
         let end = start + input.len();
         self.escapes.clear();
         super::escape::collect(
@@ -724,8 +734,15 @@ impl<'a> State<'a> {
         });
         self.applied.clear();
         let mut skip_until = 0;
-        let before_last = before.chars().next_back();
-        let before_email = email_domain(before.as_bytes().iter().rev());
+        let before_last = before[1]
+            .chars()
+            .next_back()
+            .or_else(|| before[0].chars().next_back());
+        // Text right after an opening attention marker follows only that marker.
+        let after_opening = !before[1].is_empty()
+            && before[1]
+                .bytes()
+                .all(|byte| matches!(byte, b'*' | b'_' | b'~'));
         for (index, &(position, ref flags)) in self.escapes.iter().enumerate() {
             if position < start || position >= end || position < skip_until {
                 continue;
@@ -734,7 +751,7 @@ impl<'a> State<'a> {
                 &self.escapes,
                 index,
                 start,
-                (before_last, before_email),
+                (before_last, after_opening),
                 input,
                 info.after,
             ) {
@@ -800,6 +817,55 @@ impl<'a> State<'a> {
             info.after,
             &mut self.output,
         );
+    }
+
+    /// Write a definition or reference label. Labels match by their raw text, so backslashes are
+    /// written as they are and a character one already escapes needs no other escape.
+    pub(super) fn write_label(&mut self, label: &str, info: &Info) {
+        let before = info.before(&self.output);
+        let start = before[0].len() + before[1].len();
+        self.escapes.clear();
+        super::escape::collect(
+            before,
+            label,
+            info.after,
+            &self.stack,
+            self.options.single_dollar_text_math,
+            &mut self.escapes,
+        );
+        self.escapes.sort_unstable_by_key(|entry| entry.0);
+        self.escapes.dedup_by_key(|entry| entry.0);
+        let bytes = label.as_bytes();
+        let escaped = |index: usize| {
+            bytes[..index]
+                .iter()
+                .rev()
+                .take_while(|&&byte| byte == b'\\')
+                .count()
+                % 2
+                == 1
+        };
+        let mut cursor = 0;
+        for &(position, _) in &self.escapes {
+            let Some(index) = position
+                .checked_sub(start)
+                .filter(|&index| index < label.len())
+            else {
+                continue;
+            };
+            if escaped(index) {
+                continue;
+            }
+            // Labels are written outside phrasing, so only ASCII punctuation needs an escape.
+            self.output.push_str(&label[cursor..index]);
+            self.output.push('\\');
+            cursor = index;
+        }
+        self.output.push_str(&label[cursor..]);
+        // A trailing backslash would otherwise escape the closing bracket.
+        if escaped(label.len()) {
+            self.output.push('\\');
+        }
     }
 
     fn definition_separator<S: AsRef<str>>(
@@ -904,7 +970,7 @@ fn intraword_underscores(
     escapes: &[(usize, EscapeInfos)],
     index: usize,
     start: usize,
-    (before_last, before_email): (Option<char>, Option<bool>),
+    (before_last, after_opening): (Option<char>, bool),
     input: &str,
     after: &str,
 ) -> Option<usize> {
@@ -920,17 +986,14 @@ fn intraword_underscores(
     } else {
         before_last
     }?;
-    // Characters next to attention markers can become character references later.
+    // Characters next to attention markers can become character references later. An opening
+    // marker is left out: the parser may split the text after it at the underscore, and this
+    // check would then see the marker in one reading and not in the other.
     if classify(previous) != Kind::Other
         || escaped(position - previous.len_utf8())
-        || position - previous.len_utf8() == start && matches!(before_last, Some('*' | '_'))
-    {
-        return None;
-    }
-    // GFM email autolinks allow `_` in domains, so an escape may be what keeps `a\@b_c.d` from linking.
-    if email_domain(input.as_bytes()[..position - start].iter().rev())
-        .or(before_email)
-        .unwrap_or(false)
+        || position - previous.len_utf8() == start
+            && matches!(before_last, Some('*' | '_'))
+            && !after_opening
     {
         return None;
     }
@@ -952,11 +1015,4 @@ fn intraword_underscores(
         && !escaped(run_end)
         && !(run_end + next.len_utf8() == end && after.starts_with(['*', '_'])))
     .then_some(run_end)
-}
-
-/// Whether reversed text ends in a domain after `@`, or `None` when it is all domain characters.
-fn email_domain<'a>(mut reversed: impl Iterator<Item = &'a u8>) -> Option<bool> {
-    reversed
-        .find(|byte| !(byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_')))
-        .map(|&byte| byte == b'@')
 }

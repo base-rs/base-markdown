@@ -25,11 +25,9 @@ pub fn write_backslashes(value: &str, after: &str, results: &mut String) {
             results.push_str(&value[start..position]);
             results.push('\\');
             start = position;
-            // Regex matches consume both bytes: paired backslashes cannot overlap.
-            at = (position + 2).min(bytes.len());
-        } else {
-            at = position + 1;
         }
+        // Upstream matches with a lookahead, so the next backslash is checked as well.
+        at = position + 1;
     }
     results.push_str(&value[start..]);
 }

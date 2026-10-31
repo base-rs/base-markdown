@@ -96,7 +96,7 @@ pub use markdown::to_markdown_node;
 pub use markdown::{normalize_markdown, normalize_markdown_with_options};
 pub use markdown::{to_markdown, to_markdown_with_options};
 pub use markdown::{IndentOptions, LineWrapping, Options as MarkdownOptions};
-pub use node_syntax::NodeSyntax;
+pub use node_syntax::{LinkForm, NodeSyntax};
 pub use reference_kind::ReferenceKind;
 
 use alloc::string::String;
