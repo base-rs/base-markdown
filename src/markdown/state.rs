@@ -708,8 +708,22 @@ impl<'a> State<'a> {
             }
         });
         let mut cursor = start;
+        let mut skip_until = 0;
+        let before_last = before.chars().next_back();
+        let before_email = email_domain(before.as_bytes().iter().rev());
         for (index, &(position, ref flags)) in self.escapes.iter().enumerate() {
-            if position < start || position >= end {
+            if position < start || position >= end || position < skip_until {
+                continue;
+            }
+            if let Some(run_end) = intraword_underscores(
+                &self.escapes,
+                index,
+                start,
+                (before_last, before_email),
+                input,
+                info.after,
+            ) {
+                skip_until = run_end;
                 continue;
             }
             if self.escapes.get(index + 1).is_some_and(|next| {
@@ -876,3 +890,66 @@ fn has_matching_ticks(bytes: &[u8], index: usize, ticks: usize) -> bool {
 #[cfg(test)]
 #[path = "state/tests.rs"]
 mod tests;
+
+/// Returns the end of a run of underscores between word characters (`a_b`, `a__b`).
+/// Such runs cannot form attention, so they stay unescaped, as in `mdast-util-to-markdown`.
+fn intraword_underscores(
+    escapes: &[(usize, EscapeInfos)],
+    index: usize,
+    start: usize,
+    (before_last, before_email): (Option<char>, Option<bool>),
+    input: &str,
+    after: &str,
+) -> Option<usize> {
+    use crate::util::char::{classify, Kind};
+    let end = start + input.len();
+    let position = escapes[index].0;
+    if input.as_bytes()[position - start] != b'_' {
+        return None;
+    }
+    let escaped = |at: usize| escapes.binary_search_by_key(&at, |entry| entry.0).is_ok();
+    let previous = if position > start {
+        input[..position - start].chars().next_back()
+    } else {
+        before_last
+    }?;
+    // Characters next to attention markers can become character references later.
+    if classify(previous) != Kind::Other
+        || escaped(position - previous.len_utf8())
+        || position - previous.len_utf8() == start && matches!(before_last, Some('*' | '_'))
+    {
+        return None;
+    }
+    // GFM email autolinks allow `_` in domains, so an escape may be what keeps `a\@b_c.d` from linking.
+    if email_domain(input.as_bytes()[..position - start].iter().rev())
+        .or(before_email)
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    let run_end = position
+        + input.as_bytes()[position - start..]
+            .iter()
+            .take_while(|&&byte| byte == b'_')
+            .count();
+    // A missing next character counts as whitespace, so the run stays escaped.
+    let next = if run_end < end {
+        input[run_end - start..].chars().next()
+    } else {
+        after.chars().next()
+    }
+    .unwrap_or(' ');
+    let skip = run_end - position - 1;
+    (escapes.get(index + skip).map(|entry| entry.0) == Some(run_end - 1)
+        && classify(next) == Kind::Other
+        && !escaped(run_end)
+        && !(run_end + next.len_utf8() == end && after.starts_with(['*', '_'])))
+    .then_some(run_end)
+}
+
+/// Whether reversed text ends in a domain after `@`, or `None` when it is all domain characters.
+fn email_domain<'a>(mut reversed: impl Iterator<Item = &'a u8>) -> Option<bool> {
+    reversed
+        .find(|byte| !(byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_')))
+        .map(|&byte| byte == b'@')
+}

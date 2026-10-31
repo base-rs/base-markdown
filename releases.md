@@ -9,6 +9,7 @@ Earlier history, from before the package was renamed from `socketry-markdown`, i
 - Indent the content of GFM task list items to the list marker's content column rather than past the checkbox. Nested lists, paragraphs, and code in a task item were previously re-parsed as paragraph text or indented code, so repeated serialization changed or grew the document.
 - Keep the blank line between a nested list and a following paragraph, table, definition, or setext heading in the same list item. Without it, the next parse continued the nested list's last paragraph, merging the two.
 - Write a heading with soft line breaks as an ATX heading when soft breaks are unwrapped. It was previously written as a setext heading, which the next normalization turned into an ATX heading.
+- Leave underscores between letters or digits unescaped when serializing Markdown, as `mdast-util-to-markdown` does, so `io_uring` and `snake_case` no longer become `io\_uring` and `snake\_case`. Such underscores cannot open or close emphasis, so the rendered output is unchanged.
 
 ## v0.1.2
 
