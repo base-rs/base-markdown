@@ -7,7 +7,7 @@ mod support;
 use base_markdown::{to_markdown, Document, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::to_markdown as to;
-use support::fixture::{Html, Node, Paragraph, Text};
+use support::fixture::{Break, Html, Node, Paragraph, Text};
 
 #[test]
 fn html() {
@@ -106,6 +106,49 @@ fn html() {
         "<x>a\n",
         "should serialize html (text)"
     );
+
+    assert_eq!(
+        to(&Node::Paragraph(Paragraph {
+            children: vec![
+                Node::Text(Text {
+                    value: "a\n".to_string(),
+                    position: None
+                }),
+                Node::Html(Html {
+                    value: "<span>".to_string(),
+                    position: None
+                })
+            ],
+            position: None
+        }))
+        .unwrap(),
+        "a\n<span>\n",
+        "should keep the line ending before html (text) that cannot interrupt a paragraph"
+    );
+
+    assert_eq!(
+        to(&Node::Paragraph(Paragraph {
+            children: vec![
+                Node::Text(Text {
+                    value: "a".to_string(),
+                    position: None
+                }),
+                Node::Break(Break { position: None }),
+                Node::Text(Text {
+                    value: String::new(),
+                    position: None
+                }),
+                Node::Html(Html {
+                    value: "<!-- m -->".to_string(),
+                    position: None
+                })
+            ],
+            position: None
+        }))
+        .unwrap(),
+        "a\\\n    <!-- m -->\n",
+        "should indent html (text) after a hard break so the break is kept"
+    );
 }
 
 #[test]
@@ -115,8 +158,21 @@ fn html_text_after_phrasing_round_trips_unchanged() {
         "- `c` <!-- m -->\n",
         "plain <b>x</b>\n",
         "a<span>b</span>\n",
+        "a\n<span>\n",
+        "a\n<span\nx>\n",
+        "a\\\n</span>\n",
+        "a\\\n    <!-- m -->\n",
+        "*a*\\\n    <?x?> b\n",
+        "> a\\\n>     <div>\n",
+        "- a\\\n      <![CDATA[x]]>\n",
     ] {
         let document = Document::parse(source, &ParseOptions::default()).unwrap();
         assert_eq!(to_markdown(&document).unwrap(), source, "{source:?}");
     }
+}
+
+#[test]
+fn trailing_space_hard_break_before_html_text_is_kept() {
+    let document = Document::parse("a  \n</span>\n", &ParseOptions::default()).unwrap();
+    assert_eq!(to_markdown(&document).unwrap(), "a\\\n</span>\n");
 }

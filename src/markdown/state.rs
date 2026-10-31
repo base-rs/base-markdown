@@ -123,6 +123,8 @@ impl<'a> State<'a> {
         self.index_stack.push(0);
         let mut index = 0;
         let mut after_hard_break = false;
+        // Whether the output ends with a hard break's line ending, past any skipped soft break.
+        let mut hard_break_line = false;
         while let Some(child) = children.next() {
             let kind = &document.node(child).unwrap().kind;
             if !is_phrasing(kind) {
@@ -154,19 +156,32 @@ impl<'a> State<'a> {
                     Before::Literal(value) => Before::Literal(value),
                     Before::Output(range) => Before::Output(range.clone()),
                 }
-            } else if self.output.ends_with(['\n', '\r']) && matches!(kind, EventKind::Html { .. })
+            } else if self.output.ends_with(['\n', '\r'])
+                && matches!(kind, EventKind::Html { value, .. }
+                if crate::block_parser::html_interrupts_paragraph(
+                    value.resolve(document.source()).unwrap().as_bytes()
+                ))
             {
-                // Replace the line ending before inline HTML so it cannot start an HTML block.
-                self.output.pop();
-                if self.output.ends_with('\r') {
+                if hard_break_line {
+                    // Indent the line so it continues the paragraph and keeps the break.
+                    self.output.push_str("    ");
+                } else {
+                    // Replace the line ending before inline HTML so it cannot start an HTML block.
                     self.output.pop();
+                    if self.output.ends_with('\r') {
+                        self.output.pop();
+                    }
+                    self.output.push(' ');
                 }
-                self.output.push(' ');
                 Before::Literal(" ")
             } else {
                 Before::Output(start..self.output.len())
             };
+            let length = self.output.len();
             self.write_node(document, child, &Info { before, after })?;
+            if self.output.len() != length {
+                hard_break_line = after_hard_break;
+            }
             index += 1;
         }
         self.index_stack.pop();

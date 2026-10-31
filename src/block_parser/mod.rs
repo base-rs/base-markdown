@@ -948,6 +948,11 @@ impl Builder<'_> {
     }
 }
 
+/// Whether HTML at the start of a line would start an HTML block inside a paragraph (kinds 1–6).
+pub(crate) fn html_interrupts_paragraph(bytes: &[u8]) -> bool {
+    html::Html::start(bytes, false, false).is_some()
+}
+
 /// Definition-looking table headers take precedence over definitions; other headers follow ordinary paragraph indentation rules.
 fn table_definition_header(bytes: &[u8]) -> bool {
     let mut at = 1;
