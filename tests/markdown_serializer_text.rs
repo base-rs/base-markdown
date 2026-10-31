@@ -9,7 +9,9 @@ use base_markdown::Document;
 use pretty_assertions::assert_eq;
 use support::fixture::to_markdown as to;
 use support::fixture::to_markdown_with_options as to_with_options;
-use support::fixture::{Emphasis, Node, Paragraph, Text};
+use support::fixture::{
+    Blockquote, Delete, Emphasis, List, ListItem, Node, Paragraph, Root, Strong, Text,
+};
 
 #[test]
 fn text() {
@@ -256,9 +258,11 @@ fn escapes_that_only_kept_text_from_linking_are_dropped() {
         ("http\\://example.com\n", "http://example.com\n"),
         ("x\\@example.com\n", "x@example.com\n"),
         ("\\.x@y.z\n", ".x@y.z\n"),
-        ("x@y.z\\.c\n", "x@y.z.c\n"),
-        ("xx@y.z\\-\n", "xx@y.z-\n"),
-        ("x@y.z\\_a.b\n", "x@y.z_a.b\n"),
+        // Characters an email address would take keep their escape, which ends it.
+        ("x@y.z\\.c\n", "x@y.z\\.c\n"),
+        ("xx@y.z\\-\n", "xx@y.z\\-\n"),
+        ("x@y.z\\_a.b\n", "x@y.z\\_a.b\n"),
+        ("x@y.z&#x61;\n", "x@y.z&#x61;\n"),
         ("\\\\x@y.z\n", "\\x@y.z\n"),
         // Underscores in an email domain are not escaped either.
         ("x\\@a_b.com\n", "x@a_b.com\n"),
@@ -285,8 +289,8 @@ fn literal_autolinks_are_written_as_their_text_before_escaped_neighbours() {
         ("www.a.b* x\n", "www.a.b\\* x\n"),
         ("http://a.b/c_(d)_ x\n", "http://a.b/c_(d)\\_ x\n"),
         ("www.a.b www.com_ x@y.z\n", "www.a.b www.com\\_ x@y.z\n"),
-        // A character reference after a link is written as its character, which the link takes.
-        ("WWW.www&amp;\n", "WWW.www&\n"),
+        // A `&` after a link is written as `&amp;`, which the link leaves out at its end.
+        ("WWW.www&amp;\n", "WWW.www&amp;\n"),
     ] {
         assert_eq!(two_passes(source).0, expected, "{source:?}");
     }
@@ -363,6 +367,167 @@ fn underscores_after_attention_markers_do_not_depend_on_text_splits() {
     // The parser splits this text at `$` but not at `_`, so the first underscore follows the
     // opening marker's neighbour in one pass and the text node's start in the next.
     for (source, expected) in [("*b_1=a$1.:]@\na~*\n", "*b_1=a\\$1.:]@\na~*\n")] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn whitespace_inside_attention_is_always_a_character_reference() {
+    for (source, expected) in [
+        ("*&#x20;a*\n", "*&#x20;a*\n"),
+        ("**&#x20;a**\n", "**&#x20;a**\n"),
+        ("~~&#x20;a~~\n", "~~&#x20;a~~\n"),
+        ("*&#9;a*\n", "*&#x9;a*\n"),
+        ("*a&#x20;*\n", "*a&#x20;*\n"),
+        ("*&#xA0;a*\n", "*&#xA0;a*\n"),
+        ("> *&#x20;a*\n", "> *&#x20;a*\n"),
+        ("- *&#x20;a*\n", "- *&#x20;a*\n"),
+        ("x *&#x20;a*\n", "x *&#x20;a*\n"),
+        ("x *a&#9;* b\n", "x *a&#x9;* b\n"),
+        ("x **&#x20;a&#x20;** b\n", "x **&#x20;a&#x20;** b\n"),
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn whitespace_inside_constructed_attention_is_always_a_character_reference() {
+    fn text(value: &str) -> Node {
+        Node::Text(Text {
+            value: value.to_owned(),
+            position: None,
+        })
+    }
+    fn paragraph(children: Vec<Node>) -> Node {
+        Node::Paragraph(Paragraph {
+            children,
+            position: None,
+        })
+    }
+    type Wrap = fn(Vec<Node>) -> Node;
+    let attention: [(Wrap, &str); 3] = [
+        (
+            |children| {
+                Node::Emphasis(Emphasis {
+                    children,
+                    position: None,
+                })
+            },
+            "*",
+        ),
+        (
+            |children| {
+                Node::Strong(Strong {
+                    children,
+                    position: None,
+                })
+            },
+            "**",
+        ),
+        (
+            |children| {
+                Node::Delete(Delete {
+                    children,
+                    position: None,
+                })
+            },
+            "~~",
+        ),
+    ];
+    for (wrap, marker) in attention {
+        for (value, reference) in [(" note", "&#x20;note"), ("\tnote", "&#x9;note")] {
+            let inline = || wrap(vec![text(value)]);
+            let trailing = || wrap(vec![text("note ")]);
+            for (node, expected) in [
+                (
+                    Node::Root(Root {
+                        children: vec![paragraph(vec![inline()])],
+                        position: None,
+                    }),
+                    format!("{marker}{reference}{marker}\n"),
+                ),
+                (
+                    Node::Root(Root {
+                        children: vec![paragraph(vec![text("x "), inline(), text(" y")])],
+                        position: None,
+                    }),
+                    format!("x {marker}{reference}{marker} y\n"),
+                ),
+                (
+                    Node::Root(Root {
+                        children: vec![paragraph(vec![text("x "), trailing(), text("y")])],
+                        position: None,
+                    }),
+                    // A letter next to a marker after a reference is a reference too.
+                    format!("x {marker}note&#x20;{marker}&#x79;\n"),
+                ),
+                (
+                    Node::Root(Root {
+                        children: vec![paragraph(vec![text("x"), inline()])],
+                        position: None,
+                    }),
+                    format!("&#x78;{marker}{reference}{marker}\n"),
+                ),
+                // An empty text before the whitespace writes nothing.
+                (
+                    Node::Root(Root {
+                        children: vec![paragraph(vec![wrap(vec![text(""), text(value)])])],
+                        position: None,
+                    }),
+                    format!("{marker}{reference}{marker}\n"),
+                ),
+                (
+                    Node::Blockquote(Blockquote {
+                        children: vec![paragraph(vec![inline()])],
+                        position: None,
+                    }),
+                    format!("> {marker}{reference}{marker}\n"),
+                ),
+                (
+                    Node::List(List {
+                        children: vec![Node::ListItem(ListItem {
+                            children: vec![paragraph(vec![inline()])],
+                            position: None,
+                            spread: false,
+                            checked: None,
+                        })],
+                        position: None,
+                        ordered: false,
+                        start: None,
+                        spread: false,
+                    }),
+                    format!("- {marker}{reference}{marker}\n"),
+                ),
+            ] {
+                let markdown = to(&node).unwrap();
+                assert_eq!(markdown, expected, "{value:?}");
+                let (first, second) = two_passes(&markdown);
+                assert_eq!(first, markdown, "{value:?}");
+                assert_eq!(second, first, "{value:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn characters_a_literal_autolink_would_take_end_it() {
+    for (source, expected) in [
+        ("www.a.b&amp; c\n", "www.a.b&amp; c\n"),
+        ("https://a.b/?x=1&amp;\n", "https://a.b/?x=1&amp;\n"),
+        ("a@b.c&#46;d\n", "a@b.c\\.d\n"),
+        ("a@b.c&#46;\n", "a@b.c.\n"),
+        ("a@b.c&#x2D;d\n", "a@b.c\\-d\n"),
+        // Only the text written right after the link changes, even when a later node is
+        // rendered again from the same place.
+        (
+            "#/[$@--~_|;[a]/_|x@y.z(1~+\n",
+            "\\#/\\[\\$@--~~*|;\\[a]/*|x@y.z(1~~+\n",
+        ),
+    ] {
         let (first, second) = two_passes(source);
         assert_eq!(first, expected, "{source:?}");
         assert_eq!(second, first, "{source:?}");

@@ -54,6 +54,12 @@ pub struct State<'a> {
     pub serialization_root: Option<NodeId>,
     definitions: Option<BTreeMap<String, NodeId>>,
     reference_key: String,
+    /// Where the last bare link ended, and whether it was an email address.
+    pub(super) bare_link_end: Option<(usize, bool)>,
+    /// Where attention content starts with whitespace, which is written as a reference.
+    pub(super) attention_start: Option<usize>,
+    /// Where attention closed after a character reference, so a letter after it is one too.
+    pub(super) attention_end: Option<usize>,
 }
 
 impl<'a> Info<'a> {
@@ -67,6 +73,16 @@ impl<'a> Info<'a> {
         Self {
             before: Before::Output("", start..end),
             after,
+        }
+    }
+    /// The same context, with output before it up to `end`.
+    pub fn extended(&self, end: usize) -> Self {
+        Self {
+            before: match &self.before {
+                Before::Output(lead, range) => Before::Output(lead, range.start..end),
+                Before::Literal(value) => Before::Literal(value),
+            },
+            after: self.after,
         }
     }
     /// The text before, in two parts that are read as one.
@@ -150,9 +166,11 @@ impl<'a> State<'a> {
                 } else {
                     // Render nodes without a fixed prefix to determine the next character.
                     let checkpoint = self.output.len();
+                    let neighbours = (self.bare_link_end, self.attention_start, self.attention_end);
                     self.write_node(document, next, &Info::new("", ""))?;
                     let first = self.output[checkpoint..].chars().next().unwrap_or_default();
                     self.output.truncate(checkpoint);
+                    (self.bare_link_end, self.attention_start, self.attention_end) = neighbours;
                     first.encode_utf8(&mut buffer)
                 }
             } else {
@@ -230,6 +248,10 @@ impl<'a> State<'a> {
             .node(id)
             .expect("serialization uses existing arena nodes");
         let source = document.source();
+        // A bare link or attention marker only changes how the text written right after it starts.
+        if !matches!(node.kind, EventKind::Text(_)) {
+            self.clear_neighbours();
+        }
         match &node.kind {
             EventKind::Start(tag) => match tag {
                 Tag::Document(_) => {
@@ -617,7 +639,16 @@ impl<'a> State<'a> {
             serialization_root: None,
             definitions: None,
             reference_key: String::new(),
+            bare_link_end: None,
+            attention_start: None,
+            attention_end: None,
         }
+    }
+
+    pub(super) fn clear_neighbours(&mut self) {
+        self.bare_link_end = None;
+        self.attention_start = None;
+        self.attention_end = None;
     }
 
     /// A parsed reference is safe only while its first definition still resolves to
