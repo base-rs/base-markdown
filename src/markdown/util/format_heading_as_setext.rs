@@ -5,7 +5,7 @@
 
 //! Setext heading selection adapted from `mdast-util-to-markdown`.
 use crate::{
-    markdown::state::State,
+    markdown::{state::State, LineWrapping},
     stream::{EventKind, Tag},
     Document, NodeId,
 };
@@ -23,13 +23,19 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
     }
     let mut nonempty = false;
     let mut setext = state.options.setext;
+    // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading.
+    let unwrap = state.options.line_wrapping == LineWrapping::Unwrap;
     document.descendants(id).any(|child| {
         let kind = &document.node(child).unwrap().kind;
         if let Some(value) = crate::headings::semantic_text::<false>(kind, document.source()) {
             nonempty |= !value.is_empty();
+            let unwrapped = unwrap && matches!(kind, EventKind::Text(_) | EventKind::SoftBreak(_));
             setext = setext
-                || matches!(kind, EventKind::HardBreak | EventKind::SoftBreak(_))
-                || !matches!(kind, EventKind::CodeBlock { .. }) && value.contains(['\r', '\n']);
+                || matches!(kind, EventKind::HardBreak)
+                || !unwrapped && matches!(kind, EventKind::SoftBreak(_))
+                || !unwrapped
+                    && !matches!(kind, EventKind::CodeBlock { .. })
+                    && value.contains(['\r', '\n']);
         }
         nonempty && setext
     })
@@ -41,7 +47,7 @@ mod tests {
     use crate::{
         markdown::state::State,
         stream::{EventKind, Tag, Text},
-        Document, MarkdownOptions, ParseOptions,
+        Document, LineWrapping, MarkdownOptions, ParseOptions,
     };
 
     fn eligible(rank: u8, children: &[EventKind<'static>], setext: bool) -> bool {
@@ -120,5 +126,38 @@ mod tests {
         let text = EventKind::Text(Text::Literal("text"));
         assert!(eligible(2, &[empty_break.clone(), text.clone()], false));
         assert!(eligible(2, &[text, empty_break], false));
+    }
+
+    #[test]
+    fn unwrapped_soft_breaks_do_not_require_setext() {
+        let unwrapped = |children: &[EventKind<'static>]| {
+            let mut document = Document::parse("", &ParseOptions::default()).unwrap();
+            let heading = document
+                .append_child(document.root(), EventKind::Start(Tag::Heading(2)))
+                .unwrap();
+            for child in children {
+                document.append_child(heading, child.clone()).unwrap();
+            }
+            let options = MarkdownOptions {
+                line_wrapping: LineWrapping::Unwrap,
+                ..MarkdownOptions::default()
+            };
+            format_heading_as_setext(&document, heading, &State::new(&options))
+        };
+        let text = EventKind::Text(Text::Literal("text"));
+        assert!(!unwrapped(&[
+            text.clone(),
+            EventKind::SoftBreak(Text::Literal("\n")),
+            EventKind::Text(Text::Literal("first\nsecond")),
+        ]));
+        assert!(unwrapped(&[
+            text.clone(),
+            EventKind::HardBreak,
+            text.clone()
+        ]));
+        assert!(unwrapped(&[EventKind::Html {
+            value: Text::Literal("first\nsecond"),
+            block: false,
+        }]));
     }
 }
