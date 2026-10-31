@@ -200,15 +200,15 @@ fn text() {
     assert_eq!(
         to(&Node::Link(Link {
             children: vec![Node::Text(Text {
-                value: String::from("tel:123"),
+                value: String::from("tel:abc"),
                 position: None
             })],
             position: None,
-            url: String::from("tel:123"),
+            url: String::from("tel:abc"),
             title: None
         }))
         .unwrap(),
-        "[tel:123](tel:123)\n",
+        "[tel:abc](tel:abc)\n",
         "should use a resource link for schemes the parser does not autolink"
     );
 
@@ -251,30 +251,30 @@ fn text() {
     assert_eq!(
         to(&Node::Link(Link {
             children: vec![Node::Text(Text {
-                value: String::from("tel:123"),
+                value: String::from("tel:abc"),
                 position: None
             })],
             position: None,
-            url: String::from("tel:123"),
+            url: String::from("tel:abc"),
             title: None
         }),)
         .unwrap(),
-        "[tel:123](tel:123)\n",
+        "[tel:abc](tel:abc)\n",
         "should use a resource link for schemes the parser does not autolink"
     );
 
     assert_eq!(
         to(&Node::Link(Link {
             children: vec![Node::Text(Text {
-                value: String::from("tel:123"),
+                value: String::from("tel:abc"),
                 position: None
             })],
             position: None,
-            url: String::from("tel:123"),
+            url: String::from("tel:abc"),
             title: Some(String::from("a"))
         }),)
         .unwrap(),
-        "[tel:123](tel:123 \"a\")\n",
+        "[tel:abc](tel:abc \"a\")\n",
         "should use a normal link for nodes w/ a value similar to the url w/ a title"
     );
 
@@ -411,8 +411,10 @@ fn autolink_schemes_require_the_allowlist() {
         ("mailto:", "[mailto:](mailto:)\n"),
         ("httpx://a", "[httpx://a](httpx://a)\n"),
         ("a+.-:value", "[a+.-:value](a+.-:value)\n"),
-        ("irc://foo.bar", "[irc://foo.bar](irc://foo.bar)\n"),
-        ("tel:123", "[tel:123](tel:123)\n"),
+        ("irc://foo.bar", "<irc://foo.bar>\n"),
+        ("tel:123", "<tel:123>\n"),
+        ("tel:abc", "[tel:abc](tel:abc)\n"),
+        ("ssh:host", "[ssh:host](ssh:host)\n"),
         ("Kk:value", "[Kk:value](Kk:value)\n"),
         ("ſs:value", "[ſs:value](ſs:value)\n"),
         ("hK:value", "[hK:value](hK:value)\n"),

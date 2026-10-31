@@ -52,8 +52,8 @@ pub fn sanitize(value: &str) -> String {
 /// Then, a vec of (lowercase) allowed protocols can be given, in which case
 /// the URL is ignored or kept.
 ///
-/// For example, `&["http", "https", "irc", "ircs", "mailto", "xmpp"]`
-/// can be used for `a[href]`, or `&["http", "https"]` for `img[src]`.
+/// For example, `&["http", "https", "mailto"]` keeps only those protocols,
+/// and `&["http", "https"]` suits `img[src]`.
 /// If the URL includes an unknown protocol (one not matched by `protocol`, such
 /// as a dangerous example, `javascript:`), the value is ignored.
 ///

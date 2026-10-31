@@ -202,8 +202,8 @@ fn autolink_literal() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("ftp://a/b/c.txt", &Options::gfm()),
-        "<p>ftp://a/b/c.txt</p>",
-        "should not support ftp links"
+        "<p><a href=\"ftp://a/b/c.txt\">ftp://a/b/c.txt</a></p>",
+        "should support ftp links"
     );
 
     // Note: GH comments/issues/PRs do not link this, but Gists/readmes do.

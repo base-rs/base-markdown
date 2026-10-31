@@ -27,16 +27,22 @@ fn dangerous_protocol_autolink() {
         "should allow `https:`"
     );
 
-    // Deliberate divergence from CommonMark: `irc:` is a safe protocol, but not an autolink scheme.
+    // Deliberate divergence from CommonMark: a host scheme needs a host after `//`.
     assert_eq!(
         to_html("<irc:///help>"),
         "<p>&lt;irc:///help&gt;</p>",
-        "should not form autolinks w/ `irc:`"
+        "should not form autolinks w/ `irc:` w/o a host"
     );
 
     assert_eq!(
-        to_html("<mailto:a>"),
-        "<p><a href=\"mailto:a\">mailto:a</a></p>",
+        to_html("<irc://a/help>"),
+        "<p><a href=\"irc://a/help\">irc://a/help</a></p>",
+        "should allow `irc:`"
+    );
+
+    assert_eq!(
+        to_html("<mailto:a@b>"),
+        "<p><a href=\"mailto:a@b\">mailto:a@b</a></p>",
         "should allow `mailto:`"
     );
 }

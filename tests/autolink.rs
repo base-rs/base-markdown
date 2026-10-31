@@ -35,11 +35,10 @@ fn autolink() -> Result<(), message::Message> {
     "should support protocol autolinks (2)"
   );
 
-    // Deliberate divergence from CommonMark, which accepts any 2–32 character scheme: only `http`, `https` and `mailto` form autolinks.
     assert_eq!(
         to_html("<irc://foo.bar:2233/baz>"),
-        "<p>&lt;irc://foo.bar:2233/baz&gt;</p>",
-        "should not support protocol autolinks w/ non-HTTP schemes"
+        "<p><a href=\"irc://foo.bar:2233/baz\">irc://foo.bar:2233/baz</a></p>",
+        "should support protocol autolinks w/ `irc`"
     );
 
     assert_eq!(
@@ -163,8 +162,8 @@ fn autolink() -> Result<(), message::Message> {
 
     // Extra:
     assert_eq!(
-        to_html("<https://a.b> <HTTP://A> <Https://a> <mailto:a>"),
-        "<p><a href=\"https://a.b\">https://a.b</a> <a href=\"HTTP://A\">HTTP://A</a> <a href=\"Https://a\">Https://a</a> <a href=\"mailto:a\">mailto:a</a></p>",
+        to_html("<https://a.b> <HTTP://A> <Https://a> <mailto:a@b>"),
+        "<p><a href=\"https://a.b\">https://a.b</a> <a href=\"HTTP://A\">HTTP://A</a> <a href=\"Https://a\">Https://a</a> <a href=\"mailto:a@b\">mailto:a@b</a></p>",
         "should support allowed schemes in any case"
     );
 
@@ -175,8 +174,8 @@ fn autolink() -> Result<(), message::Message> {
         "<mail:a>",
         "<mailtox:a>",
         "<xmailto:a>",
-        "<tel:123>",
-        "<ftp://a>",
+        "<tel:>",
+        "<ftps://a>",
         "<javascript:alert(1)>",
         "<data:text/plain,a>",
         // Deliberate divergence from CommonMark: allowed schemes also need a target.
@@ -192,11 +191,13 @@ fn autolink() -> Result<(), message::Message> {
         "<mailto:>",
         "<mailto:?subject=a>",
         "<mailto: a>",
+        "<mailto:a>",
+        "<mailto:a@>",
     ] {
         assert_eq!(
             to_html_with_options(input, &danger),
             format!("<p>&lt;{}&gt;</p>", &input[1..input.len() - 1]),
-            "should not support schemes other than `http`, `https` and `mailto`: {:?}",
+            "should not support schemes outside the table, or w/o what their kind requires: {:?}",
             input
         );
     }

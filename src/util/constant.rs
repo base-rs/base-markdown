@@ -4,6 +4,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Syntax limits and lookup tables shared by the parser and renderer.
+use crate::util::scheme::SCHEME_NAMES;
 
 /// The number of characters allowed in a domain of an email [autolink][].
 ///
@@ -174,8 +175,8 @@ pub const LINK_REFERENCE_SIZE_MAX: usize = 999;
 
 /// List of protocols allowed, when operating safely, as `href` on `a`.
 ///
-/// This list is based on what is allowed by GitHub.
-pub const SAFE_PROTOCOL_HREF: [&str; 6] = ["http", "https", "irc", "ircs", "mailto", "xmpp"];
+/// These are the link schemes in [`SCHEMES`][crate::util::scheme::SCHEMES], so every autolink keeps its `href`.
+pub const SAFE_PROTOCOL_HREF: [&str; SCHEME_NAMES.len()] = SCHEME_NAMES;
 
 /// List of protocols allowed, when operating safely, as `src` on `img`.
 ///

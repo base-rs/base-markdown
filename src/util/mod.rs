@@ -13,5 +13,6 @@ pub(crate) mod inline_code_info;
 pub mod line_ending;
 pub mod normalize_identifier;
 pub mod sanitize_uri;
+pub(crate) mod scheme;
 pub mod tagfilter;
 pub mod unicode;

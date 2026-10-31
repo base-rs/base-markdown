@@ -55,7 +55,13 @@ pub struct Constructs {
     ///       ^^^^^^^^^^^^^^^^^^^^^   ^^^^^^^^^^^^^^^^^^
     /// ```
     ///
-    /// Only `http://` and `https://` with a host, `mailto:` with an address (schemes in any case), and email addresses form autolinks. This deliberately diverges from `CommonMark`, which accepts any scheme of 2–32 characters and an empty target: other text such as `<irc://a>` or `Option<std::io::Error>` is raw HTML when valid and text otherwise.
+    /// Only these schemes, in any case, and email addresses form autolinks:
+    ///
+    /// * `http`, `https`, `ftp`, `sftp`, `ssh`, `irc` and `ircs`, followed by `://` and a host, such as `<ssh://example.com>`.
+    /// * `mailto` and `xmpp`, followed by one email address and an optional `?query`, such as `<mailto:a@example.com?subject=x>`. `xmpp` also allows a `/resource` after the address.
+    /// * `tel` and `sms`, followed by `+`, digits, `-`, `.`, `(` and `)`, with at least one digit, such as `<tel:+1-555-0100>`.
+    ///
+    /// This deliberately diverges from `CommonMark`, which accepts any scheme of 2–32 characters and an empty target: other text such as `<svg:rect>` or `Option<std::io::Error>` is raw HTML when valid and text otherwise.
     pub autolink: bool,
     /// Block quote.
     ///
@@ -146,6 +152,8 @@ pub struct Constructs {
     /// > | https://example.com
     ///     ^^^^^^^^^^^^^^^^^^^
     /// ```
+    ///
+    /// `http`, `https`, `ftp`, `sftp`, `ssh`, `irc` and `ircs` followed by `://` and a domain, `mailto:` and `xmpp:` followed by an email address (`xmpp:` also with an optional `/resource`), `www.` domains and email addresses form links, with schemes in any case. `tel:` and `sms:` link only in angle brackets.
     pub autolink_literal: bool,
     /// Footnote definition.
     ///
@@ -487,8 +495,9 @@ pub struct CompileOptions {
     ///
     /// URLs that have no protocol (which means it’s relative to the current
     /// page, such as `./some/page.html`) and URLs that have a safe protocol
-    /// (for images: `http`, `https`; for links: `http`, `https`, `irc`,
-    /// `ircs`, `mailto`, `xmpp`), are safe.
+    /// (for images: `http`, `https`; for links: the autolink schemes, `http`,
+    /// `https`, `ftp`, `sftp`, `ssh`, `irc`, `ircs`, `mailto`, `xmpp`, `tel`
+    /// and `sms`), are safe.
     /// All other URLs are dangerous and dropped.
     ///
     /// When the option `allow_all_protocols_in_img` is enabled,
