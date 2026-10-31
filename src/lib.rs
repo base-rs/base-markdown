@@ -42,7 +42,7 @@
 //!
 //! ## Parsing options
 //!
-//! The parser supports `CommonMark` and the GFM, frontmatter, and math constructs inherited from `markdown-rs`; see [`Constructs`] and [`Options::gfm`]. HTML output escapes raw HTML by default. MDX, JSX, and JavaScript expression parsing are not supported. Three additional [`ParseOptions`] are disabled by default, so ordinary parsing retains `CommonMark` behavior: [`ParseOptions::inline_code_info`] recognizes a language prefix before inline code, [`ParseOptions::html_block_blank_lines`] continues indented HTML blocks across blank lines, and [`ParseOptions::html_tag_namespaces`] accepts namespace-prefixed HTML tags. [`Constructs::frontmatter`] accepts language-agnostic frontmatter, and [`CodeFence`] describes authored code fences.
+//! The parser supports `CommonMark` and the GFM, frontmatter, and math constructs inherited from `markdown-rs`; see [`Constructs`] and [`Options::gfm`]. HTML output escapes raw HTML by default. MDX, JSX, and JavaScript expression parsing are not supported. Three additional [`ParseOptions`] are disabled by default, so ordinary parsing retains `CommonMark` behavior apart from angle-bracket autolinks, which deliberately accept only `http`, `https` and `mailto` schemes and email addresses (see [`Constructs::autolink`]): [`ParseOptions::inline_code_info`] recognizes a language prefix before inline code, [`ParseOptions::html_block_blank_lines`] continues indented HTML blocks across blank lines, and [`ParseOptions::html_tag_namespaces`] accepts namespace-prefixed HTML tags. [`Constructs::frontmatter`] accepts language-agnostic frontmatter, and [`CodeFence`] describes authored code fences.
 #![no_std]
 #![deny(clippy::pedantic)]
 #![allow(clippy::doc_link_with_quotes)]

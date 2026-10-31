@@ -35,10 +35,11 @@ fn autolink() -> Result<(), message::Message> {
     "should support protocol autolinks (2)"
   );
 
+    // Deliberate divergence from CommonMark, which accepts any 2–32 character scheme: only `http`, `https` and `mailto` form autolinks.
     assert_eq!(
         to_html("<irc://foo.bar:2233/baz>"),
-        "<p><a href=\"irc://foo.bar:2233/baz\">irc://foo.bar:2233/baz</a></p>",
-        "should support protocol autolinks w/ non-HTTP schemes"
+        "<p>&lt;irc://foo.bar:2233/baz&gt;</p>",
+        "should not support protocol autolinks w/ non-HTTP schemes"
     );
 
     assert_eq!(
@@ -47,28 +48,32 @@ fn autolink() -> Result<(), message::Message> {
         "should support protocol autolinks in uppercase"
     );
 
+    // Deliberate divergence from CommonMark: schemes outside the allowlist are text, even with dangerous protocols allowed.
     assert_eq!(
         to_html("<a+b+c:d>"),
-        "<p><a href=\"\">a+b+c:d</a></p>",
-        "should support protocol autolinks w/ incorrect URIs (1, default)"
+        "<p>&lt;a+b+c:d&gt;</p>",
+        "should not support protocol autolinks w/ other schemes (1, default)"
     );
 
+    // Deliberate divergence from CommonMark.
     assert_eq!(
         to_html_with_options("<a+b+c:d>", &danger),
-        "<p><a href=\"a+b+c:d\">a+b+c:d</a></p>",
-        "should support protocol autolinks w/ incorrect URIs (1, danger)"
+        "<p>&lt;a+b+c:d&gt;</p>",
+        "should not support protocol autolinks w/ other schemes (1, danger)"
     );
 
+    // Deliberate divergence from CommonMark.
     assert_eq!(
         to_html("<made-up-scheme://foo,bar>"),
-        "<p><a href=\"\">made-up-scheme://foo,bar</a></p>",
-        "should support protocol autolinks w/ incorrect URIs (2, default)"
+        "<p>&lt;made-up-scheme://foo,bar&gt;</p>",
+        "should not support protocol autolinks w/ other schemes (2, default)"
     );
 
+    // Deliberate divergence from CommonMark.
     assert_eq!(
         to_html_with_options("<made-up-scheme://foo,bar>", &danger),
-        "<p><a href=\"made-up-scheme://foo,bar\">made-up-scheme://foo,bar</a></p>",
-        "should support protocol autolinks w/ incorrect URIs (2, danger)"
+        "<p>&lt;made-up-scheme://foo,bar&gt;</p>",
+        "should not support protocol autolinks w/ other schemes (2, danger)"
     );
 
     assert_eq!(
@@ -77,10 +82,11 @@ fn autolink() -> Result<(), message::Message> {
         "should support protocol autolinks w/ incorrect URIs (3)"
     );
 
+    // Deliberate divergence from CommonMark.
     assert_eq!(
         to_html_with_options("<localhost:5001/foo>", &danger),
-        "<p><a href=\"localhost:5001/foo\">localhost:5001/foo</a></p>",
-        "should support protocol autolinks w/ incorrect URIs (4)"
+        "<p>&lt;localhost:5001/foo&gt;</p>",
+        "should not support protocol autolinks w/ other schemes (3)"
     );
 
     assert_eq!(
@@ -156,6 +162,84 @@ fn autolink() -> Result<(), message::Message> {
     );
 
     // Extra:
+    assert_eq!(
+        to_html("<https://a.b> <HTTP://A> <Https://a> <mailto:a>"),
+        "<p><a href=\"https://a.b\">https://a.b</a> <a href=\"HTTP://A\">HTTP://A</a> <a href=\"Https://a\">Https://a</a> <a href=\"mailto:a\">mailto:a</a></p>",
+        "should support allowed schemes in any case"
+    );
+
+    for input in [
+        "<httpx://a>",
+        "<htt:a>",
+        "<httpss://a>",
+        "<mail:a>",
+        "<mailtox:a>",
+        "<xmailto:a>",
+        "<tel:123>",
+        "<ftp://a>",
+        "<javascript:alert(1)>",
+        "<data:text/plain,a>",
+        // Deliberate divergence from CommonMark: allowed schemes also need a target.
+        "<http:>",
+        "<http:a>",
+        "<https:x>",
+        "<http:/a>",
+        "<http://>",
+        "<https:///a>",
+        "<http://?a>",
+        "<http://#a>",
+        "<http:// a>",
+        "<mailto:>",
+        "<mailto:?subject=a>",
+        "<mailto: a>",
+    ] {
+        assert_eq!(
+            to_html_with_options(input, &danger),
+            format!("<p>&lt;{}&gt;</p>", &input[1..input.len() - 1]),
+            "should not support schemes other than `http`, `https` and `mailto`: {:?}",
+            input
+        );
+    }
+
+    assert_eq!(
+        to_html("Option<std::io::Error>"),
+        "<p>Option&lt;std::io::Error&gt;</p>",
+        "should not turn Rust paths into autolinks"
+    );
+
+    assert_eq!(
+        to_html_with_options("<xs:element>", &danger),
+        "<p>&lt;xs:element&gt;</p>",
+        "should not turn namespaced tags into autolinks"
+    );
+
+    assert_eq!(
+        to_html_with_options(
+            "a <xs:element>",
+            &Options {
+                parse: ParseOptions {
+                    html_tag_namespaces: true,
+                    ..Default::default()
+                },
+                ..danger
+            }
+        ),
+        "<p>a <xs:element></p>",
+        "should leave namespaced tags to raw HTML"
+    );
+
+    assert_eq!(
+        to_html("<http@a.b> <https@a.b> <mailto@a.b> <h@a.b> <m@a.b>"),
+        "<p><a href=\"mailto:http@a.b\">http@a.b</a> <a href=\"mailto:https@a.b\">https@a.b</a> <a href=\"mailto:mailto@a.b\">mailto@a.b</a> <a href=\"mailto:h@a.b\">h@a.b</a> <a href=\"mailto:m@a.b\">m@a.b</a></p>",
+        "should support email autolinks whose local part starts like a scheme"
+    );
+
+    assert_eq!(
+        to_html("<http/a> <m/a>"),
+        "<p>&lt;http/a&gt; &lt;m/a&gt;</p>",
+        "should not support scheme prefixes w/o a colon or at sign"
+    );
+
     assert_eq!(
         to_html("<*@example.com>"),
         "<p><a href=\"mailto:*@example.com\">*@example.com</a></p>",

@@ -5,9 +5,12 @@
 
 mod support;
 use base_markdown::markdown::Options;
+use base_markdown::{
+    to_html_with_options, AlignKind, Document, Options as HtmlOptions, ParseOptions,
+};
 use pretty_assertions::assert_eq;
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
-use support::fixture::{Link, Node, Text};
+use support::fixture::{Link, Node, Table, TableCell, TableRow, Text};
 
 #[test]
 fn text() {
@@ -205,8 +208,8 @@ fn text() {
             title: None
         }))
         .unwrap(),
-        "<tel:123>\n",
-        "should use an autolink for nodes w/ a value similar to the url and a protocol"
+        "[tel:123](tel:123)\n",
+        "should use a resource link for schemes the parser does not autolink"
     );
 
     assert_eq!(
@@ -256,8 +259,8 @@ fn text() {
             title: None
         }),)
         .unwrap(),
-        "<tel:123>\n",
-        "should use an autolink for nodes w/ a value similar to the url and a protocol"
+        "[tel:123](tel:123)\n",
+        "should use a resource link for schemes the parser does not autolink"
     );
 
     assert_eq!(
@@ -397,13 +400,28 @@ fn text() {
 }
 
 #[test]
-fn autolink_schemes_require_ascii_letters() {
+fn autolink_schemes_require_the_allowlist() {
     for (destination, expected) in [
         ("HTTP://example.test", "<HTTP://example.test>\n"),
-        ("a+.-:value", "<a+.-:value>\n"),
-        ("Kk:value", "[Kk:value](Kk:value)\n"),
+        ("Https://example.test", "<Https://example.test>\n"),
+        ("MAILTO:a@b.c", "<MAILTO:a@b.c>\n"),
+        ("http:", "[http:](http:)\n"),
+        ("https:x", "[https:x](https:x)\n"),
+        ("http://", "[http://](http://)\n"),
+        ("mailto:", "[mailto:](mailto:)\n"),
+        ("httpx://a", "[httpx://a](httpx://a)\n"),
+        ("a+.-:value", "[a+.-:value](a+.-:value)\n"),
+        ("irc://foo.bar", "[irc://foo.bar](irc://foo.bar)\n"),
+        ("tel:123", "[tel:123](tel:123)\n"),
+        ("Kk:value", "[Kk:value](Kk:value)\n"),
         ("ſs:value", "[ſs:value](ſs:value)\n"),
-        ("hK:value", "[hK:value](hK:value)\n"),
+        ("hK:value", "[hK:value](hK:value)\n"),
+        ("http://a>b", "[http://a>b](http://a>b)\n"),
+        ("http://a\\b", "<http://a\\b>\n"),
+        ("http://a\\\\", "<http://a\\\\>\n"),
+        ("http://a|b", "<http://a|b>\n"),
+        ("http://a\u{a0}b", "[http://a\u{a0}b](<http://a\u{a0}b>)\n"),
+        ("http://a\u{85}b", "[http://a\u{85}b](<http://a\u{85}b>)\n"),
     ] {
         assert_eq!(
             to(&Node::Link(Link {
@@ -417,6 +435,110 @@ fn autolink_schemes_require_ascii_letters() {
             }))
             .unwrap(),
             expected,
+            "{:?}",
+            destination
+        );
+    }
+}
+
+#[test]
+fn email_autolinks_require_the_email_form() {
+    for (text, destination, expected) in [
+        ("a@b.co", "mailto:a@b.co", "<a@b.co>\n"),
+        ("a", "mailto:a", "[a](mailto:a)\n"),
+        ("a@b", "mailto:a@b", "<a@b>\n"),
+        ("a@-b", "mailto:a@-b", "[a@-b](mailto:a@-b)\n"),
+        ("a@b.co", "MAILTO:a@b.co", "[a@b.co](MAILTO:a@b.co)\n"),
+        ("a@b.co", "a@b.co", "[a@b.co](a@b.co)\n"),
+        ("mailto:a@b.co", "mailto:a@b.co", "<mailto:a@b.co>\n"),
+    ] {
+        assert_eq!(
+            to(&Node::Link(Link {
+                children: vec![Node::Text(Text {
+                    value: text.into(),
+                    position: None,
+                })],
+                position: None,
+                url: destination.into(),
+                title: None,
+            }))
+            .unwrap(),
+            expected,
+            "{:?} {:?}",
+            text,
+            destination
+        );
+    }
+}
+
+#[test]
+fn table_cells_keep_links_with_pipes_out_of_autolinks() {
+    for (text, destination) in [
+        ("http://a|b", "http://a|b"),
+        ("a|b@c.d", "mailto:a|b@c.d"),
+        ("mailto:a|b", "mailto:a|b"),
+    ] {
+        let cell = |children: Vec<Node>| {
+            Node::TableRow(TableRow {
+                children: vec![Node::TableCell(TableCell {
+                    children,
+                    position: None,
+                })],
+                position: None,
+            })
+        };
+        let table = Node::Table(Table {
+            align: vec![AlignKind::None],
+            children: vec![
+                cell(vec![Node::Text(Text {
+                    value: "h".into(),
+                    position: None,
+                })]),
+                cell(vec![Node::Link(Link {
+                    children: vec![Node::Text(Text {
+                        value: text.into(),
+                        position: None,
+                    })],
+                    position: None,
+                    url: destination.into(),
+                    title: None,
+                })]),
+            ],
+            position: None,
+        });
+        let first = to(&table).unwrap();
+        let escaped = text.replace('|', "\\|");
+        assert_eq!(
+            first,
+            format!(
+                "| h |\n| --- |\n| [{}]({}) |\n",
+                escaped,
+                destination.replace('|', "\\|")
+            ),
+            "{:?}",
+            text
+        );
+        // The whole link stays in one cell.
+        let html = to_html_with_options(&first, &HtmlOptions::gfm());
+        assert!(
+            html.contains(&format!(
+                "<td><a href=\"{}\">",
+                destination.replace('|', "%7C")
+            )) && html.matches("<td>").count() == 1,
+            "{:?} {:?}",
+            text,
+            html
+        );
+        // A label that is itself a GFM literal URL gains an escape on each serialization; that belongs to literal autolink escaping.
+        if text.starts_with("http") {
+            continue;
+        }
+        let reparsed = Document::parse(&first, &ParseOptions::gfm()).unwrap();
+        assert_eq!(
+            base_markdown::to_markdown(&reparsed).unwrap(),
+            first,
+            "{:?}",
+            text
         );
     }
 }

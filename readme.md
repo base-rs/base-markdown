@@ -1,6 +1,6 @@
 # `base-markdown`
 
-A CommonMark-compliant Markdown parser for Rust with pull events, a source-backed AST, extensions, and HTML and Markdown renderers. It builds on [`markdown-rs`](https://github.com/wooorm/markdown-rs), with compact CommonMark parsing and a single source-backed document representation.
+A Markdown parser for Rust that follows CommonMark, apart from a documented restriction on angle-bracket autolinks, with pull events, a source-backed AST, extensions, and HTML and Markdown renderers. It builds on [`markdown-rs`](https://github.com/wooorm/markdown-rs), with compact CommonMark parsing and a single source-backed document representation. That restriction is deliberate: only `http://`, `https://`, `mailto:` and email addresses form angle-bracket autolinks, so text such as `Option<std::io::Error>` stays text.
 
 [![Build][badge-build-image]][badge-build-url] [![Coverage][badge-coverage-image]][badge-coverage-url]
 

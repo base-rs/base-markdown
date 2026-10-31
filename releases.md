@@ -2,6 +2,11 @@
 
 Earlier history, from before the package was renamed from `socketry-markdown`, is in [releases/socketry-markdown.md](releases/socketry-markdown.md).
 
+## Unreleased
+
+- Only form angle-bracket autolinks for `http://` and `https://` followed by a host, `mailto:` followed by an address, with schemes in any case, and the email form `<user@host>`. This is a deliberate divergence from CommonMark, which accepts any scheme of 2–32 characters and an empty target, such as `<http:>`, so prose such as `Option<std::io::Error>` became a link to `std::io::Error`. Other `<scheme:…>` text is now raw HTML when it is valid HTML, such as `<xs:element>` with `html_tag_namespaces`, and text otherwise. Markdown serialization writes links with other schemes, such as `tel:123`, as `[tel:123](tel:123)` instead of `<tel:123>`, and writes `<…>` only when it parses back as the same link. Autolink text is now written without backslash escapes, which autolinks do not process, so `<http://a\b>` no longer gains a backslash on each serialization. In GFM table cells, links whose text contains `|` keep the `[text](url)` form, because a `|` in an autolink would split the cell.
+- Escape `<` in text before characters other than letters, `!`, `/` and `?` when the rest of the same text forms an email autolink. Text such as `\<1@a.b>` was previously written as `<1@a.b>`, which parsed as an email link. Text such as `a <= b`, `<0.5%` and `-> Poll<T>` is still written unchanged.
+
 ## v0.1.4
 
 - Give setext underlines, thematic breaks and other interrupting lines precedence over a following GFM delimiter row, as cmark-gfm does. Previously `a\n===\n|-` rendered the underline and delimiter row as a second paragraph instead of a heading followed by `|-`. After a link reference definition, an underline-shaped line followed by a delimiter row now forms a table header, and on a line that closes or opens containers it is a thematic break rather than paragraph text.

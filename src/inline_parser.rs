@@ -1256,13 +1256,10 @@ fn angle<const CONFIGURED: bool>(
     options: &crate::ParseOptions,
 ) -> Option<(usize, Kind)> {
     if !CONFIGURED || options.constructs.autolink {
-        let mut link = crate::util::autolink::Autolink::default();
-        for (offset, &byte) in bytes[start + 1..limit].iter().enumerate() {
-            match link.advance(byte) {
-                None => break,
-                Some(true) => return Some((start + offset + 2, Kind::AngleLink(link.email()))),
-                Some(false) => {}
-            }
+        if let Some((length, email)) =
+            crate::util::autolink::recognize(bytes[start + 1..limit].iter().copied())
+        {
+            return Some((start + 1 + length, Kind::AngleLink(email)));
         }
     }
     if !CONFIGURED || options.constructs.html_text {

@@ -41,6 +41,8 @@ enum After {
     SpaceOrEnd,
     Entity,
     Html,
+    /// A byte that can start an email local part but not HTML, so `<` needs an escape only before a complete email autolink.
+    Email,
     Math,
 }
 struct Rule {
@@ -92,6 +94,7 @@ static RULES: &[Rule] = &[
     rule!(b'.', Digits, After::SpaceOrEnd, 0, 0),
     rule!(b'<', Line, After::Html, 0, 0),
     rule!(b'<', B, After::Html, PHRASING, FULL_SPANS),
+    rule!(b'<', B, After::Email, PHRASING, FULL_SPANS),
     rule!(b'<', B, A, bit(DestinationLiteral), 0),
     rule!(b'=', Line, A, 0, 0),
     rule!(b'>', Line, A, 0, 0),
@@ -237,6 +240,17 @@ impl Rule {
                     return None;
                 }
             }
+            After::Email => {
+                if next.is_some_and(|byte| {
+                    crate::util::autolink::atext(byte)
+                        && !matches!(byte, b'/' | b'?')
+                        && !byte.is_ascii_alphabetic()
+                }) {
+                    1
+                } else {
+                    return None;
+                }
+            }
         };
         Some(start..position + 1 + width)
     }
@@ -280,12 +294,23 @@ pub(super) fn collect(
         // Only input escapes and the immediately preceding escape can affect output.
         // Test candidates without a consumption boundary first; a possible match still
         // uses the full prefix walk to preserve non-overlapping neighbor consumption.
+        let flags = || EscapeInfos {
+            before: !matches!(rule.before, Before::Any),
+            after: !matches!(rule.after, After::Any)
+                && !(matches!(rule.after, After::Math) && single_math),
+            email: matches!(rule.after, After::Email),
+        };
         let mut at = start;
         let mut possible = false;
         while let Some(position) = value.find(rule.byte, at).filter(|position| *position < end) {
             if rule.at(value, position, single_math).is_some() {
-                possible = true;
-                break;
+                // An email match consumes `<` and one atext byte, never another `<`, so its
+                // matches cannot overlap and need no prefix walk.
+                if !matches!(rule.after, After::Email) {
+                    possible = true;
+                    break;
+                }
+                output.push((position, flags()));
             }
             at = position + 1;
         }
@@ -294,14 +319,7 @@ pub(super) fn collect(
         }
         for (_, position) in rule.matches(value, single_math) {
             if position >= start && position < end {
-                output.push((
-                    position,
-                    EscapeInfos {
-                        before: !matches!(rule.before, Before::Any),
-                        after: !matches!(rule.after, After::Any)
-                            && !(matches!(rule.after, After::Math) && single_math),
-                    },
-                ));
+                output.push((position, flags()));
             }
         }
     }
@@ -434,6 +452,7 @@ mod tests {
                     After::SpaceOrEnd => "(?:[ \\t\\r\\n]|$)".into(),
                     After::Entity => "[#A-Za-z]".into(),
                     After::Html => "[!/?A-Za-z]".into(),
+                    After::Email => "[#-'*+\\-.0-9=^-`{-~]".into(),
                     After::Math if single => "".into(),
                     After::Math => "\\$".into(),
                 };

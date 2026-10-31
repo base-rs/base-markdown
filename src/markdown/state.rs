@@ -40,6 +40,10 @@ pub struct State<'a> {
     pub output: String,
     pub(super) scratch: String,
     escapes: Vec<(usize, EscapeInfos)>,
+    /// Positions of `<` that need an escape only before an email autolink.
+    email_candidates: Vec<usize>,
+    /// Positions that receive an escape, in order.
+    applied: Vec<usize>,
     pub bullet_current: Option<char>,
     pub bullet_last_used: Option<char>,
     pub index_stack: Vec<usize>,
@@ -593,6 +597,8 @@ impl<'a> State<'a> {
             output: String::new(),
             scratch: String::new(),
             escapes: Vec::new(),
+            email_candidates: Vec::new(),
+            applied: Vec::new(),
             bullet_current: None,
             bullet_last_used: None,
             index_stack: Vec::new(),
@@ -702,12 +708,21 @@ impl<'a> State<'a> {
             if right.0 == left.0 {
                 left.1.before &= right.1.before;
                 left.1.after &= right.1.after;
+                left.1.email &= right.1.email;
                 true
             } else {
                 false
             }
         });
-        let mut cursor = start;
+        self.email_candidates.clear();
+        let candidates = &mut self.email_candidates;
+        self.escapes.retain(|&(position, ref flags)| {
+            if flags.email {
+                candidates.push(position);
+            }
+            !flags.email
+        });
+        self.applied.clear();
         let mut skip_until = 0;
         let before_last = before.chars().next_back();
         let before_email = email_domain(before.as_bytes().iter().rev());
@@ -740,6 +755,27 @@ impl<'a> State<'a> {
             {
                 continue;
             }
+            self.applied.push(position);
+        }
+        // Email-only escapes depend on which other escapes apply, so decide them afterwards.
+        let applied = self.applied.len();
+        for &position in &self.email_candidates {
+            if position >= start
+                && position < end
+                && starts_email(
+                    &input[position - start..],
+                    position,
+                    &self.applied[..applied],
+                )
+            {
+                self.applied.push(position);
+            }
+        }
+        if self.applied.len() > applied {
+            self.applied.sort_unstable();
+        }
+        let mut cursor = start;
+        for &position in &self.applied {
             super::util::safe::write_backslashes(
                 &input[cursor - start..position - start],
                 "\\",
@@ -784,6 +820,24 @@ impl<'a> State<'a> {
             "\n\n"
         }
     }
+}
+
+/// Whether the `<` that starts `rest`, at output `position`, opens an email autolink within this
+/// text as written. An applied escape inserts a backslash, which ends the autolink, and the scan
+/// stops at the next `<` because no autolink contains one.
+fn starts_email(rest: &str, position: usize, applied: &[usize]) -> bool {
+    let mut link = crate::util::autolink::Autolink::default();
+    for (offset, &byte) in rest.as_bytes().iter().enumerate().skip(1) {
+        if applied.binary_search(&(position + offset)).is_ok() {
+            return false;
+        }
+        match link.advance(byte) {
+            None => return false,
+            Some(true) => return link.email(),
+            Some(false) => {}
+        }
+    }
+    false
 }
 
 pub(crate) fn is_phrasing(kind: &EventKind<'_>) -> bool {

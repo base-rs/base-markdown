@@ -9,6 +9,8 @@ use alloc::string::String;
 pub struct EscapeInfos {
     pub after: bool,
     pub before: bool,
+    /// Apply only if the escaped `<` would otherwise start an email autolink in the written text.
+    pub email: bool,
 }
 
 /// JS: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/util/safe.js#L148>.
