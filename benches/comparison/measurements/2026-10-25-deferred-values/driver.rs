@@ -1,3 +1,6 @@
+// Released under the MIT License.
+// Copyright, 2026, by Samuel Williams.
+
 #[cfg(feature = "diagnostics")]
 use core_markdown::EventParser;
 use core_markdown::{Document, HeadingOptions, MarkdownOptions, Options};
