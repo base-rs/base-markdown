@@ -320,8 +320,9 @@ impl Builder<'_> {
                 continued = self.open.len();
             }
         }
-        // An underline-shaped line belongs to the preceding content only within the same containers.
-        let underline_context = content_context && continued == self.open.len();
+        // An underline-shaped line belongs to the preceding content only within the same containers, closing or opening none.
+        let underline_depth =
+            (content_context && continued == self.open.len()).then_some(continued);
         self.definition_context = false;
         while self.open.len() > continued {
             self.pop(start);
@@ -399,7 +400,7 @@ impl Builder<'_> {
             self.finish_list(start);
             return self.indented(at, line.remaining_space());
         }
-        if underline_context
+        if underline_depth == Some(self.open.len())
             && self.options.constructs.heading_setext
             && scan_setext_heading(&bytes[at..]).is_some()
         {

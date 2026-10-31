@@ -2128,11 +2128,25 @@ fn delimiter_rows_only_claim_paragraph_continuation_lines() {
         ),
         ("[a]: /u\n---\n", "<p>---</p>\n"),
         ("[a]: /u\n# h\n|-", "<h1>h</h1>\n<p>|-</p>"),
-        // Outside the definition's containers, the line is a thematic break.
+        // On a line that closes or opens containers, the line is a thematic break.
         (
             "- [a]: /u\n---\n:-:",
             "<ul>\n<li></li>\n</ul>\n<hr />\n<p>:-:</p>",
         ),
+        (
+            "[a]: /u\n> ---\n> |-",
+            "<blockquote>\n<hr />\n<p>|-</p>\n</blockquote>",
+        ),
+        (
+            "[a]: /u\n1. ---\n   |-",
+            "<ol>\n<li>\n<hr />\n|-</li>\n</ol>",
+        ),
+        ("[a]: /u\n> ---", "<blockquote>\n<hr />\n</blockquote>"),
+        (
+            "[a]: /u\n> ===\n> |-",
+            "<blockquote>\n<table>\n<thead>\n<tr>\n<th>===</th>\n</tr>\n</thead>\n</table>\n</blockquote>",
+        ),
+        // cmark-gfm leaves this definition as literal text because the table splits its paragraph; base-markdown keeps extracting it.
         (
             "- [a]: /u\n===\n  |-",
             "<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>===</th>\n</tr>\n</thead>\n</table>\n</li>\n</ul>",

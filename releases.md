@@ -4,7 +4,7 @@ Earlier history, from before the package was renamed from `socketry-markdown`, i
 
 ## Unreleased
 
-- Give setext underlines, thematic breaks and other interrupting lines precedence over a following GFM delimiter row, as cmark-gfm does. Previously `a\n===\n|-` rendered the underline and delimiter row as a second paragraph instead of a heading followed by `|-`. After a link reference definition, an underline-shaped line followed by a delimiter row now forms a table header, and outside the definition's containers it is a thematic break rather than paragraph text.
+- Give setext underlines, thematic breaks and other interrupting lines precedence over a following GFM delimiter row, as cmark-gfm does. Previously `a\n===\n|-` rendered the underline and delimiter row as a second paragraph instead of a heading followed by `|-`. After a link reference definition, an underline-shaped line followed by a delimiter row now forms a table header, and on a line that closes or opens containers it is a thematic break rather than paragraph text.
 
 ## v0.1.3
 
