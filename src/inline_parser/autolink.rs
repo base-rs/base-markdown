@@ -232,7 +232,8 @@ pub(super) fn email(source: &str, min: usize, at: usize, limit: usize) -> Option
     {
         start -= 1;
     }
-    if start == at || (start > min && bytes[start - 1] == b'/') {
+    // Browsers read a backslash as `/`, so it blocks the local part as a path separator would.
+    if start == at || (start > min && matches!(bytes[start - 1], b'/' | b'\\')) {
         return None;
     }
     let mut prefix = AutolinkPrefix::Mailto;
@@ -433,6 +434,7 @@ mod tests {
             "a@a.b0",
             "@a.b",
             "/a@a.b",
+            "\\a@a.b",
             "a@界.com",
         ] {
             let at = source.find('@').unwrap();

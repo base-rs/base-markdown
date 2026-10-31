@@ -2002,6 +2002,8 @@ www.a.com#d]()
         "should match path or link end like GitHub does (except for the bracket bug)"
     );
 
+    // Deliberate divergence from GitHub: browsers read a backslash as `/`, so it blocks an email literal as `/` does.
+    // GitHub links the address after the backslash: `\<a href="mailto:noreply@example.com">noreply@example.com</a>`.
     assert_eq!(
         to_html_with_options(
             r###"Last non-markdown ASCII whitespace (FF): noreply@example.com, http://example.com, https://example.com, www.example.com
@@ -2058,7 +2060,7 @@ Some more non-ascii: 🤷‍noreply@example.com, 🤷‍http://example.com, 🤷
 <p>First punctuation after digits: :<a href="mailto:noreply@example.com">noreply@example.com</a>, :<a href="http://example.com">http://example.com</a>, :<a href="https://example.com">https://example.com</a>, :www.example.com</p>
 <p>Last punctuation before caps: @<a href="mailto:noreply@example.com">noreply@example.com</a>, @<a href="http://example.com">http://example.com</a>, @<a href="https://example.com">https://example.com</a>, @www.example.com</p>
 <p>First uppercase: <a href="mailto:Anoreply@example.com">Anoreply@example.com</a>, Ahttp://example.com, Ahttps://example.com, Awww.example.com</p>
-<p>Punctuation after uppercase: \<a href="mailto:noreply@example.com">noreply@example.com</a>, \<a href="http://example.com">http://example.com</a>, \<a href="https://example.com">https://example.com</a>, \www.example.com</p>
+<p>Punctuation after uppercase: \noreply@example.com, \<a href="http://example.com">http://example.com</a>, \<a href="https://example.com">https://example.com</a>, \www.example.com</p>
 <p>Last punctuation before lowercase (1): `<a href="mailto:noreply@example.com">noreply@example.com</a>;</p>
 <p>(2) `<a href="http://example.com">http://example.com</a>;</p>
 <p>(3) `<a href="https://example.com">https://example.com</a>;</p>
@@ -2076,6 +2078,8 @@ Some more non-ascii: 🤷‍noreply@example.com, 🤷‍http://example.com, 🤷
         "should match previous (complex) like GitHub does"
     );
 
+    // Deliberate divergence from GitHub: browsers read a backslash as `/`, so it blocks an email literal as `/` does.
+    // GitHub links the address after the backslash: `\<a href="mailto:a@b.c">a@b.c</a>`.
     assert_eq!(
         to_html_with_options(
             r###"# HTTP
@@ -2193,7 +2197,7 @@ is part of the email, so it’s in fact part of the link: <a href="mailto:_a@b.c
 <p>While other characters before the email aren’t allowed by GFM, they work on
 github.com: !<a href="mailto:a@b.c">a@b.c</a>, &quot;<a href="mailto:a@b.c">a@b.c</a>, #<a href="mailto:a@b.c">a@b.c</a>, $<a href="mailto:a@b.c">a@b.c</a>, &amp;<a href="mailto:a@b.c">a@b.c</a>, '<a href="mailto:a@b.c">a@b.c</a>, )<a href="mailto:a@b.c">a@b.c</a>, <a href="mailto:+a@b.c">+a@b.c</a>,
 ,<a href="mailto:a@b.c">a@b.c</a>, <a href="mailto:-a@b.c">-a@b.c</a>, <a href="mailto:.a@b.c">.a@b.c</a>, /a@b.c, :<a href="mailto:a@b.c">a@b.c</a>, ;<a href="mailto:a@b.c">a@b.c</a>, &lt;<a href="mailto:a@b.c">a@b.c</a>, =<a href="mailto:a@b.c">a@b.c</a>, &gt;<a href="mailto:a@b.c">a@b.c</a>, ?<a href="mailto:a@b.c">a@b.c</a>,
-@<a href="mailto:a@b.c">a@b.c</a>, \<a href="mailto:a@b.c">a@b.c</a>, ]<a href="mailto:a@b.c">a@b.c</a>, ^<a href="mailto:a@b.c">a@b.c</a>, `<a href="mailto:a@b.c">a@b.c</a>, {<a href="mailto:a@b.c">a@b.c</a>, }<a href="mailto:a@b.c">a@b.c</a>.</p>
+@<a href="mailto:a@b.c">a@b.c</a>, \a@b.c, ]<a href="mailto:a@b.c">a@b.c</a>, ^<a href="mailto:a@b.c">a@b.c</a>, `<a href="mailto:a@b.c">a@b.c</a>, {<a href="mailto:a@b.c">a@b.c</a>, }<a href="mailto:a@b.c">a@b.c</a>.</p>
 <h2>Commas</h2>
 <p>See <code>https://github.com/remarkjs/remark/discussions/678</code>.</p>
 <p>,<a href="https://github.com">https://github.com</a></p>
@@ -3017,6 +3021,13 @@ fn backslashes_end_literal_autolinks() {
             "<p><a href=\"mailto:a@b.c\">a@b.c</a>\\d</p>\n",
             "<a@b.c>\\d\n",
         ),
+        // A backslash before the local part blocks an email literal, as `/` does.
+        (
+            "http://x\\a@b.c\n",
+            "<p><a href=\"http://x\">http://x</a>\\a@b.c</p>\n",
+            "<http://x>\\a@b.c\n",
+        ),
+        ("x\\a@b.c\n", "<p>x\\a@b.c</p>\n", "x\\a@b.c\n"),
         (
             "(see https://a.b/c\\)\n",
             "<p>(see <a href=\"https://a.b/c\">https://a.b/c</a>)</p>\n",
