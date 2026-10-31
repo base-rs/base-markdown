@@ -4,6 +4,8 @@ Earlier history, from before the package was renamed from `socketry-markdown`, i
 
 ## Unreleased
 
+- Give setext underlines, thematic breaks and other interrupting lines precedence over a following GFM delimiter row, as cmark-gfm does. Previously `a\n===\n|-` rendered the underline and delimiter row as a second paragraph instead of a heading followed by `|-`. After a link reference definition, an underline-shaped line followed by a delimiter row now forms a table header, and on a line that closes or opens containers it is a thematic break rather than paragraph text.
+- Add `IncrementalParser`, which accepts Markdown in pieces and emits the events of each document-level block once appended text can no longer change it. Its combined output equals `EventParser` events without the document start and end events, except that references resolve only against definitions before the end of their document-level block.
 - Escape Markdown syntax in GFM table cells as in paragraphs, as `mdast-util-to-markdown` does. Cell text such as `\_a\_` or `\*b\*` was previously written unescaped and re-parsed as emphasis.
 - Escape pipes inside code and math in GFM table cells. GFM splits cells before parsing code, so an unescaped pipe in code split the cell, and usually stopped the table from parsing at all.
 
