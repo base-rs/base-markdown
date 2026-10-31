@@ -484,3 +484,71 @@ fn text_moved_after_strong_around_a_bare_link_makes_it_fall_back() {
     document.detach(paragraphs[1]).unwrap();
     assert_serializes(&document, "**bold [www.x.y](http://www.x.y)**-x\n");
 }
+
+#[test]
+fn a_tilde_written_at_the_edges_of_strikethrough_is_escaped() {
+    for (value, expected) in [
+        ("~5 min", "~~\\~5 min~~\n"),
+        ("5 min~", "~~5 min\\~~~\n"),
+        ("~", "~~\\~~~\n"),
+        ("~~", "~~\\~\\~~~\n"),
+        ("5 min\\~", "~~5 min\\\\\\~~~\n"),
+    ] {
+        let mut document = parse("~~x~~\n");
+        let paragraph = paragraphs(&document)[0];
+        let strikethrough = document.children(paragraph).next().unwrap();
+        let text = document.children(strikethrough).next().unwrap();
+        *document.text_mut(text).unwrap() = value.to_owned();
+        assert_serializes(&document, expected);
+    }
+}
+
+#[test]
+fn bare_links_with_edited_text_fall_back() {
+    let mut document = parse("see www.a.b now\n");
+    let link = links(&document)[0];
+    let text = document.children(link).next().unwrap();
+    *document.text_mut(text).unwrap() = "click here".to_owned();
+    assert_eq!(document.syntax(link), bare());
+    assert_serializes(&document, "see [click here](http://www.a.b) now\n");
+    // Text that is a literal to another destination is not written bare either.
+    *document.text_mut(text).unwrap() = "https://evil.example".to_owned();
+    assert_serializes(
+        &document,
+        "see [https://evil.example](http://www.a.b) now\n",
+    );
+}
+
+#[test]
+fn bare_links_are_bare_only_when_their_text_reads_back_as_the_same_literal() {
+    for (text, destination, expected) in [
+        ("www.a.b", "http://www.a.b", "www.a.b\n"),
+        ("a@b.co", "mailto:a@b.co", "a@b.co\n"),
+        ("https://a.b", "https://a.b", "https://a.b\n"),
+        // A changed destination.
+        ("www.a.b", "https://www.a.b", "[www.a.b](https://www.a.b)\n"),
+        ("www.a.b", "www.a.b", "[www.a.b](www.a.b)\n"),
+        ("a@b.co", "a@b.co", "[a@b.co](a@b.co)\n"),
+        ("https://a.b", "https://c.d", "[https://a.b](https://c.d)\n"),
+        (
+            "https://evil.example",
+            "https://a.b",
+            "[https://evil.example](https://a.b)\n",
+        ),
+        // Text that is not one whole literal.
+        ("<script>", "https://a.b", "[\\<script>](https://a.b)\n"),
+        (
+            "[x](javascript:alert(1))",
+            "https://a.b",
+            "[\\[x\\](javascript:alert(1))](https://a.b)\n",
+        ),
+        (
+            "www.a.b c",
+            "http://www.a.b c",
+            "[www.a.b c](<http://www.a.b c>)\n",
+        ),
+    ] {
+        let document = constructed("", None, text, destination, "");
+        assert_serializes(&document, expected);
+    }
+}

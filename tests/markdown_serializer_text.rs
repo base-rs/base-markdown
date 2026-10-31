@@ -636,3 +636,34 @@ fn text_that_gfm_would_link_is_written_verbatim() {
         assert_eq!(base_markdown::to_markdown(&document).unwrap(), source);
     }
 }
+
+#[test]
+fn a_tilde_at_the_edges_of_strikethrough_keeps_its_escape() {
+    // Unescaped, the `~` would lengthen a marker, and at the start of a line the opening one would
+    // open a code fence.
+    let options = base_markdown::ParseOptions::gfm();
+    for (source, expected) in [
+        ("~~\\~5 min~~\n", "~~\\~5 min~~\n"),
+        // Strikethrough is always written with two markers.
+        ("~\\~~\n", "~~\\~~~\n"),
+        ("w\\\n~~\\~x~~\n", "w\\\n~~\\~x~~\n"),
+        ("w\n~~\\~x~~\n", "w\n~~\\~x~~\n"),
+        ("- ~~\\~~~\n", "- ~~\\~~~\n"),
+        ("> ~~\\~~~\n", "> ~~\\~~~\n"),
+        ("x ~~\\~a~~\n", "x ~~\\~a~~\n"),
+        ("~~a\\~~~\n", "~~a\\~~~\n"),
+        ("x ~~a\\~~~ y\n", "x ~~a\\~~~ y\n"),
+        ("- ~~\\~a\\~~~\n", "- ~~\\~a\\~~~\n"),
+        ("~~a\\\\\\~~~\n", "~~a\\\\\\~~~\n"),
+        ("~~a~b~~\n", "~~a~b~~\n"),
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+        assert_eq!(
+            canonical(&Document::parse(first.as_str(), &options).unwrap()),
+            canonical(&Document::parse(source, &options).unwrap()),
+            "{source:?}"
+        );
+    }
+}

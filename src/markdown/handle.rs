@@ -216,9 +216,15 @@ impl State<'_> {
         if leading {
             self.attention_start = Some(content);
         }
+        if marker == '~' {
+            self.strikethrough_start = Some(content);
+        }
         // The content follows the opening marker, so it never starts a line.
         let inner = Info::at(start, content, info.after);
         self.container_phrasing(document, node, &inner)?;
+        if marker == '~' && self.text_end == self.output.len() && self.output.len() > content {
+            escape_last_tilde(&mut self.output);
+        }
         let trailing = encode_trailing_whitespace(&mut self.output, content);
         self.output.extend(core::iter::repeat(marker).take(length));
         if trailing && info.after.chars().next().map(classify) == Some(Kind::Other) {
@@ -396,6 +402,11 @@ impl State<'_> {
             write!(self.output, "&#x{:X};", u32::from(first))
                 .expect("String writing is infallible");
             first.len_utf8()
+        } else if self.strikethrough_start == at && value.starts_with('~') {
+            // A `~` would lengthen the opening marker, so it keeps an escape wherever the
+            // strikethrough sits.
+            self.output.push_str("\\~");
+            1
         } else {
             0
         };
@@ -409,6 +420,7 @@ impl State<'_> {
             let info = info.extended(self.output.len());
             self.write_safe(&value[consumed..], &info, None);
         }
+        self.text_end = self.output.len();
         Ok(())
     }
 
@@ -861,6 +873,22 @@ fn encode_trailing_whitespace(output: &mut String, start: usize) -> bool {
     output.truncate(end);
     write!(output, "&#x{:X};", u32::from(last)).expect("String writing is infallible");
     true
+}
+
+/// Escape a `~` that ends the output unless an odd run of backslashes already escapes it, as it
+/// would lengthen the closing strikethrough marker.
+fn escape_last_tilde(output: &mut String) {
+    let Some(before) = output.strip_suffix('~') else {
+        return;
+    };
+    let backslashes = before
+        .bytes()
+        .rev()
+        .take_while(|&byte| byte == b'\\')
+        .count();
+    if backslashes % 2 == 0 {
+        output.insert(output.len() - 1, '\\');
+    }
 }
 
 /// Escape each pipe after `start` that an even run of backslashes leaves splitting a table cell.

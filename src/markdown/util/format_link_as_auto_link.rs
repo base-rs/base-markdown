@@ -5,6 +5,7 @@
 
 //! Autolink selection adapted from `mdast-util-to-markdown`.
 use crate::{
+    inline_parser::literal_autolink_prefix,
     markdown::{construct_name::ConstructName, state::State},
     stream::{EventKind, Tag},
     util::autolink::recognize,
@@ -41,7 +42,7 @@ pub fn written_link<'a, S: AsRef<str>>(
             form: LinkForm::Bare,
         }) if !state.options.resource_link && !has_title => match link_text(document, id) {
             Some(text)
-                if !text.is_empty()
+                if reads_back_bare(text, destination)
                     && after_boundary
                     && boundary_after(document, id)
                     && !(text.contains('|') && state.stack.contains(&ConstructName::TableCell)) =>
@@ -57,6 +58,13 @@ pub fn written_link<'a, S: AsRef<str>>(
             .map_or(WrittenLink::Explicit, WrittenLink::Angle),
         _ => WrittenLink::Explicit,
     }
+}
+
+/// Whether the parser reads `text`, written alone, back as one literal autolink to `destination`.
+/// Edited text that no longer forms that link, or forms another, is not written bare.
+fn reads_back_bare(text: &str, destination: &str) -> bool {
+    literal_autolink_prefix(text)
+        .is_some_and(|prefix| destination.strip_prefix(prefix) == Some(text))
 }
 
 /// Whether a bare link may touch `character`: a space, a tab or a line ending.

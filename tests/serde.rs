@@ -131,7 +131,8 @@ fn link_forms_round_trip() {
     );
     assert_eq!(
         base_markdown::to_markdown(&restored).unwrap(),
-        "www.a.b <https://c.d> e\n"
+        // `e` is not a literal autolink to `f`, so the bare form cannot hold the link.
+        "www.a.b <https://c.d> [e](f)\n"
     );
 }
 

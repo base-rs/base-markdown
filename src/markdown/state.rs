@@ -58,6 +58,10 @@ pub struct State<'a> {
     pub(super) attention_start: Option<usize>,
     /// Where attention closed after a character reference, so a letter after it is one too.
     pub(super) attention_end: Option<usize>,
+    /// Where strikethrough content starts, so a `~` there is escaped.
+    pub(super) strikethrough_start: Option<usize>,
+    /// Where the last text written ends, so a `~` there can be escaped before a closing marker.
+    pub(super) text_end: usize,
     /// Output before this length is final. A node written only to look at its first character
     /// starts here and is cut back to it, so it must not change what was written before.
     pub(super) write_floor: usize,
@@ -178,14 +182,22 @@ impl<'a> State<'a> {
                     let checkpoint = self.output.len();
                     // The current child is written between them, so the next node is rendered
                     // without the neighbours of the current one.
-                    let neighbours = (self.attention_start, self.attention_end);
+                    let neighbours = (
+                        self.attention_start,
+                        self.attention_end,
+                        self.strikethrough_start,
+                    );
                     self.clear_neighbours();
                     let floor = core::mem::replace(&mut self.write_floor, checkpoint);
                     self.write_node(document, next, &Info::new("", ""))?;
                     self.write_floor = floor;
                     let first = self.output[checkpoint..].chars().next().unwrap_or_default();
                     self.output.truncate(checkpoint);
-                    (self.attention_start, self.attention_end) = neighbours;
+                    (
+                        self.attention_start,
+                        self.attention_end,
+                        self.strikethrough_start,
+                    ) = neighbours;
                     first.encode_utf8(&mut buffer)
                 }
             } else {
@@ -656,6 +668,8 @@ impl<'a> State<'a> {
             reference_key: String::new(),
             attention_start: None,
             attention_end: None,
+            strikethrough_start: None,
+            text_end: 0,
             write_floor: 0,
             line_start: 0,
         }
@@ -664,6 +678,7 @@ impl<'a> State<'a> {
     pub(super) fn clear_neighbours(&mut self) {
         self.attention_start = None;
         self.attention_end = None;
+        self.strikethrough_start = None;
     }
 
     /// A parsed reference is safe only while its first definition still resolves to
