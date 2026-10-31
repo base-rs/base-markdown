@@ -8,20 +8,25 @@ use crate::util::normalize_identifier::{
 };
 use alloc::{borrow::Cow, string::String, vec::Vec};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Definition<'a> {
+    /// The byte offset where the authored definition begins.
+    pub start: usize,
     pub label: Text<'static>,
     pub key: Cow<'a, str>,
     pub destination: Text<'static>,
     pub title: Option<Text<'static>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct Definitions<'a> {
     pub entries: Vec<Definition<'a>>,
     ordered: Vec<usize>,
     footnotes: Vec<String>,
+    footnote_starts: Vec<usize>,
     footnote_order: Vec<usize>,
+    // Lookups ignore definitions starting at or after this offset. Incremental parsing scopes each top-level block to the definitions authored before its end.
+    limit: Option<usize>,
 }
 
 impl<'a> Definitions<'a> {
@@ -32,6 +37,7 @@ impl<'a> Definitions<'a> {
     pub fn push(
         &mut self,
         source: &'a str,
+        start: usize,
         label: Text<'static>,
         destination: Text<'static>,
         title: Option<Text<'static>>,
@@ -46,6 +52,7 @@ impl<'a> Definitions<'a> {
         };
         let index = self.entries.len();
         self.entries.push(Definition {
+            start,
             label,
             key,
             destination,
@@ -59,14 +66,52 @@ impl<'a> Definitions<'a> {
         build_index(&mut self.footnote_order, &self.footnotes, String::as_str);
     }
 
+    // The index keeps the first authored definition of each key, so an invisible match has no visible predecessor.
     pub fn find(&self, key: &str) -> Option<usize> {
         find_index(&self.ordered, &self.entries, key, |entry| {
             entry.key.as_ref()
         })
+        .filter(|&index| self.visible(self.entries[index].start))
     }
 
-    pub fn push_footnote(&mut self, source: &str, label: &Text<'_>) -> usize {
+    #[inline]
+    fn visible(&self, start: usize) -> bool {
+        self.limit.map_or(true, |limit| start < limit)
+    }
+
+    /// Restrict lookups to definitions starting before `limit`, or remove the restriction.
+    pub fn set_limit(&mut self, limit: Option<usize>) {
+        self.limit = limit;
+    }
+
+    /// Copy the definitions starting before `offset` into owned storage, so they can seed a later parse of the following source.
+    pub fn before(&self, offset: usize) -> Definitions<'static> {
+        let entries = self.entries.partition_point(|entry| entry.start < offset);
+        let footnotes = self
+            .footnote_starts
+            .partition_point(|&start| start < offset);
+        Definitions {
+            entries: self.entries[..entries]
+                .iter()
+                .map(|entry| Definition {
+                    start: entry.start,
+                    label: entry.label.clone(),
+                    key: Cow::Owned(entry.key.clone().into_owned()),
+                    destination: entry.destination.clone(),
+                    title: entry.title.clone(),
+                })
+                .collect(),
+            ordered: Vec::new(),
+            footnotes: self.footnotes[..footnotes].to_vec(),
+            footnote_starts: self.footnote_starts[..footnotes].to_vec(),
+            footnote_order: Vec::new(),
+            limit: None,
+        }
+    }
+
+    pub fn push_footnote(&mut self, source: &str, start: usize, label: &Text<'_>) -> usize {
         let index = self.footnotes.len();
+        self.footnote_starts.push(start);
         self.footnotes.push(normalize_identifier(
             label
                 .resolve(source)
@@ -81,6 +126,7 @@ impl<'a> Definitions<'a> {
 
     pub fn find_footnote(&self, key: &str) -> Option<usize> {
         find_index(&self.footnote_order, &self.footnotes, key, String::as_str)
+            .filter(|&index| self.visible(self.footnote_starts[index]))
     }
 }
 

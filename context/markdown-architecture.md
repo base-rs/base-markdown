@@ -9,6 +9,7 @@ MDX is no longer supported. JavaScript expressions and import/export statements 
 ## Main paths
 
 - `to_html` and `to_html_with_options` pull `EventParser` events through the shared `EventHtmlRenderer`. This path does not construct an AST.
+- `IncrementalParser` accepts text in pieces and delivers `EventParser` events for each document-level block once appended text can no longer change it. See [Incremental input](pull-parser.md#incremental-input).
 - `Document::parse` builds a source-backed arena incrementally from semantic events; `Document::events` uses the same HTML writer.
 - `Document` is the only AST. Markdown serialization traverses its node IDs directly; HTML rendering traverses semantic events through `EventHtmlRenderer`. Custom renderers consume events or node IDs.
 - AST helpers include stack-free traversal, `text_content`, code-fence metadata, subtree detachment/attachment, and heading lookup and section replacement. Heading anchor generation uses one map to reserve both authored and generated names and retain suffix counters. Detached nodes remain in their document arena and retain stable IDs. See [Document AST and migration](document.md).

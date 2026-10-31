@@ -28,6 +28,16 @@ impl<'a> EventParser<'a> {
     /// Built-in Markdown preparation has no syntax errors.
     pub fn new(source: &'a str, options: &'a ParseOptions) -> Self {
         let (blocks, definitions) = Blocks::parse(source, options);
+        Self::from_blocks(source, options, blocks, definitions)
+    }
+
+    /// Pull events from blocks that have already been prepared from `source`.
+    pub(crate) fn from_blocks(
+        source: &'a str,
+        options: &'a ParseOptions,
+        blocks: Blocks,
+        definitions: Definitions<'a>,
+    ) -> Self {
         Self {
             blocks,
             source,
@@ -39,6 +49,12 @@ impl<'a> EventParser<'a> {
             closing: false,
             phase: Phase::Start,
         }
+    }
+}
+impl EventParser<'_> {
+    /// Resolve references and footnote calls in subsequently consumed blocks only against definitions starting before `limit`.
+    pub(crate) fn set_definition_limit(&mut self, limit: Option<usize>) {
+        self.definitions.set_limit(limit);
     }
 }
 impl Iterator for EventParser<'_> {
