@@ -13,9 +13,8 @@ use std::fs;
 
 /// Spec examples whose expected HTML deliberately diverges from `CommonMark`, by example number.
 ///
-/// Angle-bracket autolinks accept only `http://`, `https://` and `mailto:` and email addresses, so other schemes are text.
-const DIVERGENCES: [(usize, &str); 4] = [
-    (596, "<p>&lt;irc://foo.bar:2233/baz&gt;</p>\n"),
+/// Angle-bracket autolinks accept only the schemes in the link-scheme table (`src/util/scheme.rs`) and email addresses, so other schemes are text. Example 596, `<irc://…>`, is no longer a divergence, because `irc` is in the table.
+const DIVERGENCES: [(usize, &str); 3] = [
     (598, "<p>&lt;a+b+c:d&gt;</p>\n"),
     (599, "<p>&lt;made-up-scheme://foo,bar&gt;</p>\n"),
     (601, "<p>&lt;localhost:5001/foo&gt;</p>\n"),
@@ -77,7 +76,7 @@ async fn commonmark() {
                 .find(|(example, _)| *example == number)
                 .map(|(_, divergent)| *divergent);
             let comment = divergence.map_or(String::new(), |_| {
-                format!("    // Deliberate divergence from CommonMark: only `http`, `https` and `mailto` schemes form autolinks. CommonMark expects `{}`.\n", output.trim_end())
+                format!("    // Deliberate divergence from CommonMark: only the schemes in the link-scheme table, each followed by what its kind requires, form autolinks. CommonMark expects `{}`.\n", output.trim_end())
             });
             let output = divergence.map_or(output, String::from);
 

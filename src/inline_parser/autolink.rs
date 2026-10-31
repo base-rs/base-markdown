@@ -3,7 +3,10 @@
 
 //! Literal URL and email recognition over source bytes, without tokens or owned strings.
 use super::AutolinkPrefix;
-use crate::util::char::{classify, Kind};
+use crate::util::{
+    char::{classify, Kind},
+    scheme::{scheme, SchemeKind, SCHEME_SIZE_MAX},
+};
 
 pub(super) struct Match {
     pub start: usize,
@@ -47,18 +50,11 @@ pub(super) fn web(
     let bytes = source.as_bytes();
     let (start, domain, prefix) = match bytes[marker] {
         b':' => {
-            let start = if marker >= min + 5
-                && bytes[marker - 5..marker].eq_ignore_ascii_case(b"https")
-            {
-                marker - 5
-            } else if marker >= min + 4 && bytes[marker - 4..marker].eq_ignore_ascii_case(b"http") {
-                marker - 4
-            } else {
+            if marker + 3 > limit || &bytes[marker + 1..marker + 3] != b"//" {
                 return None;
-            };
-            if (start > min && bytes[start - 1].is_ascii_alphabetic())
-                || marker + 3 > limit
-                || &bytes[marker + 1..marker + 3] != b"//"
+            }
+            let start = scheme_start(bytes, min, marker, u8::is_ascii_alphabetic);
+            if !scheme(&bytes[start..marker]).is_some_and(|scheme| scheme.kind == SchemeKind::Host)
             {
                 return None;
             }
@@ -199,6 +195,15 @@ fn terminal_suffix(source: &str, start: usize, limit: usize) -> (usize, usize) {
     (tail, at)
 }
 
+/// The start of the run of `word` bytes before the `:` at `colon`, scanning back at most one byte past the longest scheme so the work stays constant. A longer run is not a scheme.
+fn scheme_start(bytes: &[u8], min: usize, colon: usize, word: fn(&u8) -> bool) -> usize {
+    let mut start = colon;
+    while start > min && colon - start <= SCHEME_SIZE_MAX && word(&bytes[start - 1]) {
+        start -= 1;
+    }
+    start
+}
+
 fn ascii_whitespace(byte: u8) -> bool {
     // Unicode classification also treats vertical tab as whitespace, unlike u8::is_ascii_whitespace.
     matches!(byte, b'\t'..=b'\r' | b' ')
@@ -239,17 +244,14 @@ pub(super) fn email(source: &str, min: usize, at: usize, limit: usize) -> Option
     let mut prefix = AutolinkPrefix::Mailto;
     let mut xmpp = false;
     if start > min && bytes[start - 1] == b':' {
-        let mut protocol = start - 1;
-        while protocol > min && bytes[protocol - 1].is_ascii_alphanumeric() {
-            protocol -= 1;
-        }
-        if bytes[protocol..start - 1].eq_ignore_ascii_case(b"mailto") {
+        let protocol = scheme_start(bytes, min, start - 1, u8::is_ascii_alphanumeric);
+        if let Some(found) =
+            scheme(&bytes[protocol..start - 1]).filter(|scheme| scheme.kind == SchemeKind::Address)
+        {
             start = protocol;
             prefix = AutolinkPrefix::None;
-        } else if bytes[protocol..start - 1].eq_ignore_ascii_case(b"xmpp") {
-            start = protocol;
-            prefix = AutolinkPrefix::None;
-            xmpp = true;
+            // GFM lets an `xmpp:` address end in a `/resource`.
+            xmpp = found.name == "xmpp";
         }
     }
     let mut end = at + 1;
@@ -328,7 +330,9 @@ mod tests {
             ":www.example.com",
             "ahttp://example.com",
             "http:/example.com",
-            "ftp://example.com",
+            "gopher://example.com",
+            "tel://example.com",
+            "sshh://example.com",
             "http://",
             "http://---/x",
             "www.aaa_bbb.ccc",

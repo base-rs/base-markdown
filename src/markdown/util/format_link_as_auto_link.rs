@@ -38,8 +38,8 @@ pub fn auto_link_text<'a, S: AsRef<str>>(
 
 /// Whether the parser reads `<text>`, written verbatim, back as an autolink to `destination`.
 ///
-/// This uses the parser's own recognizer, so it accepts only `http://`, `https://` and `mailto:`
-/// with a target, or an email address.
+/// This uses the parser's own recognizer, so it accepts only the schemes in the link-scheme
+/// table, each followed by what its kind requires, or an email address.
 pub fn angle_reads_back(text: &str, destination: &str) -> bool {
     let Some((length, email)) = recognize(text.bytes().chain(Some(b'>'))) else {
         return false;
