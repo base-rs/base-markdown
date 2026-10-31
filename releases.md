@@ -2,6 +2,10 @@
 
 Earlier history, from before the package was renamed from `socketry-markdown`, is in [releases/socketry-markdown.md](releases/socketry-markdown.md).
 
+## Unreleased
+
+- Give setext underlines, thematic breaks and other interrupting lines precedence over a following GFM delimiter row, as cmark-gfm does. Previously `a\n===\n|-` rendered the underline and delimiter row as a second paragraph instead of a heading followed by `|-`. After a link reference definition, an underline-shaped line followed by a delimiter row now forms a table header, and on a line that closes or opens containers it is a thematic break rather than paragraph text.
+
 ## v0.1.3
 
 - Add `normalize_markdown` and `normalize_markdown_with_options`, which parse Markdown with GFM, frontmatter, and math and serialize it with default formatting and soft line breaks unwrapped. This is the normalization `bake-markdown` applies, so tools that generate Markdown can produce output it leaves unchanged.

@@ -320,6 +320,9 @@ impl Builder<'_> {
                 continued = self.open.len();
             }
         }
+        // An underline-shaped line belongs to the preceding content only within the same containers, closing or opening none.
+        let underline_depth =
+            (content_context && continued == self.open.len()).then_some(continued);
         self.definition_context = false;
         while self.open.len() > continued {
             self.pop(start);
@@ -397,10 +400,17 @@ impl Builder<'_> {
             self.finish_list(start);
             return self.indented(at, line.remaining_space());
         }
-        if content_context
+        if underline_depth == Some(self.open.len())
             && self.options.constructs.heading_setext
             && scan_setext_heading(&bytes[at..]).is_some()
         {
+            // An underline-shaped line after a paragraph or definition is a table header when a delimiter row follows, and paragraph text otherwise.
+            if self.options.constructs.table {
+                if let Some(end) = self.table_head(definition_start) {
+                    self.finish_list(start);
+                    return self.table(definition_start, end);
+                }
+            }
             return self.paragraph(at, start);
         }
         if bytes[at] == b'[' && self.options.constructs.definition {
@@ -570,12 +580,6 @@ impl Builder<'_> {
             }
             if !indented {
                 let content = next + line.bytes_scanned();
-                if self.options.constructs.table && self.table_delimiter(content_start).is_some() {
-                    self.definition_context = true;
-                    self.trim_fragment();
-                    self.pop(next);
-                    return next;
-                }
                 if matches!(bytes.get(content), Some(b'=' | b'-'))
                     && continued
                     && self.options.constructs.heading_setext
@@ -598,6 +602,13 @@ impl Builder<'_> {
                         )
                         .is_some()
                 {
+                    self.trim_fragment();
+                    self.pop(next);
+                    return next;
+                }
+                // As in cmark-gfm, a delimiter row only claims a line that would otherwise continue the paragraph.
+                if self.options.constructs.table && self.table_delimiter(content_start).is_some() {
+                    self.definition_context = true;
                     self.trim_fragment();
                     self.pop(next);
                     return next;

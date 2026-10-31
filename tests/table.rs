@@ -2090,3 +2090,77 @@ fn compact_tables_preserve_cells_spans_and_rendering_paths() {
         }
     }
 }
+
+#[test]
+fn delimiter_rows_only_claim_paragraph_continuation_lines() {
+    // As in cmark-gfm, setext underlines and other interrupting lines take precedence over a following delimiter row.
+    for (source, expected) in [
+        ("a\n===\n|-", "<h1>a</h1>\n<p>|-</p>"),
+        ("a\n---\n|-", "<h2>a</h2>\n<p>|-</p>"),
+        ("a\n===\n|-|-|", "<h1>a</h1>\n<p>|-|-|</p>"),
+        ("a\n===\n|-\nb", "<h1>a</h1>\n<p>|-\nb</p>"),
+        ("a\n  ===\n|-", "<h1>a</h1>\n<p>|-</p>"),
+        (
+            "- a\n---\n  |-",
+            "<ul>\n<li>a</li>\n</ul>\n<hr />\n<p>|-</p>",
+        ),
+        (
+            "- a\n  ---\n  |-",
+            "<ul>\n<li>\n<h2>a</h2>\n|-</li>\n</ul>",
+        ),
+        // A lazy line cannot be an underline, so it remains a header candidate.
+        (
+            "- a\n===\n  |-",
+            "<ul>\n<li>a\n<table>\n<thead>\n<tr>\n<th>===</th>\n</tr>\n</thead>\n</table>\n</li>\n</ul>",
+        ),
+        (
+            "> a\n===\n> |-",
+            "<blockquote>\n<p>a</p>\n<table>\n<thead>\n<tr>\n<th>===</th>\n</tr>\n</thead>\n</table>\n</blockquote>",
+        ),
+        // After a definition, an underline-shaped line is a header when a delimiter row follows, and text otherwise.
+        (
+            "[a]: /u\n===\n|-",
+            "<table>\n<thead>\n<tr>\n<th>===</th>\n</tr>\n</thead>\n</table>",
+        ),
+        (
+            "[a]: /u\n---\n|-",
+            "<table>\n<thead>\n<tr>\n<th>---</th>\n</tr>\n</thead>\n</table>",
+        ),
+        ("[a]: /u\n---\n", "<p>---</p>\n"),
+        ("[a]: /u\n# h\n|-", "<h1>h</h1>\n<p>|-</p>"),
+        // On a line that closes or opens containers, the line is a thematic break.
+        (
+            "- [a]: /u\n---\n:-:",
+            "<ul>\n<li></li>\n</ul>\n<hr />\n<p>:-:</p>",
+        ),
+        (
+            "[a]: /u\n> ---\n> |-",
+            "<blockquote>\n<hr />\n<p>|-</p>\n</blockquote>",
+        ),
+        (
+            "[a]: /u\n1. ---\n   |-",
+            "<ol>\n<li>\n<hr />\n|-</li>\n</ol>",
+        ),
+        ("[a]: /u\n> ---", "<blockquote>\n<hr />\n</blockquote>"),
+        (
+            "[a]: /u\n> ===\n> |-",
+            "<blockquote>\n<table>\n<thead>\n<tr>\n<th>===</th>\n</tr>\n</thead>\n</table>\n</blockquote>",
+        ),
+        // cmark-gfm leaves this definition as literal text because the table splits its paragraph; base-markdown keeps extracting it.
+        (
+            "- [a]: /u\n===\n  |-",
+            "<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>===</th>\n</tr>\n</thead>\n</table>\n</li>\n</ul>",
+        ),
+        (
+            "a\nb\n|-",
+            "<p>a</p>\n<table>\n<thead>\n<tr>\n<th>b</th>\n</tr>\n</thead>\n</table>",
+        ),
+    ] {
+        assert_eq!(
+            to_html_with_options(source, &Options::gfm()),
+            expected,
+            "{:?}",
+            source
+        );
+    }
+}
