@@ -6,7 +6,7 @@ use crate::stream::Text;
 use crate::util::normalize_identifier::{
     normalize_identifier, normalize_reference_identifier_into,
 };
-use alloc::{borrow::Cow, string::String, vec::Vec};
+use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Definition<'a> {
@@ -18,9 +18,46 @@ pub(crate) struct Definition<'a> {
     pub title: Option<Text<'static>>,
 }
 
-#[derive(Clone, Debug, Default)]
+/// Owned definitions authored before a point in the source, indexed as they are appended so that incremental parsing never re-sorts them.
+#[derive(Debug, Default)]
+pub(crate) struct Seed {
+    entries: Vec<Definition<'static>>,
+    index: BTreeMap<String, usize>,
+    footnotes: Vec<String>,
+    footnote_starts: Vec<usize>,
+    footnote_index: BTreeMap<String, usize>,
+}
+
+impl Seed {
+    /// Append definitions authored after every existing one, keeping the first definition of each key.
+    pub fn append(&mut self, authored: Authored) {
+        for entry in authored.entries {
+            let index = self.entries.len();
+            self.index
+                .entry(entry.key.clone().into_owned())
+                .or_insert(index);
+            self.entries.push(entry);
+        }
+        for (start, key) in authored.footnotes {
+            let index = self.footnotes.len();
+            self.footnote_index.entry(key.clone()).or_insert(index);
+            self.footnotes.push(key);
+            self.footnote_starts.push(start);
+        }
+    }
+}
+
+/// Owned copies of definitions taken from a parse, ready to append to a [`Seed`].
+pub(crate) struct Authored {
+    entries: Vec<Definition<'static>>,
+    footnotes: Vec<(usize, String)>,
+}
+
+#[derive(Debug, Default)]
 pub(crate) struct Definitions<'a> {
-    pub entries: Vec<Definition<'a>>,
+    // Definitions authored before the parsed source; indices below its lengths refer to it.
+    seed: Option<&'a Seed>,
+    entries: Vec<Definition<'a>>,
     ordered: Vec<usize>,
     footnotes: Vec<String>,
     footnote_starts: Vec<usize>,
@@ -30,8 +67,31 @@ pub(crate) struct Definitions<'a> {
 }
 
 impl<'a> Definitions<'a> {
+    /// Create definitions that extend `seed` with those of the parsed source.
+    pub fn seeded(seed: &'a Seed) -> Self {
+        Self {
+            seed: Some(seed),
+            ..Self::default()
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.entries.is_empty() && self.seed.map_or(true, |seed| seed.entries.is_empty())
+    }
+
+    fn seed_entries(&self) -> usize {
+        self.seed.map_or(0, |seed| seed.entries.len())
+    }
+
+    fn seed_footnotes(&self) -> usize {
+        self.seed.map_or(0, |seed| seed.footnotes.len())
+    }
+
+    pub fn entry(&self, index: usize) -> &Definition<'a> {
+        match self.seed {
+            Some(seed) if index < seed.entries.len() => &seed.entries[index],
+            _ => &self.entries[index - self.seed_entries()],
+        }
     }
 
     pub fn push(
@@ -50,7 +110,7 @@ impl<'a> Definitions<'a> {
                     .expect("definition labels are source-valid"),
             )),
         };
-        let index = self.entries.len();
+        let index = self.seed_entries() + self.entries.len();
         self.entries.push(Definition {
             start,
             label,
@@ -66,12 +126,17 @@ impl<'a> Definitions<'a> {
         build_index(&mut self.footnote_order, &self.footnotes, String::as_str);
     }
 
-    // The index keeps the first authored definition of each key, so an invisible match has no visible predecessor.
+    // The index keeps the first authored definition of each key, so an invisible match has no visible predecessor. Seeded definitions precede the parsed source.
     pub fn find(&self, key: &str) -> Option<usize> {
-        find_index(&self.ordered, &self.entries, key, |entry| {
-            entry.key.as_ref()
-        })
-        .filter(|&index| self.visible(self.entries[index].start))
+        let index = match self.seed.and_then(|seed| seed.index.get(key)) {
+            Some(&index) => index,
+            None => {
+                find_index(&self.ordered, &self.entries, key, |entry| {
+                    entry.key.as_ref()
+                })? + self.seed_entries()
+            }
+        };
+        Some(index).filter(|&index| self.visible(self.entry(index).start))
     }
 
     #[inline]
@@ -84,13 +149,13 @@ impl<'a> Definitions<'a> {
         self.limit = limit;
     }
 
-    /// Copy the definitions starting before `offset` into owned storage, so they can seed a later parse of the following source.
-    pub fn before(&self, offset: usize) -> Definitions<'static> {
+    /// Copy the definitions of the parsed source starting before `offset` into owned storage, so they can extend the seed of a later parse of the following source.
+    pub fn before(&self, offset: usize) -> Authored {
         let entries = self.entries.partition_point(|entry| entry.start < offset);
         let footnotes = self
             .footnote_starts
             .partition_point(|&start| start < offset);
-        Definitions {
+        Authored {
             entries: self.entries[..entries]
                 .iter()
                 .map(|entry| Definition {
@@ -101,16 +166,16 @@ impl<'a> Definitions<'a> {
                     title: entry.title.clone(),
                 })
                 .collect(),
-            ordered: Vec::new(),
-            footnotes: self.footnotes[..footnotes].to_vec(),
-            footnote_starts: self.footnote_starts[..footnotes].to_vec(),
-            footnote_order: Vec::new(),
-            limit: None,
+            footnotes: self.footnote_starts[..footnotes]
+                .iter()
+                .copied()
+                .zip(self.footnotes[..footnotes].iter().cloned())
+                .collect(),
         }
     }
 
     pub fn push_footnote(&mut self, source: &str, start: usize, label: &Text<'_>) -> usize {
-        let index = self.footnotes.len();
+        let index = self.seed_footnotes() + self.footnotes.len();
         self.footnote_starts.push(start);
         self.footnotes.push(normalize_identifier(
             label
@@ -121,12 +186,20 @@ impl<'a> Definitions<'a> {
     }
 
     pub fn footnote_key(&self, index: usize) -> &str {
-        &self.footnotes[index]
+        match self.seed {
+            Some(seed) if index < seed.footnotes.len() => &seed.footnotes[index],
+            _ => &self.footnotes[index - self.seed_footnotes()],
+        }
     }
 
     pub fn find_footnote(&self, key: &str) -> Option<usize> {
-        find_index(&self.footnote_order, &self.footnotes, key, String::as_str)
-            .filter(|&index| self.visible(self.footnote_starts[index]))
+        if let Some(&index) = self.seed.and_then(|seed| seed.footnote_index.get(key)) {
+            return Some(index)
+                .filter(|&index| self.visible(self.seed.unwrap().footnote_starts[index]));
+        }
+        let index = find_index(&self.footnote_order, &self.footnotes, key, String::as_str)?;
+        self.visible(self.footnote_starts[index])
+            .then_some(index + self.seed_footnotes())
     }
 }
 

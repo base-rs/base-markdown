@@ -252,9 +252,7 @@ impl Blocks {
     pub fn frontmatter_pending(source: &str, options: &ParseOptions) -> bool {
         let bytes = source.as_bytes();
         let start = usize::from(source.starts_with('\u{feff}')) * 3;
-        options.constructs.frontmatter
-            && CodeFence::frontmatter_open(&bytes[start..]).is_some()
-            && frontmatter::scan(bytes, start).is_none()
+        options.constructs.frontmatter && frontmatter::pending(bytes, start)
     }
 }
 

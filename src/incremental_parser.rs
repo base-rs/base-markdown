@@ -3,7 +3,7 @@
 
 //! Emit semantic events for Markdown that arrives in pieces.
 use crate::block_parser::{Blocks, TopLevel};
-use crate::definitions::Definitions;
+use crate::definitions::{Definitions, Seed};
 use crate::event_parser::EventParser;
 use crate::stream::{Event, EventKind, Tag, TagKind};
 use crate::ParseOptions;
@@ -48,7 +48,7 @@ pub struct IncrementalParser<'a> {
     source: String,
     options: &'a ParseOptions,
     // Owned definitions authored before `anchor`.
-    seed: Definitions<'static>,
+    seed: Seed,
     // The line of a clean document-level block from which preparation restarts.
     anchor: usize,
     // How many document-level blocks from `anchor` have been emitted; the separators after the last of them are not.
@@ -66,7 +66,7 @@ impl<'a> IncrementalParser<'a> {
         Self {
             source: String::new(),
             options,
-            seed: Definitions::default(),
+            seed: Seed::default(),
             anchor: 0,
             emitted: 0,
             complete: 0,
@@ -95,8 +95,10 @@ impl<'a> IncrementalParser<'a> {
     /// Panics if called after [`IncrementalParser::finish`].
     pub fn push(&mut self, text: &str) -> Drain<'_, Event<'static>> {
         assert!(!self.finished, "cannot push after finishing");
+        // Earlier text has no line ending after `complete`, except perhaps a final carriage return.
+        let from = self.source.len().saturating_sub(1).max(self.complete);
         self.source.push_str(text);
-        let complete = complete_lines(&self.source);
+        let complete = complete_lines(&self.source, from);
         if complete > self.complete {
             self.complete = complete;
             self.prepare();
@@ -112,8 +114,12 @@ impl<'a> IncrementalParser<'a> {
     pub fn finish(&mut self) -> Drain<'_, Event<'static>> {
         assert!(!self.finished, "cannot finish twice");
         self.finished = true;
-        let (blocks, definitions, outline) =
-            Blocks::parse_from(&self.source, self.anchor, self.options, self.seed.clone());
+        let (blocks, definitions, outline) = Blocks::parse_from(
+            &self.source,
+            self.anchor,
+            self.options,
+            Definitions::seeded(&self.seed),
+        );
         let parser = EventParser::from_blocks(&self.source, self.options, blocks, definitions);
         deliver(
             parser,
@@ -134,8 +140,12 @@ impl<'a> IncrementalParser<'a> {
         {
             return;
         }
-        let (blocks, definitions, outline) =
-            Blocks::parse_from(source, self.anchor, self.options, self.seed.clone());
+        let (blocks, definitions, outline) = Blocks::parse_from(
+            source,
+            self.anchor,
+            self.options,
+            Definitions::seeded(&self.seed),
+        );
         let tops = &outline.blocks;
         // A clean block proves every earlier block closed; a trailing blank line at document level closes the last block too.
         let last = if outline.closed {
@@ -154,24 +164,24 @@ impl<'a> IncrementalParser<'a> {
             .rev()
             .find(|&index| tops[index].clean)
             .unwrap_or(0);
-        let seed = definitions.before(tops[anchor].line);
+        let authored = definitions.before(tops[anchor].line);
         let parser = EventParser::from_blocks(source, self.options, blocks, definitions);
         deliver(parser, tops, self.emitted, Some(last), &mut self.events);
         self.stable = tops[last].end;
-        self.seed = seed;
+        self.seed.append(authored);
         self.anchor = tops[anchor].line;
         self.emitted = last - anchor + 1;
     }
 }
 
-/// The end of the last complete line. A trailing carriage return may become part of a CRLF ending, so its line is incomplete.
-fn complete_lines(source: &str) -> usize {
+/// The end of the last complete line, searching for line endings from `from`, or zero if there is none. A trailing carriage return may become part of a CRLF ending, so its line is incomplete.
+fn complete_lines(source: &str, from: usize) -> usize {
     let bytes = source.as_bytes();
     let end = bytes.len() - usize::from(bytes.last() == Some(&b'\r'));
-    bytes[..end]
+    bytes[from.min(end)..end]
         .iter()
         .rposition(|&byte| matches!(byte, b'\n' | b'\r'))
-        .map_or(0, |index| index + 1)
+        .map_or(0, |index| from + index + 1)
 }
 
 /// Move events into `output`, skipping the first `skip` document-level blocks and stopping after block `until`. Separators between blocks are delivered only with the block that follows them, unless delivering to the end of the document.
@@ -228,19 +238,112 @@ fn deliver(
 
 #[cfg(test)]
 mod tests {
-    use super::{complete_lines, IncrementalParser};
-    use crate::ParseOptions;
+    use super::{complete_lines, deliver, IncrementalParser};
+    use crate::block_parser::Blocks;
+    use crate::definitions::Definitions;
+    use crate::event_parser::EventParser;
+    use crate::stream::Event;
+    use crate::{Constructs, ParseOptions};
+    use alloc::string::String;
+    use alloc::vec::Vec;
+    use core::convert::TryFrom;
+
+    /// A one-shot parse that scopes references to each document-level block, independent of anchors, seeds and stability.
+    fn scoped(source: &str, options: &ParseOptions) -> Vec<Event<'static>> {
+        let (blocks, definitions, outline) =
+            Blocks::parse_from(source, 0, options, Definitions::default());
+        let parser = EventParser::from_blocks(source, options, blocks, definitions);
+        let mut events = Vec::new();
+        deliver(parser, &outline.blocks, 0, None, &mut events);
+        events
+    }
+
+    fn incremental<'a>(
+        pieces: impl IntoIterator<Item = &'a str>,
+        options: &ParseOptions,
+    ) -> Vec<Event<'static>> {
+        let mut parser = IncrementalParser::new(options);
+        let mut events = Vec::new();
+        for piece in pieces {
+            events.extend(parser.push(piece));
+        }
+        events.extend(parser.finish());
+        events
+    }
+
+    #[test]
+    fn definitions_resolve_as_in_a_scoped_one_shot_parse() {
+        const LINES: &[&str] = &[
+            "",
+            "[a] [b] [^n] [c][a] [A]",
+            "text [b]",
+            "[a]: /a",
+            "[A]: /upper",
+            "[b]: /b 'title",
+            "continued'",
+            "[c]:",
+            "/c",
+            "[^n]: note [a]",
+            "    indented [b]",
+            "- [a]: /item",
+            "> [b]: /quote",
+            "- item [a]",
+            "> quote [b]",
+            "---",
+            "===",
+            "# [a]",
+            "|-|",
+            "| [a] | [b] |",
+            "```",
+            "<div>",
+        ];
+        let mut options = ParseOptions::gfm();
+        options.constructs = Constructs {
+            frontmatter: true,
+            ..Constructs::gfm()
+        };
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut random = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            usize::from(u16::try_from(state >> 48).unwrap())
+        };
+        for _ in 0..3000 {
+            let mut source = String::new();
+            for _ in 0..(random() % 14) {
+                source.push_str(LINES[random() % LINES.len()]);
+                source.push_str(if random() % 4 == 0 { "\r\n" } else { "\n" });
+            }
+            let expected = scoped(&source, &options);
+            let characters = source
+                .char_indices()
+                .map(|(index, character)| &source[index..index + character.len_utf8()]);
+            assert_eq!(incremental(characters, &options), expected, "{source:?}");
+            let mut cuts: Vec<usize> = (0..4).map(|_| random() % (source.len() + 1)).collect();
+            cuts.sort_unstable();
+            let mut previous = 0;
+            let mut pieces = Vec::new();
+            for cut in cuts.into_iter().chain([source.len()]) {
+                pieces.push(&source[previous..cut]);
+                previous = cut;
+            }
+            assert_eq!(incremental(pieces, &options), expected, "{source:?}");
+        }
+    }
 
     #[test]
     fn complete_lines_exclude_a_trailing_carriage_return() {
-        assert_eq!(complete_lines(""), 0);
-        assert_eq!(complete_lines("a"), 0);
-        assert_eq!(complete_lines("a\n"), 2);
-        assert_eq!(complete_lines("a\nb"), 2);
-        assert_eq!(complete_lines("a\r"), 0);
-        assert_eq!(complete_lines("a\r\r"), 2);
-        assert_eq!(complete_lines("a\r\n"), 3);
-        assert_eq!(complete_lines("a\rb"), 2);
+        assert_eq!(complete_lines("", 0), 0);
+        assert_eq!(complete_lines("a", 0), 0);
+        assert_eq!(complete_lines("a\n", 0), 2);
+        assert_eq!(complete_lines("a\nb", 0), 2);
+        assert_eq!(complete_lines("a\r", 0), 0);
+        assert_eq!(complete_lines("a\r\r", 0), 2);
+        assert_eq!(complete_lines("a\r\n", 0), 3);
+        assert_eq!(complete_lines("a\rb", 0), 2);
+        assert_eq!(complete_lines("a\nbc", 2), 0);
+        assert_eq!(complete_lines("a\nb\r\n", 3), 5);
     }
 
     #[test]

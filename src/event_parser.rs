@@ -375,7 +375,7 @@ impl EventParser<'_> {
                 EventKind::Rule
             }
             Body::Definition(index) => {
-                let definition = &self.definitions.entries[index];
+                let definition = self.definitions.entry(index);
                 let kind = EventKind::Definition {
                     label: definition.label.clone(),
                     destination: definition.destination.clone(),

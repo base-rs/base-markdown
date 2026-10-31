@@ -9,13 +9,7 @@ use crate::CodeFence;
 /// Return the full authored extent and the next physical line. Failed lookahead
 /// does not mutate block state or consume any part of an ordinary code fence.
 pub(super) fn scan(bytes: &[u8], start: usize) -> Option<(usize, usize)> {
-    let fence = CodeFence::frontmatter_open(&bytes[start..])?;
-    let first = start + scan_nextline(&bytes[start..]);
-    let info_end = terminal_ending_start(bytes, first);
-    let info = &bytes[start + fence.length..info_end];
-    if first == info_end || !fence.valid_frontmatter_info(info) {
-        return None;
-    }
+    let (fence, first) = open(bytes, start)?;
     let mut at = first;
     while at < bytes.len() {
         let next = at + scan_nextline(&bytes[at..]);
@@ -30,4 +24,18 @@ pub(super) fn scan(bytes: &[u8], start: usize) -> Option<(usize, usize)> {
         at = next;
     }
     None
+}
+
+/// Return the opening fence and the line after it when the first line opens frontmatter.
+fn open(bytes: &[u8], start: usize) -> Option<(CodeFence, usize)> {
+    let fence = CodeFence::frontmatter_open(&bytes[start..])?;
+    let first = start + scan_nextline(&bytes[start..]);
+    let info_end = terminal_ending_start(bytes, first);
+    let info = &bytes[start + fence.length..info_end];
+    (first != info_end && fence.valid_frontmatter_info(info)).then_some((fence, first))
+}
+
+/// Whether the source opens frontmatter that has not closed yet.
+pub(super) fn pending(bytes: &[u8], start: usize) -> bool {
+    open(bytes, start).is_some() && scan(bytes, start).is_none()
 }

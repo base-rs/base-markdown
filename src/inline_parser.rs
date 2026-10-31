@@ -1144,7 +1144,7 @@ impl InlineParser {
                 }),
                 Kind::End(tag) => EventKind::End(tag),
                 Kind::Reference(tag, index) => {
-                    let definition = &definitions.entries[index];
+                    let definition = definitions.entry(index);
                     let destination = definition.destination.clone();
                     let title = definition.title.clone();
                     EventKind::Start(if tag == TagKind::Link {

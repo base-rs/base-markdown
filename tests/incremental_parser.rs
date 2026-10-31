@@ -222,6 +222,12 @@ fn frontmatter_holds_output_until_it_closes() {
     let mut parser = IncrementalParser::new(&options);
     assert_eq!(parser.push("---\ntitle: x\n\nbody\n\n").count(), 0);
     assert!(parser.push("---\n\n").next().is_some());
+    // Fences that cannot open frontmatter are ordinary blocks.
+    for opening in ["```\n", "~~~\n", "```a`b\n"] {
+        let mut parser = IncrementalParser::new(&options);
+        let source = format!("{opening}code\n{}\n\npara\n\n", opening.trim_end());
+        assert!(parser.push(&source).next().is_some(), "{:?}", source);
+    }
 }
 
 /// Extract the inputs of the generated `CommonMark` specification test.
