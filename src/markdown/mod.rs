@@ -12,7 +12,7 @@
 
 pub use self::configure::{IndentOptions, LineWrapping, Options};
 use self::state::{Info, State};
-use crate::{message::Message, Document, NodeId};
+use crate::{message::Message, Document, NodeId, ParseOptions};
 use alloc::string::String;
 
 extern crate alloc;
@@ -22,6 +22,44 @@ mod escape;
 mod handle;
 mod state;
 mod util;
+
+/// Normalize a Markdown document.
+///
+/// Parses `CommonMark`, GFM, frontmatter, and math ([`ParseOptions::normalize`]), then serializes the result with default formatting and soft source line breaks unwrapped. Explicit hard breaks, code content, and block boundaries are preserved. The output uses LF line endings and ends with one when non-empty. Tools that generate Markdown can pass their output through this function to produce exactly what `bake-markdown`'s `markdown:normalize` task writes.
+///
+/// ```
+/// use base_markdown::normalize_markdown;
+///
+/// assert_eq!(normalize_markdown("* A wrapped\r\nline.").unwrap(), "- A wrapped line.\n");
+/// ```
+///
+/// # Errors
+/// Returns unsupported content shapes from serialization.
+pub fn normalize_markdown(source: &str) -> Result<String, Message> {
+    normalize_markdown_with_options(source, &ParseOptions::normalize())
+}
+
+/// Normalize a Markdown document using explicit parser options.
+///
+/// Use this for syntax beyond the GFM, frontmatter, and math support of [`normalize_markdown`], or to disable individual constructs. The output is serialized as by [`normalize_markdown`].
+///
+/// # Errors
+/// Returns unsupported content shapes from serialization.
+pub fn normalize_markdown_with_options(
+    source: &str,
+    parse_options: &ParseOptions,
+) -> Result<String, Message> {
+    let document = Document::parse(source, parse_options)
+        .expect("the built-in Markdown parser produces a valid document");
+
+    to_markdown_with_options(
+        &document,
+        &Options {
+            line_wrapping: LineWrapping::Unwrap,
+            ..Options::default()
+        },
+    )
+}
 
 /// Serialize an arena document to Markdown.
 ///

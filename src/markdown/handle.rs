@@ -546,9 +546,9 @@ impl State<'_> {
             }
         }
         self.output.push(bullet);
-        if let Some((_, checked)) = item_task(document, node) {
-            self.output.push_str(if checked { " [x]" } else { " [ ]" });
-        }
+        // The checkbox starts the item's content, as in `mdast-util-gfm-task-list-item`, so continuation lines indent to the content start the parser uses, which excludes the checkbox.
+        let task =
+            item_task(document, node).map(|(_, checked)| if checked { "[x]" } else { "[ ]" });
         let prefix_size = self.output.len() - prefix_start;
         let mut size = prefix_size + 1;
         let expand = match self.options.list_item_indent {
@@ -571,6 +571,16 @@ impl State<'_> {
         let start = self.output.len();
         self.container_flow(document, node)?;
         self.indent_lines(start, |line, index, blank, output| {
+            if index == 0 {
+                if let Some(task) = task {
+                    output.extend(core::iter::repeat(' ').take(size - prefix_size));
+                    // A task item's first line holds its paragraph, so it is never blank.
+                    output.push_str(task);
+                    output.push(' ');
+                    output.push_str(line);
+                    return;
+                }
+            }
             if !blank {
                 let indent = if index == 0 { size - prefix_size } else { size };
                 output.extend(core::iter::repeat(' ').take(indent));

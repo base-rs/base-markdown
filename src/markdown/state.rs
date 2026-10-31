@@ -536,6 +536,17 @@ impl<'a> State<'a> {
             document.node(parent).unwrap().kind,
             EventKind::Start(Tag::Item { .. } | Tag::List { .. })
         ) {
+            // Without a blank line, a block that cannot interrupt a paragraph would lazily continue the nested list's last paragraph.
+            if matches!(left_kind, EventKind::Start(Tag::List { .. }))
+                && (matches!(
+                    right_kind,
+                    EventKind::Start(Tag::Paragraph { .. } | Tag::Table)
+                        | EventKind::Definition { .. }
+                ) || matches!(right_kind, EventKind::Start(Tag::Heading(_)))
+                    && format_heading_as_setext(document, right, self))
+            {
+                return "\n\n";
+            }
             if matches!(left_kind, EventKind::Start(Tag::Paragraph { .. })) {
                 if matches!(
                     right_kind,
