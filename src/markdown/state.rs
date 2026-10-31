@@ -7,7 +7,7 @@
 //!
 //! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L195.
 use crate::markdown::{
-    attention::{self, Record},
+    attention::{self, Edge, Surroundings},
     construct_name::ConstructName,
     util::{
         format_code_as_indented::format_code_as_indented,
@@ -41,8 +41,10 @@ pub struct State<'a> {
     pub output: String,
     pub(super) scratch: String,
     escapes: Vec<(usize, EscapeInfos)>,
-    /// Attention written in open phrasing containers, resolved as each container completes.
-    attention: Vec<Record>,
+    /// How many attention nodes are open, by marker (`*`, `_`) and sequence size (1, 2).
+    attention_open: [[usize; 2]; 2],
+    /// The size of the run of markers the last opening sequence ends, including enclosing opening sequences it joins.
+    opening_run: usize,
     pub bullet_current: Option<char>,
     pub bullet_last_used: Option<char>,
     pub index_stack: Vec<usize>,
@@ -121,50 +123,8 @@ impl<'a> State<'a> {
         parent: NodeId,
         info: &Info,
     ) -> Result<(), Message> {
-        let scope = self.attention.len();
-        let start = self.output.len();
-        self.phrasing(document, parent, info)?;
-        self.resolve_attention(scope, start, info);
-        Ok(())
-    }
-
-    /// Choose the sequences of attention written since `scope` so that it forms.
-    fn resolve_attention(&mut self, scope: usize, start: usize, info: &Info) {
-        if self.attention.len() == scope {
-            return;
-        }
-        let before = info.before(&self.output).chars().next_back();
-        let after = info.after.chars().next();
-        attention::resolve(
-            &mut self.output,
-            start,
-            &self.attention[scope..],
-            before,
-            after,
-        );
-        self.attention.truncate(scope);
-    }
-
-    /// Write attention with its preferred sequence, recording it for its phrasing container to resolve.
-    ///
-    /// Its children see the preferred sequence around them, as in `mdast-util-to-markdown`.
-    fn attention_item<S: AsRef<str>>(
-        &mut self,
-        document: &Document<S>,
-        node: NodeId,
-        sequences: &'static [&'static str],
-    ) -> Result<(), Message> {
-        let sequence = sequences[0];
-        let record = self.attention.len();
-        self.attention.push(Record {
-            open: self.output.len(),
-            close: 0,
-            sequences,
-        });
-        self.output.push_str(sequence);
-        self.phrasing(document, node, &Info::new(sequence, sequence))?;
-        self.attention[record].close = self.output.len();
-        self.output.push_str(sequence);
+        let children: Vec<NodeId> = flow_children(document, parent).collect();
+        self.phrasing(document, &children, info, &Edge::default())?;
         Ok(())
     }
 
@@ -188,25 +148,136 @@ impl<'a> State<'a> {
         })
     }
 
-    /// Serialize phrasing children, leaving their attention to the enclosing container.
+    /// Write adjacent attention of one kind as a single node, returning the edits for the text after it.
+    ///
+    /// Text written directly before may be edited so the opening sequence forms.
+    fn attention<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        members: &[NodeId],
+        sequences: &'static [&'static str],
+        info: &Info,
+        previous: &Previous,
+        last_child: bool,
+    ) -> Result<Edge, Message> {
+        let children: Vec<NodeId> = members
+            .iter()
+            .flat_map(|&member| flow_children(document, member))
+            .collect();
+        let before = info.before(&self.output).chars().next_back();
+        let first = children
+            .first()
+            .and_then(|&child| edge_character(document, child, true));
+        let last = children
+            .last()
+            .and_then(|&child| edge_character(document, child, false));
+        let after = info.after.chars().next();
+        let choice = attention::choose(
+            sequences,
+            &Surroundings {
+                before,
+                before_closes: matches!(previous, Previous::Attention),
+                before_opens: matches!(previous, Previous::Start),
+                opening_run: self.opening_run,
+                first,
+                first_size: children.first().map_or(0, |&child| {
+                    match document.node(child).unwrap().kind {
+                        EventKind::Start(Tag::Emphasis) => 1,
+                        EventKind::Start(Tag::Strong) => 2,
+                        _ => 0,
+                    }
+                }),
+                last,
+                after,
+                after_closes: last_child,
+                enclosing: [
+                    [self.attention_open[0][0] > 0, self.attention_open[0][1] > 0],
+                    [self.attention_open[1][0] > 0, self.attention_open[1][1] > 0],
+                ],
+            },
+        );
+        let sequence = choice.sequence;
+        let tilde = sequence.starts_with('~');
+        if let (Previous::Text(start), Some(character)) = (previous, before) {
+            let start = *start;
+            if choice.encode_before && !matches!(character, '\n' | '\r') {
+                attention::encode_end(&mut self.output, start, character);
+            }
+            if tilde {
+                attention::escape_tilde_end(&mut self.output, start);
+            }
+        }
+        let joins = matches!(previous, Previous::Start) && before == sequence.chars().next();
+        self.opening_run = sequence.len() + if joins { self.opening_run } else { 0 };
+        self.output.push_str(sequence);
+        // Strikethrough has one sequence, so enclosing strikethrough is not tracked.
+        let open = (!tilde).then(|| usize::from(sequence.starts_with('_')));
+        if let Some(open) = open {
+            self.attention_open[open][sequence.len() - 1] += 1;
+        }
+        let edge = Edge {
+            encode: first.filter(|_| choice.encode_first),
+            tilde: true,
+        };
+        let last_text =
+            self.phrasing(document, &children, &Info::new(sequence, sequence), &edge)?;
+        if let Some(open) = open {
+            self.attention_open[open][sequence.len() - 1] -= 1;
+        }
+        if let Some(start) = last_text {
+            attention::escape_tilde_end(&mut self.output, start);
+            if let Some(character) = last.filter(|_| choice.encode_last) {
+                attention::encode_end(&mut self.output, start, character);
+            }
+        }
+        self.output.push_str(sequence);
+        Ok(Edge {
+            encode: after.filter(|_| choice.encode_after),
+            tilde,
+        })
+    }
+
+    /// Serialize phrasing children, returning where the last one begins if it is text.
+    ///
+    /// `edge` edits the first child if it is text.
     fn phrasing<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
-        parent: NodeId,
+        children: &[NodeId],
         info: &Info,
-    ) -> Result<(), Message> {
+        edge: &Edge,
+    ) -> Result<Option<usize>, Message> {
         let start = self.output.len();
-        let mut children = flow_children(document, parent).peekable();
         self.index_stack.push(0);
         let mut index = 0;
+        let mut position = 0;
         let mut after_hard_break = false;
         // Whether the output ends with a hard break's line ending, past any skipped soft break.
         let mut hard_break_line = false;
-        while let Some(child) = children.next() {
+        let mut pending = Edge {
+            encode: edge.encode,
+            tilde: edge.tilde,
+        };
+        let mut previous = Previous::Start;
+        while position < children.len() {
+            let child = children[position];
             let kind = &document.node(child).unwrap().kind;
             if !is_phrasing(kind) {
                 return Err(unsupported_content());
             }
+            // Adjacent attention of the same kind is written as one node.
+            let mut end = position + 1;
+            let sequences = self.attention_sequences(kind)?;
+            if sequences.is_some() {
+                while children
+                    .get(end)
+                    .is_some_and(|&next| same_attention(kind, &document.node(next).unwrap().kind))
+                {
+                    end += 1;
+                }
+            }
+            let members = &children[position..end];
+            position = end;
             if after_hard_break && matches!(kind, EventKind::SoftBreak(_)) {
                 after_hard_break = false;
                 continue;
@@ -214,7 +285,8 @@ impl<'a> State<'a> {
             after_hard_break = matches!(kind, EventKind::HardBreak);
             *self.index_stack.last_mut().unwrap() = index;
             let mut buffer = [0u8; 4];
-            let after = if let Some(&next) = children.peek() {
+            let next = children.get(end).copied();
+            let after = if let Some(next) = next {
                 if let Some(first) = self.peek_node(document, next) {
                     first.encode_utf8(&mut buffer) as &str
                 } else {
@@ -255,10 +327,31 @@ impl<'a> State<'a> {
                 Before::Output(start..self.output.len())
             };
             let length = self.output.len();
-            if let Some(sequences) = self.attention_sequences(kind)? {
-                self.attention_item(document, child, sequences)?;
+            let info = Info { before, after };
+            if let Some(sequences) = sequences {
+                pending = self.attention(
+                    document,
+                    members,
+                    sequences,
+                    &info,
+                    &previous,
+                    next.is_none(),
+                )?;
+                previous = Previous::Attention;
             } else {
-                self.write_node(document, child, &Info { before, after })?;
+                self.write_node(document, child, &info)?;
+                if matches!(kind, EventKind::Text(_)) && self.output.len() != length {
+                    // Text split by the parser is edited as one, so its edges stay the same when serialized again.
+                    if !attention::edit_start(&mut self.output, length, &pending) {
+                        pending = Edge::default();
+                    }
+                    if !matches!(previous, Previous::Text(_)) {
+                        previous = Previous::Text(length);
+                    }
+                } else if self.output.len() != length {
+                    pending = Edge::default();
+                    previous = Previous::Other;
+                }
             }
             if self.output.len() != length {
                 hard_break_line = after_hard_break;
@@ -266,7 +359,10 @@ impl<'a> State<'a> {
             index += 1;
         }
         self.index_stack.pop();
-        Ok(())
+        Ok(match previous {
+            Previous::Text(start) => Some(start),
+            _ => None,
+        })
     }
 
     pub fn enter(&mut self, name: ConstructName) {
@@ -314,15 +410,9 @@ impl<'a> State<'a> {
                 Tag::List { start, .. } => self.list(document, id, start.is_some()),
                 Tag::Item { .. } => self.list_item(document, id),
                 Tag::Emphasis | Tag::Strong | Tag::Delete => {
-                    // Attention outside a phrasing container is resolved on its own.
-                    let sequences = self
-                        .attention_sequences(&node.kind)?
-                        .expect("emphasis, strong and strikethrough are attention");
+                    // Attention outside a phrasing container is written on its own.
                     self.enter(ConstructName::Phrasing);
-                    let scope = self.attention.len();
-                    let start = self.output.len();
-                    self.attention_item(document, id, sequences)?;
-                    self.resolve_attention(scope, start, info);
+                    self.phrasing(document, &[id], info, &Edge::default())?;
                     self.exit();
                     Ok(())
                 }
@@ -678,7 +768,8 @@ impl<'a> State<'a> {
             output: String::new(),
             scratch: String::new(),
             escapes: Vec::new(),
-            attention: Vec::new(),
+            attention_open: [[0; 2]; 2],
+            opening_run: 0,
             bullet_current: None,
             bullet_last_used: None,
             index_stack: Vec::new(),
@@ -797,7 +888,15 @@ impl<'a> State<'a> {
         let mut cursor = start;
         let mut skip_until = 0;
         let before_last = before.chars().next_back();
-        let before_email = email_domain(before.as_bytes().iter().rev());
+        // The output before can be long, so it is only scanned for underscores that may stay unescaped.
+        let before_email = self
+            .escapes
+            .iter()
+            .any(|&(position, _)| {
+                (start..end).contains(&position) && input.as_bytes()[position - start] == b'_'
+            })
+            .then(|| email_domain(before.as_bytes().iter().rev()))
+            .flatten();
         for (index, &(position, ref flags)) in self.escapes.iter().enumerate() {
             if position < start || position >= end || position < skip_until {
                 continue;
@@ -870,6 +969,47 @@ impl<'a> State<'a> {
         } else {
             "\n\n"
         }
+    }
+}
+
+/// What a phrasing child was written after.
+enum Previous {
+    /// Attention, whose closing sequence ends the output.
+    Attention,
+    /// Text, which begins at this output offset.
+    Text(usize),
+    /// Nothing: the child starts its parent.
+    Start,
+    /// Anything else.
+    Other,
+}
+
+/// Whether two nodes are attention of the same kind, which would form one run if adjacent.
+fn same_attention(left: &EventKind<'_>, right: &EventKind<'_>) -> bool {
+    matches!(
+        (left, right),
+        (
+            EventKind::Start(Tag::Emphasis),
+            EventKind::Start(Tag::Emphasis)
+        ) | (EventKind::Start(Tag::Strong), EventKind::Start(Tag::Strong))
+            | (EventKind::Start(Tag::Delete), EventKind::Start(Tag::Delete))
+    )
+}
+
+/// The first or last character a phrasing node is written with, as far as attention next to it needs: text is approximated by its value and other nodes by punctuation.
+fn edge_character<S: AsRef<str>>(document: &Document<S>, id: NodeId, first: bool) -> Option<char> {
+    match &document.node(id).unwrap().kind {
+        EventKind::Text(value) => {
+            let value = value.resolve(document.source()).unwrap();
+            if first {
+                value.chars().next()
+            } else {
+                value.chars().next_back()
+            }
+        }
+        // A hard break ends with a line ending, and starts with a backslash, punctuation like other nodes. Parsed attention cannot start or end with a soft break, as its sequences would not flank.
+        EventKind::HardBreak if !first => Some('\n'),
+        _ => Some('.'),
     }
 }
 
@@ -1000,7 +1140,7 @@ fn intraword_underscores(
     } else {
         before_last
     }?;
-    // Underscores next to characters that attention encodes as references are escaped by `attention::resolve`.
+    // Underscores next to characters that attention encodes as references are escaped by `attention::encode_end` and `attention::edit_start`.
     if classify(previous) != Kind::Other || escaped(position - previous.len_utf8()) {
         return None;
     }

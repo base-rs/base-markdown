@@ -4,7 +4,7 @@ Earlier history, from before the package was renamed from `socketry-markdown`, i
 
 ## Unreleased
 
-- Keep adjacent emphasis, strong and strikethrough apart when serializing Markdown. Sequences are chosen as `mdast-util-to-markdown` 2.2.1 chooses them: each is checked the way the parser pairs it, and the other marker is used where the preferred one would pair wrongly, so `*a*_b_` and `**a**__b__` no longer become `*a**b*` and `**a****b**`. Characters next to attention are encoded as character references where needed, and tildes at the edge of attention are escaped so they cannot pair with others.
+- Merge adjacent emphasis, strong and strikethrough of the same kind when serializing Markdown, so `*a*_b_` and `**a**__b__` are written as `*ab*` and `**ab**` rather than `*a**b*` and `**a****b**`, which parse differently. Other attention chooses `*` or `_` from its immediate neighbours, so touching sequences open and close as intended, and characters next to attention are encoded as character references where needed. Tildes at the edges of attention are escaped so they cannot pair with others.
 
 ## v0.1.3
 
