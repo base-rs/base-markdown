@@ -43,6 +43,11 @@ Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or
 
 See [releases.md](releases.md) for the full release history.
 
+### v0.1.4
+
+- Give setext underlines, thematic breaks and other interrupting lines precedence over a following GFM delimiter row, as cmark-gfm does. Previously `a\n===\n|-` rendered the underline and delimiter row as a second paragraph instead of a heading followed by `|-`. After a link reference definition, an underline-shaped line followed by a delimiter row now forms a table header, and on a line that closes or opens containers it is a thematic break rather than paragraph text.
+- Add `IncrementalParser`, which accepts Markdown in pieces and emits the events of each document-level block once appended text can no longer change it. Its combined output equals `EventParser` events without the document start and end events, except that references resolve only against definitions before the end of their document-level block.
+
 ### v0.1.3
 
 - Add `normalize_markdown` and `normalize_markdown_with_options`, which parse Markdown with GFM, frontmatter, and math and serialize it with default formatting and soft line breaks unwrapped. This is the normalization `bake-markdown` applies, so tools that generate Markdown can produce output it leaves unchanged.
@@ -56,12 +61,6 @@ See [releases.md](releases.md) for the full release history.
 
 - Replace a line ending before inline HTML only when the HTML could start an HTML block there, as `mdast-util-to-markdown` does. Line endings before other tags, such as `<span>` or `</span>`, are now kept, and a hard break before them is no longer lost.
 - Keep a hard break before inline HTML that could start an HTML block by indenting the next line four spaces, so it continues the paragraph. Previously the break's line ending was replaced with a space, leaving a literal backslash.
-
-### v0.1.1
-
-- Keep inline HTML after text unchanged when serializing Markdown. Previously each serialization added a space before inline HTML in paragraphs, including those in block quotes and list items, so repeated normalization kept growing the gap. Only a line ending directly before inline HTML is now replaced with a space.
-- Write every line ending in serialized Markdown as LF. CRLF and lone CR line endings inside code, HTML, math, front matter and titles were previously copied through, which left mixed line endings in otherwise LF output.
-- Return inline subtrees from `to_markdown_node` without a trailing line ending, as cmark does. Text, emphasis, links, code and other phrasing content, including inline opaque nodes, serialize as `*b*` rather than `*b*\n`; non-empty documents and block subtrees still end with a line ending. This changes output for callers serializing inline fragments.
 
 <!-- bake-readme:releases:end -->
 
