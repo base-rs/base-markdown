@@ -478,11 +478,11 @@ impl<'a> State<'a> {
             if index > 0 {
                 self.output.push_str(" | ");
             }
-            let start = self.output.len();
+            self.enter(ConstructName::TableCell);
+            self.enter(ConstructName::Phrasing);
             self.container_phrasing(document, cell, &Info::new("", ""))?;
-            if self.output[start..].contains('|') {
-                self.rewrite(start, |value, output| write_table_pipes(value, output));
-            }
+            self.exit();
+            self.exit();
         }
         self.output.push_str(" |");
         Ok(())
@@ -838,53 +838,6 @@ pub(super) fn invalid_node() -> Message {
         rule_id: "invalid-node",
         source: "markdown",
     }
-}
-
-fn write_table_pipes(value: &str, result: &mut String) {
-    let bytes = value.as_bytes();
-    let mut start = 0;
-    let mut index = 0;
-    let mut code_ticks = None;
-
-    while let Some(offset) = memchr::memchr2(b'`', b'|', &bytes[index..]) {
-        index += offset;
-        if bytes[index] == b'`' {
-            let marker_start = index;
-            index = super::util::scan::marker_run_end(bytes, index + 1, b'`');
-            let ticks = index - marker_start;
-            if code_ticks == Some(ticks) {
-                code_ticks = None;
-            } else if code_ticks.is_none() && has_matching_ticks(bytes, index, ticks) {
-                code_ticks = Some(ticks);
-            }
-        } else {
-            if code_ticks.is_none() {
-                let slashes = bytes[..index]
-                    .iter()
-                    .rev()
-                    .take_while(|&&byte| byte == b'\\')
-                    .count();
-                if slashes % 2 == 0 {
-                    result.push_str(&value[start..index]);
-                    result.push('\\');
-                    start = index;
-                }
-            }
-            index += 1;
-        }
-    }
-    result.push_str(&value[start..]);
-}
-
-#[cfg(test)]
-fn escape_table_pipes(value: &str) -> String {
-    let mut output = String::new();
-    write_table_pipes(value, &mut output);
-    output
-}
-
-fn has_matching_ticks(bytes: &[u8], index: usize, ticks: usize) -> bool {
-    super::util::scan::marker_runs(&bytes[index..], b'`').any(|run| run.len() == ticks)
 }
 
 #[cfg(test)]
