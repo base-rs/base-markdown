@@ -6,7 +6,7 @@
 
 //! A pull parser, source-backed document AST, and shared HTML writer.
 //!
-//! Use [`to_html`] for direct rendering, [`EventParser`] for custom pull consumers, and [`Document::parse`] when inspecting or editing a syntax tree. Documents traverse the same semantic event contract as the parser. [`to_markdown`] serializes documents; [`render_events`] accepts parser or document events.
+//! Use [`to_html`] for direct rendering, [`EventParser`] for custom pull consumers, and [`Document::parse`] when inspecting or editing a syntax tree. Documents traverse the same semantic event contract as the parser. [`to_markdown`] serializes documents, and [`normalize_markdown`] rewrites source into canonical Markdown; [`render_events`] accepts parser or document events.
 //!
 //! ## Pull events and build a source-backed AST
 //!
@@ -91,6 +91,7 @@ pub use event_html_renderer::{render_events, EventHtmlRenderer};
 pub use event_parser::EventParser;
 pub use headings::{HeadingEntry, HeadingOptions};
 pub use markdown::to_markdown_node;
+pub use markdown::{normalize_markdown, normalize_markdown_with_options};
 pub use markdown::{to_markdown, to_markdown_with_options};
 pub use markdown::{IndentOptions, LineWrapping, Options as MarkdownOptions};
 pub use node_syntax::NodeSyntax;

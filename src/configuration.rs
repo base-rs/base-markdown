@@ -1138,6 +1138,19 @@ impl ParseOptions {
             ..Self::default()
         }
     }
+
+    /// The syntax [`normalize_markdown`][crate::normalize_markdown] parses.
+    ///
+    /// This is GFM with frontmatter and math. Tools that inspect a document
+    /// before normalizing it can parse with these options to see the same
+    /// structure the normalizer does.
+    pub fn normalize() -> Self {
+        let mut options = Self::gfm();
+        options.constructs.frontmatter = true;
+        options.constructs.math_flow = true;
+        options.constructs.math_text = true;
+        options
+    }
 }
 
 /// Configuration that describes how to parse from markdown and compile to
