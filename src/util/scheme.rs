@@ -8,8 +8,8 @@
 pub(crate) enum SchemeKind {
     /// `://` and then a host, such as `https://example.com`. Also recognized as a bare GFM literal.
     Host,
-    /// An email address, `local@domain`, such as `mailto:a@example.com`. Also recognized as a bare GFM literal.
-    Address,
+    /// One email address, `local@domain`, such as `mailto:a@example.com`. Also recognized as a bare GFM literal. In `<…>`, a `?query` may follow the address, such as `<mailto:a@example.com?subject=x>`, and so may a `/resource` when `resource` is set, as in `<xmpp:a@example.com/phone>`, which is also allowed in the bare form.
+    Address { resource: bool },
     /// One or more of `+`, ASCII digits, `-`, `.`, `(` and `)`, with at least one digit, such as `tel:+1-555-0100`. Only recognized in `<…>`, never as a bare literal.
     Phone,
 }
@@ -55,11 +55,11 @@ pub(crate) const SCHEMES: [Scheme; 11] = [
     },
     Scheme {
         name: "mailto",
-        kind: SchemeKind::Address,
+        kind: SchemeKind::Address { resource: false },
     },
     Scheme {
         name: "xmpp",
-        kind: SchemeKind::Address,
+        kind: SchemeKind::Address { resource: true },
     },
     Scheme {
         name: "tel",
@@ -177,7 +177,10 @@ mod tests {
         assert!(scheme(b"mailtoo").is_none());
         assert_eq!(SCHEME_NAMES.len(), SCHEMES.len());
         assert_eq!(scheme(b"HTTPS").unwrap().kind, SchemeKind::Host);
-        assert_eq!(scheme(b"Mailto").unwrap().kind, SchemeKind::Address);
+        assert_eq!(
+            scheme(b"Mailto").unwrap().kind,
+            SchemeKind::Address { resource: false }
+        );
         assert_eq!(scheme(b"tel").unwrap().kind, SchemeKind::Phone);
     }
 }

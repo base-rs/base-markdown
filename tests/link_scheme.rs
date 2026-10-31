@@ -39,7 +39,9 @@ fn angle_links() -> Vec<String> {
     for scheme in ADDRESS_SCHEMES {
         links.push(format!("{scheme}:a.b+c@d-e.f"));
         links.push(format!("{}:A@B", scheme.to_uppercase()));
+        links.push(format!("{scheme}:a@b.c?subject=x"));
     }
+    links.push("xmpp:a@b.c/resource?message".into());
     for scheme in PHONE_SCHEMES {
         links.push(format!("{scheme}:+1-(555).0100"));
         links.push(format!("{}:5", scheme.to_uppercase()));
@@ -261,11 +263,43 @@ fn angle_autolinks_roundtrip_for_every_scheme() {
 }
 
 #[test]
-fn address_schemes_take_exactly_one_address() {
+fn address_schemes_take_one_address_and_a_query() {
+    for destination in [
+        "mailto:a@b.c?subject=x",
+        "MAILTO:a@b.c?cc=d@e.f;x=(1)",
+        "mailto:a@b.c?",
+        "xmpp:a@b.c/resource",
+        "xmpp:a@b.c/r/s?message;body=x",
+        "xmpp:a@b.c?join",
+    ] {
+        assert_eq!(
+            to_html(&format!("<{destination}>")),
+            link(destination),
+            "{destination:?}"
+        );
+        assert_eq!(
+            to_html_with_options(&format!("<{destination}>"), &Options::gfm()),
+            link(destination),
+            "{destination:?}"
+        );
+    }
+    assert_eq!(
+        to_html("<mailto:a@b.c?subject=a&body=b>"),
+        "<p><a href=\"mailto:a@b.c?subject=a&amp;body=b\">mailto:a@b.c?subject=a&amp;body=b</a></p>",
+        "should support a query with several fields"
+    );
     for input in [
-        "<mailto:a@b.c?subject=x>",
+        "<mailto:a>",
+        "<mailto:a?subject=x>",
         "<mailto:a@b.c,d@e.f>",
-        "<xmpp:a@b.c/resource>",
+        "<mailto:a@b.c/resource>",
+        "<mailto:a@b.c#x>",
+        "<mailto:a@b.c?subject x>",
+        "<mailto:a@b-?x>",
+        "<xmpp:a@b.c#x>",
+        "<xmpp:a@b.c/r x>",
+        "<a@b.c?subject=x>",
+        "<a@b.c/resource>",
     ] {
         assert_eq!(
             to_html(input),
@@ -274,9 +308,9 @@ fn address_schemes_take_exactly_one_address() {
         );
     }
     assert_eq!(
-        to_html_with_options("<mailto:a@b.c?subject=x>", &Options::gfm()),
-        "<p>&lt;<a href=\"mailto:a@b.c\">mailto:a@b.c</a>?subject=x&gt;</p>",
-        "should link only the bare address under GFM"
+        to_html("<mailto:a@b.c?x<y>"),
+        "<p>&lt;mailto:a@b.c?x&lt;y&gt;</p>",
+        "should not allow `<` in a query"
     );
     assert_eq!(
         to_html_with_options("xmpp:a@b.c/resource", &Options::gfm()),

@@ -58,7 +58,7 @@ pub struct Constructs {
     /// Only these schemes, in any case, and email addresses form autolinks:
     ///
     /// * `http`, `https`, `ftp`, `sftp`, `ssh`, `irc` and `ircs`, followed by `://` and a host, such as `<ssh://example.com>`.
-    /// * `mailto` and `xmpp`, followed by an email address, such as `<mailto:a@example.com>`.
+    /// * `mailto` and `xmpp`, followed by one email address and an optional `?query`, such as `<mailto:a@example.com?subject=x>`. `xmpp` also allows a `/resource` after the address.
     /// * `tel` and `sms`, followed by `+`, digits, `-`, `.`, `(` and `)`, with at least one digit, such as `<tel:+1-555-0100>`.
     ///
     /// This deliberately diverges from `CommonMark`, which accepts any scheme of 2–32 characters and an empty target: other text such as `<svg:rect>` or `Option<std::io::Error>` is raw HTML when valid and text otherwise.

@@ -242,16 +242,16 @@ pub(super) fn email(source: &str, min: usize, at: usize, limit: usize) -> Option
         return None;
     }
     let mut prefix = AutolinkPrefix::Mailto;
-    let mut xmpp = false;
+    let mut resource = false;
     if start > min && bytes[start - 1] == b':' {
         let protocol = scheme_start(bytes, min, start - 1, u8::is_ascii_alphanumeric);
-        if let Some(found) =
-            scheme(&bytes[protocol..start - 1]).filter(|scheme| scheme.kind == SchemeKind::Address)
+        if let Some(SchemeKind::Address { resource: allowed }) =
+            scheme(&bytes[protocol..start - 1]).map(|scheme| scheme.kind)
         {
             start = protocol;
             prefix = AutolinkPrefix::None;
             // GFM lets an `xmpp:` address end in a `/resource`.
-            xmpp = found.name == "xmpp";
+            resource = allowed;
         }
     }
     let mut end = at + 1;
@@ -259,7 +259,7 @@ pub(super) fn email(source: &str, min: usize, at: usize, limit: usize) -> Option
     while end < limit {
         match bytes[end] {
             b'-' | b'0'..=b'9' | b'A'..=b'Z' | b'_' | b'a'..=b'z' => {}
-            b'/' if xmpp => {}
+            b'/' if resource => {}
             b'.' if end + 1 < limit && bytes[end + 1].is_ascii_alphanumeric() => dot = true,
             _ => break,
         }

@@ -14,6 +14,8 @@ pub(crate) struct Autolink {
     state: State,
     /// Whether an address scheme such as `mailto:` precedes the email, so the text is already the destination.
     prefixed: bool,
+    /// Whether that scheme also allows a `/resource` after the address.
+    resource: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -31,6 +33,7 @@ enum State {
     Slashes(u8),
     /// Before the first byte of the host, which must not be `/`, `?` or `#`.
     Target,
+    /// The rest of a URL, or the `?query` or `/resource` after a prefixed address.
     Url,
     /// After a phone scheme's `:`, and whether a digit has been seen.
     Phone(bool),
@@ -49,8 +52,9 @@ impl Autolink {
             Open | Local if atext(byte) => Email,
             Scheme(name) if byte == b':' => match packed_scheme(name)?.kind {
                 SchemeKind::Host => Slashes(0),
-                SchemeKind::Address => {
+                SchemeKind::Address { resource } => {
                     self.prefixed = true;
+                    self.resource = resource;
                     Local
                 }
                 SchemeKind::Phone => Phone(false),
@@ -75,6 +79,11 @@ impl Autolink {
             }
             Domain(_, false) | Url | Phone(true) if byte == b'>' => return Some(true),
             Domain(_, false) if byte == b'.' => DomainStart,
+            Domain(_, false)
+                if self.prefixed && (byte == b'?' || (byte == b'/' && self.resource)) =>
+            {
+                Url
+            }
             Domain(size, _)
                 if usize::from(size) < AUTOLINK_DOMAIN_SIZE_MAX
                     && (byte.is_ascii_alphanumeric() || byte == b'-') =>
