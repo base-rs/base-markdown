@@ -935,6 +935,8 @@ Autolink literal after link.
         "should match autolink literals combined w/ links like GitHub does (except for the bracket bug)"
     );
 
+    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
+    // GitHub expects `<p><a href="http://www.a&amp;b%5C">www.a&amp;b\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# “character reference”
@@ -1035,7 +1037,7 @@ www.a&b~
 <p><a href="http://www.a&amp;b">www.a&amp;b</a>?</p>
 <p><a href="http://www.a&amp;b@">www.a&amp;b@</a></p>
 <p><a href="http://www.a&amp;b%5B">www.a&amp;b[</a></p>
-<p><a href="http://www.a&amp;b%5C">www.a&amp;b\</a></p>
+<p><a href="http://www.a&amp;b">www.a&amp;b</a>\</p>
 <p><a href="http://www.a&amp;b">www.a&amp;b</a>]</p>
 <p><a href="http://www.a&amp;b%5E">www.a&amp;b^</a></p>
 <p><a href="http://www.a&amp;b">www.a&amp;b</a>_</p>
@@ -1048,6 +1050,8 @@ www.a&b~
         "should match “character references (named)” like GitHub does (except for the bracket bug)"
     );
 
+    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
+    // GitHub expects `<p><a href="http://www.a&amp;#35%5C">www.a&amp;#35\</a></p>`.
     assert_eq!(
         to_html_with_options(r###"# “character reference”
 
@@ -1145,7 +1149,7 @@ www.a&#35~
 <p><a href="http://www.a&amp;#35">www.a&amp;#35</a>?</p>
 <p><a href="http://www.a&amp;#35@">www.a&amp;#35@</a></p>
 <p><a href="http://www.a&amp;#35%5B">www.a&amp;#35[</a></p>
-<p><a href="http://www.a&amp;#35%5C">www.a&amp;#35\</a></p>
+<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>\</p>
 <p><a href="http://www.a&amp;#35">www.a&amp;#35</a>]</p>
 <p><a href="http://www.a&amp;#35%5E">www.a&amp;#35^</a></p>
 <p><a href="http://www.a&amp;#35">www.a&amp;#35</a>_</p>
@@ -1211,6 +1215,8 @@ react@0.0.0-experimental-aae83a4b9
         "should match email TLD digits like GitHub does"
     );
 
+    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
+    // GitHub expects `<p><a href="http://a%5C">http://a\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# httpshhh? (2)
@@ -1311,7 +1317,7 @@ http://a~
 <p><a href="http://a">http://a</a>?</p>
 <p><a href="http://a@">http://a@</a></p>
 <p><a href="http://a%5B">http://a[</a></p>
-<p><a href="http://a%5C">http://a\</a></p>
+<p><a href="http://a">http://a</a>\</p>
 <p><a href="http://a">http://a</a>]</p>
 <p><a href="http://a%5E">http://a^</a></p>
 <p><a href="http://a">http://a</a>_</p>
@@ -1437,6 +1443,8 @@ http://~
         "should match protocol domain start like GitHub does"
     );
 
+    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
+    // GitHub expects `<p><a href="http://a/b%5C">http://a/b\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# httpshhh? (4)
@@ -1537,7 +1545,7 @@ http://a/b~
 <p><a href="http://a/b">http://a/b</a>?</p>
 <p><a href="http://a/b@">http://a/b@</a></p>
 <p><a href="http://a/b%5B">http://a/b[</a></p>
-<p><a href="http://a/b%5C">http://a/b\</a></p>
+<p><a href="http://a/b">http://a/b</a>\</p>
 <p><a href="http://a/b">http://a/b</a>]</p>
 <p><a href="http://a/b%5E">http://a/b^</a></p>
 <p><a href="http://a/b">http://a/b</a>_</p>
@@ -1550,6 +1558,8 @@ http://a/b~
         "should match protocol path continue like GitHub does"
     );
 
+    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
+    // GitHub expects `<p><a href="http://a/%5C">http://a/\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# httpshhh? (3)
@@ -1650,7 +1660,7 @@ http://a/~
 <p><a href="http://a/">http://a/</a>?</p>
 <p><a href="http://a/@">http://a/@</a></p>
 <p><a href="http://a/%5B">http://a/[</a></p>
-<p><a href="http://a/%5C">http://a/\</a></p>
+<p><a href="http://a/">http://a/</a>\</p>
 <p><a href="http://a/">http://a/</a>]</p>
 <p><a href="http://a/%5E">http://a/^</a></p>
 <p><a href="http://a/">http://a/</a>_</p>
@@ -1663,6 +1673,8 @@ http://a/~
         "should match protocol path start like GitHub does"
     );
 
+    // Deliberate divergence from GitHub: a backslash ends a literal autolink, so `www.example.com/a\.` links `www.example.com/a` and `\.` is an escape, also inside the link label.
+    // GitHub expects `<p><a href="#">www.example.com/a\.</a></p>` and `<p><a href="http://www.example.com/a%5C">www.example.com/a\</a>.</p>`.
     assert_eq!(
         to_html_with_options(
             r###"[www.example.com/a&copy;](#)
@@ -1683,12 +1695,14 @@ www.example.com/a\.
 <p><a href="http://www.example.com/a">www.example.com/a</a>©</p>
 <p><a href="#">www.example.com/a&amp;bogus;</a></p>
 <p><a href="http://www.example.com/a">www.example.com/a</a>&amp;bogus;</p>
-<p><a href="#">www.example.com/a\.</a></p>
-<p><a href="http://www.example.com/a%5C">www.example.com/a\</a>.</p>
+<p><a href="#">www.example.com/a.</a></p>
+<p><a href="http://www.example.com/a">www.example.com/a</a>.</p>
 "###,
         "should match links, autolink literals, and characters like GitHub does"
     );
 
+    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
+    // GitHub expects `<p><a href="http://www.a/b&amp;c%5C">www.a/b&amp;c\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# “character reference”
@@ -1789,7 +1803,7 @@ www.a/b&c~
 <p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>?</p>
 <p><a href="http://www.a/b&amp;c@">www.a/b&amp;c@</a></p>
 <p><a href="http://www.a/b&amp;c%5B">www.a/b&amp;c[</a></p>
-<p><a href="http://www.a/b&amp;c%5C">www.a/b&amp;c\</a></p>
+<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>\</p>
 <p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>]</p>
 <p><a href="http://www.a/b&amp;c%5E">www.a/b&amp;c^</a></p>
 <p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>_</p>
@@ -1802,6 +1816,8 @@ www.a/b&c~
         "should match character reference-like (named) things in paths like GitHub does"
     );
 
+    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
+    // GitHub expects `<p><a href="http://www.a/b&amp;#35%5C">www.a/b&amp;#35\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# “character reference”
@@ -1902,7 +1918,7 @@ www.a/b&#35~
 <p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>?</p>
 <p><a href="http://www.a/b&amp;#35@">www.a/b&amp;#35@</a></p>
 <p><a href="http://www.a/b&amp;#35%5B">www.a/b&amp;#35[</a></p>
-<p><a href="http://www.a/b&amp;#35%5C">www.a/b&amp;#35\</a></p>
+<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>\</p>
 <p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>]</p>
 <p><a href="http://www.a/b&amp;#35%5E">www.a/b&amp;#35^</a></p>
 <p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>_</p>
@@ -1986,6 +2002,8 @@ www.a.com#d]()
         "should match path or link end like GitHub does (except for the bracket bug)"
     );
 
+    // Deliberate divergence from GitHub: browsers read a backslash as `/`, so it blocks an email literal as `/` does.
+    // GitHub links the address after the backslash: `\<a href="mailto:noreply@example.com">noreply@example.com</a>`.
     assert_eq!(
         to_html_with_options(
             r###"Last non-markdown ASCII whitespace (FF): noreply@example.com, http://example.com, https://example.com, www.example.com
@@ -2042,7 +2060,7 @@ Some more non-ascii: 🤷‍noreply@example.com, 🤷‍http://example.com, 🤷
 <p>First punctuation after digits: :<a href="mailto:noreply@example.com">noreply@example.com</a>, :<a href="http://example.com">http://example.com</a>, :<a href="https://example.com">https://example.com</a>, :www.example.com</p>
 <p>Last punctuation before caps: @<a href="mailto:noreply@example.com">noreply@example.com</a>, @<a href="http://example.com">http://example.com</a>, @<a href="https://example.com">https://example.com</a>, @www.example.com</p>
 <p>First uppercase: <a href="mailto:Anoreply@example.com">Anoreply@example.com</a>, Ahttp://example.com, Ahttps://example.com, Awww.example.com</p>
-<p>Punctuation after uppercase: \<a href="mailto:noreply@example.com">noreply@example.com</a>, \<a href="http://example.com">http://example.com</a>, \<a href="https://example.com">https://example.com</a>, \www.example.com</p>
+<p>Punctuation after uppercase: \noreply@example.com, \<a href="http://example.com">http://example.com</a>, \<a href="https://example.com">https://example.com</a>, \www.example.com</p>
 <p>Last punctuation before lowercase (1): `<a href="mailto:noreply@example.com">noreply@example.com</a>;</p>
 <p>(2) `<a href="http://example.com">http://example.com</a>;</p>
 <p>(3) `<a href="https://example.com">https://example.com</a>;</p>
@@ -2060,6 +2078,8 @@ Some more non-ascii: 🤷‍noreply@example.com, 🤷‍http://example.com, 🤷
         "should match previous (complex) like GitHub does"
     );
 
+    // Deliberate divergence from GitHub: browsers read a backslash as `/`, so it blocks an email literal as `/` does.
+    // GitHub links the address after the backslash: `\<a href="mailto:a@b.c">a@b.c</a>`.
     assert_eq!(
         to_html_with_options(
             r###"# HTTP
@@ -2177,7 +2197,7 @@ is part of the email, so it’s in fact part of the link: <a href="mailto:_a@b.c
 <p>While other characters before the email aren’t allowed by GFM, they work on
 github.com: !<a href="mailto:a@b.c">a@b.c</a>, &quot;<a href="mailto:a@b.c">a@b.c</a>, #<a href="mailto:a@b.c">a@b.c</a>, $<a href="mailto:a@b.c">a@b.c</a>, &amp;<a href="mailto:a@b.c">a@b.c</a>, '<a href="mailto:a@b.c">a@b.c</a>, )<a href="mailto:a@b.c">a@b.c</a>, <a href="mailto:+a@b.c">+a@b.c</a>,
 ,<a href="mailto:a@b.c">a@b.c</a>, <a href="mailto:-a@b.c">-a@b.c</a>, <a href="mailto:.a@b.c">.a@b.c</a>, /a@b.c, :<a href="mailto:a@b.c">a@b.c</a>, ;<a href="mailto:a@b.c">a@b.c</a>, &lt;<a href="mailto:a@b.c">a@b.c</a>, =<a href="mailto:a@b.c">a@b.c</a>, &gt;<a href="mailto:a@b.c">a@b.c</a>, ?<a href="mailto:a@b.c">a@b.c</a>,
-@<a href="mailto:a@b.c">a@b.c</a>, \<a href="mailto:a@b.c">a@b.c</a>, ]<a href="mailto:a@b.c">a@b.c</a>, ^<a href="mailto:a@b.c">a@b.c</a>, `<a href="mailto:a@b.c">a@b.c</a>, {<a href="mailto:a@b.c">a@b.c</a>, }<a href="mailto:a@b.c">a@b.c</a>.</p>
+@<a href="mailto:a@b.c">a@b.c</a>, \a@b.c, ]<a href="mailto:a@b.c">a@b.c</a>, ^<a href="mailto:a@b.c">a@b.c</a>, `<a href="mailto:a@b.c">a@b.c</a>, {<a href="mailto:a@b.c">a@b.c</a>, }<a href="mailto:a@b.c">a@b.c</a>.</p>
 <h2>Commas</h2>
 <p>See <code>https://github.com/remarkjs/remark/discussions/678</code>.</p>
 <p>,<a href="https://github.com">https://github.com</a></p>
@@ -2187,6 +2207,8 @@ github.com: !<a href="mailto:a@b.c">a@b.c</a>, &quot;<a href="mailto:a@b.c">a@b.
         "should match previous like GitHub does"
     );
 
+    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
+    // GitHub expects `<p><a href="http://www.a%5C">www.a\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# wwwtf 2?
@@ -2287,7 +2309,7 @@ www.a~
 <p><a href="http://www.a">www.a</a>?</p>
 <p><a href="http://www.a@">www.a@</a></p>
 <p><a href="http://www.a%5B">www.a[</a></p>
-<p><a href="http://www.a%5C">www.a\</a></p>
+<p><a href="http://www.a">www.a</a>\</p>
 <p><a href="http://www.a">www.a</a>]</p>
 <p><a href="http://www.a%5E">www.a^</a></p>
 <p><a href="http://www.a">www.a</a>_</p>
@@ -2300,6 +2322,8 @@ www.a~
         "should match www (domain continue) like GitHub does (except for the bracket bug)"
     );
 
+    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
+    // GitHub expects `<p><a href="http://www.a.%5C">www.a.\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# wwwtf 5?
@@ -2400,7 +2424,7 @@ www.a.~
 <p><a href="http://www.a">www.a</a>.?</p>
 <p><a href="http://www.a.@">www.a.@</a></p>
 <p><a href="http://www.a.%5B">www.a.[</a></p>
-<p><a href="http://www.a.%5C">www.a.\</a></p>
+<p><a href="http://www.a">www.a</a>.\</p>
 <p><a href="http://www.a">www.a</a>.]</p>
 <p><a href="http://www.a.%5E">www.a.^</a></p>
 <p><a href="http://www.a">www.a</a>._</p>
@@ -2413,6 +2437,8 @@ www.a.~
         "should match www (domain dot) like GitHub does (except for the bracket bug)"
     );
 
+    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
+    // GitHub expects `<p><a href="http://www.%5C">www.\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# wwwtf?
@@ -2513,7 +2539,7 @@ www.~
 <p><a href="http://www">www</a>.?</p>
 <p><a href="http://www.@">www.@</a></p>
 <p><a href="http://www.%5B">www.[</a></p>
-<p><a href="http://www.%5C">www.\</a></p>
+<p>www.\</p>
 <p><a href="http://www">www</a>.]</p>
 <p><a href="http://www.%5E">www.^</a></p>
 <p><a href="http://www">www</a>._</p>
@@ -2526,6 +2552,8 @@ www.~
         "should match www (domain start) like GitHub does"
     );
 
+    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
+    // GitHub expects `<p><a href="http://www.a/b%5C">www.a/b\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# wwwtf? (4)
@@ -2626,7 +2654,7 @@ www.a/b~
 <p><a href="http://www.a/b">www.a/b</a>?</p>
 <p><a href="http://www.a/b@">www.a/b@</a></p>
 <p><a href="http://www.a/b%5B">www.a/b[</a></p>
-<p><a href="http://www.a/b%5C">www.a/b\</a></p>
+<p><a href="http://www.a/b">www.a/b</a>\</p>
 <p><a href="http://www.a/b">www.a/b</a>]</p>
 <p><a href="http://www.a/b%5E">www.a/b^</a></p>
 <p><a href="http://www.a/b">www.a/b</a>_</p>
@@ -2639,6 +2667,8 @@ www.a/b~
         "should match www (path continue) like GitHub does (except for the bracket bug)"
     );
 
+    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
+    // GitHub expects `<p><a href="http://www.a/%5C">www.a/\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# wwwtf? (3)
@@ -2739,7 +2769,7 @@ www.a/~
 <p><a href="http://www.a/">www.a/</a>?</p>
 <p><a href="http://www.a/@">www.a/@</a></p>
 <p><a href="http://www.a/%5B">www.a/[</a></p>
-<p><a href="http://www.a/%5C">www.a/\</a></p>
+<p><a href="http://www.a/">www.a/</a>\</p>
 <p><a href="http://www.a/">www.a/</a>]</p>
 <p><a href="http://www.a/%5E">www.a/^</a></p>
 <p><a href="http://www.a/">www.a/</a>_</p>
@@ -2953,4 +2983,93 @@ fn compact_literal_links_preserve_destinations_and_boundaries() {
             assert_eq!(arena, direct);
         }
     }
+}
+
+#[test]
+fn backslashes_end_literal_autolinks() {
+    use base_markdown::{markdown::to_markdown, Document};
+    use support::fixture::canonical;
+    // A backslash is never part of a host or URI, and browsers read it as `/`, so it ends a literal autolink. The rest is parsed normally, as escapes, hard breaks or text.
+    for (input, html, markdown) in [
+        (
+            "www.com\\_\n",
+            "<p><a href=\"http://www.com\">www.com</a>_</p>\n",
+            "[www.com](http://www.com)\\_\n",
+        ),
+        (
+            "www.a\\_b.com\n",
+            "<p><a href=\"http://www.a\">www.a</a>_b.com</p>\n",
+            "[www.a](http://www.a)\\_b.com\n",
+        ),
+        (
+            "https://a.b/c\\\nb\n",
+            "<p><a href=\"https://a.b/c\">https://a.b/c</a><br />\nb</p>\n",
+            "<https://a.b/c>\\\nb\n",
+        ),
+        (
+            "www.x.org\\\nb\n",
+            "<p><a href=\"http://www.x.org\">www.x.org</a><br />\nb</p>\n",
+            "[www.x.org](http://www.x.org)\\\nb\n",
+        ),
+        (
+            "http://a.b/x\\y\n",
+            "<p><a href=\"http://a.b/x\">http://a.b/x</a>\\y</p>\n",
+            "<http://a.b/x>\\y\n",
+        ),
+        (
+            "a@b.c\\d\n",
+            "<p><a href=\"mailto:a@b.c\">a@b.c</a>\\d</p>\n",
+            "<a@b.c>\\d\n",
+        ),
+        // A backslash before the local part blocks an email literal, as `/` does.
+        (
+            "http://x\\a@b.c\n",
+            "<p><a href=\"http://x\">http://x</a>\\a@b.c</p>\n",
+            "<http://x>\\a@b.c\n",
+        ),
+        ("x\\a@b.c\n", "<p>x\\a@b.c</p>\n", "x\\a@b.c\n"),
+        (
+            "(see https://a.b/c\\)\n",
+            "<p>(see <a href=\"https://a.b/c\">https://a.b/c</a>)</p>\n",
+            "(see <https://a.b/c>)\n",
+        ),
+        // Trailing punctuation before the backslash is outside the link, as at the end of the text.
+        (
+            "https://a.b/c.\\\n",
+            "<p><a href=\"https://a.b/c\">https://a.b/c</a>.\\</p>\n",
+            "<https://a.b/c>.\\\\\n",
+        ),
+        // As at the end of the text, a bare `www.` before a backslash is not a link.
+        ("www.\\\nb\n", "<p>www.<br />\nb</p>\n", "www.\\\nb\n"),
+        ("http://\\x\n", "<p>http://\\x</p>\n", "http://\\x\n"),
+    ] {
+        let options = Options::gfm();
+        assert_eq!(to_html_with_options(input, &options), html, "{input:?}");
+        let tree = Document::parse(input, &options.parse).unwrap();
+        let first = to_markdown(&tree).unwrap();
+        assert_eq!(first, markdown, "{input:?}");
+        let reparsed = Document::parse(first.as_str(), &options.parse).unwrap();
+        assert_eq!(canonical(&reparsed), canonical(&tree), "{input:?}");
+        assert_eq!(to_markdown(&reparsed).unwrap(), first, "{input:?}");
+    }
+    // In a table cell, `\|` is an escaped pipe after the link rather than part of it.
+    assert_eq!(
+        to_html_with_options("| a |\n| - |\n| www.a\\|b |\n", &Options::gfm()),
+        "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"http://www.a\">www.a</a>|b</td>\n</tr>\n</tbody>\n</table>\n"
+    );
+    // An escaped `@` splits the text, so it is no email link. The serializer writes text as-is rather than escaping it against literal autolinks, so the next parse links it, and serialization is stable from there.
+    let options = Options::gfm();
+    assert_eq!(
+        to_html_with_options("a\\@b.c\n", &options),
+        "<p>a@b.c</p>\n"
+    );
+    let tree = Document::parse("a\\@b.c\n", &options.parse).unwrap();
+    let first = to_markdown(&tree).unwrap();
+    assert_eq!(first, "a@b.c\n");
+    let reparsed = Document::parse(first.as_str(), &options.parse).unwrap();
+    let second = to_markdown(&reparsed).unwrap();
+    assert_eq!(second, "<a@b.c>\n");
+    let again = Document::parse(second.as_str(), &options.parse).unwrap();
+    assert_eq!(canonical(&again), canonical(&reparsed));
+    assert_eq!(to_markdown(&again).unwrap(), second);
 }

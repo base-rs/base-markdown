@@ -65,9 +65,11 @@ pub(super) fn web(
             (start, marker + 3, AutolinkPrefix::None)
         }
         b'.' => {
+            // A bare `www.` is no link, whether the text or the literal ends after it.
             if marker < min + 3
                 || !bytes[marker - 3..marker].eq_ignore_ascii_case(b"www")
                 || marker + 1 == limit
+                || bytes[marker + 1] == b'\\'
             {
                 return None;
             }
@@ -157,7 +159,8 @@ fn terminal_suffix(source: &str, start: usize, limit: usize) -> (usize, usize) {
     let mut tail = start;
     while at < limit {
         match bytes[at] {
-            b'<' => break,
+            // A backslash is never part of a host or URI, and browsers read it as `/`, so it ends the literal like the end of the text would.
+            b'<' | b'\\' => break,
             b']' if at + 1 == limit
                 || matches!(bytes[at + 1], b'\t' | b'\r' | b'\n' | b' ' | b'(' | b'[') =>
             {
@@ -229,7 +232,8 @@ pub(super) fn email(source: &str, min: usize, at: usize, limit: usize) -> Option
     {
         start -= 1;
     }
-    if start == at || (start > min && bytes[start - 1] == b'/') {
+    // Browsers read a backslash as `/`, so it blocks the local part as a path separator would.
+    if start == at || (start > min && matches!(bytes[start - 1], b'/' | b'\\')) {
         return None;
     }
     let mut prefix = AutolinkPrefix::Mailto;
@@ -301,6 +305,10 @@ mod tests {
             ("www.aaa_bbb.ccc.ddd", "www.aaa_bbb.ccc.ddd", "http://"),
             ("www. ", "www", "http://"),
             ("http://x.org\0", "http://x.org\0", ""),
+            // A backslash ends the literal like the end of the text, so trailing punctuation before it is excluded.
+            ("www.a\\_b.com", "www.a", "http://"),
+            ("http://a.b/x\\y", "http://a.b/x", ""),
+            ("https://a.b/c.\\", "https://a.b/c", ""),
         ] {
             let marker = source
                 .find(':')
@@ -326,6 +334,8 @@ mod tests {
             "www.aaa_bbb.ccc",
             "www.aaa.bbb_ccc",
             "http://a_b.c/d",
+            "www.\\x",
+            "http://\\x",
         ] {
             let marker = source
                 .find(':')
@@ -392,7 +402,7 @@ mod tests {
             let found = web(&source, 0, 4, source.len(), &mut Trail::default()).unwrap();
             assert_eq!(
                 found.end < source.len(),
-                char::from(byte).is_whitespace() || byte == b'<',
+                char::from(byte).is_whitespace() || byte == b'<' || byte == b'\\',
                 "{byte}"
             );
         }
@@ -408,6 +418,7 @@ mod tests {
             ("mmmmailto:a@example.org", "a@example.org", "mailto:"),
             ("a@a_b.c", "a@a_b.c", "mailto:"),
             ("aaa@a.b_.c", "aaa@a.b_.c", "mailto:"),
+            ("a@b.c\\d", "a@b.c", "mailto:"),
         ] {
             let at = source.find('@').unwrap();
             let found = email(source, 0, at, source.len())
@@ -423,6 +434,7 @@ mod tests {
             "a@a.b0",
             "@a.b",
             "/a@a.b",
+            "\\a@a.b",
             "a@界.com",
         ] {
             let at = source.find('@').unwrap();
