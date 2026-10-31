@@ -102,6 +102,37 @@ struct Builder<'a> {
     definitions: Definitions<'a>,
     alignments: Vec<AlignKind>,
     definition_context: bool,
+    recorder: Option<Recorder>,
+}
+
+/// Outline state, maintained only when preparing for incremental parsing.
+#[derive(Default)]
+struct Recorder {
+    outline: Outline,
+    line: usize,
+    clean: bool,
+    interrupted: bool,
+}
+
+/// A document-level block and the line where its preparation began.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TopLevel {
+    /// The node index in the prepared blocks.
+    pub node: usize,
+    /// The start of the physical line whose preparation created the block.
+    pub line: usize,
+    /// The end of the block's source extent.
+    pub end: usize,
+    /// Whether no state from earlier lines influenced the preparation of this line, and no earlier block's lookahead can reinterpret it. Every earlier block is then closed, and preparing the source from `line` with only the earlier definitions reproduces this block and everything after it.
+    pub clean: bool,
+}
+
+/// Document-level structure recorded for incremental parsing.
+#[derive(Debug, Default)]
+pub(crate) struct Outline {
+    pub blocks: Vec<TopLevel>,
+    /// Whether every block closed on the prepared lines, so no later line can extend or reinterpret them: the last line was blank and closed every container, or a clean document-level ATX heading, thematic break or closed fence ended it.
+    pub closed: bool,
 }
 
 impl Blocks {
@@ -134,6 +165,33 @@ impl Blocks {
             )
     }
     pub fn parse<'a>(source: &'a str, options: &'a ParseOptions) -> (Self, Definitions<'a>) {
+        let (blocks, definitions, _) =
+            Self::prepare(source, 0, options, Definitions::default(), false);
+        (blocks, definitions)
+    }
+
+    /// Prepare `source[start..]`, where `start` is the line of a clean document-level block, with `seed` holding the definitions authored before it. Node offsets remain relative to the whole source.
+    pub fn parse_from<'a>(
+        source: &'a str,
+        start: usize,
+        options: &'a ParseOptions,
+        seed: Definitions<'a>,
+    ) -> (Self, Definitions<'a>, Outline) {
+        let (blocks, definitions, outline) = Self::prepare(source, start, options, seed, true);
+        (
+            blocks,
+            definitions,
+            outline.expect("recorded preparation returns an outline"),
+        )
+    }
+
+    fn prepare<'a>(
+        source: &'a str,
+        start: usize,
+        options: &'a ParseOptions,
+        seed: Definitions<'a>,
+        record: bool,
+    ) -> (Self, Definitions<'a>, Option<Outline>) {
         let mut builder = Builder {
             source,
             options,
@@ -145,23 +203,31 @@ impl Blocks {
             current: 0,
             blank: false,
             empty_item: None,
-            definitions: Definitions::default(),
+            definitions: seed,
             alignments: Vec::new(),
             definition_context: false,
+            recorder: record.then(|| Recorder {
+                line: start,
+                clean: true,
+                ..Recorder::default()
+            }),
         };
         builder.blocks.nodes.push(Node {
-            start: 0,
+            start,
             end: source.len(),
             child: 0,
             next: 0,
             parent: 0,
             body: Body::Root,
         });
-        let mut index = usize::from(source.starts_with('\u{feff}')) * 3;
-        if options.constructs.frontmatter {
-            if let Some((end, next)) = frontmatter::scan(source.as_bytes(), index) {
-                builder.append(index, end, Body::Opaque);
-                index = next;
+        let mut index = start;
+        if start == 0 {
+            index = usize::from(source.starts_with('\u{feff}')) * 3;
+            if options.constructs.frontmatter {
+                if let Some((end, next)) = frontmatter::scan(source.as_bytes(), index) {
+                    builder.append(index, end, Body::Opaque);
+                    index = next;
+                }
             }
         }
         while index < source.len() {
@@ -171,7 +237,22 @@ impl Blocks {
             builder.pop(index);
         }
         builder.definitions.finish();
-        (builder.blocks, builder.definitions)
+        let nodes = &builder.blocks.nodes;
+        let outline = builder.recorder.map(|recorder| {
+            let mut outline = recorder.outline;
+            for block in &mut outline.blocks {
+                block.end = nodes[block.node].end;
+            }
+            outline
+        });
+        (builder.blocks, builder.definitions, outline)
+    }
+
+    /// Whether the complete lines of `source` begin frontmatter that has not yet closed. Its opening fence would otherwise prepare as ordinary blocks that the closing fence later reinterprets.
+    pub fn frontmatter_pending(source: &str, options: &ParseOptions) -> bool {
+        let bytes = source.as_bytes();
+        let start = usize::from(source.starts_with('\u{feff}')) * 3;
+        options.constructs.frontmatter && frontmatter::pending(bytes, start)
     }
 }
 
@@ -187,6 +268,16 @@ impl Builder<'_> {
             child: 0,
             next: 0,
         });
+        if parent == 0 {
+            if let Some(recorder) = &mut self.recorder {
+                recorder.outline.blocks.push(TopLevel {
+                    node: index,
+                    line: recorder.line,
+                    end,
+                    clean: recorder.clean,
+                });
+            }
+        }
         if self.current == 0 {
             self.blocks.nodes[parent].child = index;
         } else {
@@ -310,6 +401,12 @@ impl Builder<'_> {
         let bytes = self.source.as_bytes();
         let mut line = LineStart::new(&bytes[start..]);
         let content_context = self.definition_context;
+        if let Some(recorder) = &mut self.recorder {
+            recorder.line = start;
+            // A line that interrupted a paragraph was classified before the following line, which can still make it a table header.
+            recorder.clean = !content_context && !core::mem::take(&mut recorder.interrupted);
+            recorder.outline.closed = false;
+        }
         let mut continued = self.containers(&mut line);
         if content_context && continued < self.open.len() {
             let mut probe = line.clone();
@@ -347,9 +444,9 @@ impl Builder<'_> {
                     line.advance(end - at);
                     line.scan_all_space();
                     let content = start + line.bytes_scanned();
-                    let index = self
-                        .definitions
-                        .push_footnote(self.source, &Text::Source(label));
+                    let index =
+                        self.definitions
+                            .push_footnote(self.source, at, &Text::Source(label));
                     self.append(at, content, Body::Footnote(index));
                     self.push();
                     if let Some(length) = scan_blank_line(&bytes[content..]) {
@@ -385,6 +482,9 @@ impl Builder<'_> {
         };
         let at = start + line.bytes_scanned();
         if let Some(length) = scan_blank_line(&bytes[at..]) {
+            if let Some(recorder) = &mut self.recorder {
+                recorder.outline.closed = self.open.len() == 1;
+            }
             let parent = *self.open.last().unwrap();
             match &mut self.blocks.nodes[parent].body {
                 Body::Quote => {}
@@ -426,6 +526,7 @@ impl Builder<'_> {
                 self.finish_list(start);
                 let index = self.definitions.push(
                     self.source,
+                    definition_start,
                     metadata.label,
                     metadata.destination,
                     metadata.title,
@@ -456,25 +557,28 @@ impl Builder<'_> {
                 if let Ok(length) = scan_hrule(&bytes[at..]) {
                     self.finish_list(start);
                     self.append(at, at + length, Body::Rule);
+                    self.settle();
                     return at + length;
                 }
             }
             b'#' if self.options.constructs.heading_atx => {
                 if let Some(level) = scan_atx_heading(&bytes[at..]) {
                     self.finish_list(start);
-                    return self.heading(at, level);
+                    let end = self.heading(at, level);
+                    self.settle();
+                    return end;
                 }
             }
             b'`' | b'~' if self.options.constructs.code_fenced => {
                 if let Some((length, marker)) = scan_code_fence(&bytes[at..]) {
                     self.finish_list(start);
-                    return self.fenced(at, indent, marker, length);
+                    return self.fenced_block(at, indent, marker, length);
                 }
             }
             b'$' if self.options.constructs.math_flow => {
                 if let Some(length) = math_fence(&bytes[at..]) {
                     self.finish_list(start);
-                    return self.fenced(at, indent, b'$', length);
+                    return self.fenced_block(at, indent, b'$', length);
                 }
             }
             _ => {}
@@ -602,6 +706,9 @@ impl Builder<'_> {
                         )
                         .is_some()
                 {
+                    if let Some(recorder) = &mut self.recorder {
+                        recorder.interrupted = true;
+                    }
                     self.trim_fragment();
                     self.pop(next);
                     return next;
@@ -849,6 +956,25 @@ impl Builder<'_> {
         self.push();
         self.fragment(content, last, 0);
         self.pop(end);
+        end
+    }
+    /// Record that a clean document-level block closed on its own lines. Later lines are prepared as if the document began after it.
+    fn settle(&mut self) {
+        if let Some(recorder) = &mut self.recorder {
+            recorder.outline.closed = recorder.clean && self.open.len() == 1;
+        }
+    }
+    fn fenced_block(&mut self, start: usize, indent: usize, marker: u8, length: usize) -> usize {
+        let end = self.fenced(start, indent, marker, length);
+        if !self
+            .blocks
+            .codes
+            .last()
+            .expect("fences record code")
+            .unclosed
+        {
+            self.settle();
+        }
         end
     }
     fn fenced(&mut self, start: usize, indent: usize, marker: u8, length: usize) -> usize {

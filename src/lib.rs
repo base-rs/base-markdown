@@ -22,7 +22,7 @@
 //! assert_eq!(html, "<h1>Introduction</h1>\n<p>Hello, <em>world</em>!</p>");
 //! ```
 //!
-//! [`AstBuilder::consume`] accepts an event budget so callers can build the AST over several steps without collecting the complete stream. Parsing accepts a complete UTF-8 buffer and prepares block structure before yielding events; inline resolution is deferred until consumption.
+//! [`AstBuilder::consume`] accepts an event budget so callers can build the AST over several steps without collecting the complete stream. Parsing accepts a complete UTF-8 buffer and prepares block structure before yielding events; inline resolution is deferred until consumption. [`IncrementalParser`] accepts text in pieces, such as a streamed reply, and emits the events of each document-level block once later text can no longer change it.
 //!
 //! ## Edit and serialize a document
 //!
@@ -65,6 +65,7 @@ mod document;
 mod event_html_renderer;
 mod event_parser;
 mod headings;
+mod incremental_parser;
 mod inline_parser;
 pub mod markdown;
 mod node_syntax;
@@ -90,6 +91,7 @@ pub use document::{
 pub use event_html_renderer::{render_events, EventHtmlRenderer};
 pub use event_parser::EventParser;
 pub use headings::{HeadingEntry, HeadingOptions};
+pub use incremental_parser::IncrementalParser;
 pub use markdown::to_markdown_node;
 pub use markdown::{normalize_markdown, normalize_markdown_with_options};
 pub use markdown::{to_markdown, to_markdown_with_options};
