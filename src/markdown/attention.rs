@@ -205,8 +205,15 @@ impl Solver<'_> {
             let run = rest.bytes().rev().take_while(|&byte| byte == b'_').count();
             // Escaped underscores alternate with backslashes, so an escaped one ends any run.
             // An underscore can also be what keeps a literal `www.` or `http://` domain from linking.
-            let run = if rest[..rest.len() - run].ends_with('\\')
-                || literal_domain(&rest[..rest.len() - run])
+            let before = &rest[..rest.len() - run];
+            let run = if before
+                .bytes()
+                .rev()
+                .take_while(|&byte| byte == b'\\')
+                .count()
+                % 2
+                == 1
+                || literal_domain(before)
             {
                 0
             } else {
@@ -224,34 +231,43 @@ impl Solver<'_> {
         token.value = Value::Owned(result);
     }
 
-    /// Escape an unescaped tilde at the start or end of a text token next to a strikethrough sequence.
+    /// Escape an unescaped tilde at the start or end of a text token next to an attention sequence.
     ///
-    /// Only tildes at the start of a line are otherwise escaped; next to a sequence, a tilde would join its run.
+    /// Only tildes at the start of a line are otherwise escaped; at the edge of attention, a tilde can pair with one in other text, and next to a tilde sequence it would join its run.
     fn escape_tilde(&self, token: &mut Token, start: bool) {
         if token.attention.is_some() {
             return;
         }
         let value = self.value(token);
-        let result = if start {
-            if !value.starts_with('~') {
-                return;
-            }
-            let mut result = String::with_capacity(value.len() + 1);
-            result.push('\\');
-            result.push_str(value);
-            result
+        // Escape the whole run, as part of a run would still pair.
+        let (before, run, after) = if start {
+            let run = value.bytes().take_while(|&byte| byte == b'~').count();
+            ("", run, &value[run..])
         } else {
-            let Some(rest) = value.strip_suffix('~') else {
-                return;
+            let run = value.bytes().rev().take_while(|&byte| byte == b'~').count();
+            let before = &value[..value.len() - run];
+            // An odd number of backslashes escapes the first tilde, which ends the run.
+            let run = if before
+                .bytes()
+                .rev()
+                .take_while(|&byte| byte == b'\\')
+                .count()
+                % 2
+                == 1
+            {
+                run.saturating_sub(1)
+            } else {
+                run
             };
-            if rest.bytes().rev().take_while(|&byte| byte == b'\\').count() % 2 == 1 {
-                return;
-            }
-            let mut result = String::with_capacity(value.len() + 1);
-            result.push_str(rest);
-            result.push_str("\\~");
-            result
+            (&value[..value.len() - run], run, "")
         };
+        if run == 0 {
+            return;
+        }
+        let mut result = String::with_capacity(value.len() + run);
+        result.push_str(before);
+        result.extend(core::iter::repeat("\\~").take(run));
+        result.push_str(after);
         token.value = Value::Owned(result);
     }
 
@@ -330,16 +346,14 @@ impl Solver<'_> {
                     });
                     self.render_level(index + 1..end, chosen, Some(marker), Some(marker), tokens);
                     let inside = open + 1..tokens.len();
-                    // A tilde next to a tilde sequence would join its run.
+                    // A tilde at the edge of attention could pair with one outside it, and next to a tilde sequence it would join its run.
+                    if !inside.is_empty() {
+                        self.escape_tilde(&mut tokens[inside.start], true);
+                        self.escape_tilde(&mut tokens[inside.end - 1], false);
+                    }
                     escape_tilde_after = marker == '~';
-                    if escape_tilde_after {
-                        if !inside.is_empty() {
-                            self.escape_tilde(&mut tokens[inside.start], true);
-                            self.escape_tilde(&mut tokens[inside.end - 1], false);
-                        }
-                        if open > level {
-                            self.escape_tilde(&mut tokens[open - 1], false);
-                        }
+                    if escape_tilde_after && open > level {
+                        self.escape_tilde(&mut tokens[open - 1], false);
                     }
                     // Empty attention counts as a letter inside, as in JS.
                     let head = if inside.is_empty() {
@@ -473,10 +487,12 @@ impl Solver<'_> {
                 let opener_size = runs[opener].end - runs[opener].start;
                 let closer_size = runs[closer].end - runs[closer].start;
                 let skip = if runs[closer].split {
-                    // The rule of 3, on the sizes that are left.
+                    // The rule of 3, on the original sizes of the runs as this crate's parser applies it, where `micromark` uses the sizes that are left.
+                    let opener_run = runs[opener].markers.len();
+                    let closer_run = runs[closer].markers.len();
                     (runs[opener].close || runs[closer].open)
-                        && closer_size % 3 != 0
-                        && (opener_size + closer_size) % 3 == 0
+                        && closer_run % 3 != 0
+                        && (opener_run + closer_run) % 3 == 0
                 } else {
                     // Others pair whole runs of the same size.
                     opener_size != runs[opener].markers.len() || opener_size != closer_size

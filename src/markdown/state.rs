@@ -1000,11 +1000,8 @@ fn intraword_underscores(
     } else {
         before_last
     }?;
-    // Characters next to attention markers can become character references later.
-    if classify(previous) != Kind::Other
-        || escaped(position - previous.len_utf8())
-        || position - previous.len_utf8() == start && matches!(before_last, Some('*' | '_'))
-    {
+    // Underscores next to characters that attention encodes as references are escaped by `attention::resolve`.
+    if classify(previous) != Kind::Other || escaped(position - previous.len_utf8()) {
         return None;
     }
     // GFM email autolinks allow `_` in domains, so an escape may be what keeps `a\@b_c.d` from linking.
@@ -1029,8 +1026,7 @@ fn intraword_underscores(
     let skip = run_end - position - 1;
     (escapes.get(index + skip).map(|entry| entry.0) == Some(run_end - 1)
         && classify(next) == Kind::Other
-        && !escaped(run_end)
-        && !(run_end + next.len_utf8() == end && after.starts_with(['*', '_'])))
+        && !escaped(run_end))
     .then_some(run_end)
 }
 

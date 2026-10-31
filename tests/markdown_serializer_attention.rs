@@ -446,7 +446,24 @@ fn encode_tilde() {
         assert_eq!(serialize(children, &Options::default()), expected);
     }
 
-    for source in ["~\\~~\"a@b.c<www.a.b*", "~~b~~~c", "~a\\~~", "a\\~~~b~~"] {
+    for (children, expected) in [
+        (vec![emphasis(vec![text("~a~")])], "*\\~a\\~*\n"),
+        (vec![delete(vec![text("~~a~~")])], "~~\\~\\~a\\~\\~~~\n"),
+        (vec![delete(vec![text("a\\~~")])], "~~a\\\\\\~\\~~~\n"),
+    ] {
+        assert_eq!(serialize(children, &Options::default()), expected);
+    }
+
+    for source in [
+        "~\\~~\"a@b.c<www.a.b*",
+        "~~b~~~c",
+        "~a\\~~",
+        "a\\~~~b~~",
+        "*\\~a\\~*",
+        "**\\~w!\\~**",
+        "__\"a~1-~~__~~",
+        "`__:_*\\\"~:~~_💡",
+    ] {
         roundtrip(source, &Options::default());
     }
 }
@@ -455,9 +472,11 @@ fn encode_tilde() {
 fn encode_literal_domain() {
     // Escaping the underscore before a reference would end the domain early and link it.
     for (source, expected) in [
-        ("**www.a.bx_b*~b*", "\\*\\*www.a.bx_&#x62;_~b_\n"),
-        ("**http://a.bx_b*~b*", "\\*\\*http://a.bx_&#x62;_~b_\n"),
-        ("**https://a.bx_b*~b*", "\\*\\*https://a.bx_&#x62;_~b_\n"),
+        ("**www.a.bx_b*~b*", "\\*\\*www.a.bx_&#x62;_\\~b_\n"),
+        ("**http://a.bx_b*~b*", "\\*\\*http://a.bx_&#x62;_\\~b_\n"),
+        ("**https://a.bx_b*~b*", "\\*\\*https://a.bx_&#x62;_\\~b_\n"),
+        ("*www\\.a\\_1*", "_www.a_1_\n"),
+        ("*http\\://www\\.a\\_b*", "_http://www.a_b_\n"),
     ] {
         assert_eq!(
             roundtrip(source, &markers('_', '*')),
@@ -596,7 +615,15 @@ fn roundtrip_documents() {
         roundtrip(&value, &Options::default());
     }
 
+    assert_eq!(
+        roundtrip("***x**__y__*", &Options::default()),
+        "***x**__y__*\n",
+        "should apply the rule of 3 to whole runs, as the parser does"
+    );
+
     for value in [
+        "**x_a\\@b.**",
+        "**é\\_a\\@b.\\éwww\\.a:\\_`a`**",
         "(____",
         "Once activated, a service worker ______, then transitions to idle…",
     ] {
