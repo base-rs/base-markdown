@@ -41,6 +41,8 @@ enum After {
     SpaceOrEnd,
     Entity,
     Html,
+    /// A byte that can start an email local part but not HTML, so `<` needs an escape only before a complete email autolink.
+    Email,
     Math,
 }
 struct Rule {
@@ -92,6 +94,7 @@ static RULES: &[Rule] = &[
     rule!(b'.', Digits, After::SpaceOrEnd, 0, 0),
     rule!(b'<', Line, After::Html, 0, 0),
     rule!(b'<', B, After::Html, PHRASING, FULL_SPANS),
+    rule!(b'<', B, After::Email, PHRASING, FULL_SPANS),
     rule!(b'<', B, A, bit(DestinationLiteral), 0),
     rule!(b'=', Line, A, 0, 0),
     rule!(b'>', Line, A, 0, 0),
@@ -228,9 +231,21 @@ impl Rule {
                     return None;
                 }
             }
-            // `<` could start HTML (`!`, `/`, `?` or a letter) or an email autolink (any atext byte, such as `1` in `<1@a.b>`).
             After::Html => {
-                if next.is_some_and(|byte| byte == b'!' || crate::util::autolink::atext(byte)) {
+                if next.is_some_and(|byte| {
+                    matches!(byte, b'!' | b'/' | b'?') || byte.is_ascii_alphabetic()
+                }) {
+                    1
+                } else {
+                    return None;
+                }
+            }
+            After::Email => {
+                if next.is_some_and(|byte| {
+                    crate::util::autolink::atext(byte)
+                        && !matches!(byte, b'/' | b'?')
+                        && !byte.is_ascii_alphabetic()
+                }) {
                     1
                 } else {
                     return None;
@@ -299,6 +314,7 @@ pub(super) fn collect(
                         before: !matches!(rule.before, Before::Any),
                         after: !matches!(rule.after, After::Any)
                             && !(matches!(rule.after, After::Math) && single_math),
+                        email: matches!(rule.after, After::Email),
                     },
                 ));
             }
@@ -432,7 +448,8 @@ mod tests {
                     After::LineEnd => "(?:[\\r\\n]|$)".into(),
                     After::SpaceOrEnd => "(?:[ \\t\\r\\n]|$)".into(),
                     After::Entity => "[#A-Za-z]".into(),
-                    After::Html => "[!#-'*+\\-./0-9=?A-Z^-~]".into(),
+                    After::Html => "[!/?A-Za-z]".into(),
+                    After::Email => "[#-'*+\\-.0-9=^-`{-~]".into(),
                     After::Math if single => "".into(),
                     After::Math => "\\$".into(),
                 };

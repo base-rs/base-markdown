@@ -512,23 +512,112 @@ fn angle_bracket_autolinks_roundtrip() {
 }
 
 #[test]
-fn text_angle_brackets_before_email_characters_stay_text() {
-    // Email autolinks can start with any atext byte, not only a letter. GFM instead links the literal email inside the text, which is stable too.
+fn text_angle_brackets_escape_only_before_email_autolinks() {
+    let namespaces = || ParseOptions {
+        html_tag_namespaces: true,
+        ..Default::default()
+    };
+    // Inputs and their CommonMark serialization, where one is fixed. Every input must keep its tree and serialize stably in each mode.
     for (input, expected) in [
-        ("\\<1@a.b>\n", "\\<1@a.b>\n"),
+        ("\\<1@a.b>\n", Some("\\<1@a.b>\n")),
+        ("\\<#@a.b> \\<&@a.b>\n", Some("\\<#@a.b> \\<&@a.b>\n")),
+        // Escaping `*` already breaks the email autolink, so `<` stays unescaped.
+        ("\\<*@a.b>\n", Some("<\\*@a.b>\n")),
+        ("a <= b\n", Some("a <= b\n")),
+        ("<0.5%\n", Some("<0.5%\n")),
+        ("<= 40\n", Some("<= 40\n")),
+        ("-> Poll<...>\n", Some("-> Poll<...>\n")),
+        ("-> Poll<T>\n", Some("-> Poll<T>\n")),
+        ("<0.0001\n", Some("<0.0001\n")),
+        ("a <1.b> c\n", Some("a <1.b> c\n")),
+        ("<&x\n", Some("<\\&x\n")),
+        ("a <&#1 b\n", Some("a <\\&#1 b\n")),
+        ("<&amp;#|\\@b-c.d>\n", Some("<\\&#|@b-c.d>\n")),
+        ("# <#\\:\n", Some("# <#:\n")),
+        ("# <#\\@b.c>\n", Some("# \\<#@b.c>\n")),
+        ("*<1*\\@b.c>\n", None),
+        ("x <1`a`\\@b.c>\n", None),
+        ("\\<1_a@b.c>\n", Some("\\<1_a@b.c>\n")),
+        ("\\<1@b.c\n", Some("<1@b.c\n")),
+    ] {
+        for options in [ParseOptions::default(), ParseOptions::gfm(), namespaces()] {
+            let tree = Document::parse(input, &options).unwrap();
+            let first = to(&tree).unwrap();
+            if let (Some(expected), false) = (expected, options.constructs.autolink_literal) {
+                assert_eq!(first, expected, "{:?}", input);
+            }
+            let reparsed = Document::parse(&first, &options).unwrap();
+            assert_eq!(semantics(&reparsed), semantics(&tree), "{:?}", input);
+            assert_eq!(to(&reparsed).unwrap(), first, "{:?}", input);
+        }
+    }
+}
+
+#[test]
+fn text_angle_brackets_before_email_spanning_nodes_escape() {
+    use support::fixture::{to_markdown, Emphasis, InlineCode, Node, Paragraph, Text};
+    let text = |value: &str| {
+        Node::Text(Text {
+            value: value.into(),
+            position: None,
+        })
+    };
+    for (children, expected) in [
         (
-            "\\<*@a.b> \\<#@a.b> a <= b\n",
-            // Escaping `*` already breaks the email autolink, so `<` stays unescaped.
-            "<\\*@a.b> \\<#@a.b> a \\<= b\n",
+            vec![
+                text("<"),
+                Node::Emphasis(Emphasis {
+                    children: vec![text("a")],
+                    position: None,
+                }),
+                text("@b.c>"),
+            ],
+            "\\<*a*@b.c>\n",
+        ),
+        (
+            vec![
+                text("x <1"),
+                Node::InlineCode(InlineCode {
+                    value: "a".into(),
+                    position: None,
+                    lang: None,
+                }),
+                text("@b.c>"),
+            ],
+            "x \\<1`a`@b.c>\n",
         ),
     ] {
-        let tree = Document::parse(input, &Default::default()).unwrap();
-        let first = to(&tree).unwrap();
-        assert_eq!(first, expected, "{:?}", input);
+        let first = to_markdown(&Node::Paragraph(Paragraph {
+            children,
+            position: None,
+        }))
+        .unwrap();
+        assert_eq!(first, expected);
         let reparsed = Document::parse(&first, &Default::default()).unwrap();
-        assert_eq!(semantics(&reparsed), semantics(&tree), "{:?}", input);
-        assert_eq!(to(&reparsed).unwrap(), first, "{:?}", input);
+        assert_eq!(to(&reparsed).unwrap(), first);
     }
+}
+
+#[test]
+fn text_angle_bracket_email_scans_stay_linear() {
+    // Each scan stops before the next `<`, so doubling the input roughly doubles the time.
+    let time = |count: usize| {
+        let input = "<1.2-3 ".repeat(count) + "x\n";
+        let tree = Document::parse(&input, &Default::default()).unwrap();
+        let started = std::time::Instant::now();
+        let output = to(&tree).unwrap();
+        assert_eq!(output, input);
+        started.elapsed()
+    };
+    time(1 << 10);
+    let small = time(1 << 13);
+    let large = time(1 << 15);
+    assert!(
+        large < small * 16,
+        "4x input took {:?} against {:?}",
+        large,
+        small
+    );
 }
 
 #[test]
@@ -554,4 +643,23 @@ fn semantics<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
 
 fn document(doc: Vec<&str>) -> String {
     doc.join("\n")
+}
+
+#[test]
+fn adjacent_text_nodes_escape_as_one_run() {
+    // Escaped backslashes parse as separate text nodes; joined, each must still be doubled.
+    // A run after an inline node is escaped as a whole to find its first written character.
+    for (input, expected) in [
+        ("b=\\\\\\\\-\n", "b=\\\\\\\\-\n"),
+        ("1-\\\\\\\\-@`\n", "1-\\\\\\\\-@\\`\n"),
+        ("@_;<_&a-\n", "@*;<*\\&a-\n"),
+        ("*<*&# \n", "*<*\\&#\n"),
+    ] {
+        let tree = Document::parse(input, &Default::default()).unwrap();
+        let first = to(&tree).unwrap();
+        assert_eq!(first, expected, "{:?}", input);
+        let reparsed = Document::parse(&first, &Default::default()).unwrap();
+        assert_eq!(canonical(&reparsed), canonical(&tree), "{:?}", input);
+        assert_eq!(to(&reparsed).unwrap(), first, "{:?}", input);
+    }
 }

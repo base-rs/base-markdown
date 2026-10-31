@@ -9,10 +9,16 @@ use alloc::string::String;
 pub struct EscapeInfos {
     pub after: bool,
     pub before: bool,
+    /// Apply only if the escaped `<` would otherwise start an email autolink in the written output.
+    pub email: bool,
 }
 
 /// JS: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/util/safe.js#L148>.
-pub fn write_backslashes(value: &str, after: &str, results: &mut String) {
+///
+/// With `overlapping`, every backslash followed by ASCII punctuation is doubled, including one
+/// followed by another backslash. Otherwise a match consumes the following byte, as the JS regex
+/// does, so a backslash right after a doubled one is not checked.
+pub fn write_backslashes(value: &str, after: &str, overlapping: bool, results: &mut String) {
     let mut start = 0;
     let bytes = value.as_bytes();
     let mut at = 0;
@@ -23,18 +29,19 @@ pub fn write_backslashes(value: &str, after: &str, results: &mut String) {
             results.push_str(&value[start..position]);
             results.push('\\');
             start = position;
-            // Regex matches consume both bytes: paired backslashes cannot overlap.
-            at = (position + 2).min(bytes.len());
-        } else {
-            at = position + 1;
+            if !overlapping {
+                at = (position + 2).min(bytes.len());
+                continue;
+            }
         }
+        at = position + 1;
     }
     results.push_str(&value[start..]);
 }
 
 #[cfg(test)]
-pub fn escape_backslashes(value: &str, after: &str) -> String {
+pub fn escape_backslashes(value: &str, after: &str, overlapping: bool) -> String {
     let mut output = String::new();
-    write_backslashes(value, after, &mut output);
+    write_backslashes(value, after, overlapping, &mut output);
     output
 }

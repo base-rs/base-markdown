@@ -40,6 +40,12 @@ pub struct State<'a> {
     pub output: String,
     pub(super) scratch: String,
     escapes: Vec<(usize, EscapeInfos)>,
+    /// Positions of `<` that need an escape only before a complete email autolink.
+    email_candidates: Vec<usize>,
+    /// Positions that receive an escape, in order.
+    applied: Vec<usize>,
+    /// Adjacent text siblings joined so escapes do not depend on how the parser split them.
+    text_run: String,
     pub bullet_current: Option<char>,
     pub bullet_last_used: Option<char>,
     pub index_stack: Vec<usize>,
@@ -136,9 +142,31 @@ impl<'a> State<'a> {
             }
             after_hard_break = matches!(kind, EventKind::HardBreak);
             *self.index_stack.last_mut().unwrap() = index;
+            let mut text_run = None;
+            if let EventKind::Text(text) = kind {
+                let mut run = core::mem::take(&mut self.text_run);
+                run.clear();
+                run.push_str(self.text_value(document, child, text));
+                index += self.push_text_run(document, &mut children, &mut run);
+                text_run = Some(run);
+            }
             let mut buffer = [0u8; 4];
             let after = if let Some(&next) = children.peek() {
-                if let Some(first) = self.peek_node(document, next) {
+                if matches!(document.node(next).unwrap().kind, EventKind::Text(_)) {
+                    // Escape the whole following run, as it will be written, to find its first character.
+                    let mut run = core::mem::take(&mut self.text_run);
+                    run.clear();
+                    self.push_text_run(document, &mut children.clone(), &mut run);
+                    let first = super::escape::literal_prefix(&run).unwrap_or_else(|| {
+                        let checkpoint = self.output.len();
+                        self.write_text(&run, &Info::new("", ""));
+                        let first = self.output[checkpoint..].chars().next().unwrap_or_default();
+                        self.output.truncate(checkpoint);
+                        first
+                    });
+                    self.text_run = run;
+                    first.encode_utf8(&mut buffer)
+                } else if let Some(first) = self.peek_node(document, next) {
                     first.encode_utf8(&mut buffer) as &str
                 } else {
                     // Render nodes without a fixed prefix to determine the next character.
@@ -178,7 +206,12 @@ impl<'a> State<'a> {
                 Before::Output(start..self.output.len())
             };
             let length = self.output.len();
-            self.write_node(document, child, &Info { before, after })?;
+            if let Some(run) = text_run {
+                self.write_text(&run, &Info { before, after });
+                self.text_run = run;
+            } else {
+                self.write_node(document, child, &Info { before, after })?;
+            }
             if self.output.len() != length {
                 hard_break_line = after_hard_break;
             }
@@ -283,19 +316,7 @@ impl<'a> State<'a> {
                 }
             },
             EventKind::Text(text) => {
-                let mut value = text.resolve(source).unwrap();
-                if let Some(parent) = node.parent() {
-                    let marker = document
-                        .node(parent)
-                        .unwrap()
-                        .first_child()
-                        .expect("an attached node belongs to a nonempty parent");
-                    if document.node(marker).unwrap().next_sibling() == Some(id)
-                        && self.is_item_task(document, marker)
-                    {
-                        value = value.trim_start_matches([' ', '\t']);
-                    }
-                }
+                let value = self.text_value(document, id, text);
                 self.text(value, info)
             }
             EventKind::SoftBreak(text) => self.text(text.resolve(source).unwrap(), info),
@@ -593,6 +614,9 @@ impl<'a> State<'a> {
             output: String::new(),
             scratch: String::new(),
             escapes: Vec::new(),
+            email_candidates: Vec::new(),
+            applied: Vec::new(),
+            text_run: String::new(),
             bullet_current: None,
             bullet_last_used: None,
             index_stack: Vec::new(),
@@ -648,9 +672,51 @@ impl<'a> State<'a> {
                 == title
     }
 
+    /// Append the text of the following text siblings to `run`, returning how many were consumed.
+    fn push_text_run<S: AsRef<str>, I: Iterator<Item = NodeId>>(
+        &self,
+        document: &Document<S>,
+        children: &mut core::iter::Peekable<I>,
+        run: &mut String,
+    ) -> usize {
+        let mut count = 0;
+        while let Some(&next) = children.peek() {
+            let EventKind::Text(text) = &document.node(next).unwrap().kind else {
+                break;
+            };
+            run.push_str(self.text_value(document, next, text));
+            children.next();
+            count += 1;
+        }
+        count
+    }
+
+    /// The text of a text node, without the spaces that follow a task marker.
+    fn text_value<'d, S: AsRef<str>>(
+        &self,
+        document: &'d Document<S>,
+        id: NodeId,
+        text: &'d crate::stream::Text<'_>,
+    ) -> &'d str {
+        let value = text.resolve(document.source()).unwrap();
+        if let Some(parent) = document.node(id).unwrap().parent() {
+            let marker = document
+                .node(parent)
+                .unwrap()
+                .first_child()
+                .expect("an attached node belongs to a nonempty parent");
+            if document.node(marker).unwrap().next_sibling() == Some(id)
+                && self.is_item_task(document, marker)
+            {
+                return value.trim_start_matches([' ', '\t']);
+            }
+        }
+        value
+    }
+
     fn peek_node<S: AsRef<str>>(&mut self, document: &Document<S>, id: NodeId) -> Option<char> {
         match &document.node(id).unwrap().kind {
-            EventKind::Text(value) | EventKind::SoftBreak(value) => {
+            EventKind::SoftBreak(value) => {
                 super::escape::literal_prefix(value.resolve(document.source()).unwrap())
             }
             EventKind::Start(Tag::Emphasis) => Some(self.options.emphasis),
@@ -685,6 +751,21 @@ impl<'a> State<'a> {
     }
 
     pub fn write_safe(&mut self, input: &str, info: &Info, encode: Option<char>) {
+        self.write_escaped(input, info, encode, false);
+    }
+
+    /// Write `input` with Markdown syntax escaped.
+    ///
+    /// With `overlapping`, each backslash before punctuation is doubled, even right after another
+    /// doubled backslash. Text needs this because adjacent text nodes are joined into one run;
+    /// labels and destinations keep the upstream behavior.
+    pub(super) fn write_escaped(
+        &mut self,
+        input: &str,
+        info: &Info,
+        encode: Option<char>,
+        overlapping: bool,
+    ) {
         let before = info.before(&self.output);
         let start = before.len();
         let end = start + input.len();
@@ -702,12 +783,22 @@ impl<'a> State<'a> {
             if right.0 == left.0 {
                 left.1.before &= right.1.before;
                 left.1.after &= right.1.after;
+                left.1.email &= right.1.email;
                 true
             } else {
                 false
             }
         });
-        let mut cursor = start;
+        // Email-only escapes depend on which other escapes apply, so decide them afterwards.
+        self.email_candidates.clear();
+        let candidates = &mut self.email_candidates;
+        self.escapes.retain(|&(position, ref flags)| {
+            if flags.email {
+                candidates.push(position);
+            }
+            !flags.email
+        });
+        self.applied.clear();
         let mut skip_until = 0;
         let before_last = before.chars().next_back();
         let before_email = email_domain(before.as_bytes().iter().rev());
@@ -740,9 +831,27 @@ impl<'a> State<'a> {
             {
                 continue;
             }
+            self.applied.push(position);
+        }
+        let mut added = false;
+        for &position in &self.email_candidates {
+            if position >= start
+                && position < end
+                && starts_email(input, start, position, info.after, &self.applied)
+            {
+                self.applied.push(position);
+                added = true;
+            }
+        }
+        if added {
+            self.applied.sort_unstable();
+        }
+        let mut cursor = start;
+        for &position in &self.applied {
             super::util::safe::write_backslashes(
                 &input[cursor - start..position - start],
                 "\\",
+                overlapping,
                 &mut self.output,
             );
             cursor = position;
@@ -762,6 +871,7 @@ impl<'a> State<'a> {
         super::util::safe::write_backslashes(
             &input[cursor - start..],
             info.after,
+            overlapping,
             &mut self.output,
         );
     }
@@ -782,6 +892,39 @@ impl<'a> State<'a> {
             "\n"
         } else {
             "\n\n"
+        }
+    }
+}
+
+/// Whether the `<` at `position` would start an email autolink once `applied` escapes are written.
+///
+/// An inserted backslash or character reference breaks the local part or domain. Output after `after` is unknown,
+/// so a scan that reaches its end without rejecting counts as a link, unless nothing follows at all. Email bytes
+/// never include `<`, so each scan stops before the next candidate and the total work stays linear.
+fn starts_email(
+    input: &str,
+    start: usize,
+    position: usize,
+    after: &str,
+    applied: &[usize],
+) -> bool {
+    let mut link = crate::util::autolink::Autolink::default();
+    let mut at = position + 1;
+    loop {
+        let byte = if at < start + input.len() {
+            if applied.binary_search(&at).is_ok() {
+                return false;
+            }
+            input.as_bytes()[at - start]
+        } else if let Some(&byte) = after.as_bytes().get(at - start - input.len()) {
+            byte
+        } else {
+            return !after.is_empty();
+        };
+        match link.advance(byte) {
+            None => return false,
+            Some(true) => return link.email(),
+            Some(false) => at += 1,
         }
     }
 }
