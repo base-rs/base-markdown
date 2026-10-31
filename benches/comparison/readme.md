@@ -92,23 +92,33 @@ Counts exclude input loading and options construction. Allocation calls and real
 Historical directories retain their original measurements, source identities, validation, rejected experiments, and architecture descriptions. Claims about removed APIs or parser designs apply to those recorded revisions. Compare engines within a study; do not combine percentage gains from different hosts, toolchains, or runs.
 
 - [Initial six-engine comparison](measurements/2026-10-23/) and [early follow-up](measurements/2026-10-23-followup/).
+
 - [Pull API](measurements/2026-10-23-pull/), [compact block preparation](measurements/2026-10-23-compact/), and [dispatch](measurements/2026-10-23-dispatch/).
+
 - [Reference resolution](measurements/2026-10-23-references/), [definition preparation](measurements/2026-10-23-definitions/), and [list/reference simplification](measurements/2026-10-24-streamline-lists-and-references/readme.md).
+
 - [Line scans](measurements/2026-10-24-line-scans/readme.md), [inline HTML and escaping](measurements/2026-10-24-inline-html-and-escaping/readme.md), and [HTML escape output](measurements/2026-10-24-escape-output/readme.md).
+
 - [Event delivery](measurements/2026-10-24-commonmark-events/readme.md), [HTML/GFM](measurements/2026-10-24-html-gfm/), [HTML writes](measurements/2026-10-24-html-writes/readme.md), and [text coalescing](measurements/2026-10-24-text-coalescing/readme.md).
+
 - [Hot paths](measurements/2026-10-24-hot-paths/readme.md), [implementation streamlining](measurements/2026-10-24-streamline/readme.md), and [event/storage simplification](measurements/2026-10-24-simplify-events/readme.md).
+
 - [MDX removal](measurements/2026-10-24-remove-mdx/readme.md), [dispatch recovery](measurements/2026-10-24-recover-throughput/readme.md), [single AST](measurements/2026-10-24-document-ast/readme.md), and [serializer/storage simplification](measurements/2026-10-24-streamline-serialization/readme.md).
+
 - [Single parser](measurements/2026-10-25-single-parser/readme.md) and [unified-parser throughput recovery](measurements/2026-10-25-recover-single-parser/readme.md).
 
 - [Reference labels and event phases](measurements/2026-10-25-labels-and-event-phases/readme.md).
+
 - [Source-backed reference keys and separator delivery](measurements/2026-10-25-event-delivery/readme.md).
 
 - [Unicode identifier folding and real documents](measurements/2026-10-25-normalize-identifiers/readme.md).
+
 - [Inline destination scanning on real documents](measurements/2026-10-25-inline-destinations/readme.md).
 
 - [Parser ownership and event-delivery consolidation](measurements/2026-10-25-parser-consolidation/readme.md).
 
 - [Markdown serializer and AST edit consolidation](measurements/2026-10-25-serializer-and-edits/readme.md).
+
 - [Static separators, borrowed unwrapping, and section-range removal](measurements/2026-10-25-static-separators-and-removal/readme.md).
 
 - [Serializer scratch rewrites, marker scanning, and literal lookahead](measurements/2026-10-25-serializer-rewrites-and-lookahead/readme.md).

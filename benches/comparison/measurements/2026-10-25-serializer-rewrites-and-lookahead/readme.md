@@ -25,7 +25,6 @@ Baseline is squash-merged #57, **`225cc0b8704e1c53dfeb060b16f6cae7551dc2dc`**, s
 | markdown/mixed-1m | 22.199250 | 20.351104 | -8.33% | 1.2% / 2.3% |
 | markdown/gfm-100k | 2.390346 | 2.269924 | -5.04% | 2.2% / 0.2% |
 
-
 Prepared-document Markdown serialization takes **5.0–8.3% less time** on the original four. Complete HTML ranges from **0.4% less to 1.8% more time**; mixed-1m is consistently slower across the three process medians, and the initial cohort also measured it 1.5% slower. The direct HTML source path is unchanged, but these results do not establish that its cost is identical. We retain that small regression rather than dismissing it as an anomaly.
 
 Original HTML includes parsing, rendering and output disposal. Original Markdown serializes and drops output from a prepared document; parsing is outside timing. This differs from earlier parse-plus-serialization measurements.
@@ -48,7 +47,6 @@ Original HTML includes parsing, rendering and output disposal. Original Markdown
 | controls/adjacent-ascii-8 | 0.003111 | 0.002120 | -31.84% | 3.8% / 2.2% |
 | controls/adjacent-unicode-8 | 0.003846 | 0.002809 | -26.95% | 1.0% / 1.2% |
 | controls/adjacent-punctuation-8 | 0.013241 | 0.013379 | +1.04% | 1.5% / 1.2% |
-
 
 The large code fence takes **95.3% less time** (21.3× faster), math block **56.9% less**, frontmatter **14.9% less**, and table **46.9% less**. Short plain code/math take **7.4%/7.8% less time** and short adjacent ASCII/Unicode text **31.8%/27.0% less**. Large densely adjacent leaf controls remain within 0.3%; repeated escaping of growing preceding context dominates their work. Short punctuation-heavy text takes **1.0% more time**. The candidate code-marker control has a 15.8% process spread; its slow round is retained.
 

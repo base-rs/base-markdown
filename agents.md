@@ -6,6 +6,4 @@
 
 ## Agent Context
 
-Run `cargo bake agent:context:install` to install context and skills from Cargo
-dependencies. Read `.agents/context/index.md` and the skills that apply to the
-task.
+Run `cargo bake agent:context:install` to install context and skills from Cargo dependencies. Read `.agents/context/index.md` and the skills that apply to the task.
