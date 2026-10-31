@@ -120,7 +120,7 @@ fn paragraph() {
             position: None
         }))
         .unwrap(),
-        "я\\_я\n",
-        "should support escaping around non-ascii"
+        "я_я\n",
+        "should not escape `_` between non-ASCII letters"
     );
 }

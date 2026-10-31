@@ -2,6 +2,10 @@
 
 Earlier history, from before the package was renamed from `socketry-markdown`, is in [releases/socketry-markdown.md](releases/socketry-markdown.md).
 
+## Unreleased
+
+- Leave underscores between letters or digits unescaped when serializing Markdown, as `mdast-util-to-markdown` does, so `io_uring` and `snake_case` no longer become `io\_uring` and `snake\_case`. Such underscores cannot open or close emphasis, so the rendered output is unchanged.
+
 ## v0.1.2
 
 - Replace a line ending before inline HTML only when the HTML could start an HTML block there, as `mdast-util-to-markdown` does. Line endings before other tags, such as `<span>` or `</span>`, are now kept, and a hard break before them is no longer lost.
