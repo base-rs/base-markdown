@@ -39,19 +39,6 @@ impl Trail {
     }
 }
 
-/// Where a `www.`, `http://` or `https://` literal autolink that starts `source` ends, as the
-/// parser reads it in a text run of its own.
-pub(crate) fn web_literal_end(source: &str) -> Option<usize> {
-    let marker = if source.len() >= 4 && source.as_bytes()[..4].eq_ignore_ascii_case(b"www.") {
-        3
-    } else {
-        source.find(':')?
-    };
-    web(source, 0, marker, source.len(), &mut Trail::default())
-        .filter(|found| found.start == 0)
-        .map(|found| found.end)
-}
-
 /// Recognize a protocol colon or the dot after `www`. The lower bound excludes stripped container prefixes and preceding inline constructs.
 pub(super) fn web(
     source: &str,

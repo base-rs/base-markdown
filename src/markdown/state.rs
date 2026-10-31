@@ -11,7 +11,7 @@ use crate::markdown::{
     util::{
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::format_heading_as_setext,
-        format_link_as_auto_link::{written_link, WrittenLink},
+        format_link_as_auto_link::{ends_at_boundary, written_link, WrittenLink},
         safe::EscapeInfos,
     },
     Options,
@@ -54,8 +54,6 @@ pub struct State<'a> {
     pub serialization_root: Option<NodeId>,
     definitions: Option<BTreeMap<String, NodeId>>,
     reference_key: String,
-    /// The last bare link, while text written next could still join it.
-    pub(super) bare_link: Option<BareLink>,
     /// Where attention content starts with whitespace, which is written as a reference.
     pub(super) attention_start: Option<usize>,
     /// Where attention closed after a character reference, so a letter after it is one too.
@@ -63,19 +61,9 @@ pub struct State<'a> {
     /// Output before this length is final. A node written only to look at its first character
     /// starts here and is cut back to it, so it must not change what was written before.
     pub(super) write_floor: usize,
-}
-
-/// Where a bare link was written, and what text written after it would join.
-#[derive(Clone, Copy)]
-pub(super) struct BareLink {
-    /// Where the link's text starts and ends in the output.
-    pub(super) start: usize,
-    pub(super) end: usize,
-    /// Where text written next starts, past any closing attention markers after the link.
-    pub(super) next: usize,
-    /// Whether the link is an email address, and whether the address may take a `/resource`.
-    pub(super) email: bool,
-    pub(super) resource: bool,
+    /// Where the phrasing of the paragraph, heading or table cell being written starts. A prefix
+    /// added later, such as a list item's indent, puts it at the start of a line.
+    pub(super) line_start: usize,
 }
 
 impl<'a> Info<'a> {
@@ -158,6 +146,12 @@ impl<'a> State<'a> {
         info: &Info,
     ) -> Result<(), Message> {
         let start = self.output.len();
+        if matches!(
+            document.node(parent).unwrap().kind,
+            EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_) | Tag::TableCell { .. })
+        ) {
+            self.line_start = start;
+        }
         let mut children = flow_children(document, parent).peekable();
         self.index_stack.push(0);
         let mut index = 0;
@@ -177,21 +171,21 @@ impl<'a> State<'a> {
             *self.index_stack.last_mut().unwrap() = index;
             let mut buffer = [0u8; 4];
             let after = if let Some(&next) = children.peek() {
-                if let Some(first) = self.peek_node(document, next) {
+                if let Some(first) = self.peek_node(document, next, Some(child)) {
                     first.encode_utf8(&mut buffer) as &str
                 } else {
                     // Render nodes without a fixed prefix to determine the next character.
                     let checkpoint = self.output.len();
                     // The current child is written between them, so the next node is rendered
                     // without the neighbours of the current one.
-                    let neighbours = (self.bare_link, self.attention_start, self.attention_end);
+                    let neighbours = (self.attention_start, self.attention_end);
                     self.clear_neighbours();
                     let floor = core::mem::replace(&mut self.write_floor, checkpoint);
                     self.write_node(document, next, &Info::new("", ""))?;
                     self.write_floor = floor;
                     let first = self.output[checkpoint..].chars().next().unwrap_or_default();
                     self.output.truncate(checkpoint);
-                    (self.bare_link, self.attention_start, self.attention_end) = neighbours;
+                    (self.attention_start, self.attention_end) = neighbours;
                     first.encode_utf8(&mut buffer)
                 }
             } else {
@@ -660,15 +654,14 @@ impl<'a> State<'a> {
             serialization_root: None,
             definitions: None,
             reference_key: String::new(),
-            bare_link: None,
             attention_start: None,
             attention_end: None,
             write_floor: 0,
+            line_start: 0,
         }
     }
 
     pub(super) fn clear_neighbours(&mut self) {
-        self.bare_link = None;
         self.attention_start = None;
         self.attention_end = None;
     }
@@ -717,7 +710,14 @@ impl<'a> State<'a> {
                 == title
     }
 
-    fn peek_node<S: AsRef<str>>(&mut self, document: &Document<S>, id: NodeId) -> Option<char> {
+    /// The first character `id` writes, when it is known without writing it. `previous` is the node
+    /// written before it.
+    fn peek_node<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        id: NodeId,
+        previous: Option<NodeId>,
+    ) -> Option<char> {
         match &document.node(id).unwrap().kind {
             EventKind::Text(value) | EventKind::SoftBreak(value) => {
                 super::escape::literal_prefix(value.resolve(document.source()).unwrap())
@@ -739,6 +739,7 @@ impl<'a> State<'a> {
                         id,
                         destination.resolve(document.source()).unwrap(),
                         title.is_some(),
+                        previous.map_or(true, |previous| ends_at_boundary(document, previous)),
                         self,
                     ) {
                         WrittenLink::Bare(text) => return text.chars().next(),

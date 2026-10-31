@@ -17,7 +17,6 @@ use alloc::{
 use core::{convert::TryFrom, ops::Range};
 
 mod autolink;
-pub(crate) use autolink::web_literal_end;
 
 // Inline destinations only need scalar handling at escapes, parentheses, whitespace, or controls.
 // NUL remains ordinary destination data; value decoding replaces it later.

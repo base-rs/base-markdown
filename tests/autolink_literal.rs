@@ -2994,50 +2994,50 @@ fn backslashes_end_literal_autolinks() {
         (
             "www.com\\_\n",
             "<p><a href=\"http://www.com\">www.com</a>_</p>\n",
-            "www.com\\_\n",
+            "[www.com](http://www.com)\\_\n",
         ),
         (
             "www.a\\_b.com\n",
             "<p><a href=\"http://www.a\">www.a</a>_b.com</p>\n",
-            "www.a\\_b.com\n",
+            "[www.a](http://www.a)\\_b.com\n",
         ),
         (
             "https://a.b/c\\\nb\n",
             "<p><a href=\"https://a.b/c\">https://a.b/c</a><br />\nb</p>\n",
-            "https://a.b/c\\\nb\n",
+            "<https://a.b/c>\\\nb\n",
         ),
         (
             "www.x.org\\\nb\n",
             "<p><a href=\"http://www.x.org\">www.x.org</a><br />\nb</p>\n",
-            "www.x.org\\\nb\n",
+            "[www.x.org](http://www.x.org)\\\nb\n",
         ),
         (
             "http://a.b/x\\y\n",
             "<p><a href=\"http://a.b/x\">http://a.b/x</a>\\y</p>\n",
-            "http://a.b/x\\y\n",
+            "<http://a.b/x>\\y\n",
         ),
         (
             "a@b.c\\d\n",
             "<p><a href=\"mailto:a@b.c\">a@b.c</a>\\d</p>\n",
-            "a@b.c\\d\n",
+            "<a@b.c>\\d\n",
         ),
         // A backslash before the local part blocks an email literal, as `/` does.
         (
             "http://x\\a@b.c\n",
             "<p><a href=\"http://x\">http://x</a>\\a@b.c</p>\n",
-            "http://x\\a@b.c\n",
+            "<http://x>\\a@b.c\n",
         ),
         ("x\\a@b.c\n", "<p>x\\a@b.c</p>\n", "x\\a@b.c\n"),
         (
             "(see https://a.b/c\\)\n",
             "<p>(see <a href=\"https://a.b/c\">https://a.b/c</a>)</p>\n",
-            "(see https://a.b/c)\n",
+            "(see <https://a.b/c>)\n",
         ),
         // Trailing punctuation before the backslash is outside the link, as at the end of the text.
         (
             "https://a.b/c.\\\n",
             "<p><a href=\"https://a.b/c\">https://a.b/c</a>.\\</p>\n",
-            "https://a.b/c.\\\\\n",
+            "<https://a.b/c>.\\\\\n",
         ),
         // As at the end of the text, a bare `www.` before a backslash is not a link.
         ("www.\\\nb\n", "<p>www.<br />\nb</p>\n", "www.\\\nb\n"),

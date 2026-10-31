@@ -7,6 +7,7 @@ mod support;
 use base_markdown::markdown::{LineWrapping, Options};
 use base_markdown::Document;
 use pretty_assertions::assert_eq;
+use support::fixture::canonical;
 use support::fixture::to_markdown as to;
 use support::fixture::to_markdown_with_options as to_with_options;
 use support::fixture::{
@@ -219,29 +220,32 @@ fn two_passes(source: &str) -> (String, String) {
 }
 
 #[test]
-fn literal_autolinks_are_written_as_authored() {
+fn literal_autolinks_between_boundaries_are_written_as_authored() {
+    // A bare link is written bare when whitespace or a line boundary is on both sides of it.
     for source in [
         "www.example.com\n",
         "https://a.b/c\n",
         "a@b.co\n",
         "x@a_b.com www.a.b_c\n",
-        "see www.a.b, then https://c.d/e?f and x@y.co.\n",
-        "(www.a.b) - https://c.d\n",
-        "*www.a.b* (www.c.d) ~~e@f.gh~~\n",
-        "**www.a.b**.\n",
+        "see www.a.b now\n",
+        "https://a.b/c\nnext\n",
+        "a\nhttps://a.b/c\n",
+        "x\thttps://a.b/c\ty\n",
+        "a\\\nhttps://a.b/c\n",
         "- www.a.b\n- https://c.d\n",
+        "1. www.a.b\n",
+        "- [ ] www.a.b\n",
         "> www.a.b\n",
         "# www.a.b\n",
+        "## a www.a.b\n",
         "| www.a.b |\n| --- |\n| x@y.z |\n",
-        "x@y.z~www.c.d\n",
-        "\\<a@b.c>\n",
-        // A `<` before a bare link stays escaped when `>` would close an autolink around it.
-        "\\<1@a.b> x\n",
-        "\\<1@a.b\n",
+        "| a |\n| --- |\n| x https://a.b/c y |\n",
+        "www.a.b *x*\n",
+        "*x* www.a.b\n",
+        "xmpp:a@b.c/x\n",
+        "ssh://a.b\n",
         "\\\\<1@a.b>\n",
         "\\x@y.z\n",
-        "\\&x@y.z\n",
-        "www.a.b. x\n",
         "[www.a.b](http://www.a.b) <https://a.b> <a@b.c>\n",
     ] {
         let (first, second) = two_passes(source);
@@ -251,23 +255,94 @@ fn literal_autolinks_are_written_as_authored() {
 }
 
 #[test]
+fn literal_autolinks_next_to_anything_else_are_written_as_autolinks_or_explicitly() {
+    // No punctuation counts as a boundary. An address or a URL with a scheme is written between
+    // angle brackets, and a `www.` link explicitly.
+    for (source, expected) in [
+        ("www.x.org.\n", "[www.x.org](http://www.x.org).\n"),
+        ("a https://a.b/c, b\n", "a <https://a.b/c>, b\n"),
+        ("(https://a.b/c)\n", "(<https://a.b/c>)\n"),
+        (
+            "(www.a.b) - https://c.d\n",
+            "([www.a.b](http://www.a.b)) - https://c.d\n",
+        ),
+        ("https://a.b/c. x\n", "<https://a.b/c>. x\n"),
+        ("www.a.b. x\n", "[www.a.b](http://www.a.b). x\n"),
+        ("www.a.b* x\n", "[www.a.b](http://www.a.b)\\* x\n"),
+        ("www.com_\n", "[www.com](http://www.com)\\_\n"),
+        ("http://a.b/c_(d)_ x\n", "<http://a.b/c_(d)>\\_ x\n"),
+        ("https://a.b/?x=1&amp;\n", "<https://a.b/?x=1>&\n"),
+        ("www.a.b&amp;. c\n", "[www.a.b](http://www.a.b)&. c\n"),
+        ("WWW.www&amp;\n", "[WWW.www](http://WWW.www)&\n"),
+        ("xx@y.z\\-\n", "<xx@y.z>-\n"),
+        ("a@b.c&#x2D;d\n", "<a@b.c>-d\n"),
+        ("a@b.c&#46;d\n", "<a@b.c>.d\n"),
+        ("x@y.z\\.c\n", "<x@y.z>.c\n"),
+        ("x@y.z\\_a.b\n", "<x@y.z>\\_a.b\n"),
+        ("x@y.z&#x61;\n", "<x@y.z>a\n"),
+        ("x@y.co.\n", "<x@y.co>.\n"),
+        ("xmpp:a@b.c&#x2F;x\n", "<xmpp:a@b.c>/x\n"),
+        ("a@b.c\u{2014}\n", "<a@b.c>\u{2014}\n"),
+        ("x\u{2014}https://a.b/c\n", "x\u{2014}<https://a.b/c>\n"),
+        ("`x`https://a.b/c\n", "`x`<https://a.b/c>\n"),
+        ("\\.x@y.z\n", ".<x@y.z>\n"),
+        ("\\\\x@y.z\n", "\\\\<x@y.z>\n"),
+        ("\\<a@b.c>\n", "<<a@b.c>>\n"),
+        ("x@y.z~www.c.d\n", "<x@y.z>~[www.c.d](http://www.c.d)\n"),
+        ("x@y.co1_www.\n", "[x@y.co1_www](mailto:x@y.co1_www).\n"),
+        ("https://a.b/c  \nb\n", "<https://a.b/c>\\\nb\n"),
+        (
+            "https://api.example.com/**\n",
+            "<https://api.example.com/>\\*\\*\n",
+        ),
+        // Inside attention, the marker is next to the link.
+        ("*https://a.b/c*\n", "*<https://a.b/c>*\n"),
+        ("**www.a.b**.\n", "**[www.a.b](http://www.a.b)**.\n"),
+        ("~~e@f.gh~~\n", "~~<e@f.gh>~~\n"),
+        (
+            "**bold www.x.y**\\-\n",
+            "**bold [www.x.y](http://www.x.y)**-\n",
+        ),
+        ("~~*www.a.b*~~&amp;\n", "~~*[www.a.b](http://www.a.b)*~~&\n"),
+        ("*a@b.c*.d\n", "*<a@b.c>*.d\n"),
+        // In a table cell, the cell's pipe is not next to the link, but punctuation is.
+        (
+            "| a |\n| - |\n| https://a.b/c. |\n",
+            "| a |\n| --- |\n| <https://a.b/c>. |\n",
+        ),
+        (
+            "| a |\n| - |\n| www.a\\|b |\n",
+            "| a |\n| --- |\n| [www.a](http://www.a)\\|b |\n",
+        ),
+        // The node after the one next to the link is looked at without the link beside it.
+        (
+            "#/[$@--~_|;[a]/_|x@y.z(1~+\n",
+            "\\#/\\[\\$@--~~*|;\\[a]/*|<x@y.z>(1~~+\n",
+        ),
+        ("http://b<!/ @\n", "<http://b>\\<!/ @\n"),
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+        let options = base_markdown::ParseOptions::gfm();
+        assert_eq!(
+            canonical(&Document::parse(first.as_str(), &options).unwrap()),
+            canonical(&Document::parse(source, &options).unwrap()),
+            "{source:?}"
+        );
+    }
+}
+#[test]
 fn escapes_that_only_kept_text_from_linking_are_dropped() {
     // Text is not escaped to keep GFM from linking it, so it may link once it is written.
     for (source, expected) in [
         ("www\\.example.com\n", "www.example.com\n"),
         ("http\\://example.com\n", "http://example.com\n"),
         ("x\\@example.com\n", "x@example.com\n"),
-        ("\\.x@y.z\n", ".x@y.z\n"),
-        // Characters an email address would take keep their escape, which ends it.
-        ("x@y.z\\.c\n", "x@y.z\\.c\n"),
-        ("xx@y.z\\-\n", "xx@y.z\\-\n"),
-        ("x@y.z\\_a.b\n", "x@y.z\\_a.b\n"),
-        ("x@y.z&#x61;\n", "x@y.z&#x61;\n"),
-        ("\\\\x@y.z\n", "\\x@y.z\n"),
+        ("\\\\x&#64;y.z\n", "\\x@y.z\n"),
         // Underscores in an email domain are not escaped either.
         ("x\\@a_b.com\n", "x@a_b.com\n"),
         ("x&#64;a_b.com\n", "x@a_b.com\n"),
-        ("x\\@y.co1\\_www.\n", "x@y.co1_www.\n"),
         // Adjacent escaped backslashes each keep their escape.
         ("\\\\\\\\.\n", "\\\\\\\\.\n"),
         ("a\\\\\\\\*b*\n", "a\\\\\\\\*b*\n"),
@@ -278,57 +353,34 @@ fn escapes_that_only_kept_text_from_linking_are_dropped() {
         assert_eq!(second, first, "{source:?}");
     }
 }
-
 #[test]
-fn literal_autolinks_are_written_as_their_text_before_escaped_neighbours() {
-    // A bare link is written as its text, and the text after it is escaped as anywhere else. A
-    // backslash ends a bare link, so these read back as the same link.
-    for (source, expected) in [
-        ("www.com_\n", "www.com\\_\n"),
-        ("www.a.b* x\n", "www.a.b\\* x\n"),
-        ("http://a.b/c_(d)_ x\n", "http://a.b/c_(d)\\_ x\n"),
-        ("www.a.b www.com_ x@y.z\n", "www.a.b www.com\\_ x@y.z\n"),
-        // The link would take a `&` that ends the text, so it is escaped.
-        ("WWW.www&amp;\n", "WWW.www\\&\n"),
-        ("https://a.b/c  \nb\n", "https://a.b/c\\\nb\n"),
+fn text_that_becomes_a_literal_autolink_settles_after_two_passes() {
+    // Text that links once written is a bare link on the next pass, which falls back when
+    // something other than whitespace is next to it, and then stays.
+    for (source, second) in [
+        ("x\\\\x\\@y.z\n", "x\\x@y.z\n"),
         (
-            "https://api.example.com/**\n",
-            "https://api.example.com/\\*\\*\n",
+            "mailto:<a@b.c>\\\\www&#64;\\.0\\_a.b\n",
+            "mailto:<a@b.c>\\www@.0_a.b\n",
         ),
+        ("x\\@y.co1\\_www.\n", "[x@y.co1_www](mailto:x@y.co1_www).\n"),
+        (
+            "> - //&amp;x@y.z9\\_www\n",
+            "> - //&[x@y.z9_www](mailto:x@y.z9_www)\n",
+        ),
+        ("&x&#64;y.z\n", "&<x@y.z>\n"),
+        ("&amp;http\\://a.b\n", "&<http://a.b>\n"),
+        ("\\\\http\\://a.b\n", "\\\\<http://a.b>\n"),
     ] {
-        let (first, second) = two_passes(source);
-        assert_eq!(first, expected, "{source:?}");
-        assert_eq!(second, first, "{source:?}");
-        let options = base_markdown::Options::gfm();
+        let (_, written) = two_passes(source);
+        assert_eq!(written, second, "{source:?}");
         assert_eq!(
-            base_markdown::to_html_with_options(&first, &options),
-            base_markdown::to_html_with_options(source, &options),
+            two_passes(&written),
+            (written.clone(), written.clone()),
             "{source:?}"
         );
     }
-    // An email ends at the backslash already.
-    assert_eq!(
-        two_passes("x@y.z_\n"),
-        ("x@y.z\\_\n".into(), "x@y.z\\_\n".into())
-    );
 }
-
-#[test]
-fn text_that_becomes_a_literal_autolink_settles_after_one_pass() {
-    for source in [
-        "> - //&amp;x@y.z9\\_www\n",
-        "mailto:<a@b.c>\\\\www&#64;\\.0\\_a.b\n",
-        "&x&#64;y.z\n",
-        "\\\\x&#64;y.z\n",
-        "&amp;http\\://a.b\n",
-        "\\\\http\\://a.b\n",
-        "x\\\\x\\@y.z\n",
-    ] {
-        let (first, second) = two_passes(source);
-        assert_eq!(second, first, "{source:?}");
-    }
-}
-
 #[test]
 fn literal_autolinks_keep_escapes_their_context_needs() {
     for source in [
@@ -569,65 +621,6 @@ fn whitespace_inside_attention_keeps_the_text_before_it() {
                 }
             }
         }
-    }
-}
-
-#[test]
-fn text_after_attention_around_a_bare_link_does_not_join_it() {
-    let options = base_markdown::Options::gfm();
-    for (source, expected) in [
-        (
-            "**www.example.com**&amp; more\n",
-            "**www.example.com**\\& more\n",
-        ),
-        ("**bold www.x.y**\\-\n", "**bold www.x.y**\\-\n"),
-        // The link reads on across every closing marker after it.
-        ("~~*www.a.b*~~&amp;\n", "~~*www.a.b*~~\\&\n"),
-        ("~~https://a.b/c~~&amp;\n", "~~https://a.b/c~~\\&\n"),
-        // Text the link would leave out is written as it is.
-        ("*www.a.b*.\n", "*www.a.b*.\n"),
-        ("*www.a.b* x\n", "*www.a.b* x\n"),
-        // An address cannot reach across a marker.
-        ("*a@b.c*.d\n", "*a@b.c*.d\n"),
-    ] {
-        let (first, second) = two_passes(source);
-        assert_eq!(first, expected, "{source:?}");
-        assert_eq!(second, first, "{source:?}");
-        let html = |value: &str| base_markdown::to_html_with_options(value, &options);
-        assert_eq!(html(&first), html(source), "{source:?}");
-    }
-}
-
-#[test]
-fn characters_a_literal_autolink_would_take_end_it() {
-    for (source, expected) in [
-        // A backslash ends a web link, so text the link would take is escaped.
-        ("www.a.b&amp; c\n", "www.a.b\\& c\n"),
-        ("https://a.b/?x=1&amp;\n", "https://a.b/?x=1\\&\n"),
-        ("www.a\\_b.com\n", "www.a\\_b.com\n"),
-        ("www.a.b&amp;. c\n", "www.a.b\\&. c\n"),
-        // Text the link would leave out is written as it is.
-        ("https://a.b/c. x\n", "https://a.b/c. x\n"),
-        ("(https://a.b/c) x\n", "(https://a.b/c) x\n"),
-        ("a@b.c&#46;d\n", "a@b.c\\.d\n"),
-        ("a@b.c&#46;\n", "a@b.c.\n"),
-        ("a@b.c&#x2D;d\n", "a@b.c\\-d\n"),
-        // Only an `xmpp:` address takes a `/resource`.
-        ("xmpp:a@b.c&#x2F;x\n", "xmpp:a@b.c\\/x\n"),
-        ("a@b.c&#x2F;x\n", "a@b.c/x\n"),
-        // Only the text written right after the link changes, even when a later node is
-        // rendered again from the same place.
-        (
-            "#/[$@--~_|;[a]/_|x@y.z(1~+\n",
-            "\\#/\\[\\$@--~~*|;\\[a]/*|x@y.z(1~~+\n",
-        ),
-        // The node after the one next to the link is looked at without the link beside it.
-        ("http://b\\<!/ @\n", "http://b\\<!/ @\n"),
-        ("http://b<!/ @\n", "http://b\\<!/ @\n"),
-    ] {
-        let (first, second) = two_passes(source);
-        assert_eq!(first, expected, "{source:?}");
-        assert_eq!(second, first, "{source:?}");
     }
 }
 

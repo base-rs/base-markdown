@@ -5,23 +5,21 @@
 use super::{
     configure::IndentOptions,
     construct_name::ConstructName,
-    state::{flow_children, unsupported_content, BareLink, Info, State},
+    state::{flow_children, unsupported_content, Info, State},
     util::{
         contains_control_or_whitespace::contains_control_or_whitespace,
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::format_heading_as_setext,
-        format_link_as_auto_link::{written_link, WrittenLink},
+        format_link_as_auto_link::{boundary, written_link, WrittenLink},
         scan::longest_run,
     },
 };
 use crate::{
-    inline_parser::web_literal_end,
     message::Message,
     stream::{EventKind, Tag},
     util::{
         char::{classify, Kind},
         line_ending::line_endings,
-        scheme::{scheme, SchemeKind},
     },
     CodeFence, Document, NodeId, NodeSyntax, ReferenceKind,
 };
@@ -200,7 +198,7 @@ impl State<'_> {
         // reference. A marker between a reference and a letter neither opens nor closes either, so
         // that letter is a reference too.
         let leading = starts_with_whitespace(document, node);
-        if leading && self.bare_link.map(|link| link.next) != Some(self.output.len()) {
+        if leading {
             // Output before the floor is final, so the character is only rewritten above it.
             if let Some(previous) = self.output.chars().next_back().filter(|&previous| {
                 classify(previous) == Kind::Other
@@ -222,15 +220,7 @@ impl State<'_> {
         let inner = Info::at(start, content, info.after);
         self.container_phrasing(document, node, &inner)?;
         let trailing = encode_trailing_whitespace(&mut self.output, content);
-        // A web link reads on across the closing marker, so text after it may still join it.
-        let link = self
-            .bare_link
-            .filter(|link| link.next == self.output.len() && !link.email);
         self.output.extend(core::iter::repeat(marker).take(length));
-        self.bare_link = link.map(|link| BareLink {
-            next: self.output.len(),
-            ..link
-        });
         if trailing && info.after.chars().next().map(classify) == Some(Kind::Other) {
             self.attention_end = Some(self.output.len());
         }
@@ -398,7 +388,7 @@ impl State<'_> {
             crate::markdown::LineWrapping::Unwrap => unwrap_soft_line_breaks(content),
         };
         let at = Some(self.output.len());
-        // Next to an attention marker or after a bare link, the first character may need another form.
+        // Next to an attention marker, the first character may need another form.
         let consumed = if let Some(first) = value.chars().next().filter(|&first| {
             self.attention_start == at && edge_whitespace(first)
                 || self.attention_end == at && classify(first) == Kind::Other
@@ -406,30 +396,6 @@ impl State<'_> {
             write!(self.output, "&#x{:X};", u32::from(first))
                 .expect("String writing is infallible");
             first.len_utf8()
-        } else if let Some(byte) = self
-            .bare_link
-            .filter(|link| Some(link.next) == at)
-            .and_then(|link| {
-                if link.email {
-                    joining_byte(&value, info.after, link.resource)
-                } else {
-                    extends_web_link(
-                        &self.output[link.start..link.next],
-                        link.end - link.start,
-                        &value,
-                        info.after,
-                    )
-                }
-            })
-        {
-            // A bare link would take this character, so it is written in a form that ends the link.
-            if byte.is_ascii_punctuation() {
-                self.output.push('\\');
-                self.output.push(char::from(byte));
-            } else {
-                write!(self.output, "&#x{:X};", byte).expect("String writing is infallible");
-            }
-            1
         } else {
             0
         };
@@ -457,29 +423,19 @@ impl State<'_> {
         let quote = self.options.check_quote()?;
         let start = self.output.len();
         if !image {
-            match written_link(document, node, destination, title.is_some(), self) {
+            let after_boundary = self.output.len() == self.line_start
+                || self.output.chars().next_back().map_or(true, boundary);
+            match written_link(
+                document,
+                node,
+                destination,
+                title.is_some(),
+                after_boundary,
+                self,
+            ) {
                 WrittenLink::Bare(text) => {
-                    escape_angle_before(&mut self.output, self.write_floor, text);
-                    let text_start = self.output.len();
+                    // Between boundaries, nothing next to the link can change where it ends.
                     self.output.push_str(text);
-                    // GFM splits table cells at `|` before it finds literal autolinks.
-                    if self.stack.contains(&ConstructName::TableCell) {
-                        escape_table_pipes(&mut self.output, text_start);
-                    }
-                    let address = destination
-                        .split_once(':')
-                        .and_then(|(name, _)| scheme(name.as_bytes()))
-                        .and_then(|scheme| match scheme.kind {
-                            SchemeKind::Address { resource } => Some(resource),
-                            _ => None,
-                        });
-                    self.bare_link = Some(BareLink {
-                        start: text_start,
-                        end: self.output.len(),
-                        next: self.output.len(),
-                        email: address.is_some(),
-                        resource: address == Some(true),
-                    });
                     return Ok(());
                 }
                 WrittenLink::Angle(text) => {
@@ -905,70 +861,6 @@ fn encode_trailing_whitespace(output: &mut String, start: usize) -> bool {
     output.truncate(end);
     write!(output, "&#x{:X};", u32::from(last)).expect("String writing is infallible");
     true
-}
-
-/// The first byte of text after a bare email address, when the address would take it. An address
-/// stops at any escape or character reference, and takes a `/` only when its scheme allows a
-/// `/resource`.
-fn joining_byte(text: &str, after: &str, resource: bool) -> Option<u8> {
-    let mut bytes = text.bytes().chain(after.bytes());
-    let byte = bytes.next();
-    let joins = match byte {
-        Some(b'-' | b'_' | b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z') => true,
-        Some(b'/') => resource,
-        Some(b'.') => bytes
-            .next()
-            .is_some_and(|next| next.is_ascii_alphanumeric()),
-        _ => false,
-    };
-    byte.filter(|_| joins)
-}
-
-/// The first byte of text after a bare web link, when the text would change where the link ends
-/// and a backslash, which ends the link, can escape it. Other characters are left as they are.
-/// `written` is the link's text, `length` bytes, then any closing markers written after it.
-fn extends_web_link(written: &str, length: usize, text: &str, after: &str) -> Option<u8> {
-    let byte = text.bytes().next().filter(u8::is_ascii_punctuation)?;
-    if web_literal_end(&written[..length]) != Some(length) {
-        return None;
-    }
-    // The link can only reach as far as the next whitespace.
-    let run = text
-        .find(|character: char| character.is_whitespace())
-        .unwrap_or(text.len());
-    let mut joined = String::with_capacity(written.len() + run + after.len());
-    joined.push_str(written);
-    joined.push_str(&text[..run]);
-    if run == text.len() {
-        joined.push_str(after);
-    }
-    (web_literal_end(&joined) != Some(length)).then_some(byte)
-}
-
-/// Escape a `<` that ends `output` when `<text>` would be an autolink, where `text` is a bare link
-/// written next. The `<` was text before the link, since the parser had not linked it. Output
-/// before `floor` is final, so a `<` there is left as it is.
-fn escape_angle_before(output: &mut String, floor: usize, text: &str) {
-    let Some(angle) = output
-        .len()
-        .checked_sub(1)
-        .filter(|&angle| angle >= floor && output.as_bytes()[angle] == b'<')
-    else {
-        return;
-    };
-    let backslashes = output.as_bytes()[..angle]
-        .iter()
-        .rev()
-        .take_while(|&&byte| byte == b'\\')
-        .count();
-    let mut link = crate::util::autolink::Autolink::default();
-    // The link ends before a `>`, so `<text>` would read as an autolink when a `>` completes it.
-    if backslashes % 2 == 0
-        && text.bytes().all(|byte| link.advance(byte) == Some(false))
-        && link.advance(b'>') == Some(true)
-    {
-        output.insert(angle, '\\');
-    }
 }
 
 /// Escape each pipe after `start` that an even run of backslashes leaves splitting a table cell.

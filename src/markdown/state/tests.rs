@@ -85,7 +85,7 @@ fn literal_lookahead_matches_rendering_across_scopes_and_wrapping_modes() {
         .append_child(document.root(), EventKind::Text(Text::Literal("")))
         .unwrap();
     assert_eq!(
-        State::new(&Options::default()).peek_node(&document, text),
+        State::new(&Options::default()).peek_node(&document, text, None),
         None
     );
     let scopes = [
@@ -111,7 +111,7 @@ fn literal_lookahead_matches_rendering_across_scopes_and_wrapping_modes() {
                         .unwrap();
                     let mut state = State::new(&options);
                     state.enter(scope);
-                    if let Some(prefix) = state.peek_node(&document, text) {
+                    if let Some(prefix) = state.peek_node(&document, text, None) {
                         state
                             .write_node(&document, text, &Info::new("", ""))
                             .unwrap();
@@ -228,19 +228,13 @@ fn serializes_table_cells_with_escaped_pipes() {
 }
 
 #[test]
-fn text_after_a_bare_link_keeps_a_literal_context() {
+fn text_after_closed_attention_keeps_a_literal_context() {
     // Text written first in its container sees what the container follows as a literal, which
-    // still holds once the character the bare link would take is escaped.
+    // still holds once its first character is written as a reference.
     let options = Options::default();
     let mut state = State::new(&options);
-    state.output.push_str("www.a.b");
-    state.bare_link = Some(super::BareLink {
-        start: 0,
-        end: state.output.len(),
-        next: state.output.len(),
-        email: false,
-        resource: false,
-    });
-    state.text("_c", &Info::new("", "")).unwrap();
-    assert_eq!(state.output, "www.a.b\\_c");
+    state.output.push_str("*a&#x20;*");
+    state.attention_end = Some(state.output.len());
+    state.text("b_", &Info::new("", "")).unwrap();
+    assert_eq!(state.output, "*a&#x20;*&#x62;_");
 }
