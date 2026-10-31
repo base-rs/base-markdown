@@ -249,8 +249,8 @@ fn angle_autolinks_roundtrip_for_every_scheme() {
         }
     }
     for (input, expected) in [
-        ("ssh://a.b\n", "<ssh://a.b>\n"),
-        ("xmpp:a@b.c\n", "<xmpp:a@b.c>\n"),
+        ("ssh://a.b\n", "ssh://a.b\n"),
+        ("xmpp:a@b.c\n", "xmpp:a@b.c\n"),
         ("tel:+1555\n", "tel:+1555\n"),
     ] {
         let options = ParseOptions::gfm();

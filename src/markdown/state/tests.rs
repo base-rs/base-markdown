@@ -226,3 +226,15 @@ fn serializes_table_cells_with_escaped_pipes() {
     state.render_table_row(&document, row).unwrap();
     assert_eq!(state.output, "| plain α | ``a`b`` | a\\|b | `a\\|b` |  |");
 }
+
+#[test]
+fn text_after_a_bare_link_keeps_a_literal_context() {
+    // Text written first in its container sees what the container follows as a literal, which
+    // still holds once the character the bare link would take is escaped.
+    let options = Options::default();
+    let mut state = State::new(&options);
+    state.output.push_str("www.a.b");
+    state.bare_link_end = Some((0, state.output.len(), false));
+    state.text("_c", &Info::new("", "")).unwrap();
+    assert_eq!(state.output, "www.a.b\\_c");
+}
