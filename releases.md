@@ -2,7 +2,7 @@
 
 Earlier history, from before the package was renamed from `socketry-markdown`, is in [releases/socketry-markdown.md](releases/socketry-markdown.md).
 
-## Unreleased
+## v0.1.2
 
 - Replace a line ending before inline HTML only when the HTML could start an HTML block there, as `mdast-util-to-markdown` does. Line endings before other tags, such as `<span>` or `</span>`, are now kept, and a hard break before them is no longer lost.
 - Keep a hard break before inline HTML that could start an HTML block by indenting the next line four spaces, so it continues the paragraph. Previously the break's line ending was replaced with a space, leaving a literal backslash.

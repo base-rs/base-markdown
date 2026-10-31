@@ -43,6 +43,11 @@ Prepare a release with `cargo bake cargo:version:patch` (or `minor`, `major`, or
 
 See [releases.md](releases.md) for the full release history.
 
+### v0.1.2
+
+- Replace a line ending before inline HTML only when the HTML could start an HTML block there, as `mdast-util-to-markdown` does. Line endings before other tags, such as `<span>` or `</span>`, are now kept, and a hard break before them is no longer lost.
+- Keep a hard break before inline HTML that could start an HTML block by indenting the next line four spaces, so it continues the paragraph. Previously the break's line ending was replaced with a space, leaving a literal backslash.
+
 ### v0.1.1
 
 - Keep inline HTML after text unchanged when serializing Markdown. Previously each serialization added a space before inline HTML in paragraphs, including those in block quotes and list items, so repeated normalization kept growing the gap. Only a line ending directly before inline HTML is now replaced with a space.
