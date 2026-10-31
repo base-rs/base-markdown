@@ -2,6 +2,11 @@
 
 Earlier history, from before the package was renamed from `socketry-markdown`, is in [releases/socketry-markdown.md](releases/socketry-markdown.md).
 
+## Unreleased
+
+- Escape Markdown syntax in GFM table cells as in paragraphs, as `mdast-util-to-markdown` does. Cell text such as `\_a\_` or `\*b\*` was previously written unescaped and re-parsed as emphasis.
+- Escape pipes inside code in GFM table cells. GFM splits cells before parsing code, so an unescaped pipe in code split the cell, and usually stopped the table from parsing at all.
+
 ## v0.1.3
 
 - Add `normalize_markdown` and `normalize_markdown_with_options`, which parse Markdown with GFM, frontmatter, and math and serialize it with default formatting and soft line breaks unwrapped. This is the normalization `bake-markdown` applies, so tools that generate Markdown can produce output it leaves unchanged.

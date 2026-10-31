@@ -479,7 +479,9 @@ impl<'a> State<'a> {
                 self.output.push_str(" | ");
             }
             let start = self.output.len();
+            self.enter(ConstructName::Phrasing);
             self.container_phrasing(document, cell, &Info::new("", ""))?;
+            self.exit();
             if self.output[start..].contains('|') {
                 self.rewrite(start, |value, output| write_table_pipes(value, output));
             }
@@ -858,17 +860,19 @@ fn write_table_pipes(value: &str, result: &mut String) {
                 code_ticks = Some(ticks);
             }
         } else {
-            if code_ticks.is_none() {
-                let slashes = bytes[..index]
+            // GFM splits cells before parsing code, so pipes in code need escapes too; backslashes there are literal.
+            if code_ticks.is_some()
+                || bytes[..index]
                     .iter()
                     .rev()
                     .take_while(|&&byte| byte == b'\\')
-                    .count();
-                if slashes % 2 == 0 {
-                    result.push_str(&value[start..index]);
-                    result.push('\\');
-                    start = index;
-                }
+                    .count()
+                    % 2
+                    == 0
+            {
+                result.push_str(&value[start..index]);
+                result.push('\\');
+                start = index;
             }
             index += 1;
         }

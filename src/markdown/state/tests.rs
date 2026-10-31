@@ -199,14 +199,14 @@ fn detects_matching_and_nonmatching_code_fences() {
 }
 
 #[test]
-fn escapes_pipes_outside_unmatched_code_spans_and_after_even_backslashes() {
+fn escapes_pipes_in_code_spans_and_after_even_backslashes() {
     assert_eq!(escape_table_pipes(r"``code`| value"), r"``code`\| value");
     assert_eq!(escape_table_pipes(r"two \\|"), r"two \\\|");
     assert_eq!(escape_table_pipes(r"one \|"), r"one \|");
     assert_eq!(escape_table_pipes("α|🙂||ω"), "α\\|🙂\\|\\|ω");
     assert_eq!(
         escape_table_pipes(r"```α|🙂```|`x|y`|``z|w``"),
-        r"```α|🙂```\|`x|y`\|``z|w``"
+        r"```α\|🙂```\|`x\|y`\|``z\|w``"
     );
     assert_eq!(escape_table_pipes(r"`α|🙂``|ω"), r"`α\|🙂``\|ω");
 }
@@ -230,13 +230,13 @@ fn table_pipe_runs_preserve_the_scalar_writer() {
                     code_ticks = Some(ticks);
                 }
                 result.push_str(&value[start..index]);
-            } else if bytes[index] == b'|' && code_ticks.is_none() {
+            } else if bytes[index] == b'|' {
                 let slashes = result[start_output..]
                     .chars()
                     .rev()
                     .take_while(|character| *character == '\\')
                     .count();
-                if slashes % 2 == 0 {
+                if code_ticks.is_some() || slashes % 2 == 0 {
                     result.push('\\');
                 }
                 result.push('|');
@@ -300,5 +300,5 @@ fn serializes_table_cells_with_and_without_pipe_rewrites() {
     let options = Options::default();
     let mut state = State::new(&options);
     state.render_table_row(&document, row).unwrap();
-    assert_eq!(state.output, "| plain α | ``a`b`` | a\\|b | `a|b` |  |");
+    assert_eq!(state.output, "| plain α | ``a`b`` | a\\|b | `a\\|b` |  |");
 }
