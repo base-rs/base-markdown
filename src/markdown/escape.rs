@@ -228,10 +228,9 @@ impl Rule {
                     return None;
                 }
             }
+            // `<` could start HTML (`!`, `/`, `?` or a letter) or an email autolink (any atext byte, such as `1` in `<1@a.b>`).
             After::Html => {
-                if next.is_some_and(|byte| {
-                    matches!(byte, b'!' | b'/' | b'?') || byte.is_ascii_alphabetic()
-                }) {
+                if next.is_some_and(|byte| byte == b'!' || crate::util::autolink::atext(byte)) {
                     1
                 } else {
                     return None;
@@ -433,7 +432,7 @@ mod tests {
                     After::LineEnd => "(?:[\\r\\n]|$)".into(),
                     After::SpaceOrEnd => "(?:[ \\t\\r\\n]|$)".into(),
                     After::Entity => "[#A-Za-z]".into(),
-                    After::Html => "[!/?A-Za-z]".into(),
+                    After::Html => "[!#-'*+\\-./0-9=?A-Z^-~]".into(),
                     After::Math if single => "".into(),
                     After::Math => "\\$".into(),
                 };

@@ -55,7 +55,7 @@ pub struct Constructs {
     ///       ^^^^^^^^^^^^^^^^^^^^^   ^^^^^^^^^^^^^^^^^^
     /// ```
     ///
-    /// Only `http`, `https` and `mailto` schemes, in any case, and email addresses form autolinks. This deliberately diverges from `CommonMark`, which accepts any scheme of 2–32 characters: other text such as `<irc://a>` or `Option<std::io::Error>` is raw HTML when valid and text otherwise.
+    /// Only `http://` and `https://` with a host, `mailto:` with an address (schemes in any case), and email addresses form autolinks. This deliberately diverges from `CommonMark`, which accepts any scheme of 2–32 characters and an empty target: other text such as `<irc://a>` or `Option<std::io::Error>` is raw HTML when valid and text otherwise.
     pub autolink: bool,
     /// Block quote.
     ///

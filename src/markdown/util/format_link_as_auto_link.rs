@@ -5,7 +5,10 @@
 
 //! Autolink selection adapted from `mdast-util-to-markdown`.
 use crate::{
-    markdown::state::State, stream::EventKind, util::autolink::recognize, Document, NodeId,
+    markdown::{construct_name::ConstructName, state::State},
+    stream::EventKind,
+    util::autolink::recognize,
+    Document, NodeId,
 };
 
 pub fn auto_link_text<'a, S: AsRef<str>>(
@@ -27,7 +30,7 @@ pub fn auto_link_text<'a, S: AsRef<str>>(
         return None;
     };
     let text = text.resolve(document.source()).unwrap();
-    // Write `<text>` verbatim only when the parser reads it back as this link, which also limits schemes to `http`, `https` and `mailto`. GFM splits table cells at `|` before parsing autolinks, so a pipe keeps the resource form.
+    // Write `<text>` verbatim only when the parser reads it back as this link, which also limits it to `http://`, `https://` and `mailto:` with a target, or an email address. GFM splits table cells at `|` before parsing autolinks, so a pipe in a cell keeps the resource form.
     let (length, email) = recognize(text.bytes().chain(Some(b'>')))?;
     let target = if email {
         destination.strip_prefix("mailto:")
@@ -36,8 +39,9 @@ pub fn auto_link_text<'a, S: AsRef<str>>(
     };
     (length == text.len() + 1
         && target == Some(text)
-        && !text.chars().any(|character| {
-            character.is_control() || character.is_whitespace() || character == '|'
-        }))
+        && !text
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
+        && !(text.contains('|') && state.stack.contains(&ConstructName::TableCell)))
     .then_some(text)
 }

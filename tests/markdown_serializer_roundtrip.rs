@@ -496,7 +496,9 @@ fn angle_bracket_autolinks_roundtrip() {
             "<http://a*b*_c_`d`[e]&amp;f>\n",
         ),
         ("<a#$%&*+=^_`{}~@b.c>\n", "<a#$%&*+=^_`{}~@b.c>\n"),
-        ("<http://a|b>\n", "[http://a|b](http://a|b)\n"),
+        ("<http://a|b>\n", "<http://a|b>\n"),
+        ("<http:>\n", "\\<http:>\n"),
+        ("<mailto:>\n", "\\<mailto:>\n"),
     ] {
         for options in [ParseOptions::default(), ParseOptions::gfm()] {
             let tree = Document::parse(input, &options).unwrap();
@@ -506,6 +508,43 @@ fn angle_bracket_autolinks_roundtrip() {
             assert_eq!(semantics(&reparsed), semantics(&tree), "{:?}", input);
             assert_eq!(to(&reparsed).unwrap(), first, "{:?}", input);
         }
+    }
+}
+
+#[test]
+fn text_angle_brackets_before_email_characters_stay_text() {
+    // Email autolinks can start with any atext byte, not only a letter. GFM instead links the literal email inside the text, which is stable too.
+    for (input, expected) in [
+        ("\\<1@a.b>\n", "\\<1@a.b>\n"),
+        (
+            "\\<*@a.b> \\<#@a.b> a <= b\n",
+            // Escaping `*` already breaks the email autolink, so `<` stays unescaped.
+            "<\\*@a.b> \\<#@a.b> a \\<= b\n",
+        ),
+    ] {
+        let tree = Document::parse(input, &Default::default()).unwrap();
+        let first = to(&tree).unwrap();
+        assert_eq!(first, expected, "{:?}", input);
+        let reparsed = Document::parse(&first, &Default::default()).unwrap();
+        assert_eq!(semantics(&reparsed), semantics(&tree), "{:?}", input);
+        assert_eq!(to(&reparsed).unwrap(), first, "{:?}", input);
+    }
+}
+
+#[test]
+fn gfm_autolinks_with_pipes_outside_tables_roundtrip() {
+    // A `|` only splits table cells, so these stay autolinks rather than resource links whose literal URL labels gain escapes.
+    for (input, expected) in [
+        ("<http://a|`>\n", "<http://a|`>\n"),
+        ("<www.`|@c>\n", "<www.`|@c>\n"),
+        ("http://a$|\n", "<http://a$|>\n"),
+    ] {
+        let tree = Document::parse(input, &ParseOptions::gfm()).unwrap();
+        let first = to(&tree).unwrap();
+        assert_eq!(first, expected, "{:?}", input);
+        let reparsed = Document::parse(&first, &ParseOptions::gfm()).unwrap();
+        assert_eq!(semantics(&reparsed), semantics(&tree), "{:?}", input);
+        assert_eq!(to(&reparsed).unwrap(), first, "{:?}", input);
     }
 }
 

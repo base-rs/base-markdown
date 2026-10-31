@@ -8,10 +8,18 @@
 // ```sh
 // cargo run --manifest-path generate/Cargo.toml
 // ```
-//
-// Regeneration overwrites the deliberate divergences marked in `tests/commonmark.rs`; reapply them afterwards.
 use regex::Regex;
 use std::fs;
+
+/// Spec examples whose expected HTML deliberately diverges from `CommonMark`, by example number.
+///
+/// Angle-bracket autolinks accept only `http://`, `https://` and `mailto:` and email addresses, so other schemes are text.
+const DIVERGENCES: [(usize, &str); 4] = [
+    (596, "<p>&lt;irc://foo.bar:2233/baz&gt;</p>\n"),
+    (598, "<p>&lt;a+b+c:d&gt;</p>\n"),
+    (599, "<p>&lt;made-up-scheme://foo,bar&gt;</p>\n"),
+    (601, "<p>&lt;localhost:5001/foo&gt;</p>\n"),
+];
 
 #[tokio::main]
 async fn main() {
@@ -64,7 +72,16 @@ async fn commonmark() {
                 format!("{}\n", parts[1])
             };
 
-            let test = format!("    assert_eq!(\n        to_html_with_options(\n            r###\"{}\"###,\n            &danger\n        ),\n        r###\"{}\"###,\n        r###\"{} ({})\"###\n);", input, output, section, number);
+            let divergence = DIVERGENCES
+                .iter()
+                .find(|(example, _)| *example == number)
+                .map(|(_, divergent)| *divergent);
+            let comment = divergence.map_or(String::new(), |_| {
+                format!("    // Deliberate divergence from CommonMark: only `http`, `https` and `mailto` schemes form autolinks. CommonMark expects `{}`.\n", output.trim_end())
+            });
+            let output = divergence.map_or(output, String::from);
+
+            let test = format!("{}    assert_eq!(\n        to_html_with_options(\n            r###\"{}\"###,\n            &danger\n        ),\n        r###\"{}\"###,\n        r###\"{} ({})\"###\n);", comment, input, output, section, number);
 
             cases.push(test);
 

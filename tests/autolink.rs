@@ -163,8 +163,8 @@ fn autolink() -> Result<(), message::Message> {
 
     // Extra:
     assert_eq!(
-        to_html("<https://a.b> <HTTP://A> <Https://a> <mailto:a> <http:>"),
-        "<p><a href=\"https://a.b\">https://a.b</a> <a href=\"HTTP://A\">HTTP://A</a> <a href=\"Https://a\">Https://a</a> <a href=\"mailto:a\">mailto:a</a> <a href=\"http:\">http:</a></p>",
+        to_html("<https://a.b> <HTTP://A> <Https://a> <mailto:a>"),
+        "<p><a href=\"https://a.b\">https://a.b</a> <a href=\"HTTP://A\">HTTP://A</a> <a href=\"Https://a\">Https://a</a> <a href=\"mailto:a\">mailto:a</a></p>",
         "should support allowed schemes in any case"
     );
 
@@ -179,6 +179,19 @@ fn autolink() -> Result<(), message::Message> {
         "<ftp://a>",
         "<javascript:alert(1)>",
         "<data:text/plain,a>",
+        // Deliberate divergence from CommonMark: allowed schemes also need a target.
+        "<http:>",
+        "<http:a>",
+        "<https:x>",
+        "<http:/a>",
+        "<http://>",
+        "<https:///a>",
+        "<http://?a>",
+        "<http://#a>",
+        "<http:// a>",
+        "<mailto:>",
+        "<mailto:?subject=a>",
+        "<mailto: a>",
     ] {
         assert_eq!(
             to_html_with_options(input, &danger),
@@ -224,7 +237,7 @@ fn autolink() -> Result<(), message::Message> {
     assert_eq!(
         to_html("<http/a> <m/a>"),
         "<p>&lt;http/a&gt; &lt;m/a&gt;</p>",
-        "should not support scheme prefixes followed by non-atext"
+        "should not support scheme prefixes w/o a colon or at sign"
     );
 
     assert_eq!(
