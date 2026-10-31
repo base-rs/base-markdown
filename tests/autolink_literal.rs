@@ -2994,50 +2994,50 @@ fn backslashes_end_literal_autolinks() {
         (
             "www.com\\_\n",
             "<p><a href=\"http://www.com\">www.com</a>_</p>\n",
-            "[www.com](http://www.com)\\_\n",
+            "www.com\\_\n",
         ),
         (
             "www.a\\_b.com\n",
             "<p><a href=\"http://www.a\">www.a</a>_b.com</p>\n",
-            "[www.a](http://www.a)\\_b.com\n",
+            "www.a\\_b.com\n",
         ),
         (
             "https://a.b/c\\\nb\n",
             "<p><a href=\"https://a.b/c\">https://a.b/c</a><br />\nb</p>\n",
-            "<https://a.b/c>\\\nb\n",
+            "https://a.b/c\\\nb\n",
         ),
         (
             "www.x.org\\\nb\n",
             "<p><a href=\"http://www.x.org\">www.x.org</a><br />\nb</p>\n",
-            "[www.x.org](http://www.x.org)\\\nb\n",
+            "www.x.org\\\nb\n",
         ),
         (
             "http://a.b/x\\y\n",
             "<p><a href=\"http://a.b/x\">http://a.b/x</a>\\y</p>\n",
-            "<http://a.b/x>\\y\n",
+            "http://a.b/x\\y\n",
         ),
         (
             "a@b.c\\d\n",
             "<p><a href=\"mailto:a@b.c\">a@b.c</a>\\d</p>\n",
-            "<a@b.c>\\d\n",
+            "a@b.c\\d\n",
         ),
         // A backslash before the local part blocks an email literal, as `/` does.
         (
             "http://x\\a@b.c\n",
             "<p><a href=\"http://x\">http://x</a>\\a@b.c</p>\n",
-            "<http://x>\\a@b.c\n",
+            "http://x\\a@b.c\n",
         ),
         ("x\\a@b.c\n", "<p>x\\a@b.c</p>\n", "x\\a@b.c\n"),
         (
             "(see https://a.b/c\\)\n",
             "<p>(see <a href=\"https://a.b/c\">https://a.b/c</a>)</p>\n",
-            "(see <https://a.b/c>)\n",
+            "(see https://a.b/c)\n",
         ),
         // Trailing punctuation before the backslash is outside the link, as at the end of the text.
         (
             "https://a.b/c.\\\n",
             "<p><a href=\"https://a.b/c\">https://a.b/c</a>.\\</p>\n",
-            "<https://a.b/c>.\\\\\n",
+            "https://a.b/c.\\\\\n",
         ),
         // As at the end of the text, a bare `www.` before a backslash is not a link.
         ("www.\\\nb\n", "<p>www.<br />\nb</p>\n", "www.\\\nb\n"),
@@ -3057,7 +3057,7 @@ fn backslashes_end_literal_autolinks() {
         to_html_with_options("| a |\n| - |\n| www.a\\|b |\n", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"http://www.a\">www.a</a>|b</td>\n</tr>\n</tbody>\n</table>\n"
     );
-    // An escaped `@` splits the text, so it is no email link. The serializer writes text as-is rather than escaping it against literal autolinks, so the next parse links it, and serialization is stable from there.
+    // An escaped `@` splits the text, so it is no email link. The serializer writes text as-is rather than escaping it against literal autolinks, so the next parse links it, and the bare link it reads back is written as its text.
     let options = Options::gfm();
     assert_eq!(
         to_html_with_options("a\\@b.c\n", &options),
@@ -3068,7 +3068,7 @@ fn backslashes_end_literal_autolinks() {
     assert_eq!(first, "a@b.c\n");
     let reparsed = Document::parse(first.as_str(), &options.parse).unwrap();
     let second = to_markdown(&reparsed).unwrap();
-    assert_eq!(second, "<a@b.c>\n");
+    assert_eq!(second, "a@b.c\n");
     let again = Document::parse(second.as_str(), &options.parse).unwrap();
     assert_eq!(canonical(&again), canonical(&reparsed));
     assert_eq!(to_markdown(&again).unwrap(), second);

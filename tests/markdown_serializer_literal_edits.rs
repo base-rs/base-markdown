@@ -304,3 +304,15 @@ fn bare_links_moved_into_table_cells_escape_pipes() {
         html
     );
 }
+
+#[test]
+fn text_after_an_empty_text_still_follows_the_bare_link() {
+    let mut document = parse("www.a\\_b.com\n");
+    let paragraph = paragraphs(&document)[0];
+    let link = links(&document)[0];
+    let empty = document
+        .append_child(paragraph, EventKind::Text(Text::from(String::new())))
+        .unwrap();
+    document.attach(paragraph, empty, Some(link)).unwrap();
+    assert_serializes(&document, "www.a\\_b.com\n");
+}

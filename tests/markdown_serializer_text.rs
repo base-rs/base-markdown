@@ -281,18 +281,30 @@ fn escapes_that_only_kept_text_from_linking_are_dropped() {
 
 #[test]
 fn literal_autolinks_are_written_as_their_text_before_escaped_neighbours() {
-    // A bare link is written as its text, and the text after it is escaped as anywhere else. GFM
-    // reads a backslash as part of a www or protocol link's path, so these extend the link until
-    // the parser ends a bare link at a backslash.
+    // A bare link is written as its text, and the text after it is escaped as anywhere else. A
+    // backslash ends a bare link, so these read back as the same link.
     for (source, expected) in [
         ("www.com_\n", "www.com\\_\n"),
         ("www.a.b* x\n", "www.a.b\\* x\n"),
         ("http://a.b/c_(d)_ x\n", "http://a.b/c_(d)\\_ x\n"),
         ("www.a.b www.com_ x@y.z\n", "www.a.b www.com\\_ x@y.z\n"),
-        // A `&` after a link is written as `&amp;`, which the link leaves out at its end.
-        ("WWW.www&amp;\n", "WWW.www&amp;\n"),
+        // The link would take a `&` that ends the text, so it is escaped.
+        ("WWW.www&amp;\n", "WWW.www\\&\n"),
+        ("https://a.b/c  \nb\n", "https://a.b/c\\\nb\n"),
+        (
+            "https://api.example.com/**\n",
+            "https://api.example.com/\\*\\*\n",
+        ),
     ] {
-        assert_eq!(two_passes(source).0, expected, "{source:?}");
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+        let options = base_markdown::Options::gfm();
+        assert_eq!(
+            base_markdown::to_html_with_options(&first, &options),
+            base_markdown::to_html_with_options(source, &options),
+            "{source:?}"
+        );
     }
     // An email ends at the backslash already.
     assert_eq!(
@@ -516,8 +528,14 @@ fn whitespace_inside_constructed_attention_is_always_a_character_reference() {
 #[test]
 fn characters_a_literal_autolink_would_take_end_it() {
     for (source, expected) in [
-        ("www.a.b&amp; c\n", "www.a.b&amp; c\n"),
-        ("https://a.b/?x=1&amp;\n", "https://a.b/?x=1&amp;\n"),
+        // A backslash ends a web link, so text the link would take is escaped.
+        ("www.a.b&amp; c\n", "www.a.b\\& c\n"),
+        ("https://a.b/?x=1&amp;\n", "https://a.b/?x=1\\&\n"),
+        ("www.a\\_b.com\n", "www.a\\_b.com\n"),
+        ("www.a.b&amp;. c\n", "www.a.b\\&. c\n"),
+        // Text the link would leave out is written as it is.
+        ("https://a.b/c. x\n", "https://a.b/c. x\n"),
+        ("(https://a.b/c) x\n", "(https://a.b/c) x\n"),
         ("a@b.c&#46;d\n", "a@b.c\\.d\n"),
         ("a@b.c&#46;\n", "a@b.c.\n"),
         ("a@b.c&#x2D;d\n", "a@b.c\\-d\n"),
@@ -527,6 +545,9 @@ fn characters_a_literal_autolink_would_take_end_it() {
             "#/[$@--~_|;[a]/_|x@y.z(1~+\n",
             "\\#/\\[\\$@--~~*|;\\[a]/*|x@y.z(1~~+\n",
         ),
+        // The node after the one next to the link is looked at without the link beside it.
+        ("http://b\\<!/ @\n", "http://b\\<!/ @\n"),
+        ("http://b<!/ @\n", "http://b\\<!/ @\n"),
     ] {
         let (first, second) = two_passes(source);
         assert_eq!(first, expected, "{source:?}");

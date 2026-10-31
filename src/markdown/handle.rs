@@ -15,6 +15,7 @@ use super::{
     },
 };
 use crate::{
+    inline_parser::web_literal_end,
     message::Message,
     stream::{EventKind, Tag},
     util::{
@@ -198,7 +199,7 @@ impl State<'_> {
         // reference. A marker between a reference and a letter neither opens nor closes either, so
         // that letter is a reference too.
         let leading = starts_with_whitespace(document, node);
-        if leading && self.bare_link_end.map(|(end, _)| end) != Some(self.output.len()) {
+        if leading && self.bare_link_end.map(|(_, end, _)| end) != Some(self.output.len()) {
             if let Some(previous) = self
                 .output
                 .chars()
@@ -399,13 +400,17 @@ impl State<'_> {
             first.len_utf8()
         } else if let Some(byte) = self
             .bare_link_end
-            .filter(|&(end, _)| Some(end) == at)
-            .and_then(|(_, email)| joining_byte(&value, info.after, email))
+            .filter(|&(_, end, _)| Some(end) == at)
+            .and_then(|(start, end, email)| {
+                if email {
+                    joining_byte(&value, info.after)
+                } else {
+                    extends_web_link(&self.output[start..end], &value, info.after)
+                }
+            })
         {
             // A bare link would take this character, so it is written in a form that ends the link.
-            if byte == b'&' {
-                self.output.push_str("&amp;");
-            } else if byte.is_ascii_punctuation() {
+            if byte.is_ascii_punctuation() {
                 self.output.push('\\');
                 self.output.push(char::from(byte));
             } else {
@@ -453,7 +458,7 @@ impl State<'_> {
                             .get(..prefix.len())
                             .is_some_and(|scheme| scheme.eq_ignore_ascii_case(prefix))
                     });
-                    self.bare_link_end = Some((self.output.len(), email));
+                    self.bare_link_end = Some((text_start, self.output.len(), email));
                     return Ok(());
                 }
                 WrittenLink::Angle(text) => {
@@ -881,25 +886,39 @@ fn encode_trailing_whitespace(output: &mut String, start: usize) -> bool {
     true
 }
 
-/// The first byte of text after a bare link, when the link would take it.
-///
-/// A link stops before an `&amp;` that ends it, and an email address stops at any escape or
-/// character reference. Other characters a web link would take are left as they are.
-fn joining_byte(text: &str, after: &str, email: bool) -> Option<u8> {
+/// The first byte of text after a bare email address, when the address would take it. An address
+/// stops at any escape or character reference.
+fn joining_byte(text: &str, after: &str) -> Option<u8> {
     let mut bytes = text.bytes().chain(after.bytes());
     let byte = bytes.next();
     let joins = match byte {
-        Some(b'&') => true,
-        Some(b'-' | b'_' | b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z') => email,
-        Some(b'.') => {
-            email
-                && bytes
-                    .next()
-                    .is_some_and(|next| next.is_ascii_alphanumeric())
-        }
+        Some(b'-' | b'_' | b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z') => true,
+        Some(b'.') => bytes
+            .next()
+            .is_some_and(|next| next.is_ascii_alphanumeric()),
         _ => false,
     };
     byte.filter(|_| joins)
+}
+
+/// The first byte of text after a bare web link, when the text would change where the link ends
+/// and a backslash, which ends the link, can escape it. Other characters are left as they are.
+fn extends_web_link(link: &str, text: &str, after: &str) -> Option<u8> {
+    let byte = text.bytes().next().filter(u8::is_ascii_punctuation)?;
+    if web_literal_end(link) != Some(link.len()) {
+        return None;
+    }
+    // The link can only reach as far as the next whitespace.
+    let run = text
+        .find(|character: char| character.is_whitespace())
+        .unwrap_or(text.len());
+    let mut joined = String::with_capacity(link.len() + run + after.len());
+    joined.push_str(link);
+    joined.push_str(&text[..run]);
+    if run == text.len() {
+        joined.push_str(after);
+    }
+    (web_literal_end(&joined) != Some(link.len())).then_some(byte)
 }
 
 /// Escape a `<` that ends `output` when `<text>` would be an autolink, where `text` is a bare link

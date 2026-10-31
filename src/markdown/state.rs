@@ -54,8 +54,8 @@ pub struct State<'a> {
     pub serialization_root: Option<NodeId>,
     definitions: Option<BTreeMap<String, NodeId>>,
     reference_key: String,
-    /// Where the last bare link ended, and whether it was an email address.
-    pub(super) bare_link_end: Option<(usize, bool)>,
+    /// Where the last bare link started and ended, and whether it was an email address.
+    pub(super) bare_link_end: Option<(usize, usize, bool)>,
     /// Where attention content starts with whitespace, which is written as a reference.
     pub(super) attention_start: Option<usize>,
     /// Where attention closed after a character reference, so a letter after it is one too.
@@ -166,7 +166,10 @@ impl<'a> State<'a> {
                 } else {
                     // Render nodes without a fixed prefix to determine the next character.
                     let checkpoint = self.output.len();
+                    // The current child is written between them, so the next node is rendered
+                    // without the neighbours of the current one.
                     let neighbours = (self.bare_link_end, self.attention_start, self.attention_end);
+                    self.clear_neighbours();
                     self.write_node(document, next, &Info::new("", ""))?;
                     let first = self.output[checkpoint..].chars().next().unwrap_or_default();
                     self.output.truncate(checkpoint);
