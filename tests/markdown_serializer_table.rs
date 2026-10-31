@@ -15,6 +15,16 @@ fn table_cells_escape_like_paragraphs() {
         ("| a \\| b |\n| - |\n", "| a \\| b |\n| --- |\n"),
         ("| `a\\|b` |\n| - |\n", "| `a\\|b` |\n| --- |\n"),
         ("| ``a\\|`b`` |\n| - |\n", "| ``a\\|`b`` |\n| --- |\n"),
+        (
+            "| <span title=\"`a\\|b`\"> |\n| - |\n",
+            "| <span title=\"`a\\|b`\"> |\n| --- |\n",
+        ),
+        (
+            "| <!-- `a\\|b` --> |\n| - |\n",
+            "| <!-- `a\\|b` --> |\n| --- |\n",
+        ),
+        ("| [a](b\\|c) |\n| - |\n", "| [a](b\\|c) |\n| --- |\n"),
+        ("| a\\\\\\|b |\n| - |\n", "| a\\\\\\|b |\n| --- |\n"),
     ] {
         let document = Document::parse(source, &ParseOptions::gfm()).unwrap();
         let markdown = to_markdown(&document).unwrap();

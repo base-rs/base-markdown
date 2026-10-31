@@ -101,6 +101,7 @@ static RULES: &[Rule] = &[
     rule!(b'[', B, A, bit(Label) | bit(Reference), 0),
     rule!(b'\\', B, Set(b"\r\n"), PHRASING, 0),
     rule!(b']', B, A, bit(Label) | bit(Reference), 0),
+    rule!(b'|', B, A, bit(TableCell), 0),
     rule!(b'_', Line, A, 0, 0),
     rule!(b'_', B, A, PHRASING, FULL_SPANS),
     rule!(b'`', Line, A, 0, 0),

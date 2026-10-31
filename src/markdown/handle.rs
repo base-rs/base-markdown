@@ -309,7 +309,17 @@ impl State<'_> {
         if pad {
             self.output.push(' ');
         }
-        self.output.push_str(content);
+        // GFM splits table cells before parsing code and math, so their pipes need escapes too.
+        if self.stack.contains(&ConstructName::TableCell) {
+            for (index, part) in content.split('|').enumerate() {
+                if index > 0 {
+                    self.output.push_str("\\|");
+                }
+                self.output.push_str(part);
+            }
+        } else {
+            self.output.push_str(content);
+        }
         if pad {
             self.output.push(' ');
         }

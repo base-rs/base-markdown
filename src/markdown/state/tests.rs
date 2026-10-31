@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use super::{escape_table_pipes, has_matching_ticks, write_table_pipes, Info, State};
+use super::{Info, State};
 use crate::{
     markdown::Options,
     stream::{EventKind, Tag, Text},
@@ -192,83 +192,7 @@ fn inline_literals_normalize_block_openers_and_preserve_other_line_endings() {
 }
 
 #[test]
-fn detects_matching_and_nonmatching_code_fences() {
-    assert!(has_matching_ticks(b"`code`", 1, 1));
-    assert!(!has_matching_ticks(b"plain", 0, 1));
-    assert!(!has_matching_ticks(b"``", 0, 1));
-}
-
-#[test]
-fn escapes_pipes_in_code_spans_and_after_even_backslashes() {
-    assert_eq!(escape_table_pipes(r"``code`| value"), r"``code`\| value");
-    assert_eq!(escape_table_pipes(r"two \\|"), r"two \\\|");
-    assert_eq!(escape_table_pipes(r"one \|"), r"one \|");
-    assert_eq!(escape_table_pipes("α|🙂||ω"), "α\\|🙂\\|\\|ω");
-    assert_eq!(
-        escape_table_pipes(r"```α|🙂```|`x|y`|``z|w``"),
-        r"```α\|🙂```\|`x\|y`\|``z\|w``"
-    );
-    assert_eq!(escape_table_pipes(r"`α|🙂``|ω"), r"`α\|🙂``\|ω");
-}
-
-#[test]
-fn table_pipe_runs_preserve_the_scalar_writer() {
-    // Keep the former per-character writer as an independent control for source-run copying and backslash parity.
-    fn scalar(value: &str, result: &mut String) {
-        let bytes = value.as_bytes();
-        let start_output = result.len();
-        let mut index = 0;
-        let mut code_ticks = None;
-        while index < bytes.len() {
-            if bytes[index] == b'`' {
-                let start = index;
-                index = super::super::util::scan::marker_run_end(bytes, index + 1, b'`');
-                let ticks = index - start;
-                if code_ticks == Some(ticks) {
-                    code_ticks = None;
-                } else if code_ticks.is_none() && has_matching_ticks(bytes, index, ticks) {
-                    code_ticks = Some(ticks);
-                }
-                result.push_str(&value[start..index]);
-            } else if bytes[index] == b'|' {
-                let slashes = result[start_output..]
-                    .chars()
-                    .rev()
-                    .take_while(|character| *character == '\\')
-                    .count();
-                if code_ticks.is_some() || slashes % 2 == 0 {
-                    result.push('\\');
-                }
-                result.push('|');
-                index += 1;
-            } else {
-                let character = value[index..].chars().next().unwrap();
-                result.push(character);
-                index += character.len_utf8();
-            }
-        }
-    }
-    const TOKENS: [&str; 6] = ["a", "é", "🙂", "`", "|", "\\"];
-    for length in 0..=6 {
-        for mut variant in 0..TOKENS.len().pow(length) {
-            let mut value = String::new();
-            for _ in 0..length {
-                value.push_str(TOKENS[variant % TOKENS.len()]);
-                variant /= TOKENS.len();
-            }
-            for prefix in ["", "previous|\\"] {
-                let mut expected = String::from(prefix);
-                let mut actual = String::from(prefix);
-                scalar(&value, &mut expected);
-                write_table_pipes(&value, &mut actual);
-                assert_eq!(actual, expected, "{value:?}, prefix {prefix:?}");
-            }
-        }
-    }
-}
-
-#[test]
-fn serializes_table_cells_with_and_without_pipe_rewrites() {
+fn serializes_table_cells_with_escaped_pipes() {
     let mut document = empty();
     let row = document
         .append_child(document.root(), EventKind::Start(Tag::TableRow))

@@ -140,6 +140,13 @@ pub enum ConstructName {
     ///        ^^
     /// ```
     Reference,
+    /// Table cell (occurs in GFM tables).
+    ///
+    /// ```markdown
+    /// > | | a | b |
+    ///       ^   ^
+    /// ```
+    TableCell,
     /// Title using single quotes (occurs in definition, image, link).
     ///
     /// ```markdown
