@@ -275,3 +275,32 @@ fn angle_brackets_before_bare_links_are_escaped_when_they_would_close_an_autolin
         assert_eq!(markdown(&document), expected, "{text:?}");
     }
 }
+
+#[test]
+fn bare_links_moved_into_table_cells_escape_pipes() {
+    let mut document = parse("www.a.b/x|y\n\n| a |\n| - |\n| b |\n");
+    let link = links(&document)[0];
+    let cell = document
+        .descendants(document.root())
+        .filter(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Start(Tag::TableCell { .. })
+            )
+        })
+        .last()
+        .unwrap();
+    let text = document.children(cell).next().unwrap();
+    document.detach(text).unwrap();
+    document.attach(cell, link, None).unwrap();
+    document.detach(paragraphs(&document)[0]).unwrap();
+    assert_serializes(&document, "| a |\n| --- |\n| www.a.b/x\\|y |\n");
+    // The text after the pipe stays in the cell.
+    let html =
+        base_markdown::to_html_with_options(&markdown(&document), &base_markdown::Options::gfm());
+    assert!(
+        html.contains("y</a></td>") || html.contains("|y</td>"),
+        "{}",
+        html
+    );
+}

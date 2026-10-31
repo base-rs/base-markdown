@@ -17,7 +17,10 @@ use super::{
 use crate::{
     message::Message,
     stream::{EventKind, Tag},
-    util::line_ending::line_endings,
+    util::{
+        char::{classify, Kind},
+        line_ending::line_endings,
+    },
     CodeFence, Document, NodeId, NodeSyntax, ReferenceKind,
 };
 use alloc::{
@@ -191,12 +194,37 @@ impl State<'_> {
         marker: char,
         length: usize,
     ) -> Result<(), Message> {
+        // Whitespace next to a marker would stop it opening or closing, so it is written as a
+        // reference. A marker between a reference and a letter neither opens nor closes either, so
+        // that letter is a reference too.
+        let leading = starts_with_whitespace(document, node);
+        if leading && self.bare_link_end.map(|(end, _)| end) != Some(self.output.len()) {
+            if let Some(previous) = self
+                .output
+                .chars()
+                .next_back()
+                .filter(|&previous| classify(previous) == Kind::Other)
+            {
+                let end = self.output.len() - previous.len_utf8();
+                self.output.truncate(end);
+                write!(self.output, "&#x{:X};", u32::from(previous))
+                    .expect("String writing is infallible");
+            }
+        }
         let start = self.output.len();
         self.output.extend(core::iter::repeat(marker).take(length));
+        let content = self.output.len();
+        if leading {
+            self.attention_start = Some(content);
+        }
         // The content follows the opening marker, so it never starts a line.
-        let inner = Info::at(start, self.output.len(), info.after);
+        let inner = Info::at(start, content, info.after);
         self.container_phrasing(document, node, &inner)?;
+        let trailing = encode_trailing_whitespace(&mut self.output, content);
         self.output.extend(core::iter::repeat(marker).take(length));
+        if trailing && info.after.chars().next().map(classify) == Some(Kind::Other) {
+            self.attention_end = Some(self.output.len());
+        }
         Ok(())
     }
 
@@ -360,7 +388,43 @@ impl State<'_> {
             crate::markdown::LineWrapping::Preserve => Cow::Borrowed(content),
             crate::markdown::LineWrapping::Unwrap => unwrap_soft_line_breaks(content),
         };
-        self.write_safe(&value, info, None);
+        let at = Some(self.output.len());
+        // Next to an attention marker or after a bare link, the first character may need another form.
+        let consumed = if let Some(first) = value.chars().next().filter(|&first| {
+            self.attention_start == at && edge_whitespace(first)
+                || self.attention_end == at && classify(first) == Kind::Other
+        }) {
+            write!(self.output, "&#x{:X};", u32::from(first))
+                .expect("String writing is infallible");
+            first.len_utf8()
+        } else if let Some(byte) = self
+            .bare_link_end
+            .filter(|&(end, _)| Some(end) == at)
+            .and_then(|(_, email)| joining_byte(&value, info.after, email))
+        {
+            // A bare link would take this character, so it is written in a form that ends the link.
+            if byte == b'&' {
+                self.output.push_str("&amp;");
+            } else if byte.is_ascii_punctuation() {
+                self.output.push('\\');
+                self.output.push(char::from(byte));
+            } else {
+                write!(self.output, "&#x{:X};", byte).expect("String writing is infallible");
+            }
+            1
+        } else {
+            0
+        };
+        // An empty text writes nothing, so the text after it is still next to the same neighbour.
+        if !value.is_empty() {
+            self.clear_neighbours();
+        }
+        if consumed == 0 {
+            self.write_safe(&value, info, None);
+        } else {
+            let info = info.extended(self.output.len());
+            self.write_safe(&value[consumed..], &info, None);
+        }
         Ok(())
     }
 
@@ -378,7 +442,18 @@ impl State<'_> {
             match written_link(document, node, destination, title.is_some(), self) {
                 WrittenLink::Bare(text) => {
                     escape_angle_before(&mut self.output, text);
+                    let text_start = self.output.len();
                     self.output.push_str(text);
+                    // GFM splits table cells at `|` before it finds literal autolinks.
+                    if self.stack.contains(&ConstructName::TableCell) {
+                        escape_table_pipes(&mut self.output, text_start);
+                    }
+                    let email = ["mailto:", "xmpp:"].iter().any(|prefix| {
+                        destination
+                            .get(..prefix.len())
+                            .is_some_and(|scheme| scheme.eq_ignore_ascii_case(prefix))
+                    });
+                    self.bare_link_end = Some((self.output.len(), email));
                     return Ok(());
                 }
                 WrittenLink::Angle(text) => {
@@ -767,6 +842,64 @@ fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
     }
 
     Cow::Owned(result)
+}
+
+/// Whitespace that a character reference can stand for. Line endings are left alone, since they
+/// belong to the line structure.
+fn edge_whitespace(character: char) -> bool {
+    character.is_whitespace() && !matches!(character, '\n' | '\r')
+}
+
+/// Whether the first text written in `node` is its own and starts with whitespace.
+fn starts_with_whitespace<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> bool {
+    document
+        .children(node)
+        .map(
+            |child| match &document.node(child).expect("child exists").kind {
+                EventKind::Text(text) => text.resolve(document.source()).unwrap().chars().next(),
+                // Other nodes write their own first character, which is not whitespace.
+                _ => Some('.'),
+            },
+        )
+        .find(Option::is_some)
+        .flatten()
+        .is_some_and(edge_whitespace)
+}
+
+/// Replace whitespace that ends the output after `start` with a character reference.
+fn encode_trailing_whitespace(output: &mut String, start: usize) -> bool {
+    let Some(last) = output[start..]
+        .chars()
+        .next_back()
+        .filter(|&character| edge_whitespace(character))
+    else {
+        return false;
+    };
+    let end = output.len() - last.len_utf8();
+    output.truncate(end);
+    write!(output, "&#x{:X};", u32::from(last)).expect("String writing is infallible");
+    true
+}
+
+/// The first byte of text after a bare link, when the link would take it.
+///
+/// A link stops before an `&amp;` that ends it, and an email address stops at any escape or
+/// character reference. Other characters a web link would take are left as they are.
+fn joining_byte(text: &str, after: &str, email: bool) -> Option<u8> {
+    let mut bytes = text.bytes().chain(after.bytes());
+    let byte = bytes.next();
+    let joins = match byte {
+        Some(b'&') => true,
+        Some(b'-' | b'_' | b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z') => email,
+        Some(b'.') => {
+            email
+                && bytes
+                    .next()
+                    .is_some_and(|next| next.is_ascii_alphanumeric())
+        }
+        _ => false,
+    };
+    byte.filter(|_| joins)
 }
 
 /// Escape a `<` that ends `output` when `<text>` would be an autolink, where `text` is a bare link
