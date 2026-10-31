@@ -78,7 +78,6 @@ struct Delimiter {
     node: usize,
     marker: u8,
     run_modulo: u8,
-    mixed: bool,
     open: bool,
     close: bool,
 }
@@ -219,18 +218,6 @@ impl InlineParser {
                     let end = self.nodes[closer].start + take;
                     self.nodes[opener].end -= take;
                     self.nodes[closer].start += take;
-                    // Mixed strike/emphasis resolution retries the remaining
-                    // run, so its modulo changes after a partial match.
-                    if EXTENSIONS && self.delimiters[open].mixed {
-                        self.delimiters[open].run_modulo =
-                            u8::try_from((self.nodes[opener].end - self.nodes[opener].start) % 3)
-                                .unwrap();
-                    }
-                    if EXTENSIONS && self.delimiters[close].mixed {
-                        self.delimiters[close].run_modulo =
-                            u8::try_from((self.nodes[closer].end - self.nodes[closer].start) % 3)
-                                .unwrap();
-                    }
                     self.insert_after(opener, start, end, Kind::Start(tag, 0));
                     self.insert_after(self.nodes[closer].previous, end, end, Kind::End(tag));
                     let remaining =
@@ -609,18 +596,10 @@ impl InlineParser {
                         let after = classify_opt(after_char);
                         let left = after != CharacterKind::Whitespace
                             && (after != CharacterKind::Punctuation
-                                || before != CharacterKind::Other)
-                            || (marker != b'~'
-                                && EXTENSIONS
-                                && options.constructs.strikethrough
-                                && after_char == Some('~'));
+                                || before != CharacterKind::Other);
                         let right = before != CharacterKind::Whitespace
                             && (before != CharacterKind::Punctuation
-                                || after != CharacterKind::Other)
-                            || (marker != b'~'
-                                && EXTENSIONS
-                                && options.constructs.strikethrough
-                                && before_char == Some('~'));
+                                || after != CharacterKind::Other);
                         let node = self.append(start, at, Kind::Text);
                         if EXTENSIONS
                             && marker == b'~'
@@ -634,10 +613,6 @@ impl InlineParser {
                             marker,
                             // Rule three uses the original run length, even after a partial match consumes delimiters.
                             run_modulo: u8::try_from((at - start) % 3).unwrap(),
-                            mixed: EXTENSIONS
-                                && options.constructs.strikethrough
-                                && marker != b'~'
-                                && (before_char == Some('~') || after_char == Some('~')),
                             open: left
                                 && (marker != b'_' || !right || before != CharacterKind::Other),
                             close: right
