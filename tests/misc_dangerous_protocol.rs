@@ -11,8 +11,8 @@ use pretty_assertions::assert_eq;
 fn dangerous_protocol_autolink() {
     assert_eq!(
         to_html("<javascript:alert(1)>"),
-        "<p><a href=\"\">javascript:alert(1)</a></p>",
-        "should be safe by default"
+        "<p>&lt;javascript:alert(1)&gt;</p>",
+        "should not form autolinks w/ other schemes"
     );
 
     assert_eq!(
@@ -27,10 +27,11 @@ fn dangerous_protocol_autolink() {
         "should allow `https:`"
     );
 
+    // Deliberate divergence from CommonMark: `irc:` is a safe protocol, but not an autolink scheme.
     assert_eq!(
         to_html("<irc:///help>"),
-        "<p><a href=\"irc:///help\">irc:///help</a></p>",
-        "should allow `irc:`"
+        "<p>&lt;irc:///help&gt;</p>",
+        "should not form autolinks w/ `irc:`"
     );
 
     assert_eq!(

@@ -8500,13 +8500,14 @@ bar>)</p>
         r###"Autolinks (595)"###
 );
 
+    // Deliberate divergence from CommonMark: only `http`, `https` and `mailto` schemes form autolinks. CommonMark expects `<p><a href="irc://foo.bar:2233/baz">irc://foo.bar:2233/baz</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"<irc://foo.bar:2233/baz>
 "###,
             &danger
         ),
-        r###"<p><a href="irc://foo.bar:2233/baz">irc://foo.bar:2233/baz</a></p>
+        r###"<p>&lt;irc://foo.bar:2233/baz&gt;</p>
 "###,
         r###"Autolinks (596)"###
 );
@@ -8522,24 +8523,26 @@ bar>)</p>
         r###"Autolinks (597)"###
 );
 
+    // Deliberate divergence from CommonMark: only `http`, `https` and `mailto` schemes form autolinks. CommonMark expects `<p><a href="a+b+c:d">a+b+c:d</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"<a+b+c:d>
 "###,
             &danger
         ),
-        r###"<p><a href="a+b+c:d">a+b+c:d</a></p>
+        r###"<p>&lt;a+b+c:d&gt;</p>
 "###,
         r###"Autolinks (598)"###
 );
 
+    // Deliberate divergence from CommonMark: only `http`, `https` and `mailto` schemes form autolinks. CommonMark expects `<p><a href="made-up-scheme://foo,bar">made-up-scheme://foo,bar</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"<made-up-scheme://foo,bar>
 "###,
             &danger
         ),
-        r###"<p><a href="made-up-scheme://foo,bar">made-up-scheme://foo,bar</a></p>
+        r###"<p>&lt;made-up-scheme://foo,bar&gt;</p>
 "###,
         r###"Autolinks (599)"###
 );
@@ -8555,13 +8558,14 @@ bar>)</p>
         r###"Autolinks (600)"###
 );
 
+    // Deliberate divergence from CommonMark: only `http`, `https` and `mailto` schemes form autolinks. CommonMark expects `<p><a href="localhost:5001/foo">localhost:5001/foo</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"<localhost:5001/foo>
 "###,
             &danger
         ),
-        r###"<p><a href="localhost:5001/foo">localhost:5001/foo</a></p>
+        r###"<p>&lt;localhost:5001/foo&gt;</p>
 "###,
         r###"Autolinks (601)"###
 );

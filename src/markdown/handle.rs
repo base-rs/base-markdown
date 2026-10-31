@@ -378,8 +378,9 @@ impl State<'_> {
             if let Some(text) = auto_link_text(document, node, destination, title.is_some(), self) {
                 let stack = mem::take(&mut self.stack);
                 self.enter(ConstructName::Autolink);
+                // Autolinks do not process escapes, and `auto_link_text` only accepts text that reads back unchanged.
                 self.output.push('<');
-                self.write_safe(text, &Info::at(start, self.output.len(), ">"), None);
+                self.output.push_str(text);
                 self.output.push('>');
                 self.exit();
                 self.stack = stack;

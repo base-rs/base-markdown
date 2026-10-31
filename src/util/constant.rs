@@ -5,14 +5,6 @@
 
 //! Syntax limits and lookup tables shared by the parser and renderer.
 
-/// The number of characters allowed in a protocol of an [autolink][].
-///
-/// The protocol part is the `xxx` in `<xxx://example.com>`.
-/// 32 characters is fine, 33 is too many.
-///
-/// [autolink]: crate::util::autolink
-pub const AUTOLINK_SCHEME_SIZE_MAX: usize = 32;
-
 /// The number of characters allowed in a domain of an email [autolink][].
 ///
 /// There can be multiple “domains”.

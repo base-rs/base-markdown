@@ -54,6 +54,8 @@ pub struct Constructs {
     /// > | a <https://example.com> b <user@example.org>.
     ///       ^^^^^^^^^^^^^^^^^^^^^   ^^^^^^^^^^^^^^^^^^
     /// ```
+    ///
+    /// Only `http`, `https` and `mailto` schemes, in any case, and email addresses form autolinks. This deliberately diverges from `CommonMark`, which accepts any scheme of 2–32 characters: other text such as `<irc://a>` or `Option<std::io::Error>` is raw HTML when valid and text otherwise.
     pub autolink: bool,
     /// Block quote.
     ///
@@ -506,14 +508,14 @@ pub struct CompileOptions {
     ///
     /// // `markdown-rs` is safe by default:
     /// assert_eq!(
-    ///     to_html("<javascript:alert(1)>"),
-    ///     "<p><a href=\"\">javascript:alert(1)</a></p>"
+    ///     to_html("[a](javascript:alert(1))"),
+    ///     "<p><a href=\"\">a</a></p>"
     /// );
     ///
     /// // Turn `allow_dangerous_protocol` on to allow potentially dangerous protocols:
     /// assert_eq!(
     ///     to_html_with_options(
-    ///         "<javascript:alert(1)>",
+    ///         "[a](javascript:alert(1))",
     ///         &Options {
     ///             compile: CompileOptions {
     ///               allow_dangerous_protocol: true,
@@ -522,7 +524,7 @@ pub struct CompileOptions {
     ///             ..Options::default()
     ///         }
     ///     ),
-    ///     "<p><a href=\"javascript:alert(1)\">javascript:alert(1)</a></p>"
+    ///     "<p><a href=\"javascript:alert(1)\">a</a></p>"
     /// );
     /// ```
     pub allow_dangerous_protocol: bool,

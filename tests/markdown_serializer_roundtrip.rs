@@ -7,7 +7,7 @@ use base_markdown::markdown::{
     to_markdown as to, to_markdown_with_options as to_md_with_opts, Options,
 };
 mod support;
-use base_markdown::Document;
+use base_markdown::{Document, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::canonical;
 
@@ -472,6 +472,41 @@ a _\\__ is this emphasis? _\\__"
         to(&Document::parse(&doc, &Default::default()).unwrap()).unwrap(),
         doc
     );
+}
+
+#[test]
+fn angle_bracket_autolinks_roundtrip() {
+    for (input, expected) in [
+        ("Option<std::io::Error>\n", "Option\\<std::io::Error>\n"),
+        ("<xs:element>\n", "\\<xs:element>\n"),
+        ("a <xs:element>\n", "a \\<xs:element>\n"),
+        ("<irc://foo.bar>\n", "\\<irc://foo.bar>\n"),
+        ("<httpx://a>\n", "\\<httpx://a>\n"),
+        ("<https://a.b>\n", "<https://a.b>\n"),
+        ("<HTTP://A>\n", "<HTTP://A>\n"),
+        ("<MAILTO:a@b.c>\n", "<MAILTO:a@b.c>\n"),
+        ("<a@b.co>\n", "<a@b.co>\n"),
+        ("[a](mailto:a)\n", "[a](mailto:a)\n"),
+        ("[tel:123](tel:123)\n", "[tel:123](tel:123)\n"),
+        ("<http://a\\b>\n", "<http://a\\b>\n"),
+        ("<http://a\\>\n", "<http://a\\>\n"),
+        ("<http://a\\\\>\n", "<http://a\\\\>\n"),
+        (
+            "<http://a*b*_c_`d`[e]&amp;f>\n",
+            "<http://a*b*_c_`d`[e]&amp;f>\n",
+        ),
+        ("<a#$%&*+=^_`{}~@b.c>\n", "<a#$%&*+=^_`{}~@b.c>\n"),
+        ("<http://a|b>\n", "[http://a|b](http://a|b)\n"),
+    ] {
+        for options in [ParseOptions::default(), ParseOptions::gfm()] {
+            let tree = Document::parse(input, &options).unwrap();
+            let first = to(&tree).unwrap();
+            assert_eq!(first, expected, "{:?}", input);
+            let reparsed = Document::parse(&first, &options).unwrap();
+            assert_eq!(semantics(&reparsed), semantics(&tree), "{:?}", input);
+            assert_eq!(to(&reparsed).unwrap(), first, "{:?}", input);
+        }
+    }
 }
 
 fn semantics<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {

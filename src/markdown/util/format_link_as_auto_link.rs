@@ -4,7 +4,9 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Autolink selection adapted from `mdast-util-to-markdown`.
-use crate::{markdown::state::State, stream::EventKind, Document, NodeId};
+use crate::{
+    markdown::state::State, stream::EventKind, util::autolink::recognize, Document, NodeId,
+};
 
 pub fn auto_link_text<'a, S: AsRef<str>>(
     document: &'a Document<S>,
@@ -25,19 +27,17 @@ pub fn auto_link_text<'a, S: AsRef<str>>(
         return None;
     };
     let text = text.resolve(document.source()).unwrap();
-    let bytes = destination.as_bytes();
-    let scheme_end = bytes.iter().position(|&byte| byte == b':');
-    let protocol = scheme_end.is_some_and(|end| {
-        end >= 2
-            && bytes[0].is_ascii_alphabetic()
-            && bytes[1..end]
-                .iter()
-                .all(|byte| byte.is_ascii_alphabetic() || matches!(byte, b'+' | b'.' | b'-'))
-    });
-    ((text == destination || destination.strip_prefix("mailto:") == Some(text))
-        && protocol
-        && !destination.chars().any(|character| {
-            character.is_control() || character.is_whitespace() || matches!(character, '<' | '>')
+    // Write `<text>` verbatim only when the parser reads it back as this link, which also limits schemes to `http`, `https` and `mailto`. GFM splits table cells at `|` before parsing autolinks, so a pipe keeps the resource form.
+    let (length, email) = recognize(text.bytes().chain(Some(b'>')))?;
+    let target = if email {
+        destination.strip_prefix("mailto:")
+    } else {
+        Some(destination)
+    };
+    (length == text.len() + 1
+        && target == Some(text)
+        && !text.chars().any(|character| {
+            character.is_control() || character.is_whitespace() || character == '|'
         }))
     .then_some(text)
 }

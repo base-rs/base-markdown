@@ -8,6 +8,8 @@
 // ```sh
 // cargo run --manifest-path generate/Cargo.toml
 // ```
+//
+// Regeneration overwrites the deliberate divergences marked in `tests/commonmark.rs`; reapply them afterwards.
 use regex::Regex;
 use std::fs;
 
