@@ -518,9 +518,10 @@ fn text_angle_brackets_escape_only_before_email_autolinks() {
         ..Default::default()
     };
     // Inputs and their CommonMark serialization, where one is fixed. Every input must keep its tree and serialize stably in each mode.
+    // Only the rest of the same text node is scanned, so an email the parser splits across text
+    // nodes, such as `<#\@b.c>`, `\<&@a.b>` or, with GFM, `\<#@a.b>`, is written unescaped, as on main.
     for (input, expected) in [
         ("\\<1@a.b>\n", Some("\\<1@a.b>\n")),
-        ("\\<#@a.b> \\<&@a.b>\n", Some("\\<#@a.b> \\<&@a.b>\n")),
         // Escaping `*` already breaks the email autolink, so `<` stays unescaped.
         ("\\<*@a.b>\n", Some("<\\*@a.b>\n")),
         ("a <= b\n", Some("a <= b\n")),
@@ -534,10 +535,6 @@ fn text_angle_brackets_escape_only_before_email_autolinks() {
         ("a <&#1 b\n", Some("a <\\&#1 b\n")),
         ("<&amp;#|\\@b-c.d>\n", Some("<\\&#|@b-c.d>\n")),
         ("# <#\\:\n", Some("# <#:\n")),
-        ("# <#\\@b.c>\n", Some("# \\<#@b.c>\n")),
-        ("*<1*\\@b.c>\n", None),
-        ("x <1`a`\\@b.c>\n", None),
-        ("\\<1_a@b.c>\n", Some("\\<1_a@b.c>\n")),
         ("\\<1@b.c\n", Some("<1@b.c\n")),
     ] {
         for options in [ParseOptions::default(), ParseOptions::gfm(), namespaces()] {
@@ -550,51 +547,6 @@ fn text_angle_brackets_escape_only_before_email_autolinks() {
             assert_eq!(semantics(&reparsed), semantics(&tree), "{:?}", input);
             assert_eq!(to(&reparsed).unwrap(), first, "{:?}", input);
         }
-    }
-}
-
-#[test]
-fn text_angle_brackets_before_email_spanning_nodes_escape() {
-    use support::fixture::{to_markdown, Emphasis, InlineCode, Node, Paragraph, Text};
-    let text = |value: &str| {
-        Node::Text(Text {
-            value: value.into(),
-            position: None,
-        })
-    };
-    for (children, expected) in [
-        (
-            vec![
-                text("<"),
-                Node::Emphasis(Emphasis {
-                    children: vec![text("a")],
-                    position: None,
-                }),
-                text("@b.c>"),
-            ],
-            "\\<*a*@b.c>\n",
-        ),
-        (
-            vec![
-                text("x <1"),
-                Node::InlineCode(InlineCode {
-                    value: "a".into(),
-                    position: None,
-                    lang: None,
-                }),
-                text("@b.c>"),
-            ],
-            "x \\<1`a`@b.c>\n",
-        ),
-    ] {
-        let first = to_markdown(&Node::Paragraph(Paragraph {
-            children,
-            position: None,
-        }))
-        .unwrap();
-        assert_eq!(first, expected);
-        let reparsed = Document::parse(&first, &Default::default()).unwrap();
-        assert_eq!(to(&reparsed).unwrap(), first);
     }
 }
 
@@ -646,20 +598,86 @@ fn document(doc: Vec<&str>) -> String {
 }
 
 #[test]
-fn adjacent_text_nodes_escape_as_one_run() {
-    // Escaped backslashes parse as separate text nodes; joined, each must still be doubled.
-    // A run after an inline node is escaped as a whole to find its first written character.
+fn text_angle_brackets_ignore_following_nodes() {
+    // Emphasis or code after `<` is another node, so it never makes the `<` an email autolink.
     for (input, expected) in [
-        ("b=\\\\\\\\-\n", "b=\\\\\\\\-\n"),
-        ("1-\\\\\\\\-@`\n", "1-\\\\\\\\-@\\`\n"),
-        ("@_;<_&a-\n", "@*;<*\\&a-\n"),
-        ("*<*&# \n", "*<*\\&#\n"),
+        ("[http://a<*b*](u)\n", "[http://a<*b*](u)\n"),
+        ("[http://a<1`c`](u)\n", "[http://a<1`c`](u)\n"),
+        ("[www.a.b<=*c*](u)\n", "[www.a.b<=*c*](u)\n"),
+        // Accepted escapes keep the applied list sorted for later scans.
+        (
+            "\\<1@b.c> \\* \\* \\* \\* \\* \\* \\* \\<2\\*@d.e>\n",
+            "\\<1@b.c> \\* \\* \\* \\* \\* \\* \\* <2\\*@d.e>\n",
+        ),
     ] {
-        let tree = Document::parse(input, &Default::default()).unwrap();
-        let first = to(&tree).unwrap();
-        assert_eq!(first, expected, "{:?}", input);
+        for (options, gfm) in [
+            (ParseOptions::default(), false),
+            (ParseOptions::gfm(), true),
+        ] {
+            let tree = Document::parse(input, &options).unwrap();
+            let first = to(&tree).unwrap();
+            // GFM turns the bare email into a literal autolink, which serializes differently.
+            if input.starts_with('[') || !gfm {
+                assert_eq!(first, expected, "{:?}", input);
+            }
+            let reparsed = Document::parse(&first, &options).unwrap();
+            assert_eq!(canonical(&reparsed), canonical(&tree), "{:?}", input);
+            assert_eq!(to(&reparsed).unwrap(), first, "{:?}", input);
+        }
+    }
+}
+
+#[test]
+fn text_angle_brackets_before_inline_code_stay_stable_with_gfm() {
+    use support::fixture::{to_markdown, InlineCode, Node, Paragraph, Text};
+    for value in ["www.a.b<&", "http://a<1", "www.a.b<="] {
+        let first = to_markdown(&Node::Paragraph(Paragraph {
+            children: vec![
+                Node::Text(Text {
+                    value: value.into(),
+                    position: None,
+                }),
+                Node::InlineCode(InlineCode {
+                    value: "c".into(),
+                    position: None,
+                    lang: None,
+                }),
+            ],
+            position: None,
+        }))
+        .unwrap();
+        assert!(!first.contains("\\<"), "{:?}", first);
+        let options = ParseOptions::gfm();
+        let reparsed = Document::parse(&first, &options).unwrap();
+        // GFM reads the text as a literal autolink, so compare from the reparsed tree on.
+        let second = to(&reparsed).unwrap();
+        assert!(!second.contains("\\<"), "{:?}", second);
+        let again = Document::parse(&second, &options).unwrap();
+        assert_eq!(canonical(&again), canonical(&reparsed), "{:?}", value);
+        assert_eq!(to(&again).unwrap(), second, "{:?}", value);
+    }
+}
+
+#[test]
+fn text_angle_brackets_scan_only_their_own_text() {
+    use support::fixture::{to_markdown, Node, Paragraph, Text};
+    // Parsed text usually ends at an unescaped `<`, so these shapes come from hand-built trees.
+    for (value, expected) in [
+        ("<1@b.c>", "\\<1@b.c>\n"),
+        ("<1 x", "<1 x\n"),
+        ("<*@a.b>", "<\\*@a.b>\n"),
+        ("<1@b.c", "<1@b.c\n"),
+    ] {
+        let first = to_markdown(&Node::Paragraph(Paragraph {
+            children: vec![Node::Text(Text {
+                value: value.into(),
+                position: None,
+            })],
+            position: None,
+        }))
+        .unwrap();
+        assert_eq!(first, expected, "{:?}", value);
         let reparsed = Document::parse(&first, &Default::default()).unwrap();
-        assert_eq!(canonical(&reparsed), canonical(&tree), "{:?}", input);
-        assert_eq!(to(&reparsed).unwrap(), first, "{:?}", input);
+        assert_eq!(to(&reparsed).unwrap(), first, "{:?}", value);
     }
 }

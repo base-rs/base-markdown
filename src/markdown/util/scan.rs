@@ -109,7 +109,6 @@ mod tests {
         use super::super::safe::escape_backslashes;
         use alloc::{format, string::String};
         let expression = regex::Regex::new(r"\\[!-/:-@\[-`{-~]").unwrap();
-        let punctuation = regex::Regex::new(r"^[!-/:-@\[-`{-~]").unwrap();
         for value in ["", "\\", "\\\\", "\\\\\\", "é\\!\\α", "\\!\\# \\"] {
             for after in (0..=127).map(char::from) {
                 let after = String::from(after);
@@ -123,19 +122,7 @@ mod tests {
                 }
                 expected.push_str(&value[start..]);
                 assert_eq!(
-                    escape_backslashes(value, &after, false),
-                    expected,
-                    "{value:?}, {after:?}"
-                );
-                let mut expected = String::new();
-                for (index, character) in value.char_indices() {
-                    if character == '\\' && punctuation.is_match(&combined[index + 1..]) {
-                        expected.push('\\');
-                    }
-                    expected.push(character);
-                }
-                assert_eq!(
-                    escape_backslashes(value, &after, true),
+                    escape_backslashes(value, &after),
                     expected,
                     "{value:?}, {after:?}"
                 );

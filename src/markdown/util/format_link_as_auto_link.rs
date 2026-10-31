@@ -30,18 +30,28 @@ pub fn auto_link_text<'a, S: AsRef<str>>(
         return None;
     };
     let text = text.resolve(document.source()).unwrap();
-    // Write `<text>` verbatim only when the parser reads it back as this link, which also limits it to `http://`, `https://` and `mailto:` with a target, or an email address. GFM splits table cells at `|` before parsing autolinks, so a pipe in a cell keeps the resource form.
-    let (length, email) = recognize(text.bytes().chain(Some(b'>')))?;
+    // GFM splits table cells at `|` before parsing autolinks, so a pipe in a cell keeps the resource form.
+    (angle_reads_back(text, destination)
+        && !(text.contains('|') && state.stack.contains(&ConstructName::TableCell)))
+    .then_some(text)
+}
+
+/// Whether the parser reads `<text>`, written verbatim, back as an autolink to `destination`.
+///
+/// This uses the parser's own recognizer, so it accepts only `http://`, `https://` and `mailto:`
+/// with a target, or an email address.
+pub fn angle_reads_back(text: &str, destination: &str) -> bool {
+    let Some((length, email)) = recognize(text.bytes().chain(Some(b'>'))) else {
+        return false;
+    };
     let target = if email {
         destination.strip_prefix("mailto:")
     } else {
         Some(destination)
     };
-    (length == text.len() + 1
+    length == text.len() + 1
         && target == Some(text)
         && !text
             .chars()
             .any(|character| character.is_control() || character.is_whitespace())
-        && !(text.contains('|') && state.stack.contains(&ConstructName::TableCell)))
-    .then_some(text)
 }

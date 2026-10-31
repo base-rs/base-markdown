@@ -294,12 +294,23 @@ pub(super) fn collect(
         // Only input escapes and the immediately preceding escape can affect output.
         // Test candidates without a consumption boundary first; a possible match still
         // uses the full prefix walk to preserve non-overlapping neighbor consumption.
+        let flags = || EscapeInfos {
+            before: !matches!(rule.before, Before::Any),
+            after: !matches!(rule.after, After::Any)
+                && !(matches!(rule.after, After::Math) && single_math),
+            email: matches!(rule.after, After::Email),
+        };
         let mut at = start;
         let mut possible = false;
         while let Some(position) = value.find(rule.byte, at).filter(|position| *position < end) {
             if rule.at(value, position, single_math).is_some() {
-                possible = true;
-                break;
+                // An email match consumes `<` and one atext byte, never another `<`, so its
+                // matches cannot overlap and need no prefix walk.
+                if !matches!(rule.after, After::Email) {
+                    possible = true;
+                    break;
+                }
+                output.push((position, flags()));
             }
             at = position + 1;
         }
@@ -308,15 +319,7 @@ pub(super) fn collect(
         }
         for (_, position) in rule.matches(value, single_math) {
             if position >= start && position < end {
-                output.push((
-                    position,
-                    EscapeInfos {
-                        before: !matches!(rule.before, Before::Any),
-                        after: !matches!(rule.after, After::Any)
-                            && !(matches!(rule.after, After::Math) && single_math),
-                        email: matches!(rule.after, After::Email),
-                    },
-                ));
+                output.push((position, flags()));
             }
         }
     }

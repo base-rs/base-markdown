@@ -356,16 +356,12 @@ impl State<'_> {
     }
 
     pub(super) fn text(&mut self, content: &str, info: &Info) -> Result<(), Message> {
-        self.write_text(content, info);
-        Ok(())
-    }
-
-    pub(super) fn write_text(&mut self, content: &str, info: &Info) {
         let value = match self.options.line_wrapping {
             crate::markdown::LineWrapping::Preserve => Cow::Borrowed(content),
             crate::markdown::LineWrapping::Unwrap => unwrap_soft_line_breaks(content),
         };
-        self.write_escaped(&value, info, None, true);
+        self.write_safe(&value, info, None);
+        Ok(())
     }
 
     pub(super) fn resource<S: AsRef<str>>(
