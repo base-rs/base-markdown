@@ -110,10 +110,6 @@ pub fn to_markdown_node<S: AsRef<str>>(
     let mut state = State::new(options);
     state.serialization_root = Some(node);
     let mut result = state.handle(document, node, &Info::new("\n", "\n"))?;
-    // Markdown treats CR, LF, and CRLF alike, so a single line ending keeps output stable across platforms.
-    if result.contains('\r') {
-        result = result.replace("\r\n", "\n").replace('\r', "\n");
-    }
     // Only block output is line-terminated, matching cmark's renderer.
     if !inline && !result.is_empty() && !result.ends_with('\n') {
         result.push('\n');

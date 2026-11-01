@@ -40,7 +40,7 @@ fn text() {
 #[test]
 fn unwraps_soft_line_breaks_and_adjacent_indentation() {
     let node = Node::Text(Text {
-        value: String::from("first  \n \tsecond\r\n third\rfourth"),
+        value: String::from("first  \n \tsecond\n third\nfourth"),
         position: None,
     });
 

@@ -92,25 +92,6 @@ fn html() {
         to(&Node::Paragraph(Paragraph {
             children: vec![
                 Node::Html(Html {
-                    value: "<b>\r\n".to_string(),
-                    position: None
-                }),
-                Node::Html(Html {
-                    value: "<div>".to_string(),
-                    position: None
-                })
-            ],
-            position: None
-        }))
-        .unwrap(),
-        "<b> <div>\n",
-        "should prevent html (text) from becoming html (flow) after html ending in a CRLF"
-    );
-
-    assert_eq!(
-        to(&Node::Paragraph(Paragraph {
-            children: vec![
-                Node::Html(Html {
                     value: "<x>".to_string(),
                     position: None
                 }),

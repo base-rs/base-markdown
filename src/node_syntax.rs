@@ -188,9 +188,10 @@ pub(crate) fn infer(
             } else {
                 (ReferenceKind::Shortcut, span.start + prefix..span.end - 1)
             };
+            // A label is written as authored, but its line endings are LF like every value's.
             Some(NodeSyntax::Reference {
                 kind,
-                label: Text::Source(label),
+                label: Text::Source(label).normalized(source),
             })
         }
         EventKind::Start(Tag::FootnoteDefinition(_)) | EventKind::FootnoteReference(_) => {
@@ -207,7 +208,7 @@ pub(crate) fn infer(
                 return None;
             }
             Some(NodeSyntax::Footnote {
-                label: Text::Source(span.start + start..span.start + end),
+                label: Text::Source(span.start + start..span.start + end).normalized(source),
             })
         }
         EventKind::CodeBlock {

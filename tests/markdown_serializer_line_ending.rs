@@ -2,10 +2,16 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Line endings in text that a raw line ending would change: a second one in a row, which is a
-//! blank line, one before the end of a block, one in a table cell, and a CR, which is written as LF.
+//! blank line, one before the end of a block, one in a table cell, and a CR, which output line
+//! endings would turn into LF. Parsed values store LF for every source line ending, so a CR in a
+//! value comes from a character reference.
 
 mod support;
-use base_markdown::{markdown::to_markdown, Document, ParseOptions};
+use base_markdown::{
+    markdown::to_markdown,
+    stream::{EventKind, Tag, Text as Value},
+    Document, ParseOptions,
+};
 use pretty_assertions::assert_eq;
 use std::time::{Duration, Instant};
 use support::fixture::{
@@ -201,6 +207,150 @@ fn constructed_trees_round_trip() {
             position: None,
         }),
         "| a&#xA;b | c |\n| --- | --- |\n| d | e&#xD;&#xA;f |\n",
+    );
+}
+
+/// The values of `kind` that hold content, which excludes a separator, the line ending the HTML
+/// renderer writes between blocks.
+fn values<'a>(kind: &'a EventKind<'a>) -> Vec<&'a Value<'a>> {
+    match kind {
+        EventKind::Text(value)
+        | EventKind::SoftBreak(value)
+        | EventKind::Math(value)
+        | EventKind::Html { value, .. }
+        | EventKind::Opaque { value, .. }
+        | EventKind::FootnoteReference(value)
+        | EventKind::Start(Tag::FootnoteDefinition(value)) => vec![value],
+        EventKind::Code { value, language }
+        | EventKind::CodeBlock {
+            value, language, ..
+        } => IntoIterator::into_iter([Some(value), language.as_ref()])
+            .flatten()
+            .collect(),
+        EventKind::Start(Tag::Link { destination, title } | Tag::Image { destination, title }) => {
+            IntoIterator::into_iter([Some(destination), title.as_ref()])
+                .flatten()
+                .collect()
+        }
+        EventKind::Definition {
+            label,
+            destination,
+            title,
+        } => IntoIterator::into_iter([Some(label), Some(destination), title.as_ref()])
+            .flatten()
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+#[test]
+fn source_line_endings_are_stored_as_line_feeds() {
+    let source = [
+        "---",
+        "title: a",
+        "---",
+        "",
+        "# a",
+        "",
+        "b",
+        "c  ",
+        "d\\",
+        "e [f",
+        "g] ![h",
+        "i](u \"j",
+        "k\") [l](u 'm",
+        "n') `o",
+        "p` <span",
+        "q> $r",
+        "s$ [^t",
+        "u]",
+        "",
+        "> v",
+        "> w",
+        "",
+        "- x",
+        "  y",
+        "",
+        "```js",
+        "z",
+        "",
+        "```",
+        "",
+        "    indented",
+        "    code",
+        "",
+        "<div>",
+        "html",
+        "</div>",
+        "",
+        "$$",
+        "math",
+        "$$",
+        "",
+        "| a |",
+        "| - |",
+        "| b |",
+        "",
+        "[f",
+        "g]: /d \"title",
+        "line\"",
+        "",
+        "[^t",
+        "u]: note",
+        "",
+    ];
+    let options = ParseOptions::normalize();
+    let parse = |ending: &str| {
+        let mut document = Document::parse(source.join(ending), &options).unwrap();
+        document.normalize();
+        document
+    };
+    let expected = to_markdown(&parse("\n")).unwrap();
+    // The shortcut reference, whose label has a line ending, stays a shortcut.
+    assert!(expected.contains("e [f\ng] ![h"), "{}", expected);
+    for ending in ["\r\n", "\r"] {
+        let document = parse(ending);
+        for event in document.events() {
+            let event = event.unwrap();
+            for value in values(&event.kind) {
+                let value = value.resolve(document.source()).unwrap();
+                assert!(
+                    !value.contains('\r'),
+                    "{:?}: {:?} in {:?}",
+                    ending,
+                    value,
+                    event.kind
+                );
+            }
+        }
+        let output = to_markdown(&document).unwrap();
+        assert_eq!(output, expected, "{:?}", ending);
+        assert!(!output.contains("&#xD;"), "{:?}", ending);
+        assert_eq!(
+            canonical(&document),
+            canonical(&parse("\n")),
+            "{:?}",
+            ending
+        );
+    }
+}
+
+#[test]
+fn carriage_return_references_round_trip_in_text_and_titles() {
+    for (source, expected) in [
+        ("a&#xD;b", "a&#xD;b\n"),
+        ("[a](u \"t&#xD;\")", "[a](u \"t&#xD;\")\n"),
+        ("![a&#xD;b](u 't&#xD;')", "![a&#xD;b](u \"t&#xD;\")\n"),
+        ("[a]: u \"t&#xD;\"\n\n[a]", "[a]: u \"t&#xD;\"\n\n[a]\n"),
+        ("[a]: u \"t&#xD;\"\r\n\r\n[a]", "[a]: u \"t&#xD;\"\n\n[a]\n"),
+        ("# a&#xD;b", "# a&#xD;b\n"),
+    ] {
+        assert_source(source, expected);
+    }
+    // Unwrapping soft breaks keeps a CR, which is not a line ending in a value.
+    assert_eq!(
+        base_markdown::normalize_markdown("a&#xD;\r\nb").unwrap(),
+        "a&#xD; b\n"
     );
 }
 

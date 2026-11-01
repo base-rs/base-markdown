@@ -107,7 +107,8 @@ fn coalescing_stops_before_semantic_boundaries() {
         (r"\! [x](url)", "<p>! <a href=\"url\">x</a></p>"),
         (r"\&amp; &amp;", "<p>&amp;amp; &amp;</p>"),
         (r"\`prefix `code`", "<p>`prefix <code>code</code></p>"),
-        ("\\*line  \r\nnext", "<p>*line<br />\r\nnext</p>"),
+        // A line ending in content is LF.
+        ("\\*line  \r\nnext", "<p>*line<br />\nnext</p>"),
         (r"\*a \_b\_ **c**", "<p>*a _b_ <strong>c</strong></p>"),
         (
             r#"[\*text](url "title")"#,

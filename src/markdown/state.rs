@@ -356,7 +356,7 @@ impl<'a> State<'a> {
                     Before::Literal(value) => Before::Literal(value),
                     Before::Output(lead, range) => Before::Output(lead, range.clone()),
                 }
-            } else if self.output.ends_with(['\n', '\r'])
+            } else if self.output.ends_with('\n')
                 && matches!(kind, EventKind::Html { value, .. }
                 if crate::block_parser::html_interrupts_paragraph(
                     value.resolve(document.source()).unwrap().as_bytes()
@@ -368,9 +368,6 @@ impl<'a> State<'a> {
                 } else {
                     // Replace the line ending before inline HTML so it cannot start an HTML block.
                     self.output.pop();
-                    if self.output.ends_with('\r') {
-                        self.output.pop();
-                    }
                     self.output.push(' ');
                 }
                 Before::Literal(" ")
@@ -522,7 +519,7 @@ impl<'a> State<'a> {
                 }
                 self.text(value, info)
             }
-            // Output line endings are LF, and a CR in text is encoded, so a soft break is written as LF.
+            // A soft break is a line ending, which is LF whatever value a constructed one has.
             EventKind::SoftBreak(_) => self.text("\n", info),
             EventKind::HardBreak => self.hard_break(info),
             EventKind::Rule => self.thematic_break(),
@@ -887,7 +884,8 @@ impl<'a> State<'a> {
         previous: NodeId,
     ) -> Option<char> {
         match &document.node(id).unwrap().kind {
-            EventKind::Text(value) | EventKind::SoftBreak(value) => {
+            // A soft break is written as a line ending, which is never a literal prefix.
+            EventKind::Text(value) => {
                 super::escape::literal_prefix(value.resolve(document.source()).unwrap())
             }
             EventKind::Start(Tag::Emphasis) => Some(self.options.emphasis),

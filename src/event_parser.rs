@@ -22,6 +22,8 @@ pub struct EventParser<'a> {
     cursor: usize,
     closing: bool,
     phase: Phase,
+    // Whether the source has a CR, so that source line endings in values need writing as LF.
+    carriage_returns: bool,
 }
 impl<'a> EventParser<'a> {
     /// Prepare Markdown for pull consumption.
@@ -48,6 +50,7 @@ impl<'a> EventParser<'a> {
             cursor: 0,
             closing: false,
             phase: Phase::Start,
+            carriage_returns: memchr::memchr(b'\r', source.as_bytes()).is_some(),
         }
     }
 }
@@ -63,7 +66,23 @@ impl Iterator for EventParser<'_> {
     #[allow(clippy::inline_always)]
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_event()
+        let event = self.next_event();
+        if !self.carriage_returns {
+            return event;
+        }
+        // Line endings are structure, so every value stores LF, whichever the source used. A
+        // separator is the structure itself, the line ending the HTML renderer writes between
+        // blocks, as it writes the document's own line ending, so it keeps the authored one.
+        let source = self.source;
+        event.map(|event| {
+            event.map(|event| match event.kind {
+                EventKind::Separator { .. } => event,
+                kind => Event {
+                    kind: kind.map_text(|text| text.normalized(source)),
+                    span: event.span,
+                },
+            })
+        })
     }
 }
 // Pending separators are delivery states, mutually exclusive with inline consumption.

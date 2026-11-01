@@ -302,8 +302,7 @@ impl<S: AsRef<str>> Document<S> {
     /// Returns [`StreamError::InvalidRange`] for an invalid node ID or a non-text node.
     pub fn text_mut(&mut self, id: NodeId) -> Result<&mut String, StreamError> {
         // Frontmatter's semantic body detaches independently of its retained fence metadata.
-        let body = if matches!(self.node(id), Some(Node {kind:EventKind::Opaque {value:Text::Source(range),..},span,..}) if range==span)
-        {
+        let body = if self.whole_frontmatter(id) {
             self.frontmatter_value(id).map(String::from)
         } else {
             None
@@ -629,14 +628,32 @@ impl<S: AsRef<str>> Document<S> {
         let value = text
             .resolve(self.source())
             .expect("document text is validated");
-        if let Text::Source(range) = text {
-            if *range == node.span {
-                if let Some((_, _, _, body)) = crate::node_syntax::frontmatter(value) {
-                    return value.get(body);
-                }
+        if self.whole_frontmatter(id) {
+            if let Some((_, _, _, body)) = crate::node_syntax::frontmatter(value) {
+                return value.get(body);
             }
         }
         Some(value)
+    }
+    /// Whether the value of an opaque node is still the whole block it was parsed from, with its
+    /// fences, rather than an edited body. Its line endings are LF, whichever the source used.
+    fn whole_frontmatter(&self, id: NodeId) -> bool {
+        let Some(Node {
+            kind: EventKind::Opaque { value, .. },
+            span,
+            ..
+        }) = self.node(id)
+        else {
+            return false;
+        };
+        match value {
+            Text::Source(range) => range == span,
+            Text::Value(value) => self
+                .source()
+                .get(span.clone())
+                .is_some_and(|raw| crate::util::line_ending::normalizes_to(raw, value)),
+            Text::Literal(_) => false,
+        }
     }
     /// Render the whole document through the shared event HTML writer.
     ///

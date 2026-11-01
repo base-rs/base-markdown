@@ -67,9 +67,10 @@ fn reads_back_bare(text: &str, destination: &str) -> bool {
         .is_some_and(|prefix| destination.strip_prefix(prefix) == Some(text))
 }
 
-/// Whether a bare link may touch `character`: a space, a tab or a line ending.
+/// Whether a bare link may touch `character`: a space, a tab or a line ending. A CR is written
+/// as a reference, which a link would take.
 pub fn boundary(character: char) -> bool {
-    matches!(character, ' ' | '\t' | '\n' | '\r')
+    matches!(character, ' ' | '\t' | '\n')
 }
 
 /// Whether `node`, written before a link, ends at a boundary, judged from the tree alone.
@@ -102,7 +103,7 @@ fn boundary_after<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
         let rest = value.trim_start_matches([' ', '\t']);
         spaces = rest.len() < value.len();
         match rest.chars().next() {
-            Some('\n' | '\r') => return !spaces,
+            Some('\n') => return !spaces,
             Some(_) => return spaces,
             None => next = document.node(next.unwrap()).unwrap().next_sibling(),
         }

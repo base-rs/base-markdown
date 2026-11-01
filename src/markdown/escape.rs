@@ -18,6 +18,7 @@ const FULL_SPANS: u32 = bit(Autolink)
     | bit(Reference)
     | bit(TitleApostrophe)
     | bit(TitleQuote);
+const TITLES: u32 = bit(TitleApostrophe) | bit(TitleQuote);
 const LANGUAGE: u32 = bit(CodeFencedLangGraveAccent) | bit(CodeFencedLangTilde);
 const NEWLINES: u32 = LANGUAGE
     | bit(CodeFencedMetaGraveAccent)
@@ -69,23 +70,21 @@ macro_rules! rule {
 use After::{Any as A, Set};
 use Before::{Any as B, Digits, Line, Previous};
 static RULES: &[Rule] = &[
-    rule!(b'\t', B, Set(b"\r\n"), PHRASING, 0),
+    rule!(b'\t', B, Set(b"\n"), PHRASING, 0),
     rule!(b'\t', Previous(b'\n'), A, PHRASING, 0),
-    rule!(b'\t', Previous(b'\r'), A, PHRASING, 0),
     rule!(b'\t', B, A, LANGUAGE, 0),
-    rule!(b'\r', B, A, NEWLINES, 0),
+    // Line endings are LF, so a CR in a value is a character reference, and is written as one
+    // wherever references are decoded.
+    rule!(b'\r', B, A, NEWLINES | PHRASING | TITLES, 0),
     rule!(b'\n', B, A, NEWLINES, 0),
-    // Output line endings are LF, so a CR in phrasing would read back as LF.
-    rule!(b'\r', B, A, PHRASING, 0),
     // A line ending after another one is a blank line, which ends the paragraph, and one before
     // the line ending that ends a block is trimmed or makes a blank line.
     rule!(b'\n', Previous(b'\n'), A, PHRASING, 0),
     rule!(b'\n', B, After::Closing, PHRASING, 0),
     // A table row is one line.
     rule!(b'\n', B, A, bit(TableCell), 0),
-    rule!(b' ', B, Set(b"\r\n"), PHRASING, 0),
+    rule!(b' ', B, Set(b"\n"), PHRASING, 0),
     rule!(b' ', Previous(b'\n'), A, PHRASING, 0),
-    rule!(b' ', Previous(b'\r'), A, PHRASING, 0),
     rule!(b' ', B, A, LANGUAGE, 0),
     rule!(b'!', B, Set(b"["), PHRASING, FULL_SPANS),
     rule!(b'"', B, A, bit(TitleQuote), 0),
@@ -112,7 +111,7 @@ static RULES: &[Rule] = &[
     rule!(b'[', Line, A, 0, 0),
     rule!(b'[', B, A, PHRASING, FULL_SPANS),
     rule!(b'[', B, A, bit(Label) | bit(Reference), 0),
-    rule!(b'\\', B, Set(b"\r\n"), PHRASING, 0),
+    rule!(b'\\', B, Set(b"\n"), PHRASING, 0),
     rule!(b']', B, A, bit(Label) | bit(Reference), 0),
     rule!(b'|', B, A, bit(TableCell), 0),
     rule!(b'_', Line, A, 0, 0),
@@ -593,7 +592,6 @@ mod tests {
                 let before = match rule.before {
                     Before::Any => "",
                     Before::Previous(b'\n') => "(\\n)",
-                    Before::Previous(b'\r') => "(\\r)",
                     Before::Previous(_) => "(\\])",
                     Before::Line => "([\\r\\n][\\t ]*)",
                     Before::Digits => "([\\r\\n][\\t ]*[0-9]+)",
