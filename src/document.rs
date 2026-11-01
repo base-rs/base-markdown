@@ -1201,7 +1201,7 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent attention of the same kind, or a separator in phrasing, and no strikethrough is inside other strikethrough. This reads every node once.
+    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent attention of the same kind, or a separator in phrasing, and no strikethrough is inside other strikethrough. This takes time linear in the size of the arena.
     pub fn is_normalized(&self) -> bool {
         let nodes = &self.nodes;
         (0..nodes.len())
