@@ -266,7 +266,7 @@ fn both((open, close): (bool, bool)) -> bool {
     open && close
 }
 
-/// Classify a character inside attention, where empty attention counts as a letter, as in JS.
+/// Classify a character inside attention, where empty content, which a normalized tree does not have, counts as a letter, as in JS.
 fn inside(character: Option<char>) -> Kind {
     character.map_or(Kind::Other, classify)
 }
@@ -282,8 +282,8 @@ fn encoding(sequence: &'static str, marker: char, surroundings: &Surroundings) -
     Choice {
         sequence,
         encode_before,
-        encode_first: encode_first && surroundings.first.is_some(),
-        encode_last: encode_last && surroundings.last.is_some(),
+        encode_first,
+        encode_last,
         encode_after,
     }
 }

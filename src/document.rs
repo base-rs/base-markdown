@@ -1114,19 +1114,63 @@ fn phrasing_container(kind: &EventKind<'_>) -> bool {
     )
 }
 
-// Whether normalization removes a child without joining it into another: empty text, and a separator in phrasing.
-fn dropped(kind: &EventKind<'_>) -> bool {
-    empty_text(kind) || matches!(kind, EventKind::Separator { .. })
+// Whether a node is emphasis, strong or strikethrough.
+fn attention(kind: &EventKind<'_>) -> bool {
+    matches!(
+        kind,
+        EventKind::Start(Tag::Emphasis | Tag::Strong | Tag::Delete)
+    )
 }
 
-// Whether normalization removes `kind` after the child kept before it, in a container that holds phrasing or not: empty text, a separator in phrasing, text after text, and attention after attention of the same kind.
-fn redundant(kept: Option<&EventKind<'_>>, kind: &EventKind<'_>, phrasing: bool) -> bool {
-    empty_text(kind)
-        || (phrasing && matches!(kind, EventKind::Separator { .. }))
-        || kept.is_some_and(|kept| {
-            matches!((kept, kind), (EventKind::Text(_), EventKind::Text(_)))
-                || same_attention(kept, kind)
-        })
+// Whether a node is strikethrough, which cannot be written inside other strikethrough.
+fn delete(kind: &EventKind<'_>) -> bool {
+    matches!(kind, EventKind::Start(Tag::Delete))
+}
+
+// Whether normalization removes a child, in a container that holds phrasing or not, without joining it into another: empty text, a separator in phrasing, and attention without children.
+fn removed(node: &Node, phrasing: bool) -> bool {
+    empty_text(&node.kind)
+        || (phrasing && matches!(node.kind, EventKind::Separator { .. }))
+        || (attention(&node.kind) && node.first_child.is_none())
+}
+
+// Whether normalization joins `kind` into the child kept before it: text after text, and attention after attention of the same kind.
+fn joined(kept: Option<&EventKind<'_>>, kind: &EventKind<'_>) -> bool {
+    kept.is_some_and(|kept| {
+        matches!((kept, kind), (EventKind::Text(_), EventKind::Text(_)))
+            || same_attention(kept, kind)
+    })
+}
+
+// The node after `id` in document order within the subtree at `root`, keeping `deletes` as the number of strikethrough nodes that enclose the current node.
+fn next_enclosed(nodes: &[Node], root: NodeId, id: NodeId, deletes: &mut usize) -> Option<NodeId> {
+    let node = &nodes[id.index()];
+    if let Some(child) = node.first_child {
+        *deletes += usize::from(delete(&node.kind));
+        return Some(child);
+    }
+    let mut at = id;
+    loop {
+        if at == root {
+            return None;
+        }
+        let node = &nodes[at.index()];
+        if let Some(next) = node.next_sibling {
+            return Some(next);
+        }
+        at = node
+            .parent
+            .expect("a descendant has a parent before its subtree root");
+        *deletes -= usize::from(delete(&nodes[at.index()].kind));
+    }
+}
+
+// The first node of the subtree at `id` in post-order: its deepest first descendant.
+fn first_leaf(nodes: &[Node], mut id: NodeId) -> NodeId {
+    while let Some(child) = nodes[id.index()].first_child {
+        id = child;
+    }
+    id
 }
 
 // The span of two joined nodes. Constructed nodes have an empty span, which joining does not extend.
@@ -1141,73 +1185,85 @@ fn joined_span(left: &Range<usize>, right: &Range<usize>) -> Range<usize> {
 }
 
 impl<S: AsRef<str>> Document<S> {
-    /// Normalize every child list in place, in time linear in the size of the arena.
+    /// Normalize every child list in place, so that the tree is one the Markdown serializer can write correctly and stably, in time linear in the size of the arena.
     ///
-    /// Empty text is removed, adjacent text is joined into the first text, and adjacent emphasis, strong or strikethrough of the same kind is merged by moving the children of the second to the end of the first. The children that meet at a merge are normalized in turn, so text or attention on either side of the join is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. Nothing else changes: text keeps its value, including whitespace at the edges of attention, and detached subtrees are normalized too.
+    /// Empty text is removed, and so is emphasis, strong or strikethrough that has no children once its own children are normalized, such as emphasis of empty text or strong that holds only empty emphasis. Strikethrough inside other strikethrough, at any depth, is unwrapped: its children take its place, since strikethrough cannot be written inside strikethrough and renders the same once. Adjacent text is joined into the first text, and adjacent emphasis, strong or strikethrough of the same kind is merged by moving the children of the second to the end of the first. Children that meet where a node was removed, unwrapped or merged are normalized in turn, so text or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. Nothing else changes: text keeps its value, including whitespace at the edges of attention, and detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped.
     ///
-    /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, and adjacent attention of the same kind, such as `*a*_b_`, stays separate. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
+    /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, adjacent attention of the same kind, such as `*a*_b_`, stays separate, and strikethrough inside strikethrough, such as `~a~~b~~c~`, stays nested. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
     ///
-    /// The IDs of removed text and merged attention no longer refer to nodes in the tree. Their arena slots remain, detached, but their contents are unspecified. Other IDs stay valid.
+    /// The IDs of removed text and attention, merged attention and unwrapped strikethrough no longer refer to nodes in the tree. Their arena slots remain, detached, but their contents are unspecified. Other IDs stay valid.
     pub fn normalize(&mut self) {
         for index in 0..self.nodes.len() {
             if self.nodes[index].parent.is_none() {
+                self.remove_subtree(NodeId::new(index));
                 self.normalize_subtree(NodeId::new(index));
             }
         }
     }
 
-    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, adjacent text, adjacent attention of the same kind, or a separator in phrasing. This reads every node once.
+    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent attention of the same kind, or a separator in phrasing, and no strikethrough is inside other strikethrough. This reads every node once.
     pub fn is_normalized(&self) -> bool {
-        self.nodes.iter().all(|node| {
-            let phrasing = phrasing_container(&node.kind);
-            let mut kept: Option<&EventKind<'_>> = None;
-            core::iter::successors(node.first_child, |&child| {
-                self.nodes[child.index()].next_sibling
-            })
-            .all(|child| {
-                let kind = &self.nodes[child.index()].kind;
-                let normal = !redundant(kept, kind, phrasing);
-                if !matches!(kind, EventKind::Separator { .. }) {
-                    kept = Some(kind);
+        let nodes = &self.nodes;
+        (0..nodes.len())
+            .filter(|&index| nodes[index].parent.is_none())
+            .all(|index| {
+                let root = NodeId::new(index);
+                let mut deletes = 0;
+                let mut current = Some(root);
+                while let Some(id) = current {
+                    let node = &nodes[id.index()];
+                    if deletes > 0 && delete(&node.kind) {
+                        return false;
+                    }
+                    let phrasing = phrasing_container(&node.kind);
+                    let mut kept: Option<&EventKind<'_>> = None;
+                    let mut child = node.first_child;
+                    while let Some(id) = child {
+                        let node = &nodes[id.index()];
+                        if removed(node, phrasing) || joined(kept, &node.kind) {
+                            return false;
+                        }
+                        if !matches!(node.kind, EventKind::Separator { .. }) {
+                            kept = Some(&node.kind);
+                        }
+                        child = node.next_sibling;
+                    }
+                    current = next_enclosed(nodes, root, id, &mut deletes);
                 }
-                normal
+                true
             })
-        })
     }
 
-    // Normalize each child list from the top down, so that children moved into attention are normalized with its own children.
-    fn normalize_subtree(&mut self, root: NodeId) {
-        let mut current = Some(root);
-        while let Some(id) = current {
+    // Remove the children that are dropped without joining from each child list, from the bottom up, so that attention whose children are all removed is removed in turn. Each removed node has no children left, so it stays detached and normalized.
+    fn remove_subtree(&mut self, root: NodeId) {
+        let mut id = first_leaf(&self.nodes, root);
+        loop {
             if self.nodes[id.index()].first_child.is_some() {
-                self.normalize_children(id);
+                self.remove_children(id);
             }
-            current = next_descendant(&self.nodes, root, id);
+            if id == root {
+                return;
+            }
+            let node = &self.nodes[id.index()];
+            id = match node.next_sibling {
+                Some(next) => first_leaf(&self.nodes, next),
+                None => node
+                    .parent
+                    .expect("a descendant has a parent before its subtree root"),
+            };
         }
     }
 
-    // Normalize the children of `parent` in one pass, unlinking each removed child as it is met and joining it into the last child kept.
-    fn normalize_children(&mut self, parent: NodeId) {
-        let source = self.source.as_ref();
+    // Unlink each child of `parent` that is removed without joining.
+    fn remove_children(&mut self, parent: NodeId) {
         let nodes = &mut self.nodes;
-        let mut changed = false;
         let phrasing = phrasing_container(&nodes[parent.index()].kind);
-        // The last kept child that is not a separator, and the last kept child.
-        let mut kept: Option<NodeId> = None;
+        let mut changed = false;
         let mut linked: Option<NodeId> = None;
-        // Attention that children were moved into, and its last child, so that moving more children does not walk its children again.
-        let mut tail: Option<(NodeId, Option<NodeId>)> = None;
         let mut current = nodes[parent.index()].first_child;
         while let Some(id) = current {
             current = nodes[id.index()].next_sibling;
-            if !redundant(
-                kept.map(|kept| &nodes[kept.index()].kind),
-                &nodes[id.index()].kind,
-                phrasing,
-            ) {
-                if !matches!(nodes[id.index()].kind, EventKind::Separator { .. }) {
-                    kept = Some(id);
-                }
+            if !removed(&nodes[id.index()], phrasing) {
                 linked = Some(id);
                 continue;
             }
@@ -1218,9 +1274,79 @@ impl<S: AsRef<str>> Document<S> {
             }
             nodes[id.index()].parent = None;
             nodes[id.index()].next_sibling = None;
-            let Some(kept) = kept.filter(|_| !dropped(&nodes[id.index()].kind)) else {
+        }
+        if changed {
+            self.refresh_item(Some(parent));
+        }
+    }
+
+    // Normalize each child list from the top down, so that children moved into attention are normalized with its own children, counting the strikethrough that encloses each node so that nested strikethrough is unwrapped without searching ancestors.
+    fn normalize_subtree(&mut self, root: NodeId) {
+        let mut deletes = 0;
+        let mut current = Some(root);
+        while let Some(id) = current {
+            if self.nodes[id.index()].first_child.is_some() {
+                let enclosed = deletes > 0 || delete(&self.nodes[id.index()].kind);
+                self.normalize_children(id, enclosed);
+            }
+            current = next_enclosed(&self.nodes, root, id, &mut deletes);
+        }
+    }
+
+    // Normalize the children of `parent`, which is strikethrough or inside it when `enclosed`, in one pass: unwrap each strikethrough child of enclosed `parent` in place, so its children are normalized next, and unlink each child joined into the last child kept as it is met. Empty children have already been removed.
+    fn normalize_children(&mut self, parent: NodeId, enclosed: bool) {
+        let source = self.source.as_ref();
+        let nodes = &mut self.nodes;
+        let mut changed = false;
+        // The last kept child that is not a separator, and the last kept child.
+        let mut kept: Option<NodeId> = None;
+        let mut linked: Option<NodeId> = None;
+        // Attention that children were moved into, and its last child, so that moving more children does not walk its children again.
+        let mut tail: Option<(NodeId, NodeId)> = None;
+        let mut current = nodes[parent.index()].first_child;
+        while let Some(id) = current {
+            current = nodes[id.index()].next_sibling;
+            if enclosed && delete(&nodes[id.index()].kind) {
+                // Link the children of the strikethrough in its place, and continue from the first of them.
+                changed = true;
+                let first = nodes[id.index()]
+                    .first_child
+                    .take()
+                    .expect("attention without children has been removed");
+                let mut last = first;
+                loop {
+                    nodes[last.index()].parent = Some(parent);
+                    match nodes[last.index()].next_sibling {
+                        Some(next) => last = next,
+                        None => break,
+                    }
+                }
+                nodes[last.index()].next_sibling = current;
+                match linked {
+                    Some(linked) => nodes[linked.index()].next_sibling = Some(first),
+                    None => nodes[parent.index()].first_child = Some(first),
+                }
+                nodes[id.index()].parent = None;
+                nodes[id.index()].next_sibling = None;
+                current = Some(first);
                 continue;
-            };
+            }
+            if !joined(
+                kept.map(|kept| &nodes[kept.index()].kind),
+                &nodes[id.index()].kind,
+            ) {
+                if !matches!(nodes[id.index()].kind, EventKind::Separator { .. }) {
+                    kept = Some(id);
+                }
+                linked = Some(id);
+                continue;
+            }
+            let kept = kept.expect("a joined child follows a kept child");
+            let linked = linked.expect("a joined child follows a kept child");
+            changed = true;
+            nodes[linked.index()].next_sibling = current;
+            nodes[id.index()].parent = None;
+            nodes[id.index()].next_sibling = None;
             nodes[kept.index()].span =
                 joined_span(&nodes[kept.index()].span, &nodes[id.index()].span);
             // Hold the removed node's value while joining it, so the kept node can be borrowed mutably.
@@ -1246,16 +1372,14 @@ impl<S: AsRef<str>> Document<S> {
                     _ => core::iter::successors(nodes[kept.index()].first_child, |&child| {
                         nodes[child.index()].next_sibling
                     })
-                    .last(),
+                    .last()
+                    .expect("attention without children has been removed"),
                 };
                 let mut child = nodes[id.index()].first_child.take();
-                match last {
-                    Some(last) => nodes[last.index()].next_sibling = child,
-                    None => nodes[kept.index()].first_child = child,
-                }
+                nodes[last.index()].next_sibling = child;
                 while let Some(moved) = child {
                     nodes[moved.index()].parent = Some(kept);
-                    last = Some(moved);
+                    last = moved;
                     child = nodes[moved.index()].next_sibling;
                 }
                 tail = Some((kept, last));

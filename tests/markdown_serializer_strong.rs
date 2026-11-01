@@ -17,8 +17,8 @@ fn strong() {
             position: None
         }))
         .unwrap(),
-        "****\n",
-        "should support an empty strong"
+        "",
+        "should remove an empty strong when normalizing"
     );
 
     assert_eq!(
