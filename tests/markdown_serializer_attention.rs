@@ -8,7 +8,7 @@ use base_markdown::{markdown::Options, Document, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::{
     canonical, to_markdown as to, to_markdown_with_options as to_md_with_opts, Blockquote, Break,
-    Delete, Emphasis, Node, Paragraph, Root, Strong, Text,
+    Delete, Emphasis, InlineCode, Node, Paragraph, Root, Strong, Text,
 };
 
 fn text(value: &str) -> Node {
@@ -659,6 +659,70 @@ fn encode_split_text() {
             "{source:?}"
         );
     }
+}
+
+#[test]
+fn encode_after_empty_text() {
+    // Empty text writes nothing, so the character attention is encoded against is that of the next node that writes something.
+    fn inline_code(value: &str) -> Node {
+        Node::InlineCode(InlineCode {
+            value: value.into(),
+            position: None,
+            lang: None,
+        })
+    }
+    type Wrap = fn(Vec<Node>) -> Node;
+    let kinds: [(Wrap, &str); 3] = [(emphasis, "*"), (strong, "**"), (delete, "~~")];
+    for (wrap, marker) in kinds {
+        for (after, expected) in [
+            (
+                vec![text(""), text("b")],
+                format!("{marker}a&#x20;{marker}&#x62;\n"),
+            ),
+            (
+                vec![text(""), text(""), text(""), text("b")],
+                format!("{marker}a&#x20;{marker}&#x62;\n"),
+            ),
+            (
+                vec![text(""), inline_code("b")],
+                format!("{marker}a&#x20;{marker}`b`\n"),
+            ),
+            (
+                vec![text(""), text("")],
+                format!("{marker}a&#x20;{marker}\n"),
+            ),
+        ] {
+            let mut children = vec![wrap(vec![text("a ")])];
+            children.extend(after);
+            let markdown = to_md_with_opts(&paragraph(children), &Options::default()).unwrap();
+            assert_eq!(markdown, expected, "{marker:?}");
+            assert_stable(&markdown, &Options::default());
+        }
+    }
+}
+
+#[test]
+fn encode_after_cleared_text() {
+    // Clearing the text a reference was split off keeps the reference for the text after it.
+    let mut document = Document::parse(
+        "see *old&#x20;*&#x6E;ew text\n".to_owned(),
+        &ParseOptions::gfm(),
+    )
+    .unwrap();
+    let cleared = document
+        .descendants(document.root())
+        .find(|&id| {
+            matches!(
+                &document.node(id).unwrap().kind,
+                base_markdown::stream::EventKind::Text(value)
+                    if value.resolve(document.source()).ok() == Some("n")
+            )
+        })
+        .unwrap();
+    document.text_mut(cleared).unwrap().clear();
+    let markdown = to_markdown(&document, &Options::default());
+    assert_eq!(markdown, "see *old&#x20;*&#x65;w text\n");
+    assert_stable(&markdown, &Options::default());
 }
 
 #[test]

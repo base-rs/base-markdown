@@ -307,7 +307,11 @@ impl<'a> State<'a> {
             after_hard_break = matches!(kind, EventKind::HardBreak);
             *self.index_stack.last_mut().unwrap() = index;
             let mut buffer = [0u8; 4];
-            let next = children.get(end).copied();
+            // Empty text writes nothing, so what follows it is the next node that writes something.
+            let next = children[end..].iter().copied().find(|&next| {
+                !matches!(&document.node(next).unwrap().kind,
+                    EventKind::Text(value) if value.resolve(document.source()).unwrap().is_empty())
+            });
             let after = if let Some(next) = next {
                 if let Some(first) = self.peek_node(document, next, members.last().copied()) {
                     first.encode_utf8(&mut buffer) as &str
