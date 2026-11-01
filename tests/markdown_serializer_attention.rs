@@ -1103,6 +1103,20 @@ fn nested_attention_sharing_an_edge() {
     ] {
         assert_eq!(serialize(children, &Options::default()), expected);
     }
+
+    // Once a child joins the opening run, the parent checks its closing sequence against the longer run.
+    let children = vec![
+        emphasis(vec![strong(vec![
+            emphasis(vec![text("c")]),
+            text(" "),
+            strong(vec![text(" ")]),
+        ])]),
+        text("a"),
+    ];
+    assert_eq!(
+        exact(children, &markers('*', '*')),
+        ("****c* __&#x20;__***&#x61;\n".to_string(), true)
+    );
 }
 
 #[test]
