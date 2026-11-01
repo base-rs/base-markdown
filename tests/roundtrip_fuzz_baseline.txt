@@ -1,0 +1,7 @@
+# Round-trip fuzz failures per corpus at 10000 inputs, checked by tests/roundtrip_fuzz.rs. The test fails when a corpus exceeds its count. Lower a count when it drops, or run with FUZZ_BLESS=1 to rewrite this file.
+realistic 253
+soup 8
+edge 1109
+strike 745
+tree-asterisk 2479
+tree-underscore 2479
