@@ -457,6 +457,24 @@ fn frontmatter_preserves_source_spans_and_body_after_detaching() {
 }
 
 #[test]
+fn an_edited_lf_body_equal_to_the_whole_block_stays_an_edit_after_rebuilding() {
+    let source = "---\na: 1\n---\n\n# x\n";
+    let mut document = Document::parse(source.to_string(), &ParseOptions::normalize()).unwrap();
+    let node = document.children(document.root()).next().unwrap();
+    *document.text_mut(node).unwrap() = "---\na: 1\n---".into();
+    // Rebuilding from events keeps the values but not the record of edits.
+    let mut builder = base_markdown::AstBuilder::new();
+    builder.consume(&mut document.events(), usize::MAX).unwrap();
+    let rebuilt = builder.finish(document.source().to_string()).unwrap();
+    let node = rebuilt.children(rebuilt.root()).next().unwrap();
+    assert_eq!(rebuilt.frontmatter_value(node), Some("---\na: 1\n---"));
+    assert_eq!(
+        base_markdown::to_markdown(&rebuilt).unwrap(),
+        "~~~yaml\n---\na: 1\n---\n~~~\n\n# x\n"
+    );
+}
+
+#[test]
 fn an_edited_body_equal_to_the_whole_block_stays_an_edit() {
     for ending in ["\n", "\r\n", "\r"] {
         let source = "---\na\n---\n\nx\n".replace('\n', ending);

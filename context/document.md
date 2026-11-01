@@ -39,7 +39,7 @@ The source stays immutable while ranges depend on it. Integer offsets survive mo
 
 ## Serialization
 
-The `serde` feature serializes the source, arena slots and sparse syntax overrides. Deserialization constructs the arena directly and validates the complete forest, including detached subtrees, before exposing it. Validation rejects invalid UTF-8 ranges, broken or cyclic links, duplicate ownership, illegal roots, invalid event values and incompatible metadata. It does not collect a complete event stream as an intermediate representation.
+The `serde` feature serializes the source, arena slots, sparse syntax overrides and the set of opaque nodes whose value `text_mut` or `set_kind` replaced, which tells an edited frontmatter body from the parsed block when a CR source makes both values. Deserialization constructs the arena directly and validates the complete forest, including detached subtrees, before exposing it. Validation rejects invalid UTF-8 ranges, broken or cyclic links, duplicate ownership, illegal roots, invalid event values and incompatible metadata. It does not collect a complete event stream as an intermediate representation.
 
 Source ranges stay ranges. Literal and owned values share the serialized `Value` representation; deserialization owns those strings. Node IDs retain their indices within the restored document. This arena format replaces mdast JSON and is not the mdast interchange schema.
 

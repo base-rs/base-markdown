@@ -655,7 +655,9 @@ impl<S: AsRef<str>> Document<S> {
     }
     /// Whether the value of an opaque node is still the whole block it was parsed from, with its
     /// fences, rather than an edited body. Its line endings are LF, whichever the source used, so
-    /// a CR source's block is a value rather than the source range until it is edited.
+    /// a block with a CR in the source is a value rather than the source range until it is edited.
+    /// A parsed block without a CR is always the source range, so a value for it is an edit, even
+    /// in a document rebuilt from another's events, which does not keep the record of edits.
     fn whole_frontmatter(&self, id: NodeId) -> bool {
         let Some(Node {
             kind: EventKind::Opaque { value, .. },
@@ -669,10 +671,9 @@ impl<S: AsRef<str>> Document<S> {
             Text::Source(range) => range == span,
             Text::Value(value) => {
                 !self.edited.contains(&id)
-                    && self
-                        .source()
-                        .get(span.clone())
-                        .is_some_and(|raw| crate::util::line_ending::normalizes_to(raw, value))
+                    && self.source().get(span.clone()).is_some_and(|raw| {
+                        raw.contains('\r') && crate::util::line_ending::normalizes_to(raw, value)
+                    })
             }
             Text::Literal(_) => false,
         }
