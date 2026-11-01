@@ -7,7 +7,7 @@
 //!
 //! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L195.
 use crate::markdown::{
-    attention::{self, Edge, Surroundings},
+    attention::{self, Edge, Parent, Surroundings},
     construct_name::ConstructName,
     util::{
         format_code_as_indented::format_code_as_indented,
@@ -49,8 +49,8 @@ pub struct State<'a> {
     applied: Vec<usize>,
     /// How many attention nodes are open, by marker (`*`, `_`) and sequence size (1, 2).
     attention_open: [[usize; 2]; 2],
-    /// The size of the run of markers the last opening sequence ends, including enclosing opening sequences it joins.
-    opening_run: usize,
+    /// The attention whose children are being written.
+    parent: Parent,
     pub bullet_current: Option<char>,
     pub bullet_last_used: Option<char>,
     pub index_stack: Vec<usize>,
@@ -189,30 +189,27 @@ impl<'a> State<'a> {
             .last()
             .and_then(|&child| edge_character(document, child, false));
         let after = info.after.chars().next();
-        let choice = attention::choose(
-            sequences,
-            &Surroundings {
-                before,
-                before_closes: matches!(previous, Previous::Attention),
-                before_opens: matches!(previous, Previous::Start),
-                opening_run: self.opening_run,
-                first,
-                first_size: children.first().map_or(0, |&child| {
-                    match document.node(child).unwrap().kind {
-                        EventKind::Start(Tag::Emphasis) => 1,
-                        EventKind::Start(Tag::Strong) => 2,
-                        _ => 0,
-                    }
-                }),
-                last,
-                after,
-                after_closes: last_child,
-                enclosing: [
-                    [self.attention_open[0][0] > 0, self.attention_open[0][1] > 0],
-                    [self.attention_open[1][0] > 0, self.attention_open[1][1] > 0],
-                ],
-            },
-        );
+        let surroundings = Surroundings {
+            before,
+            before_closes: matches!(previous, Previous::Attention),
+            before_opens: matches!(previous, Previous::Start),
+            first,
+            first_size: children
+                .first()
+                .map_or(0, |&child| sequence_size(document, child)),
+            last,
+            last_size: children
+                .last()
+                .map_or(0, |&child| sequence_size(document, child)),
+            after,
+            after_closes: last_child,
+            parent: self.parent,
+            enclosing: [
+                [self.attention_open[0][0] > 0, self.attention_open[0][1] > 0],
+                [self.attention_open[1][0] > 0, self.attention_open[1][1] > 0],
+            ],
+        };
+        let choice = attention::choose(sequences, &surroundings);
         let sequence = choice.sequence;
         let tilde = sequence.starts_with('~');
         if let (Previous::Text(start), Some(character)) = (previous, before) {
@@ -224,8 +221,6 @@ impl<'a> State<'a> {
                 attention::escape_tilde_end(&mut self.output, start);
             }
         }
-        let joins = matches!(previous, Previous::Start) && before == sequence.chars().next();
-        self.opening_run = sequence.len() + if joins { self.opening_run } else { 0 };
         self.output.push_str(sequence);
         // Strikethrough has one sequence, so enclosing strikethrough is not tracked.
         let open = (!tilde).then(|| usize::from(sequence.starts_with('_')));
@@ -236,8 +231,11 @@ impl<'a> State<'a> {
             encode: first.filter(|_| choice.encode_first),
             tilde: true,
         };
+        let parent = core::mem::replace(&mut self.parent, Parent::new(&choice, &surroundings));
         let last_text =
             self.phrasing(document, &children, &Info::new(sequence, sequence), &edge)?;
+        let child = core::mem::replace(&mut self.parent, parent);
+        self.parent.extend(&child);
         if let Some(open) = open {
             self.attention_open[open][sequence.len() - 1] -= 1;
         }
@@ -772,7 +770,7 @@ impl<'a> State<'a> {
             email_candidates: Vec::new(),
             applied: Vec::new(),
             attention_open: [[0; 2]; 2],
-            opening_run: 0,
+            parent: Parent::NONE,
             bullet_current: None,
             bullet_last_used: None,
             index_stack: Vec::new(),
@@ -1080,6 +1078,15 @@ enum Previous {
     Start,
     /// Anything else.
     Other,
+}
+
+/// The sequence size of emphasis (1) or strong (2), or 0 for other nodes.
+fn sequence_size<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> usize {
+    match document.node(id).unwrap().kind {
+        EventKind::Start(Tag::Emphasis) => 1,
+        EventKind::Start(Tag::Strong) => 2,
+        _ => 0,
+    }
 }
 
 /// The first or last character a phrasing node is written with, as far as attention next to it needs: text is approximated by its value and other nodes by punctuation.

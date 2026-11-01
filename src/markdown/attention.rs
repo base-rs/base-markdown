@@ -23,20 +23,103 @@ pub(super) struct Surroundings {
     pub before_closes: bool,
     /// Whether `before` ends the opening sequence of enclosing attention.
     pub before_opens: bool,
-    /// The size of the run of markers that `before` ends, if `before_opens`.
-    pub opening_run: usize,
     /// The first character of the content, or `None` if it is empty.
     pub first: Option<char>,
     /// The sequence size of emphasis (1) or strong (2) the content starts with, which may join the opening sequence, or 0.
     pub first_size: usize,
     /// The last character of the content, or `None` if it is empty.
     pub last: Option<char>,
+    /// The sequence size of emphasis (1) or strong (2) the content ends with, which may join the closing sequence, or 0.
+    pub last_size: usize,
     /// The character after the closing sequence; `None` is the edge of a block.
     pub after: Option<char>,
     /// Whether `after` starts the closing sequence of enclosing attention.
     pub after_closes: bool,
+    /// The attention directly enclosing this one.
+    pub parent: Parent,
     /// Whether enclosing attention is open, by marker (`*`, `_`) and sequence size (1, 2).
     pub enclosing: [[bool; 2]; 2],
+}
+
+/// The runs of markers that attention is written with, as far as attention directly inside it needs.
+#[derive(Clone, Copy)]
+pub(super) struct Parent {
+    /// The size of the run of markers its opening sequence ends, including enclosing opening sequences it joins.
+    pub opening_run: usize,
+    /// The size of the run of markers its closing sequence starts, including enclosing closing sequences it joins.
+    pub closing_run: usize,
+    /// The kind of the character before its opening run.
+    pub before: Kind,
+    /// The kind of the character after its closing run.
+    pub after: Kind,
+    /// Whether its opening run can both open and close, if no child joins it.
+    pub opening_both: bool,
+    /// Whether its closing run can both open and close, if no child joins it.
+    pub closing_both: bool,
+    /// Whether no child can join its closing run.
+    pub closing_final: bool,
+    /// Whether its opening sequence joins the opening run of its own parent.
+    pub joins_opening: bool,
+}
+
+impl Parent {
+    /// No enclosing attention.
+    pub(super) const NONE: Self = Self {
+        opening_run: 0,
+        closing_run: 0,
+        before: Kind::Whitespace,
+        after: Kind::Whitespace,
+        opening_both: false,
+        closing_both: false,
+        closing_final: true,
+        joins_opening: false,
+    };
+
+    /// The parent that attention written as `choice` in `surroundings` is to its children.
+    pub(super) fn new(choice: &Choice, surroundings: &Surroundings) -> Self {
+        let size = choice.sequence.len();
+        let marker = choice
+            .sequence
+            .chars()
+            .next()
+            .expect("sequences are not empty");
+        let parent = &surroundings.parent;
+        let joins_opening = surroundings.before_opens && surroundings.before == Some(marker);
+        let (opening_run, before) = if joins_opening {
+            (parent.opening_run + size, parent.before)
+        } else {
+            (
+                size,
+                written(kind(surroundings.before), choice.encode_before),
+            )
+        };
+        let (closing_run, after) =
+            if surroundings.after_closes && surroundings.after == Some(marker) {
+                (parent.closing_run + size, parent.after)
+            } else {
+                (size, written(kind(surroundings.after), choice.encode_after))
+            };
+        let first = written(inside(surroundings.first), choice.encode_first);
+        let last = written(inside(surroundings.last), choice.encode_last);
+        Self {
+            opening_run,
+            closing_run,
+            before,
+            after,
+            opening_both: both(flanking(marker, before, first)),
+            closing_both: both(flanking(marker, last, after)),
+            closing_final: surroundings.last_size == 0,
+            joins_opening,
+        }
+    }
+
+    /// Extend the opening run by that of a child, once written, if the child joins it.
+    pub(super) fn extend(&mut self, child: &Self) {
+        if child.joins_opening {
+            self.opening_run = child.opening_run;
+            self.opening_both = child.opening_both;
+        }
+    }
 }
 
 /// The chosen sequence and the characters around it to encode.
@@ -51,14 +134,17 @@ pub(super) struct Choice {
 /// Choose a sequence that forms: the first that needs nothing encoded, then the first that needs encoding, then the preferred one.
 ///
 /// An opening sequence that joins the closing sequence of attention before it does not form, and attention after it chooses its sequence to fit this one. One that joins the opening sequence of enclosing attention forms one run with it, which splits as intended unless the closing sequences join too, where only strong splits: `****a****` is strong in strong, but `**a**` is strong rather than emphasis in emphasis. Any other opening sequence must not be able to close enclosing attention.
+///
+/// Where a sequence joins a run of enclosing attention at one edge only, the rule of 3, which compares the lengths of whole runs, must still let the runs at both edges pair: `**a*.**` is emphasis in emphasis, but written as `**a*.*\*` its outer closing sequence can also open, and cannot close the run of 2, so it is written as `*_a_.*\*`. Attention the content starts or ends with may join the same run, so the check is skipped where that would change the run.
 pub(super) fn choose(sequences: &'static [&'static str], surroundings: &Surroundings) -> Choice {
     let mut fallback = None;
     for &sequence in sequences {
         let marker = sequence.chars().next().expect("sequences are not empty");
         let choice = encoding(sequence, marker, surroundings);
         let joins_before = surroundings.before == Some(marker);
+        let joins_after = surroundings.after_closes && surroundings.after == Some(marker);
         let forms = if surroundings.before_opens && joins_before {
-            if surroundings.after_closes && surroundings.after == Some(marker) {
+            if joins_after {
                 sequence.len() == 2
             } else {
                 !closing_unpaired(&choice, marker, surroundings)
@@ -66,6 +152,7 @@ pub(super) fn choose(sequences: &'static [&'static str], surroundings: &Surround
         } else {
             !(surroundings.before_closes && joins_before)
                 && !closes_enclosing(&choice, marker, surroundings)
+                && !(joins_after && opening_unpaired(&choice, marker, surroundings))
         };
         if !forms {
             continue;
@@ -122,24 +209,60 @@ fn closes_enclosing(choice: &Choice, marker: char, surroundings: &Surroundings) 
     {
         return false;
     }
-    let before = written(kind(surroundings.before), choice.encode_before);
-    let first = written(inside(surroundings.first), choice.encode_first);
-    flanking(marker, before, first).1
+    opening_flanking(choice, marker, surroundings).1
 }
 
-/// Whether the rule of 3 keeps the closing sequence from pairing with the run its opening sequence joins.
+/// Whether the rule of 3 keeps the closing sequence, or the parent's closing run, from pairing with the parent's opening run, which the opening sequence joins.
 ///
-/// The rule applies if the closing sequence can also open; the sizes count the whole runs.
+/// Attention the content starts with may join the run too, which makes the character after the run unknown, and attention it ends with may join the closing sequence, which makes the size of its run unknown.
 fn closing_unpaired(choice: &Choice, marker: char, surroundings: &Surroundings) -> bool {
+    let parent = &surroundings.parent;
     let size = choice.sequence.len();
-    let run = surroundings.opening_run + size + surroundings.first_size;
-    // Strong and emphasis sequences are never a multiple of 3 themselves.
-    if (run + size) % 3 != 0 {
-        return false;
-    }
+    let run = parent.opening_run + size + surroundings.first_size;
+    let first = written(inside(surroundings.first), choice.encode_first);
+    let opening_both = surroundings.first_size == 0 && both(flanking(marker, parent.before, first));
     let last = written(inside(surroundings.last), choice.encode_last);
     let after = written(kind(surroundings.after), choice.encode_after);
-    let (open, close) = flanking(marker, last, after);
+    let closing_both = both(flanking(marker, last, after));
+    rule_of_three(
+        run,
+        size,
+        closing_both || (opening_both && surroundings.last_size == 0),
+    ) || (surroundings.first_size == 0
+        && parent.closing_final
+        && rule_of_three(run, parent.closing_run, opening_both || parent.closing_both))
+}
+
+/// Whether the rule of 3 keeps the opening sequence, or the parent's opening run, from pairing with the parent's closing run, which the closing sequence joins.
+///
+/// Attention the content starts or ends with may join the opening sequence or the run too, which makes their sizes unknown.
+fn opening_unpaired(choice: &Choice, marker: char, surroundings: &Surroundings) -> bool {
+    let parent = &surroundings.parent;
+    if surroundings.last_size != 0 {
+        return false;
+    }
+    let size = choice.sequence.len();
+    let run = size + parent.closing_run;
+    let last = written(inside(surroundings.last), choice.encode_last);
+    let closing_both = both(flanking(marker, last, parent.after));
+    let opening_both = both(opening_flanking(choice, marker, surroundings));
+    (surroundings.first_size == 0 && rule_of_three(size, run, opening_both || closing_both))
+        || rule_of_three(parent.opening_run, run, parent.opening_both || closing_both)
+}
+
+/// Whether the rule of 3 keeps an opening and a closing run of these sizes from pairing, where it `applies` as one of them can both open and close.
+fn rule_of_three(opening: usize, closing: usize, applies: bool) -> bool {
+    applies && (opening + closing) % 3 == 0 && !(opening % 3 == 0 && closing % 3 == 0)
+}
+
+/// Whether an opening sequence can open and close.
+fn opening_flanking(choice: &Choice, marker: char, surroundings: &Surroundings) -> (bool, bool) {
+    let before = written(kind(surroundings.before), choice.encode_before);
+    let first = written(inside(surroundings.first), choice.encode_first);
+    flanking(marker, before, first)
+}
+
+fn both((open, close): (bool, bool)) -> bool {
     open && close
 }
 
