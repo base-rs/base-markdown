@@ -938,6 +938,15 @@ impl<'a> State<'a> {
             }
             self.applied.push(position);
         }
+        // Whether a `~` pairs depends on its neighbours as written, so decide them afterwards.
+        if super::escape::strikethrough(&self.stack) {
+            super::escape::tildes(
+                input,
+                start,
+                [before_last, info.after.chars().next()],
+                &mut self.applied,
+            );
+        }
         // Email-only escapes depend on which other escapes apply, so decide them afterwards.
         let applied = self.applied.len();
         for &position in &self.email_candidates {
