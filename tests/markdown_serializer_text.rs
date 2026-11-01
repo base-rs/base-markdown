@@ -210,12 +210,16 @@ fn intraword_underscores() {
     );
 }
 
-/// Serialize `source`, parsed with GFM, and serialize the result again.
+/// Serialize `source`, parsed with GFM and normalized, and serialize the result again.
 fn two_passes(source: &str) -> (String, String) {
     let options = base_markdown::ParseOptions::gfm();
-    let first = base_markdown::to_markdown(&Document::parse(source, &options).unwrap()).unwrap();
-    let second =
-        base_markdown::to_markdown(&Document::parse(first.as_str(), &options).unwrap()).unwrap();
+    let pass = |value: &str| {
+        let mut document = Document::parse(value, &options).unwrap();
+        document.normalize();
+        base_markdown::to_markdown(&document).unwrap()
+    };
+    let first = pass(source);
+    let second = pass(&first);
     (first, second)
 }
 
@@ -288,7 +292,7 @@ fn literal_autolinks_next_to_anything_else_are_written_as_autolinks_or_explicitl
         ("\\.x@y.z\n", ".<x@y.z>\n"),
         ("\\\\x@y.z\n", "\\\\<x@y.z>\n"),
         ("\\<a@b.c>\n", "<<a@b.c>>\n"),
-        ("x@y.z~www.c.d\n", "<x@y.z>~[www.c.d](http://www.c.d)\n"),
+        ("x@y.z~www.c.d\n", "<x@y.z>\\~[www.c.d](http://www.c.d)\n"),
         ("x@y.co1_www.\n", "[x@y.co1_www](mailto:x@y.co1_www).\n"),
         ("https://a.b/c  \nb\n", "<https://a.b/c>\\\nb\n"),
         (
@@ -656,7 +660,8 @@ fn a_tilde_at_the_edges_of_strikethrough_keeps_its_escape() {
         ("x ~~a\\~~~ y\n", "x ~~a\\~~~ y\n"),
         ("- ~~\\~a\\~~~\n", "- ~~\\~a\\~~~\n"),
         ("~~a\\\\\\~~~\n", "~~a\\\\\\~~~\n"),
-        ("~~a~b~~\n", "~~a~b~~\n"),
+        // A `~` inside that can close is escaped like any other.
+        ("~~a~b~~\n", "~~a\\~b~~\n"),
     ] {
         let (first, second) = two_passes(source);
         assert_eq!(first, expected, "{source:?}");
@@ -665,6 +670,160 @@ fn a_tilde_at_the_edges_of_strikethrough_keeps_its_escape() {
             canonical(&Document::parse(first.as_str(), &options).unwrap()),
             canonical(&Document::parse(source, &options).unwrap()),
             "{source:?}"
+        );
+    }
+}
+
+/// Parse `source` with GFM, normalize it, serialize it, and check that the output reads back as the
+/// same tree and serializes to itself.
+fn assert_roundtrip(source: &str, expected: &str) {
+    let options = base_markdown::ParseOptions::gfm();
+    let (first, second) = two_passes(source);
+    assert_eq!(first, expected, "{source:?}");
+    assert_eq!(second, first, "{source:?}");
+    let mut document = Document::parse(source, &options).unwrap();
+    document.normalize();
+    let mut reparsed = Document::parse(first.as_str(), &options).unwrap();
+    reparsed.normalize();
+    assert_eq!(canonical(&reparsed), canonical(&document), "{source:?}");
+}
+
+#[test]
+fn a_tilde_that_could_pair_as_strikethrough_is_escaped() {
+    for (source, expected) in [
+        // A tilde that can close is escaped, so the one before it, which can only open, need not be.
+        ("x \\~a~\n", "x ~a\\~\n"),
+        ("[\\~a~](u)\n", "[~a\\~](u)\n"),
+        ("*\\~a~*\n", "*\\~a\\~*\n"),
+        ("x *\\~a~*\n", "x *\\~a\\~*\n"),
+        ("x \\~a \\*b\\~ c\\*\n", "x ~a \\*b\\~ c\\*\n"),
+        // A run escapes whole, as what is left of a run can still pair.
+        ("&#x20; ~~a~\n", "&#x20; \\~\\~a\\~\n"),
+        // The run after an escaped backslash is judged by the backslash before it.
+        ("~\\\\~~:~\n", "~~\\\\\\~\\~:~~\n"),
+        ("a\\\\~b\n", "a\\\\~b\n"),
+        ("a\\\\~ b\n", "a\\\\\\~ b\n"),
+        ("a\\\\\\~b\n", "a\\\\~b\n"),
+        // An escaped or encoded neighbour is punctuation, as written.
+        ("\\*~ b\n", "\\*\\~ b\n"),
+        ("x \\~~&#x20;\nb~~c~~\n", "x \\~\\~&#x20;\nb~~c~~\n"),
+        // A tilde next to a strikethrough sequence escapes with it.
+        ("a \\~~~b~~\n", "a \\~~~b~~\n"),
+        ("~~a \\~~~\n", "~~a \\~~~\n"),
+        // A character that attention writes as a reference is punctuation, so the tildes next to it
+        // are escaped.
+        ("x ~a *&#x20;\\~ b*\n", "x ~a *&#x20;\\~ b*\n"),
+        ("x ~a **&#x20;\\~ b**\n", "x ~a **&#x20;\\~ b**\n"),
+        ("~~&#x20;\\~\\~ b~~\n", "~~&#x20;\\~\\~ b~~\n"),
+        ("~~a \\~\\~&#xA;~~\n", "~~a \\~\\~&#xA;~~\n"),
+        // Two tildes that can open are escaped, as a strikethrough sequence can close them.
+        ("x \\~~a\n", "x \\~\\~a\n"),
+        ("\\~~x a~~b~~\n", "\\~\\~x a~~b~~\n"),
+        ("a\\~b\n", "a\\~b\n"),
+        ("5\\~10 and foo\\~\n", "5\\~10 and foo\\~\n"),
+        ("(approx.\\~)\n", "(approx.\\~)\n"),
+        // Tildes that cannot close a single tilde, or that are three or more, stay as they are.
+        (
+            "About ~5 min, ~/path, a ~ b, (~3 GB), home/~user\n",
+            "About ~5 min, ~/path, a ~ b, (~3 GB), home/~user\n",
+        ),
+        ("*\\~5 min, ~3 GB*\n", "*\\~5 min, ~3 GB*\n"),
+        ("a ~~~ b and a~~~b\n", "a ~~~ b and a~~~b\n"),
+        // At the start of a line, the whole run is escaped, so no part of it opens a code fence or
+        // pairs.
+        ("\\~~~a\n", "\\~\\~\\~a\n"),
+        ("a\n\\~\\~\\~b\\~\\~\n", "a\n\\~\\~\\~b\\~\\~\n"),
+        ("a\n\\~~~b~~\n", "a\n\\~~~b~~\n"),
+        ("- \\~~~a\n", "- \\~\\~\\~a\n"),
+        ("> \\~~a\n", "> \\~\\~a\n"),
+        ("\\~5 min\n", "\\~5 min\n"),
+        // Code is written as it is.
+        ("`~a~` and ``~~b~~``\n", "`~a~` and `~~b~~`\n"),
+        // Destinations and titles are not phrasing.
+        ("[a](u~ \"t~\")\n", "[a](u~ \"t~\")\n"),
+        ("[a~](<u ~v~> 't~x~')\n", "[a\\~](<u ~v~> \"t~x~\")\n"),
+        ("![a\\~b~](u~)\n", "![a\\~b\\~](u~)\n"),
+        // Table cells are phrasing.
+        (
+            "| a\\~ | \\~~b |\n| - | - |\n| ~c~ | `~d~` |\n",
+            "| a\\~ | \\~\\~b |\n| --- | --- |\n| ~~c~~ | `~d~` |\n",
+        ),
+    ] {
+        assert_roundtrip(source, expected);
+    }
+}
+
+#[test]
+fn a_tilde_in_constructed_text_that_could_pair_is_escaped() {
+    fn text(value: &str) -> Node {
+        Node::Text(Text {
+            value: value.to_owned(),
+            position: None,
+        })
+    }
+    fn delete(children: Vec<Node>) -> Node {
+        Node::Delete(Delete {
+            children,
+            position: None,
+        })
+    }
+    for (children, expected) in [
+        // The backslash is literal, so it does not escape the `~` after it.
+        (vec![text("\\~a~")], "\\\\~a\\~\n"),
+        (vec![text("\\\\~a~")], "\\\\\\\\~a\\~\n"),
+        (vec![delete(vec![text("a~~b")])], "~~a\\~\\~b~~\n"),
+        (vec![delete(vec![text("x ~~a")])], "~~x \\~\\~a~~\n"),
+        (
+            vec![text("~~x a"), delete(vec![text("b")])],
+            "\\~\\~x a~~b~~\n",
+        ),
+    ] {
+        let node = Node::Root(Root {
+            children: vec![Node::Paragraph(Paragraph {
+                children,
+                position: None,
+            })],
+            position: None,
+        });
+        let output = to(&node).unwrap();
+        assert_eq!(output, expected);
+        let options = base_markdown::ParseOptions::gfm();
+        let mut reparsed = Document::parse(output.as_str(), &options).unwrap();
+        reparsed.normalize();
+        assert_eq!(
+            canonical(&reparsed),
+            canonical(&node.document()),
+            "{expected:?}"
+        );
+        assert_eq!(base_markdown::to_markdown(&reparsed).unwrap(), output);
+    }
+}
+
+#[test]
+fn escaping_tildes_is_linear() {
+    let options = base_markdown::ParseOptions::gfm();
+    // Escapes of other characters, such as `*`, are already in the list each run is checked against.
+    for unit in ["~", "a~", "\\~", "~~a ", "\\* ~~a"] {
+        let time = |count: usize| {
+            let mut document = Document::parse(unit.repeat(count) + "\n", &options).unwrap();
+            document.normalize();
+            let started = std::time::Instant::now();
+            base_markdown::to_markdown(&document).unwrap();
+            started.elapsed()
+        };
+        time(1 << 8);
+        let mut small = std::time::Duration::MAX;
+        let mut large = std::time::Duration::MAX;
+        for _ in 0..5 {
+            small = small.min(time(1 << 12));
+            large = large.min(time(1 << 14));
+        }
+        assert!(
+            large < small * 12,
+            "{:?}: 4x input took {:?} against {:?}",
+            unit,
+            large,
+            small
         );
     }
 }
