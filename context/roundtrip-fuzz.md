@@ -8,6 +8,7 @@ Each input is parsed with `ParseOptions::normalize()`, the syntax `normalize_mar
 
 - `normalized`: either document is not normalized after `Document::normalize`.
 - `html`: the HTML of the two documents differs. The final line ending and a line ending after a hard break are ignored, since a hand-built tree has no source for them.
+- `tree`: the HTML is the same, but the canonical trees of `support::fixture::canonical` differ. These count line endings that the HTML comparison ignores, so dropping one is not a fix, and structure the HTML flattens, such as links in image text.
 - `unstable`: serializing the second document gives different Markdown.
 - `error`: serializing a parsed document returns an error. A hand-built tree that the serializer rejects is counted as rejected instead.
 
@@ -21,13 +22,13 @@ A panic fails the test whatever the baseline.
 | `soup` | Single characters from `*_~a. \n\`. |
 | `edge` | Markers next to `&#x20;`, `&#xA;`, `&#x9;`, encoded letters and escaped markers, sometimes in a heading, table cell, item or quote. |
 | `strike` | Tilde runs of every length among letters, digits, attention, escapes, code and links. |
-| `tree-asterisk`, `tree-underscore` | The same hand-built paragraphs, headings and table cells of nested emphasis, strong, strikethrough, links, code and breaks, serialized with `*` and with `_` as the emphasis and strong marker. |
+| `tree-asterisk`, `tree-underscore` | The same hand-built paragraphs, headings and table cells of nested emphasis, strong, strikethrough, links, code and breaks, serialized with `*` and with `_` as the emphasis and strong marker. A hard break is never the last child of a block or attention, where it has no source, and never in a table cell, which GFM cannot write. |
 
 Each corpus has its own seed and a small xorshift generator, so the inputs and counts are the same on every platform, and the first inputs of a larger run are the inputs of a smaller one.
 
 ## Baseline
 
-At the default size of 10,000 inputs per corpus, the test compares each corpus's failure count with `tests/roundtrip_fuzz_baseline.txt`. It fails when a corpus has more failures than its baseline, and prints a hint when it has fewer: lower the baseline in the same change, by hand or with `FUZZ_BLESS=1`.
+At the default size of 10,000 inputs per corpus, `tests/roundtrip_fuzz_baseline.txt` records each corpus's failures, rejected trees and a 64-bit FNV-1a digest of its sorted failing inputs, the lines of `<corpus>.txt`. The test fails on any difference, up or down, and prints the change in each count, so a fix cannot hide a new failure in the same corpus. When a change is intended, rewrite the baseline with `FUZZ_BLESS=1`, which prints what changed, and commit it with the change: the diff shows the new counts in review.
 
 The report also buckets failures by known issue, using simple rules on the input, the output and both HTML renderings. The buckets are approximate: use them to see what moved, and the failing inputs to see why.
 
@@ -40,11 +41,11 @@ cargo test --test roundtrip_fuzz -- --nocapture
 # A larger run, in release.
 FUZZ_INPUTS=1000000 cargo test --release --test roundtrip_fuzz round_trip_fuzz -- --nocapture
 
-# Rewrite the baseline after a change lowers the counts.
+# Rewrite the baseline after an intended change; only at the default size.
 FUZZ_BLESS=1 cargo test --test roundtrip_fuzz round_trip_fuzz
 ```
 
-`FUZZ_OUTPUT=directory` writes, for each corpus, `<corpus>.txt`, its sorted and deduplicated failing inputs as one Rust string literal per line, and `<corpus>-details.txt`, each failure with its kind, bucket, output and both HTML renderings, separated by tabs.
+`FUZZ_OUTPUT=directory` writes, for each corpus, `<corpus>.txt`, its sorted and deduplicated failing inputs as one Rust string literal per line, and `<corpus>-details.txt`, each failure with its kind, bucket, output and both HTML renderings, separated by tabs. The files are large for the tree corpora at 1,000,000 inputs: about 220 MB of details and 140 MB of inputs each, against at most 20 MB for the other corpora.
 
 ## Comparing a branch with main
 

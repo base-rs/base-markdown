@@ -3,15 +3,15 @@
 
 //! Round-trip fuzz harness for normalizing and serializing Markdown, with fixed seeds and a checked-in baseline.
 //!
-//! Each input is parsed with [`ParseOptions::normalize`], the syntax `normalize_markdown` reads, or built by hand as a tree. It is then normalized, serialized with the default Markdown options, parsed again with the same options and normalized again. An input fails when either document is not normalized after normalizing (`normalized`), when the HTML of the two documents differs (`html`), when serializing the second document gives different Markdown (`unstable`), or when serializing a parsed document returns an error (`error`). A panic is a hard failure whatever the baseline. A hand-built tree that the serializer rejects with an error is skipped and counted as rejected.
+//! Each input is parsed with [`ParseOptions::normalize`], the syntax `normalize_markdown` reads, or built by hand as a tree. It is then normalized, serialized with the default Markdown options, parsed again with the same options and normalized again. An input fails when either document is not normalized after normalizing (`normalized`), when the HTML of the two documents differs (`html`), when the HTML is the same but the canonical trees of `support::fixture::canonical` differ (`tree`), when serializing the second document gives different Markdown (`unstable`), or when serializing a parsed document returns an error (`error`). A panic is a hard failure whatever the baseline. A hand-built tree that the serializer rejects with an error is skipped and counted as rejected.
 //!
-//! Every corpus is generated from its own fixed seed by a small xorshift generator, so the inputs, and the counts, are the same on every platform, and the first inputs of a larger run are the inputs of a smaller one. At the default size, the failure count of each corpus is compared with `tests/roundtrip_fuzz_baseline.txt`: the test fails when a corpus has more failures than its baseline, and prints a hint to lower the baseline when it has fewer.
+//! Every corpus is generated from its own fixed seed by a small xorshift generator, so the inputs, and the counts, are the same on every platform, and the first inputs of a larger run are the inputs of a smaller one. At the default size, each corpus's failure count, rejected count and a digest of its sorted failing inputs must equal its line in `tests/roundtrip_fuzz_baseline.txt`, so a fix that hides a new failure in the same corpus still changes the digest. Any difference, up or down, fails the test.
 //!
 //! Environment variables:
 //!
 //! - `FUZZ_INPUTS=1000000` sets the inputs per corpus. The baseline is only checked at the default size. Run large sizes in release.
-//! - `FUZZ_OUTPUT=directory` writes `<corpus>.txt`, the sorted, deduplicated failing inputs of each corpus, one Rust string literal per line, and `<corpus>-details.txt`, each failure with its kind, class, output and both HTML renderings.
-//! - `FUZZ_BLESS=1` rewrites the baseline with the counts of this run, at the default size only.
+//! - `FUZZ_OUTPUT=directory` writes `<corpus>.txt`, the sorted, deduplicated failing inputs of each corpus, one Rust string literal per line, and `<corpus>-details.txt`, each failure with its kind, class, output and both HTML renderings or canonical trees. The files are large for the tree corpora at 1,000,000 inputs: about 220 MB of details and 140 MB of inputs each.
+//! - `FUZZ_BLESS=1` rewrites the baseline from this run and prints what changed. It fails at any other size.
 //!
 //! See `context/roundtrip-fuzz.md` for comparing a branch with main.
 
@@ -27,8 +27,8 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 use support::fixture::{
-    AlignKind, Break, Delete, Emphasis, Heading, InlineCode, Link, Node, Paragraph, Root, Strong,
-    Table, TableCell, TableRow, Text,
+    canonical, AlignKind, Break, Delete, Emphasis, Heading, InlineCode, Link, Node, Paragraph,
+    Root, Strong, Table, TableCell, TableRow, Text,
 };
 
 /// Inputs per corpus when `FUZZ_INPUTS` is not set; the baseline records failures at this size.
@@ -171,7 +171,7 @@ fn text(value: String) -> Node {
     })
 }
 
-/// Phrasing of one to four nodes. `outside` lists the attention and links that enclose it, which are not nested in themselves. A hard break is never the first or last child, as Markdown cannot write a break at the edge of a block or of attention.
+/// Phrasing of one to four nodes. `outside` lists the attention and links that enclose it, which are not nested in themselves, and `break` in a table cell, which GFM cannot write. A hard break is never the last child, as Markdown has no source for a break at the end of a block or of attention.
 fn phrasing(random: &mut Random, depth: usize, outside: &[&str]) -> Vec<Node> {
     let mut children = Vec::new();
     for _ in 0..1 + random.below(4) {
@@ -216,18 +216,17 @@ fn phrasing(random: &mut Random, depth: usize, outside: &[&str]) -> Vec<Node> {
             }),
         });
     }
-    for index in [0, children.len() - 1] {
-        if matches!(children[index], Node::Break(_)) {
-            children[index] = text(random.concatenate(TREE_TEXT, 4));
-        }
+    if let Some(last @ Node::Break(_)) = children.last_mut() {
+        *last = text(random.concatenate(TREE_TEXT, 4));
     }
     children
 }
 
 /// A paragraph, heading or one-cell table of random phrasing.
 fn tree(random: &mut Random) -> Input {
-    let children = phrasing(random, 0, &[]);
-    let block = match random.below(4) {
+    let kind = random.below(4);
+    let children = phrasing(random, 0, if kind == 1 { &["break"] } else { &[] });
+    let block = match kind {
         0 => Node::Heading(Heading {
             children,
             position: None,
@@ -316,7 +315,7 @@ const CORPORA: &[Corpus] = &[
     },
 ];
 
-const KINDS: [&str; 4] = ["html", "unstable", "normalized", "error"];
+const KINDS: [&str; 5] = ["html", "tree", "unstable", "normalized", "error"];
 
 struct Failure {
     kind: &'static str,
@@ -374,6 +373,16 @@ fn round_trip<S: AsRef<str>>(
     if after != before {
         return fail("html", output, before, after);
     }
+    // The HTML ignores line endings after hard breaks and at the end; the canonical trees do not, so dropping one is not a fix.
+    let (canonical_before, canonical_after) = (canonical(&document), canonical(&reparsed));
+    if canonical_after != canonical_before {
+        return fail(
+            "tree",
+            output,
+            canonical_before.join("\n"),
+            canonical_after.join("\n"),
+        );
+    }
     match to_markdown_with_options(&reparsed, options) {
         Ok(again) if again == output => Outcome::Pass,
         Ok(again) => fail("unstable", output, before, again),
@@ -409,18 +418,11 @@ impl Classifier {
         let differs =
             |pattern: &str| before.matches(pattern).count() != after.matches(pattern).count();
         let without_line_endings = |html: &str| html.replace("</p>\n<p>", "").replace('\n', "");
+        if failure.kind == "tree" {
+            return "tree differs with the same HTML, such as a line ending after a hard break";
+        }
         if failure.kind != "html" {
             return failure.kind;
-        }
-        let break_at_edge = before.ends_with("<br />")
-            || before.contains("<br /></")
-            || [
-                "<p>", "<h1>", "<em>", "<strong>", "<del>", "<th>", "<td>", "<li>",
-            ]
-            .iter()
-            .any(|start| before.contains(&format!("{start}<br />")));
-        if differs("<br />") || break_at_edge {
-            return "hard break at an edge or before a line ending";
         }
         if before.contains("</code><code>") {
             return "adjacent code spans";
@@ -443,6 +445,9 @@ impl Classifier {
             || (encoded_line_ending && (differs("<p>") || differs("<h1>") || differs("<li>")))
         {
             return "#112 encoded line ending written raw";
+        }
+        if differs("<br />") || before.ends_with("<br />") || before.contains("<br /></") {
+            return "hard break at the end of a block or attention";
         }
         if differs("<a href")
             && ["www.", "@", "://"]
@@ -492,6 +497,7 @@ struct Tally {
     kinds: BTreeMap<&'static str, usize>,
     classes: BTreeMap<&'static str, usize>,
     panics: Vec<String>,
+    /// The failing inputs, described as Rust string literals, sorted and deduplicated once the run ends.
     inputs: Vec<String>,
     details: String,
 }
@@ -526,8 +532,8 @@ fn run(corpus: &Corpus, count: usize, record: bool) -> Tally {
         tally.failures += 1;
         *tally.kinds.entry(failure.kind).or_default() += 1;
         *tally.classes.entry(class).or_default() += 1;
+        tally.inputs.push(input.describe());
         if record {
-            tally.inputs.push(input.describe());
             writeln!(
                 tally.details,
                 "{}\t{}\t{}\t{:?}\t{:?}\t{:?}",
@@ -541,26 +547,119 @@ fn run(corpus: &Corpus, count: usize, record: bool) -> Tally {
             .unwrap();
         }
     }
+    tally.inputs.sort();
+    tally.inputs.dedup();
     tally
 }
 
-fn parse_baseline(text: &str) -> BTreeMap<String, usize> {
-    text.lines()
-        .filter(|line| !line.starts_with('#') && !line.trim().is_empty())
-        .map(|line| {
-            let (name, count) = line.split_once(' ').unwrap();
-            (name.to_owned(), count.trim().parse().unwrap())
-        })
-        .collect()
+/// The 64-bit FNV-1a hash of the sorted, deduplicated failing inputs, one per line as in `<corpus>.txt`, so any change to which inputs fail changes it.
+fn digest(inputs: &[String]) -> String {
+    let mut hash: u64 = 0xCBF2_9CE4_8422_2325;
+    for input in inputs {
+        for byte in input.bytes().chain(Some(b'\n')) {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0100_0000_01B3);
+        }
+    }
+    format!("{hash:016x}")
+}
+
+/// One corpus's line in the baseline: `<corpus> <failures> <rejected> <digest>`.
+#[derive(Debug, PartialEq)]
+struct Expected {
+    failures: usize,
+    rejected: usize,
+    digest: String,
+}
+
+impl Expected {
+    fn of(tally: &Tally) -> Self {
+        Self {
+            failures: tally.failures,
+            rejected: tally.rejected,
+            digest: digest(&tally.inputs),
+        }
+    }
+}
+
+/// Parse the baseline, rejecting malformed and duplicate lines.
+fn parse_baseline(text: &str) -> Result<BTreeMap<String, Expected>, String> {
+    let mut baseline = BTreeMap::new();
+    for (index, line) in text.lines().enumerate() {
+        if line.starts_with('#') || line.trim().is_empty() {
+            continue;
+        }
+        let number = index + 1;
+        let fields: Vec<_> = line.split_whitespace().collect();
+        let [name, failures, rejected, digest] = fields[..] else {
+            return Err(format!(
+                "baseline line {number} should be `<corpus> <failures> <rejected> <digest>`: {line:?}"
+            ));
+        };
+        let count = |field: &str, what: &str| {
+            field
+                .parse::<usize>()
+                .map_err(|_| format!("baseline line {number}: {what} {field:?} is not a count"))
+        };
+        if digest.len() != 16 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(format!(
+                "baseline line {number}: digest {digest:?} is not 16 hexadecimal digits"
+            ));
+        }
+        let expected = Expected {
+            failures: count(failures, "failures")?,
+            rejected: count(rejected, "rejected")?,
+            digest: digest.to_owned(),
+        };
+        if baseline.insert(name.to_owned(), expected).is_some() {
+            return Err(format!(
+                "baseline line {number}: corpus {name:?} is listed twice"
+            ));
+        }
+    }
+    Ok(baseline)
 }
 
 fn environment(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|value| !value.is_empty())
 }
 
+/// The difference between `now` and `before`, signed.
+fn change(now: usize, before: usize) -> String {
+    if now >= before {
+        format!("+{}", now - before)
+    } else {
+        format!("-{}", before - now)
+    }
+}
+
+const BLESS: &str = "FUZZ_BLESS=1 cargo test --test roundtrip_fuzz round_trip_fuzz";
+
+/// Taken by the fuzz run and by each scaling test, so that the fuzz threads never load the machine while a scaling test times.
+static TIMING: Mutex<()> = Mutex::new(());
+
 #[test]
 fn round_trip_fuzz() {
-    let count = environment("FUZZ_INPUTS").map_or(DEFAULT_INPUTS, |value| value.parse().unwrap());
+    let _timing = TIMING.lock().unwrap_or_else(PoisonError::into_inner);
+    let count = environment("FUZZ_INPUTS").map_or(DEFAULT_INPUTS, |value| {
+        value
+            .parse()
+            .unwrap_or_else(|_| panic!("FUZZ_INPUTS={:?} is not a count", value))
+    });
+    let bless = match environment("FUZZ_BLESS").as_deref() {
+        None | Some("0") => false,
+        Some("1") => true,
+        Some(other) => panic!(
+            "FUZZ_BLESS={:?}: set it to 1 to rewrite the baseline",
+            other
+        ),
+    };
+    assert!(
+        !bless || count == DEFAULT_INPUTS,
+        "FUZZ_BLESS=1 rewrites the baseline only at the default size of {} inputs, not FUZZ_INPUTS={}",
+        DEFAULT_INPUTS,
+        count
+    );
     let output = environment("FUZZ_OUTPUT");
     let record = output.is_some();
     let tallies: Vec<Tally> = std::thread::scope(|scope| {
@@ -575,14 +674,22 @@ fn round_trip_fuzz() {
     });
 
     let mut report = format!(
-        "{:<16} {:>9} {:>9} {:>9} {:>9} {:>11} {:>6} {:>9}\n",
-        "corpus", "inputs", "failures", "html", "unstable", "normalized", "error", "rejected"
+        "{:<16} {:>9} {:>9} {:>9} {:>9} {:>9} {:>11} {:>6} {:>9}\n",
+        "corpus",
+        "inputs",
+        "failures",
+        "html",
+        "tree",
+        "unstable",
+        "normalized",
+        "error",
+        "rejected"
     );
     for (corpus, tally) in CORPORA.iter().zip(&tallies) {
         let kind = |name: &str| tally.kinds.get(name).copied().unwrap_or(0);
         writeln!(
             report,
-            "{:<16} {:>9} {:>9} {:>9} {:>9} {:>11} {:>6} {:>9}",
+            "{:<16} {:>9} {:>9} {:>9} {:>9} {:>9} {:>11} {:>6} {:>9}",
             corpus.name,
             count,
             tally.failures,
@@ -590,6 +697,7 @@ fn round_trip_fuzz() {
             kind(KINDS[1]),
             kind(KINDS[2]),
             kind(KINDS[3]),
+            kind(KINDS[4]),
             tally.rejected
         )
         .unwrap();
@@ -606,10 +714,7 @@ fn round_trip_fuzz() {
     if let Some(directory) = &output {
         std::fs::create_dir_all(directory).unwrap();
         for (corpus, tally) in CORPORA.iter().zip(&tallies) {
-            let mut inputs = tally.inputs.clone();
-            inputs.sort();
-            inputs.dedup();
-            let mut lines = inputs.join("\n");
+            let mut lines = tally.inputs.join("\n");
             if !lines.is_empty() {
                 lines.push('\n');
             }
@@ -634,54 +739,102 @@ fn round_trip_fuzz() {
         println!("The baseline is checked only at the default size of {DEFAULT_INPUTS} inputs.");
         return;
     }
-    if environment("FUZZ_BLESS").is_some() {
-        let mut baseline = format!("# Round-trip fuzz failures per corpus at {DEFAULT_INPUTS} inputs, checked by tests/roundtrip_fuzz.rs. The test fails when a corpus exceeds its count. Lower a count when it drops, or run with FUZZ_BLESS=1 to rewrite this file.\n");
-        for (corpus, tally) in CORPORA.iter().zip(&tallies) {
-            writeln!(baseline, "{} {}", corpus.name, tally.failures).unwrap();
+    let baseline = std::fs::read_to_string(BASELINE_PATH)
+        .map_err(|error| format!("cannot read {BASELINE_PATH}: {error}"))
+        .and_then(|text| parse_baseline(&text));
+    // Blessing replaces a baseline that cannot be read; checking needs one.
+    let baseline = match baseline {
+        Ok(baseline) => baseline,
+        Err(error) if bless => {
+            println!("Replacing the baseline: {error}");
+            BTreeMap::new()
         }
-        std::fs::write(BASELINE_PATH, baseline).unwrap();
-        println!("Rewrote {BASELINE_PATH}.");
+        Err(error) => panic!("{}", error),
+    };
+    let mut changes = Vec::new();
+    for (corpus, tally) in CORPORA.iter().zip(&tallies) {
+        let now = Expected::of(tally);
+        match baseline.get(corpus.name) {
+            Some(before) if *before == now => {}
+            Some(before) => changes.push(format!(
+                "{}: failures {} ({} from {}), rejected {} ({} from {}), digest {} (was {})",
+                corpus.name,
+                now.failures,
+                change(now.failures, before.failures),
+                before.failures,
+                now.rejected,
+                change(now.rejected, before.rejected),
+                before.rejected,
+                now.digest,
+                before.digest
+            )),
+            None => changes.push(format!(
+                "{}: failures {}, rejected {}, digest {} (not in the baseline)",
+                corpus.name, now.failures, now.rejected, now.digest
+            )),
+        }
+    }
+    for name in baseline.keys() {
+        if !CORPORA.iter().any(|corpus| corpus.name == name) {
+            changes.push(format!("{name}: in the baseline but not a corpus"));
+        }
+    }
+
+    if bless {
+        let mut text = format!("# Round-trip fuzz results per corpus at {DEFAULT_INPUTS} inputs, checked exactly by tests/roundtrip_fuzz.rs: <corpus> <failures> <rejected> <digest of the sorted failing inputs>. Rewrite with {BLESS}.\n");
+        for (corpus, tally) in CORPORA.iter().zip(&tallies) {
+            let now = Expected::of(tally);
+            writeln!(
+                text,
+                "{} {} {} {}",
+                corpus.name, now.failures, now.rejected, now.digest
+            )
+            .unwrap();
+        }
+        std::fs::write(BASELINE_PATH, text)
+            .unwrap_or_else(|error| panic!("cannot write {}: {}", BASELINE_PATH, error));
+        if changes.is_empty() {
+            println!("The baseline is unchanged.");
+        } else {
+            println!("Rewrote {BASELINE_PATH}:\n{}", changes.join("\n"));
+        }
         return;
     }
-    let baseline = parse_baseline(include_str!("roundtrip_fuzz_baseline.txt"));
-    let mut exceeded = Vec::new();
-    for (corpus, tally) in CORPORA.iter().zip(&tallies) {
-        let allowed = baseline[corpus.name];
-        if tally.failures > allowed {
-            exceeded.push(format!(
-                "{}: {} failures, baseline {allowed}",
-                corpus.name, tally.failures
-            ));
-        } else if tally.failures < allowed {
-            println!(
-                "{}: {} failures, below the baseline of {allowed}. Lower it in tests/roundtrip_fuzz_baseline.txt, or run with FUZZ_BLESS=1.",
-                corpus.name, tally.failures
-            );
-        }
-    }
     assert!(
-        exceeded.is_empty(),
-        "round-trip failures exceed the baseline; run with FUZZ_OUTPUT=directory to list them:\n{}",
-        exceeded.join("\n")
+        changes.is_empty(),
+        "the round-trip results differ from tests/roundtrip_fuzz_baseline.txt:\n{}\nRun with FUZZ_OUTPUT=directory to list the failing inputs, and compare with main as in context/roundtrip-fuzz.md. If the change is intended, rewrite the baseline with `{}` and commit it.",
+        changes.join("\n"),
+        BLESS
     );
 }
 
 #[test]
 fn baseline_lists_every_corpus() {
-    let baseline = parse_baseline(include_str!("roundtrip_fuzz_baseline.txt"));
-    let names: Vec<_> = CORPORA.iter().map(|corpus| corpus.name).collect();
-    assert_eq!(baseline.keys().map(String::as_str).collect::<Vec<_>>(), {
-        let mut sorted = names.clone();
-        sorted.sort_unstable();
-        sorted
-    });
+    let baseline = parse_baseline(include_str!("roundtrip_fuzz_baseline.txt")).unwrap();
+    let mut names: Vec<_> = CORPORA.iter().map(|corpus| corpus.name).collect();
+    names.sort_unstable();
+    assert_eq!(
+        baseline.keys().map(String::as_str).collect::<Vec<_>>(),
+        names
+    );
+}
+
+#[test]
+fn baseline_rejects_malformed_lines() {
+    let parse = |text: &str| parse_baseline(text).is_err();
+    assert!(!parse("# comment\n\nsoup 1 0 0123456789abcdef\n"));
+    assert!(parse(
+        "soup 1 0 0123456789abcdef\nsoup 2 0 0123456789abcdef\n"
+    ));
+    assert!(parse("soup 1\n"));
+    assert!(parse("soup x 0 0123456789abcdef\n"));
+    assert!(parse("soup 1 0 digest\n"));
 }
 
 /// Assert that four times the input takes less than twelve times as long, after a warm-up, as in `tests/document_normalize.rs`.
 ///
-/// Quadratic time would take sixteen times as long. Each size takes the fastest of five runs, alternating between the sizes, so that load slows both alike, and only one scaling test times at once.
+/// Quadratic time would take sixteen times as long. Each size takes the fastest of five runs, alternating between the sizes, so that load slows both alike, and only one scaling test, or the fuzz run, runs at once.
 fn assert_linear(unit: &str, mut time: impl FnMut(usize) -> Duration) {
-    static TIMING: Mutex<()> = Mutex::new(());
     let _timing = TIMING.lock().unwrap_or_else(PoisonError::into_inner);
     time(1 << 7);
     let mut small = Duration::MAX;
