@@ -243,62 +243,65 @@ fn values<'a>(kind: &'a EventKind<'a>) -> Vec<&'a Value<'a>> {
     }
 }
 
+/// A document with every kind of value that can span lines, one line per item.
+const RICH: &[&str] = &[
+    "---",
+    "title: a",
+    "---",
+    "",
+    "# a",
+    "",
+    "b",
+    "c  ",
+    "d\\",
+    "e [f",
+    "g] ![h",
+    "i](u \"j",
+    "k\") [l](u 'm",
+    "n') `o",
+    "p` <span",
+    "q> $r",
+    "s$ [^t",
+    "u]",
+    "",
+    "> v",
+    "> w",
+    "",
+    "- x",
+    "  y",
+    "",
+    "```js",
+    "z",
+    "",
+    "```",
+    "",
+    "    indented",
+    "    code",
+    "",
+    "<div>",
+    "html",
+    "</div>",
+    "",
+    "$$",
+    "math",
+    "$$",
+    "",
+    "| a |",
+    "| - |",
+    "| b |",
+    "",
+    "[f",
+    "g]: /d \"title",
+    "line\"",
+    "",
+    "[^t",
+    "u]: note",
+    "",
+];
+
 #[test]
 fn source_line_endings_are_stored_as_line_feeds() {
-    let source = [
-        "---",
-        "title: a",
-        "---",
-        "",
-        "# a",
-        "",
-        "b",
-        "c  ",
-        "d\\",
-        "e [f",
-        "g] ![h",
-        "i](u \"j",
-        "k\") [l](u 'm",
-        "n') `o",
-        "p` <span",
-        "q> $r",
-        "s$ [^t",
-        "u]",
-        "",
-        "> v",
-        "> w",
-        "",
-        "- x",
-        "  y",
-        "",
-        "```js",
-        "z",
-        "",
-        "```",
-        "",
-        "    indented",
-        "    code",
-        "",
-        "<div>",
-        "html",
-        "</div>",
-        "",
-        "$$",
-        "math",
-        "$$",
-        "",
-        "| a |",
-        "| - |",
-        "| b |",
-        "",
-        "[f",
-        "g]: /d \"title",
-        "line\"",
-        "",
-        "[^t",
-        "u]: note",
-        "",
-    ];
+    let source = RICH;
     let options = ParseOptions::normalize();
     let parse = |ending: &str| {
         let mut document = Document::parse(source.join(ending), &options).unwrap();
@@ -407,5 +410,104 @@ fn encoding_line_endings_is_linear() {
             to_markdown(&document).unwrap();
             started.elapsed()
         });
+    }
+}
+
+#[test]
+fn carriage_returns_in_constructed_labels_are_written_as_line_feeds() {
+    use base_markdown::{NodeSyntax, ReferenceKind};
+    // A label of only whitespace, such as ` \r`, or with a blank line cannot be written with any line ending.
+    for label in ["l\rm", "l\r\nm", "\\\r", "\rl\r"] {
+        let mut document = Document::parse(String::new(), &ParseOptions::normalize()).unwrap();
+        let root = document.root();
+        let paragraph = document
+            .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+            .unwrap();
+        let link = document
+            .append_child(
+                paragraph,
+                EventKind::Start(Tag::Link {
+                    destination: Value::Literal("/u"),
+                    title: None,
+                }),
+            )
+            .unwrap();
+        document
+            .append_child(link, EventKind::Text(Value::Literal("text")))
+            .unwrap();
+        document
+            .set_syntax(
+                link,
+                Some(NodeSyntax::Reference {
+                    kind: ReferenceKind::Full,
+                    label: Value::Value(label.to_string().into()),
+                }),
+            )
+            .unwrap();
+        document
+            .append_child(
+                root,
+                EventKind::Definition {
+                    label: Value::Value(label.to_string().into()),
+                    destination: Value::Literal("/u"),
+                    title: None,
+                },
+            )
+            .unwrap();
+        let output = to_markdown(&document).unwrap();
+        assert!(!output.contains('\r'), "{:?}: {:?}", label, output);
+        let reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+        assert_eq!(to_markdown(&reparsed).unwrap(), output, "{label:?}");
+        let mut html = String::new();
+        reparsed
+            .render_html(&Default::default(), &mut html)
+            .unwrap();
+        assert!(
+            html.contains("href=\"/u\""),
+            "{:?}: {:?} {:?}",
+            label,
+            output,
+            html
+        );
+    }
+}
+
+#[test]
+fn html_line_endings_are_line_feeds_whichever_the_source_used() {
+    let mut options = base_markdown::Options::gfm();
+    options.parse = ParseOptions::normalize();
+    options.compile.allow_dangerous_html = true;
+    // Also end without a final line ending, after indented code and after a paragraph.
+    for lines in [
+        RICH,
+        &RICH[..RICH.len() - 1],
+        &["    a", "    b"],
+        &["a", "b"],
+    ] {
+        let render = |ending: &str| {
+            let source = lines.join(ending);
+            let html = base_markdown::to_html_with_options(&source, &options);
+            let mut events = String::new();
+            base_markdown::render_events(
+                &source,
+                base_markdown::EventParser::new(&source, &options.parse),
+                &options.compile,
+                &mut events,
+            )
+            .unwrap();
+            assert_eq!(events, html, "{:?}", source);
+            let mut arena = String::new();
+            Document::parse(source.as_str(), &options.parse)
+                .unwrap()
+                .render_html(&options.compile, &mut arena)
+                .unwrap();
+            assert_eq!(arena, html, "{:?}", source);
+            html
+        };
+        let expected = render("\n");
+        assert!(!expected.contains('\r'), "{:?}", expected);
+        for ending in ["\r\n", "\r"] {
+            assert_eq!(render(ending), expected, "{:?}", ending);
+        }
     }
 }

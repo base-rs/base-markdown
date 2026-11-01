@@ -543,14 +543,13 @@ pub struct CompileOptions {
     /// Default line ending to use when compiling to HTML, for line endings not
     /// in `value`.
     ///
-    /// Parsed values store every line ending as `\n`, so line endings in
-    /// content, such as text and code, are compiled as `\n`, and those between
-    /// blocks are copied from the markdown document.
+    /// Parsed values store every line ending as `\n`, whether the document
+    /// uses `\n`, `\r\n` or `\r`, so line endings in content and between
+    /// blocks are compiled as `\n`.
     /// In some cases, such as `> a`, CommonMark requires that extra line
     /// endings are added: `<blockquote>\n<p>a</p>\n</blockquote>`.
     ///
-    /// To create that line ending, the document is checked for the first line
-    /// ending that is used.
+    /// Those are `\n` too when the document has a line ending.
     /// If there is no line ending, `default_line_ending` is used.
     /// If that isn’t configured, `\n` is used.
     ///

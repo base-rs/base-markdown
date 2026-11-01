@@ -1040,8 +1040,20 @@ impl<'a> State<'a> {
     }
 
     /// Write a definition or reference label. Labels match by their raw text, so backslashes are
-    /// written as they are and a character one already escapes needs no other escape.
+    /// written as they are and a character one already escapes needs no other escape. Labels match
+    /// after collapsing whitespace, so a CR or CRLF in a constructed label is written as LF.
     pub(super) fn write_label(&mut self, label: &str, info: &Info) {
+        let normalized;
+        let label = if label.contains('\r') {
+            normalized = {
+                let mut value = String::with_capacity(label.len());
+                crate::util::line_ending::push_normalized(&mut value, label);
+                value
+            };
+            normalized.as_str()
+        } else {
+            label
+        };
         let before = info.before(&self.output);
         let start = before[0].len() + before[1].len();
         self.escapes.clear();

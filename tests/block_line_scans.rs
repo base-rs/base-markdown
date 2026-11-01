@@ -34,8 +34,8 @@ fn block_indentation_preserves_line_endings_and_quote_continuations() {
         for indent in ["", " ", "  ", "   "] {
             for ending in ["\n", "\r", "\r\n"] {
                 let source = format!("{indent}# heading{ending}{indent}{ending}{indent}paragraph{ending}{ending}{indent}> quote{ending}{indent}> next");
-                let expected = format!("<h1>heading</h1>{ending}<p>paragraph</p>{ending}<blockquote>{ending}<p>quote\nnext</p>{ending}</blockquote>");
-                assert_rendering_paths(&source, &options, &expected);
+                let expected = "<h1>heading</h1>\n<p>paragraph</p>\n<blockquote>\n<p>quote\nnext</p>\n</blockquote>";
+                assert_rendering_paths(&source, &options, expected);
             }
         }
     }
@@ -85,23 +85,22 @@ fn definition_offsets_include_the_authored_indentation() {
 #[test]
 fn paragraph_boundaries_distinguish_block_markers_from_ordinary_text() {
     for options in [Options::default(), Options::gfm()] {
-        // `␤` marks a line ending in content.
         for (source, expected) in [
-            ("first\nordinary", "<p>first␤ordinary</p>"),
-            ("first\né中", "<p>first␤é中</p>"),
-            ("first\n#not heading", "<p>first␤#not heading</p>"),
-            ("first\n####### heading", "<p>first␤####### heading</p>"),
-            ("first\n*not a list", "<p>first␤*not a list</p>"),
-            ("first\n_not a rule", "<p>first␤_not a rule</p>"),
-            ("first\n-not setext", "<p>first␤-not setext</p>"),
-            ("first\n+not a list", "<p>first␤+not a list</p>"),
+            ("first\nordinary", "<p>first\nordinary</p>"),
+            ("first\né中", "<p>first\né中</p>"),
+            ("first\n#not heading", "<p>first\n#not heading</p>"),
+            ("first\n####### heading", "<p>first\n####### heading</p>"),
+            ("first\n*not a list", "<p>first\n*not a list</p>"),
+            ("first\n_not a rule", "<p>first\n_not a rule</p>"),
+            ("first\n-not setext", "<p>first\n-not setext</p>"),
+            ("first\n+not a list", "<p>first\n+not a list</p>"),
             (
                 "first\n42. not an interrupt",
-                "<p>first␤42. not an interrupt</p>",
+                "<p>first\n42. not an interrupt</p>",
             ),
-            ("first\n[link](/x)", "<p>first␤<a href=\"/x\">link</a></p>"),
-            ("first\n`code`", "<p>first␤<code>code</code></p>"),
-            ("first\n~~not a fence", "<p>first␤~~not a fence</p>"),
+            ("first\n[link](/x)", "<p>first\n<a href=\"/x\">link</a></p>"),
+            ("first\n`code`", "<p>first\n<code>code</code></p>"),
+            ("first\n~~not a fence", "<p>first\n~~not a fence</p>"),
             ("first\n# heading", "<p>first</p>\n<h1>heading</h1>"),
             ("first\n***", "<p>first</p>\n<hr />"),
             ("first\n___", "<p>first</p>\n<hr />"),
@@ -112,15 +111,15 @@ fn paragraph_boundaries_distinguish_block_markers_from_ordinary_text() {
             ),
             (
                 "first\n~~~\ncode\n~~~",
-                "<p>first</p>\n<pre><code>code␤</code></pre>",
+                "<p>first</p>\n<pre><code>code\n</code></pre>",
             ),
         ] {
             for ending in ["\n", "\r", "\r\n"] {
                 assert_rendering_paths(
                     &source.replace('\n', ending),
                     &options,
-                    // Line endings in content are LF, and those between blocks are authored.
-                    &expected.replace('\n', ending).replace('␤', "\n"),
+                    // HTML line endings are LF, whichever the source used.
+                    expected,
                 );
             }
         }

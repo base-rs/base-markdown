@@ -17,19 +17,19 @@ fn default_line_ending() {
     assert_eq!(
         to_html("> a\n"),
         "<blockquote>\n<p>a</p>\n</blockquote>\n",
-        "should infer the first line ending (1)"
+        "should use `\\n` for a line feed"
     );
 
     assert_eq!(
         to_html("> a\r"),
-        "<blockquote>\r<p>a</p>\r</blockquote>\r",
-        "should infer the first line ending (2)"
+        "<blockquote>\n<p>a</p>\n</blockquote>\n",
+        "should use `\\n` for a carriage return"
     );
 
     assert_eq!(
         to_html("> a\r\n"),
-        "<blockquote>\r\n<p>a</p>\r\n</blockquote>\r\n",
-        "should infer the first line ending (3)"
+        "<blockquote>\n<p>a</p>\n</blockquote>\n",
+        "should use `\\n` for a carriage return and line feed"
     );
 
     assert_eq!(

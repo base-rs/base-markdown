@@ -18,7 +18,8 @@
 mod support;
 
 use base_markdown::{
-    to_markdown_with_options, CompileOptions, Document, MarkdownOptions, ParseOptions,
+    to_markdown_with_options, CompileOptions, Document, IncrementalParser, MarkdownOptions,
+    ParseOptions,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -850,6 +851,26 @@ fn assert_linear(unit: &str, mut time: impl FnMut(usize) -> Duration) {
         large,
         small
     );
+}
+
+#[test]
+fn incremental_parsing_is_linear() {
+    // Each push completes a line, so each prepares the source again from the last clean block. With LF, CRLF and CR endings.
+    for unit in ["word\n\n", "word\r\n\r\n", "word\r\r"] {
+        assert_linear(unit, |size| {
+            let options = ParseOptions::normalize();
+            let started = Instant::now();
+            let mut parser = IncrementalParser::new(&options);
+            let mut events = 0;
+            for _ in 0..size * 16 {
+                events += parser.push(unit).count();
+            }
+            events += parser.finish().count();
+            let elapsed = started.elapsed();
+            assert_eq!(events, size * 16 * 4);
+            elapsed
+        });
+    }
 }
 
 #[test]

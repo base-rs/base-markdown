@@ -10,7 +10,7 @@ fn paragraphs_preserve_container_chunks_and_source_positions() {
     assert_eq!(
         to_html_with_options(source, &Options::default()),
         // Line endings in content are LF, and those between blocks are authored.
-        "<blockquote>\r\n<p>a\tb\n<em>c</em></p>\r\n</blockquote>\r\n<p>text\nnext</p>"
+        "<blockquote>\n<p>a\tb\n<em>c</em></p>\n</blockquote>\n<p>text\nnext</p>"
     );
     let tree = Document::parse(source, &ParseOptions::default()).unwrap();
     let children: Vec<_> = tree

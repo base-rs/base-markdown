@@ -167,7 +167,7 @@ impl TagKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Tag<'a> {
-    /// The preferred output line ending, inferred from parsed block structure.
+    /// The output line ending: LF when the source has a line ending, since parsed values store every line ending as LF, or `None` when it has none.
     Document(Option<LineEnding>),
     /// Whether the containing list suppresses paragraph tags.
     Paragraph { tight: bool },

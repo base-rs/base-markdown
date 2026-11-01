@@ -457,6 +457,62 @@ fn frontmatter_preserves_source_spans_and_body_after_detaching() {
 }
 
 #[test]
+fn an_edited_body_equal_to_the_whole_block_stays_an_edit() {
+    for ending in ["\n", "\r\n", "\r"] {
+        let source = "---\na\n---\n\nx\n".replace('\n', ending);
+        let mut document = parse_document(source.as_str(), &parse_options());
+        let node = document.children(document.root()).next().unwrap();
+        assert_eq!(document.frontmatter_value(node), Some("a\n"), "{source:?}");
+        *document.text_mut(node).unwrap() = "---\na\n---".into();
+        assert_eq!(
+            document.frontmatter_value(node),
+            Some("---\na\n---"),
+            "{source:?}"
+        );
+        assert_eq!(
+            base_markdown::to_markdown(&document).unwrap(),
+            "~~~yaml\n---\na\n---\n~~~\n\nx\n",
+            "{source:?}"
+        );
+        // Replacing the node with the parsed block, as a value, is an edit too.
+        let mut document = parse_document(source.as_str(), &parse_options());
+        let node = document.children(document.root()).next().unwrap();
+        let Some(NodeSyntax::Frontmatter {
+            fence,
+            closing_fence_length,
+            ..
+        }) = document.syntax(node)
+        else {
+            panic!("{:?}", source);
+        };
+        document
+            .set_kind(
+                node,
+                base_markdown::stream::EventKind::Opaque {
+                    value: base_markdown::stream::Text::Value("---\na\n---".to_string().into()),
+                    block: true,
+                },
+            )
+            .unwrap();
+        document
+            .set_syntax(
+                node,
+                Some(NodeSyntax::Frontmatter {
+                    info: base_markdown::stream::Text::Literal(""),
+                    fence,
+                    closing_fence_length,
+                }),
+            )
+            .unwrap();
+        assert_eq!(
+            document.frontmatter_value(node),
+            Some("---\na\n---"),
+            "{source:?}"
+        );
+    }
+}
+
+#[test]
 fn serialization_protects_edited_frontmatter_bodies() {
     for (source, body, expected) in [
         (
