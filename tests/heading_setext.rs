@@ -364,7 +364,7 @@ fn setext_underlines_accept_trailing_spaces_and_tabs() {
     }
 }
 
-// Regression test for #29: the legacy AST builder panicked with "Cannot push to non-parent" here.
+// Regression test for #29: version 0.1.0 panicked on this input, and a later version misparsed it with frontmatter enabled.
 #[test]
 fn thematic_break_between_setext_headings() {
     let source = "First heading\n-------------\n---\nSecond heading\n--------------\n";
