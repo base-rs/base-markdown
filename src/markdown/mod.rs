@@ -67,7 +67,7 @@ pub fn normalize_markdown_with_options(
 ///
 /// The output always uses LF line endings: CRLF and lone CR line endings in node values, such as code, HTML, and text, are written as LF.
 ///
-/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, with empty text, adjacent text, or adjacent attention of the same kind, are written without panicking and in linear time, but possibly incorrectly or unstably.
+/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, with empty text, adjacent text, or adjacent attention of the same kind, are written without panicking, but possibly incorrectly or unstably.
 ///
 /// # Errors
 /// Returns invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
@@ -77,7 +77,7 @@ pub fn to_markdown<S: AsRef<str>>(document: &Document<S>) -> Result<String, Mess
 
 /// Serialize an arena document with formatting options.
 ///
-/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, with empty text, adjacent text, or adjacent attention of the same kind, are written without panicking and in linear time, but possibly incorrectly or unstably.
+/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, with empty text, adjacent text, or adjacent attention of the same kind, are written without panicking, but possibly incorrectly or unstably.
 ///
 /// # Errors
 /// Returns invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
@@ -92,7 +92,7 @@ pub fn to_markdown_with_options<S: AsRef<str>>(
 ///
 /// The output always uses LF line endings. Non-empty block subtrees end with a line ending; inline (phrasing) subtrees, such as text, emphasis, or a link, are returned without an added line ending.
 ///
-/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, with empty text, adjacent text, or adjacent attention of the same kind, are written without panicking and in linear time, but possibly incorrectly or unstably.
+/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, with empty text, adjacent text, or adjacent attention of the same kind, are written without panicking, but possibly incorrectly or unstably.
 ///
 /// # Errors
 /// Returns an invalid node index, invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
