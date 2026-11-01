@@ -385,6 +385,81 @@ pub(super) fn collect(
     }
 }
 
+/// Whether text in `stack` is parsed for strikethrough, which is phrasing outside the spans that
+/// are read literally, such as destinations and titles.
+pub(super) fn strikethrough(stack: &[ConstructName]) -> bool {
+    let scopes = scopes(stack);
+    scopes & PHRASING != 0 && scopes & FULL_SPANS == 0
+}
+
+/// Add to `applied` the text `~` that could pair as strikethrough, so that none does.
+///
+/// `input` is written at output position `start`, between `before` and `after`, and `applied`
+/// holds the sorted positions that already receive an escape or a character reference. Each
+/// complete run of `~` is judged as written, by CommonMark's flanking rules, where an escaped or
+/// encoded neighbour is punctuation. Strikethrough pairs runs of one or two tildes of equal length,
+/// so a run escapes whole when it can close, or when it has two tildes and can open, as the
+/// sequences of strikethrough are two tildes and can also close. A single tilde that can only open
+/// is written as it is, since every run that could close it is escaped. A longer run never pairs,
+/// unless an escape such as the one at the start of a line splits it, so then it escapes whole.
+pub(super) fn tildes(
+    input: &str,
+    start: usize,
+    [before, after]: [Option<char>; 2],
+    applied: &mut Vec<usize>,
+) {
+    use crate::util::char::{classify, Kind};
+    let existing = applied.len();
+    // Queries rise, so membership needs one pass over the existing positions.
+    let contains = |applied: &[usize], cursor: &mut usize, position: usize| {
+        while *cursor < existing && applied[*cursor] < position {
+            *cursor += 1;
+        }
+        *cursor < existing && applied[*cursor] == position
+    };
+    let mut cursor = 0;
+    for run in super::util::scan::marker_runs(input.as_bytes(), b'~') {
+        let previous = match input[..run.start].chars().next_back() {
+            Some(character)
+                if contains(
+                    applied,
+                    &mut cursor,
+                    start + run.start - character.len_utf8(),
+                ) =>
+            {
+                Kind::Punctuation
+            }
+            Some(character) => classify(character),
+            None => before.map_or(Kind::Whitespace, classify),
+        };
+        let first = cursor;
+        let split = run
+            .clone()
+            .any(|at| contains(applied, &mut cursor, start + at));
+        let next = match input[run.end..].chars().next() {
+            Some(_) if contains(applied, &mut cursor, start + run.end) => Kind::Punctuation,
+            Some(character) => classify(character),
+            None => after.map_or(Kind::Whitespace, classify),
+        };
+        let left =
+            next != Kind::Whitespace && !(next == Kind::Punctuation && previous == Kind::Other);
+        let right =
+            previous != Kind::Whitespace && !(previous == Kind::Punctuation && next == Kind::Other);
+        let length = run.len();
+        if split || (length <= 2 && (right || (length == 2 && left))) {
+            let mut cursor = first;
+            for at in run {
+                if !contains(applied, &mut cursor, start + at) {
+                    applied.push(start + at);
+                }
+            }
+        }
+    }
+    if applied.len() > existing {
+        applied.sort_unstable();
+    }
+}
+
 pub(super) fn unsafe_newline(stack: &[ConstructName]) -> bool {
     scopes(stack) & NEWLINES != 0
 }

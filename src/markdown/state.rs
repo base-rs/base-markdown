@@ -215,7 +215,7 @@ impl<'a> State<'a> {
         if let (Previous::Text(start), Some(character)) = (previous, before) {
             let start = *start;
             if choice.encode_before && !matches!(character, '\n' | '\r') {
-                attention::encode_end(&mut self.output, start, character);
+                self.encode_end(start, character);
             }
             if tilde {
                 attention::escape_tilde_end(&mut self.output, start);
@@ -242,7 +242,7 @@ impl<'a> State<'a> {
         if let Some(start) = last_text {
             attention::escape_tilde_end(&mut self.output, start);
             if let Some(character) = last.filter(|_| choice.encode_last) {
-                attention::encode_end(&mut self.output, start, character);
+                self.encode_end(start, character);
             }
         }
         self.output.push_str(sequence);
@@ -250,6 +250,53 @@ impl<'a> State<'a> {
             encode: after.filter(|_| choice.encode_after),
             tilde,
         })
+    }
+
+    /// Encode the last character of text written at `output[start..]` if it is `character`, as
+    /// `attention::encode_end` does. The reference is punctuation, so tildes before it that were
+    /// judged against the character could now pair, and they are escaped.
+    fn encode_end(&mut self, start: usize, character: char) {
+        let length = self.output.len();
+        attention::encode_end(&mut self.output, start, character);
+        // A reference is longer than the character it encodes.
+        if self.output.len() == length {
+            return;
+        }
+        let reference = self
+            .output
+            .rfind('&')
+            .expect("an encoded character is written as a reference");
+        let tail = self.output.split_off(reference);
+        attention::escape_tilde_end(&mut self.output, start);
+        self.output.push_str(&tail);
+    }
+
+    /// Apply `edge` to text written at `output[start..]`, as `attention::edit_start` does. When
+    /// the first character becomes a reference, which is punctuation, tildes after it that were
+    /// judged against the character could now pair, and they are escaped.
+    fn edit_start(&mut self, start: usize, edge: &Edge) {
+        // A character attention encodes is never `~`, so the edge escapes tildes or encodes.
+        let encodes = edge
+            .encode
+            .is_some_and(|character| self.output[start..].starts_with(character));
+        attention::edit_start(&mut self.output, start, edge);
+        if !encodes {
+            return;
+        }
+        let reference = start
+            + self.output[start..]
+                .find(';')
+                .expect("an encoded character is written as a reference")
+            + 1;
+        let run = self.output[reference..]
+            .bytes()
+            .take_while(|&byte| byte == b'~')
+            .count();
+        if run > 0 {
+            let escaped = "\\~".repeat(run);
+            self.output
+                .replace_range(reference..reference + run, &escaped);
+        }
     }
 
     /// Serialize phrasing children, returning where the last one begins if it is text.
@@ -343,7 +390,7 @@ impl<'a> State<'a> {
             } else {
                 self.write_node(document, child, &info)?;
                 if matches!(kind, EventKind::Text(_)) {
-                    attention::edit_start(&mut self.output, length, &pending);
+                    self.edit_start(length, &pending);
                     pending = Edge::default();
                     previous = Previous::Text(length);
                 } else if self.output.len() != length {
@@ -935,6 +982,15 @@ impl<'a> State<'a> {
                 continue;
             }
             self.applied.push(position);
+        }
+        // Whether a `~` pairs depends on its neighbours as written, so decide them afterwards.
+        if super::escape::strikethrough(&self.stack) {
+            super::escape::tildes(
+                input,
+                start,
+                [before_last, info.after.chars().next()],
+                &mut self.applied,
+            );
         }
         // Email-only escapes depend on which other escapes apply, so decide them afterwards.
         let applied = self.applied.len();
