@@ -164,35 +164,30 @@ impl<'a> State<'a> {
         })
     }
 
-    /// Write adjacent attention of one kind as a single node, returning the edits for the text after it.
+    /// Write attention, returning the edits for the text after it.
     ///
     /// Text written directly before may be edited so the opening sequence forms.
     fn attention<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
-        members: &[NodeId],
+        id: NodeId,
         sequences: &'static [&'static str],
         info: &Info,
         previous: &Previous,
         last_child: bool,
     ) -> Result<Edge, Message> {
-        let children: Vec<NodeId> = members
-            .iter()
-            .flat_map(|&member| flow_children(document, member))
-            .collect();
+        let children: Vec<NodeId> = flow_children(document, id).collect();
         let [lead, before] = info.before(&self.output);
         let before = before
             .chars()
             .next_back()
             .or_else(|| lead.chars().next_back());
-        // Empty text writes nothing, so the characters at the edges are those of other children.
         let first = children
-            .iter()
-            .find_map(|&child| edge_character(document, child, true));
+            .first()
+            .and_then(|&child| edge_character(document, child, true));
         let last = children
-            .iter()
-            .rev()
-            .find_map(|&child| edge_character(document, child, false));
+            .last()
+            .and_then(|&child| edge_character(document, child, false));
         let after = info.after.chars().next();
         let choice = attention::choose(
             sequences,
@@ -272,8 +267,6 @@ impl<'a> State<'a> {
         let start = self.output.len();
         self.index_stack.push(0);
         let mut index = 0;
-        let mut position = 0;
-        let mut scan = 0;
         let mut after_hard_break = false;
         // Whether the output ends with a hard break's line ending, past any skipped soft break.
         let mut hard_break_line = false;
@@ -282,25 +275,12 @@ impl<'a> State<'a> {
             tilde: edge.tilde,
         };
         let mut previous = Previous::Start;
-        while position < children.len() {
-            let child = children[position];
+        for (position, &child) in children.iter().enumerate() {
             let kind = &document.node(child).unwrap().kind;
             if !is_phrasing(kind) {
                 return Err(unsupported_content());
             }
-            // Adjacent attention of the same kind is written as one node.
-            let mut end = position + 1;
             let sequences = self.attention_sequences(kind)?;
-            if sequences.is_some() {
-                while children
-                    .get(end)
-                    .is_some_and(|&next| same_attention(kind, &document.node(next).unwrap().kind))
-                {
-                    end += 1;
-                }
-            }
-            let members = &children[position..end];
-            position = end;
             if after_hard_break && matches!(kind, EventKind::SoftBreak(_)) {
                 after_hard_break = false;
                 continue;
@@ -308,18 +288,9 @@ impl<'a> State<'a> {
             after_hard_break = matches!(kind, EventKind::HardBreak);
             *self.index_stack.last_mut().unwrap() = index;
             let mut buffer = [0u8; 4];
-            // Empty text writes nothing, so what follows it is the next node that writes something.
-            // The scan only moves forward, so each child is skipped at most once.
-            scan = scan.max(end);
-            while children.get(scan).is_some_and(|&next| {
-                matches!(&document.node(next).unwrap().kind,
-                    EventKind::Text(value) if value.resolve(document.source()).unwrap().is_empty())
-            }) {
-                scan += 1;
-            }
-            let next = children.get(scan).copied();
+            let next = children.get(position + 1).copied();
             let after = if let Some(next) = next {
-                if let Some(first) = self.peek_node(document, next, members.last().copied()) {
+                if let Some(first) = self.peek_node(document, next, child) {
                     first.encode_utf8(&mut buffer) as &str
                 } else {
                     // Render nodes without a fixed prefix to determine the next character.
@@ -368,25 +339,15 @@ impl<'a> State<'a> {
             let length = self.output.len();
             let info = Info { before, after };
             if let Some(sequences) = sequences {
-                pending = self.attention(
-                    document,
-                    members,
-                    sequences,
-                    &info,
-                    &previous,
-                    next.is_none(),
-                )?;
+                pending =
+                    self.attention(document, child, sequences, &info, &previous, next.is_none())?;
                 previous = Previous::Attention;
             } else {
                 self.write_node(document, child, &info)?;
-                if matches!(kind, EventKind::Text(_)) && self.output.len() != length {
-                    // Text split by the parser is edited as one, so its edges stay the same when serialized again.
-                    if !attention::edit_start(&mut self.output, length, &pending) {
-                        pending = Edge::default();
-                    }
-                    if !matches!(previous, Previous::Text(_)) {
-                        previous = Previous::Text(length);
-                    }
+                if matches!(kind, EventKind::Text(_)) {
+                    attention::edit_start(&mut self.output, length, &pending);
+                    pending = Edge::default();
+                    previous = Previous::Text(length);
                 } else if self.output.len() != length {
                     pending = Edge::default();
                     previous = Previous::Other;
@@ -873,7 +834,7 @@ impl<'a> State<'a> {
         &mut self,
         document: &Document<S>,
         id: NodeId,
-        previous: Option<NodeId>,
+        previous: NodeId,
     ) -> Option<char> {
         match &document.node(id).unwrap().kind {
             EventKind::Text(value) | EventKind::SoftBreak(value) => {
@@ -896,7 +857,7 @@ impl<'a> State<'a> {
                         id,
                         destination.resolve(document.source()).unwrap(),
                         title.is_some(),
-                        previous.map_or(true, |previous| ends_at_boundary(document, previous)),
+                        ends_at_boundary(document, previous),
                         self,
                     ) {
                         WrittenLink::Bare(text) => return text.chars().next(),
@@ -1118,18 +1079,6 @@ enum Previous {
     Start,
     /// Anything else.
     Other,
-}
-
-/// Whether two nodes are attention of the same kind, which would form one run if adjacent.
-fn same_attention(left: &EventKind<'_>, right: &EventKind<'_>) -> bool {
-    matches!(
-        (left, right),
-        (
-            EventKind::Start(Tag::Emphasis),
-            EventKind::Start(Tag::Emphasis)
-        ) | (EventKind::Start(Tag::Strong), EventKind::Start(Tag::Strong))
-            | (EventKind::Start(Tag::Delete), EventKind::Start(Tag::Delete))
-    )
 }
 
 /// The first or last character a phrasing node is written with, as far as attention next to it needs: text is approximated by its value and other nodes by punctuation.

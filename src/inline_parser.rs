@@ -1059,11 +1059,25 @@ impl InlineParser {
             source
         };
         while self.cursor != 0 {
-            let node = self.nodes[self.cursor];
+            let mut node = self.nodes[self.cursor];
             self.cursor = node.next;
             let kind = match node.kind {
                 Kind::Text | Kind::EscapedText if node.start == node.end => continue,
                 Kind::Text | Kind::EscapedText => {
+                    // Candidate bytes that stayed literal leave ordinary text in several pieces. Pieces that continue each other in the source form one event, so text is split only where its value is not one source slice: at escapes and character references.
+                    while self.cursor != 0 {
+                        let next = self.nodes[self.cursor];
+                        if !matches!(next.kind, Kind::Text | Kind::EscapedText)
+                            || (next.start != node.end && next.start != next.end)
+                        {
+                            break;
+                        }
+                        // An empty piece writes nothing, wherever it sits.
+                        if next.start != next.end {
+                            node.end = next.end;
+                        }
+                        self.cursor = next.next;
+                    }
                     EventKind::Text(self.text(source, node.start..node.end))
                 }
                 Kind::Footnote(index) => EventKind::FootnoteReference(Text::from(

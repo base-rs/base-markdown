@@ -92,48 +92,37 @@ pub fn ends_at_boundary<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> 
 /// count, and neither does a node whose first character is only known once written.
 fn boundary_after<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
     let node = document.node(id).expect("link exists");
-    // Whether spaces or tabs come first, which the parser may have split over several texts.
+    let kind = |sibling: NodeId| &document.node(sibling).unwrap().kind;
+    let mut next = node.next_sibling();
+    // Whether spaces or tabs come first. Normalized text is not followed by more text, so after
+    // text of only spaces and tabs comes another kind of node, or the end.
     let mut spaces = false;
-    for sibling in written_siblings(document, node.next_sibling()) {
-        match &document.node(sibling).unwrap().kind {
-            EventKind::Text(value) => {
-                let value = value.resolve(document.source()).unwrap();
-                let rest = value.trim_start_matches([' ', '\t']);
-                spaces |= rest.len() < value.len();
-                match rest.chars().next() {
-                    Some('\n' | '\r') => return !spaces,
-                    Some(_) => return spaces,
-                    None => {}
-                }
-            }
-            EventKind::SoftBreak(_) => return !spaces,
-            EventKind::HardBreak => return false,
-            _ => return spaces,
+    if let Some(EventKind::Text(value)) = next.map(kind) {
+        let value = value.resolve(document.source()).unwrap();
+        let rest = value.trim_start_matches([' ', '\t']);
+        spaces = rest.len() < value.len();
+        match rest.chars().next() {
+            Some('\n' | '\r') => return !spaces,
+            Some(_) => return spaces,
+            None => next = document.node(next.unwrap()).unwrap().next_sibling(),
         }
     }
-    !spaces
-        && node.parent().is_some_and(|parent| {
-            matches!(
-                document.node(parent).unwrap().kind,
-                EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_) | Tag::TableCell { .. })
-            )
-        })
-}
-
-/// `first` and the siblings after it, skipping empty text, which writes nothing.
-fn written_siblings<S: AsRef<str>>(
-    document: &Document<S>,
-    first: Option<NodeId>,
-) -> impl Iterator<Item = NodeId> + '_ {
-    core::iter::successors(first, move |&sibling| {
-        document.node(sibling).unwrap().next_sibling()
-    })
-    .filter(move |&sibling| {
-        !matches!(
-            &document.node(sibling).unwrap().kind,
-            EventKind::Text(value) if value.resolve(document.source()).unwrap().is_empty()
-        )
-    })
+    match next.map(kind) {
+        Some(EventKind::SoftBreak(_)) => !spaces,
+        Some(EventKind::HardBreak) => false,
+        Some(_) => spaces,
+        None => {
+            !spaces
+                && node.parent().is_some_and(|parent| {
+                    matches!(
+                        document.node(parent).unwrap().kind,
+                        EventKind::Start(
+                            Tag::Paragraph { .. } | Tag::Heading(_) | Tag::TableCell { .. }
+                        )
+                    )
+                })
+        }
+    }
 }
 
 /// The text of a link whose only child is text.

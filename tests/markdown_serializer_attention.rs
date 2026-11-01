@@ -102,7 +102,8 @@ fn to_markdown<S: AsRef<str>>(document: &Document<S>, options: &Options) -> Stri
 
 /// Check that serializing `markdown` again changes nothing.
 fn assert_stable(markdown: &str, options: &Options) {
-    let parsed = Document::parse(markdown, &ParseOptions::gfm()).unwrap();
+    let mut parsed = Document::parse(markdown, &ParseOptions::gfm()).unwrap();
+    parsed.normalize();
     assert_eq!(
         to_markdown(&parsed, options),
         markdown,
@@ -126,7 +127,8 @@ fn serialize(children: Vec<Node>, options: &Options) -> String {
 
 /// Parse and serialize Markdown, checking the rendered HTML is unchanged.
 fn roundtrip(source: &str, options: &Options) -> String {
-    let document = Document::parse(source, &ParseOptions::gfm()).unwrap();
+    let mut document = Document::parse(source, &ParseOptions::gfm()).unwrap();
+    document.normalize();
     let markdown = to_markdown(&document, options);
     assert_eq!(
         html(&markdown),
@@ -189,13 +191,37 @@ fn merge_attention() {
     );
 
     assert_eq!(
-        to(&paragraph(vec![
-            emphasis(vec![text("a")]),
-            text(""),
-            emphasis(vec![text("b")]),
-        ]))
-        .unwrap(),
-        "*a*_b_\n",
+        serialize(
+            vec![
+                emphasis(vec![text("a ")]),
+                text(""),
+                emphasis(vec![text("b")]),
+            ],
+            &Options::default()
+        ),
+        "*a b*\n",
+        "should merge attention separated by empty text, which normalization removes"
+    );
+
+    assert_eq!(
+        serialize(
+            vec![delete(vec![text("a ")]), text(""), delete(vec![text("b")]),],
+            &Options::default()
+        ),
+        "~~a b~~\n",
+        "should merge strikethrough separated by empty text"
+    );
+
+    assert_eq!(
+        serialize(
+            vec![
+                emphasis(vec![text("a")]),
+                strong(vec![text("b")]),
+                emphasis(vec![text("c")]),
+            ],
+            &Options::default()
+        ),
+        "*a*__b__*c*\n",
         "should not merge attention separated by other nodes"
     );
 }
@@ -646,7 +672,7 @@ fn encode() {
 
 #[test]
 fn encode_split_text() {
-    // Unmatched delimiter runs split text nodes, so escaping when text is written cannot see the attention boundary.
+    // Unmatched delimiter runs stay in text next to attention, whose boundary escaping cannot see when the text is written.
     for (source, expected) in [
         ("_x*a_b*_", "*&#x78;_&#x61;\\_b_*\n"),
         ("_x*ab_c*d_", "*&#x78;_&#x61;b\\_&#x63;_&#x64;*\n"),
@@ -663,7 +689,7 @@ fn encode_split_text() {
 
 #[test]
 fn encode_after_empty_text() {
-    // Empty text writes nothing, so the character attention is encoded against is that of the next node that writes something.
+    // Normalization removes empty text, so the character attention is encoded against is that of the next node that writes something.
     fn inline_code(value: &str) -> Node {
         Node::InlineCode(InlineCode {
             value: value.into(),
@@ -703,7 +729,7 @@ fn encode_after_empty_text() {
 
 #[test]
 fn empty_text_around_attention_stays_linear() {
-    // Each empty text is skipped once when looking for what follows a node, so four times the input takes about four times as long.
+    // Serializing without normalizing may be incorrect but stays linear, and so does normalizing first, so four times the input takes about four times as long.
     use base_markdown::{
         stream::{Event, EventKind, Tag, TagKind, Text},
         AstBuilder,
@@ -731,22 +757,28 @@ fn empty_text_around_attention_stays_linear() {
         builder
             .consume(&mut events.into_iter(), usize::MAX)
             .unwrap();
-        let document = builder.finish(String::new()).unwrap();
+        let mut document = builder.finish(String::new()).unwrap();
         let started = std::time::Instant::now();
+        to_markdown(&document, &Options::default());
+        let unnormalized = started.elapsed();
+        let started = std::time::Instant::now();
+        document.normalize();
         let markdown = to_markdown(&document, &Options::default());
-        let elapsed = started.elapsed();
+        let normalized = started.elapsed();
         assert_eq!(markdown, "*a&#x20;*&#x62;\n");
-        elapsed
+        [unnormalized, normalized]
     };
     time(1 << 10);
     let small = time(25_000);
     let large = time(100_000);
-    assert!(
-        large < small * 16,
-        "4x input took {:?} against {:?}",
-        large,
-        small
-    );
+    for (large, small) in large.iter().zip(&small) {
+        assert!(
+            *large < *small * 16,
+            "4x input took {:?} against {:?}",
+            large,
+            small
+        );
+    }
 }
 
 #[test]
@@ -768,6 +800,7 @@ fn encode_after_cleared_text() {
         })
         .unwrap();
     document.text_mut(cleared).unwrap().clear();
+    document.normalize();
     let markdown = to_markdown(&document, &Options::default());
     assert_eq!(markdown, "see *old&#x20;*&#x65;w text\n");
     assert_stable(&markdown, &Options::default());
