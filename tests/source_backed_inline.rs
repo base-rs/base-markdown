@@ -153,11 +153,11 @@ fn task_markers_accept_authored_crlf_and_incomplete_markers_remain_literal() {
         ("- [", "<ul>\n<li>[</li>\n</ul>"),
         (
             "- [\r\n] done",
-            "<ul>\r\n<li><input type=\"checkbox\" disabled=\"\" /> done</li>\r\n</ul>",
+            "<ul>\n<li><input type=\"checkbox\" disabled=\"\" /> done</li>\n</ul>",
         ),
         (
             "- [\r] done",
-            "<ul>\r<li><input type=\"checkbox\" disabled=\"\" /> done</li>\r</ul>",
+            "<ul>\n<li><input type=\"checkbox\" disabled=\"\" /> done</li>\n</ul>",
         ),
     ] {
         assert_paths(source, &Options::gfm(), expected);

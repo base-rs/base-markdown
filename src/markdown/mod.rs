@@ -65,7 +65,7 @@ pub fn normalize_markdown_with_options(
 
 /// Serialize an arena document to Markdown.
 ///
-/// The output always uses LF line endings: CRLF and lone CR line endings in node values, such as code, HTML, and text, are written as LF.
+/// The output uses LF line endings. The parser stores every source line ending as LF in node values, so a CR in a value is a character: it is written as `&#xD;` where character references are decoded, such as in text and titles, and as it is in code, HTML and frontmatter, where a parsed value never has one.
 ///
 /// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text, code spans or math, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention or blocks, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
 ///
@@ -110,10 +110,6 @@ pub fn to_markdown_node<S: AsRef<str>>(
     let mut state = State::new(options);
     state.serialization_root = Some(node);
     let mut result = state.handle(document, node, &Info::new("\n", "\n"))?;
-    // Markdown treats CR, LF, and CRLF alike, so a single line ending keeps output stable across platforms.
-    if result.contains('\r') {
-        result = result.replace("\r\n", "\n").replace('\r', "\n");
-    }
     // Only block output is line-terminated, matching cmark's renderer.
     if !inline && !result.is_empty() && !result.ends_with('\n') {
         result.push('\n');

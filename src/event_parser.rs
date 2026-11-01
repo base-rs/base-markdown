@@ -22,21 +22,25 @@ pub struct EventParser<'a> {
     cursor: usize,
     closing: bool,
     phase: Phase,
+    // Whether the source has a CR, so that source line endings in values need writing as LF.
+    carriage_returns: bool,
 }
 impl<'a> EventParser<'a> {
     /// Prepare Markdown for pull consumption.
     /// Built-in Markdown preparation has no syntax errors.
     pub fn new(source: &'a str, options: &'a ParseOptions) -> Self {
         let (blocks, definitions) = Blocks::parse(source, options);
-        Self::from_blocks(source, options, blocks, definitions)
+        let carriage_returns = memchr::memchr(b'\r', source.as_bytes()).is_some();
+        Self::from_blocks(source, options, blocks, definitions, carriage_returns)
     }
 
-    /// Pull events from blocks that have already been prepared from `source`.
+    /// Pull events from blocks that have already been prepared from `source`. `carriage_returns` must be true if `source` has a CR; it may be true when it has none, which only costs a check of each value.
     pub(crate) fn from_blocks(
         source: &'a str,
         options: &'a ParseOptions,
         blocks: Blocks,
         definitions: Definitions<'a>,
+        carriage_returns: bool,
     ) -> Self {
         Self {
             blocks,
@@ -48,6 +52,7 @@ impl<'a> EventParser<'a> {
             cursor: 0,
             closing: false,
             phase: Phase::Start,
+            carriage_returns,
         }
     }
 }
@@ -63,7 +68,19 @@ impl Iterator for EventParser<'_> {
     #[allow(clippy::inline_always)]
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_event()
+        let event = self.next_event();
+        if !self.carriage_returns {
+            return event;
+        }
+        // Line endings are structure, so every value stores LF, whichever the source used.
+        // Separators are already LF when yielded.
+        let source = self.source;
+        event.map(|event| {
+            event.map(|event| Event {
+                kind: event.kind.map_text(|text| text.normalized(source)),
+                span: event.span,
+            })
+        })
     }
 }
 // Pending separators are delivery states, mutually exclusive with inline consumption.
@@ -127,14 +144,15 @@ impl EventParser<'_> {
     fn separator(&self, end: usize) -> Event<'static> {
         let bytes = self.source.as_bytes();
         // Block boundaries passed here end at a physical line ending, never at container padding or a trimmed inline fragment.
-        let start = match bytes[end - 1] {
-            b'\n' => end - 1 - usize::from(end > 1 && bytes[end - 2] == b'\r'),
-            b'\r' => end - 1,
+        // Like every value, the separator stores LF, so it points at the source only when the source has LF.
+        let value = match bytes[end - 1] {
+            b'\n' if end == 1 || bytes[end - 2] != b'\r' => Text::Source(end - 1..end),
+            b'\n' | b'\r' => Text::Literal("\n"),
             _ => unreachable!("authored block separators end at a source newline"),
         };
         Event {
             kind: EventKind::Separator {
-                value: Text::Source(start..end),
+                value,
                 conditional: false,
             },
             span: end..end,
@@ -155,7 +173,10 @@ impl EventParser<'_> {
                 self.phase = Phase::Body;
                 self.cursor = self.blocks.nodes[0].child;
                 self.closing = self.cursor == 0;
-                let line_ending = LineEnding::from_source(self.source);
+                // Parsed values store every line ending as LF, so the output line ending is LF too, and
+                // only a document without line endings leaves it to the renderer's default.
+                let line_ending = memchr::memchr2(b'\r', b'\n', self.source.as_bytes())
+                    .map(|_| LineEnding::LineFeed);
                 Some(Ok(Event {
                     kind: EventKind::Start(Tag::Document(line_ending)),
                     span: 0..self.source.len(),

@@ -20,6 +20,37 @@ pub(crate) fn line_endings(value: &str) -> impl Iterator<Item = Range<usize>> + 
     })
 }
 
+/// Append `value` to `output` with each CRLF and lone CR written as LF.
+pub(crate) fn push_normalized(output: &mut String, value: &str) {
+    let mut rest = value;
+    while let Some(index) = memchr::memchr(b'\r', rest.as_bytes()) {
+        output.push_str(&rest[..index]);
+        output.push('\n');
+        rest = &rest[index + 1..];
+        if let Some(after) = rest.strip_prefix('\n') {
+            rest = after;
+        }
+    }
+    output.push_str(rest);
+}
+
+/// Whether `value` is `raw` with each CRLF and lone CR written as LF.
+pub(crate) fn normalizes_to(raw: &str, mut value: &str) -> bool {
+    let mut raw = raw;
+    while let Some(index) = memchr::memchr(b'\r', raw.as_bytes()) {
+        if value.get(..index) != Some(&raw[..index]) || value.as_bytes().get(index) != Some(&b'\n')
+        {
+            return false;
+        }
+        value = &value[index + 1..];
+        raw = &raw[index + 1..];
+        if let Some(after) = raw.strip_prefix('\n') {
+            raw = after;
+        }
+    }
+    value == raw
+}
+
 /// Start of one terminal physical line ending before `end`, or `end` itself.
 #[inline]
 pub(crate) fn terminal_ending_start(bytes: &[u8], mut end: usize) -> usize {
@@ -89,19 +120,6 @@ pub enum LineEnding {
 }
 
 impl LineEnding {
-    /// Detect the first authored line ending without decoding unrelated UTF-8 text.
-    pub(crate) fn from_source(source: &str) -> Option<Self> {
-        let bytes = source.as_bytes();
-        let index = memchr::memchr2(b'\r', b'\n', bytes)?;
-        Some(if bytes[index] == b'\n' {
-            Self::LineFeed
-        } else if bytes.get(index + 1) == Some(&b'\n') {
-            Self::CarriageReturnLineFeed
-        } else {
-            Self::CarriageReturn
-        })
-    }
-
     /// Turn the line ending into a [str].
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -147,6 +165,30 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_every_line_ending_to_a_line_feed() {
+        for (value, expected) in [
+            ("", ""),
+            ("é", "é"),
+            ("a\r\nb\rc\nd", "a\nb\nc\nd"),
+            ("\r\r\n\n\r", "\n\n\n\n"),
+        ] {
+            let mut output = String::from(">");
+            push_normalized(&mut output, value);
+            assert_eq!(output, alloc::format!(">{expected}"));
+            assert!(normalizes_to(value, expected));
+            assert!(!normalizes_to(value, &alloc::format!("{expected}x")));
+        }
+        for (raw, value) in [
+            ("a\r", "a\r"),
+            ("a\rb", "a\nc"),
+            ("a\rb", "a"),
+            ("ab", "a\n"),
+        ] {
+            assert!(!normalizes_to(raw, value));
+        }
+    }
+
+    #[test]
     fn trims_only_one_terminal_physical_line_ending() {
         for (source, expected) in [
             ("", ""),
@@ -167,18 +209,6 @@ mod tests {
                 terminal_ending_start(with_suffix.as_bytes(), source.len()),
                 expected.len(),
             );
-        }
-    }
-
-    #[test]
-    fn detects_the_first_source_line_ending() {
-        for (source, expected) in [
-            ("plain é", None),
-            ("é\rfirst\n", Some(LineEnding::CarriageReturn)),
-            ("\n\r", Some(LineEnding::LineFeed)),
-            ("é\r\nfirst\r", Some(LineEnding::CarriageReturnLineFeed)),
-        ] {
-            assert_eq!(LineEnding::from_source(source), expected);
         }
     }
 

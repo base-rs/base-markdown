@@ -34,8 +34,8 @@ fn block_indentation_preserves_line_endings_and_quote_continuations() {
         for indent in ["", " ", "  ", "   "] {
             for ending in ["\n", "\r", "\r\n"] {
                 let source = format!("{indent}# heading{ending}{indent}{ending}{indent}paragraph{ending}{ending}{indent}> quote{ending}{indent}> next");
-                let expected = format!("<h1>heading</h1>{ending}<p>paragraph</p>{ending}<blockquote>{ending}<p>quote{ending}next</p>{ending}</blockquote>");
-                assert_rendering_paths(&source, &options, &expected);
+                let expected = "<h1>heading</h1>\n<p>paragraph</p>\n<blockquote>\n<p>quote\nnext</p>\n</blockquote>";
+                assert_rendering_paths(&source, &options, expected);
             }
         }
     }
@@ -118,7 +118,8 @@ fn paragraph_boundaries_distinguish_block_markers_from_ordinary_text() {
                 assert_rendering_paths(
                     &source.replace('\n', ending),
                     &options,
-                    &expected.replace('\n', ending),
+                    // HTML line endings are LF, whichever the source used.
+                    expected,
                 );
             }
         }

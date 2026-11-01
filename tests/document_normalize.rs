@@ -3,7 +3,7 @@
 
 use base_markdown::{
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
-    to_markdown, AstBuilder, Document, NodeId, ParseOptions,
+    to_markdown, AstBuilder, CompileOptions, Document, NodeId, ParseOptions,
 };
 use std::borrow::Cow;
 use std::sync::{Mutex, PoisonError};
@@ -1342,11 +1342,86 @@ fn whitespace_moved_out_merges_what_it_separated() {
     );
 }
 
+fn html(value: &'static str) -> Result<Event<'static>, StreamError> {
+    event(
+        EventKind::Html {
+            value: Text::Literal(value),
+            block: false,
+        },
+        0..0,
+    )
+}
+
+#[test]
+fn keeps_whitespace_around_inline_html_at_the_start_of_a_paragraph() {
+    // Without the whitespace, the HTML would start a line, where it starts an HTML block, or be
+    // alone on its line, where it is one. Only the breaks at the edges are removed.
+    assert_eq!(
+        settled(build(vec![
+            soft(),
+            text(" "),
+            html("<b>"),
+            text(" "),
+            hard()
+        ])),
+        r#"paragraph(" " Html { value: Literal("<b>"), block: false }() " ")"#
+    );
+    // Whitespace moved out of attention before the HTML stays too.
+    assert_eq!(
+        settled(build(concat([
+            emphasis(vec![text(" ")]),
+            vec![html("<b>")]
+        ]))),
+        r#"paragraph(" " Html { value: Literal("<b>"), block: false }())"#
+    );
+    // A heading or table cell cannot start an HTML block, and is trimmed.
+    assert_eq!(
+        settled(build_blocks(heading(vec![
+            text(" "),
+            html("<b>"),
+            text(" ")
+        ]))),
+        r#"heading(Html { value: Literal("<b>"), block: false }())"#
+    );
+    for (source, expected) in [
+        ("&#x20;<b>", "&#x20;<b>\n"),
+        ("<b>&#x20;", "<b>&#x20;\n"),
+        ("&#x20;&#x20;<b>\n- a", "&#x20; <b>\n\n- a\n"),
+        ("- <b>&#x20;", "- <b>&#x20;\n"),
+        ("&#xA;<div>", "&#xA;<div>\n"),
+    ] {
+        let mut document = Document::parse(source.to_owned(), &ParseOptions::normalize()).unwrap();
+        document.normalize();
+        assert!(document.is_normalized(), "{}", source);
+        let output = to_markdown(&document).unwrap();
+        assert_eq!(output, expected, "{source}");
+        let mut reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+        reparsed.normalize();
+        assert!(reparsed.is_normalized(), "{}", source);
+        let html = |document: &Document<String>| {
+            let mut html = String::new();
+            document
+                .render_html(&CompileOptions::default(), &mut html)
+                .unwrap();
+            // The final line ending follows the output's, and the source has none.
+            html.trim_end().to_owned()
+        };
+        assert_eq!(html(&reparsed), html(&document), "{source}");
+        assert_eq!(to_markdown(&reparsed).unwrap(), output, "{source}");
+    }
+}
+
 #[test]
 fn trims_the_edges_of_blocks() {
     assert_eq!(
-        settled(build(vec![soft(), text(" \t\na b\r\n "), soft()])),
+        settled(build(vec![soft(), text(" \t\na b\n "), soft()])),
         r#"paragraph("a b")"#
+    );
+    // Line endings in values are LF, so a CR is a character reference, which the parser does not
+    // trim, and it stays.
+    assert_eq!(
+        settled(build(vec![text("\r a\r\n")])),
+        r#"paragraph("\r a\r")"#
     );
     // A no-break space is not trimmed, and neither is a hard break at the start.
     assert_eq!(

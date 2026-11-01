@@ -195,7 +195,7 @@ impl State<'_> {
             self.container_phrasing(document, node, &Info::new("\n", "\n"))?;
             self.exit();
             let content = &self.output[start..];
-            let last_line = content.rfind(['\r', '\n']).map_or(0, |index| index + 1);
+            let last_line = content.rfind('\n').map_or(0, |index| index + 1);
             let size = content.len() - last_line;
             self.output.push('\n');
             self.output
@@ -634,7 +634,7 @@ impl State<'_> {
         if matches!(marker, '-' | '+') {
             let delimiter = marker.to_string().repeat(3);
             if body
-                .split(['\r', '\n'])
+                .split('\n')
                 .any(|line| line.trim_end_matches([' ', '\t']) == delimiter)
             {
                 marker = '~';
@@ -665,7 +665,7 @@ impl State<'_> {
         self.output.push_str(separator);
         self.output.push_str(info);
         self.output.push('\n');
-        let needs_line_ending = !body.is_empty() && !body.ends_with(['\r', '\n']);
+        let needs_line_ending = !body.is_empty() && !body.ends_with('\n');
         self.output
             .reserve(body.len() + closing_length + usize::from(needs_line_ending) + 1);
         self.output.push_str(body);
@@ -719,8 +719,9 @@ fn image_alt<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> Cow<'_, str
     Cow::Owned(document.text_content(node))
 }
 
+// Line endings in values are LF, and a CR is a character reference, so it is kept.
 fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
-    if line_endings(value).next().is_none() {
+    if !value.contains('\n') {
         return Cow::Borrowed(value);
     }
     let mut result = String::with_capacity(value.len());
@@ -728,11 +729,7 @@ fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
 
     while let Some(character) = characters.next() {
         match character {
-            '\r' | '\n' => {
-                if character == '\r' && characters.peek() == Some(&'\n') {
-                    characters.next();
-                }
-
+            '\n' => {
                 while matches!(result.chars().next_back(), Some(' ' | '\t')) {
                     result.pop();
                 }
@@ -779,18 +776,18 @@ mod tests {
 
     #[test]
     fn unwrapping_borrows_unchanged_text_and_keeps_non_line_whitespace() {
-        for value in ["", "plain", " é\tα \u{a0}\0"] {
+        for value in ["", "plain", " é\tα \u{a0}\0", "a\rb"] {
             assert!(
                 matches!(unwrap_soft_line_breaks(value), Cow::Borrowed(actual) if actual == value)
             );
         }
         for (value, expected) in [
-            ("a \t\r\n \tb", "a b"),
-            ("\r\n\r\n", " "),
-            ("\t\n \t\r\nb\t ", " b\t "),
-            ("é\u{a0} \r\n \tα", "é\u{a0} α"),
-            ("a\n\r\nb", "a b"),
-            ("a\0\rb\0", "a\0 b\0"),
+            ("a \t\n \tb", "a b"),
+            ("\n\n", " "),
+            ("\t\n \t\nb\t ", " b\t "),
+            ("é\u{a0} \n \tα", "é\u{a0} α"),
+            ("a\r\nb", "a\r b"),
+            ("a\0\nb\0", "a\0 b\0"),
         ] {
             assert_eq!(unwrap_soft_line_breaks(value), expected);
         }

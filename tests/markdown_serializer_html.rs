@@ -65,8 +65,8 @@ fn html() {
             position: None
         }))
         .unwrap(),
-        "a <div>\n",
-        "should prevent html (text) from becoming html (flow) (2)"
+        "a&#xD;<div>\n",
+        "should prevent html (text) from becoming html (flow) (2), with a CR written as a reference, as output line endings are LF"
     );
 
     assert_eq!(
@@ -84,7 +84,7 @@ fn html() {
             position: None
         }))
         .unwrap(),
-        "a <div>\n",
+        "a&#xD; <div>\n",
         "should prevent html (text) from becoming html (flow) (3)"
     );
 

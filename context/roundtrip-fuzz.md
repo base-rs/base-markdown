@@ -7,7 +7,7 @@
 Each input is parsed with `ParseOptions::normalize()`, the syntax `normalize_markdown` reads, or built by hand as a tree. It is normalized, serialized with the default Markdown options, parsed with the same options and normalized again. An input fails as:
 
 - `normalized`: either document is not normalized after `Document::normalize`.
-- `html`: the HTML of the two documents differs. The final line ending and a line ending after a hard break are ignored, since a hand-built tree has no source for them.
+- `html`: the HTML of the two documents differs. The final line ending is ignored, since a hand-built tree has no source for it, and so is the line ending after a hard break in a parsed document, which is part of the break. A hand-built hard break has no line ending after it, so a line ending there in its tree is text and is compared.
 - `tree`: the HTML is the same, but the canonical trees of `support::fixture::canonical` differ. These count line endings that the HTML comparison ignores, so dropping one is not a fix, and structure the HTML flattens, such as links in image text.
 - `unstable`: serializing the second document gives different Markdown.
 - `error`: serializing a parsed document returns an error. A hand-built tree that the serializer rejects is counted as rejected instead.

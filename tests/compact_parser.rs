@@ -15,9 +15,9 @@ fn block_boundaries_preserve_source_whitespace() {
         ("a\n ", "<p>a</p>\n"),
         ("> - a\n>\n> -\n>\nb", "<blockquote>\n<ul>\n<li>\n<p>a</p>\n</li>\n<li></li>\n</ul>\n</blockquote>\n<p>b</p>"),
         ("- a\n\n- \n\n> b", "<ul>\n<li>\n<p>a</p>\n</li>\n<li></li>\n</ul>\n<blockquote>\n<p>b</p>\n</blockquote>"),
-        ("x\n\n> - a\r\n> 1. b", "<p>x</p>\n<blockquote>\n<ul>\n<li>a</li>\n</ul>\r\n<ol>\n<li>b</li>\n</ol>\n</blockquote>"),
+        ("x\n\n> - a\r\n> 1. b", "<p>x</p>\n<blockquote>\n<ul>\n<li>a</li>\n</ul>\n<ol>\n<li>b</li>\n</ol>\n</blockquote>"),
         ("a\n1.     b", "<p>a</p>\n<ol>\n<li>\n<pre><code>b\n</code></pre>\n</li>\n</ol>"),
-        ("a\r\n\n# b\n", "<p>a</p>\r\n<h1>b</h1>\n"),
+        ("a\r\n\n# b\n", "<p>a</p>\n<h1>b</h1>\n"),
         ("#\u{b}x", "<p>#\u{b}x</p>"),
         ("#\u{c}x", "<p>#\u{c}x</p>"),
         ("a\n---\u{b}\nb", "<p>a\n---\u{b}\nb</p>"),
@@ -151,23 +151,23 @@ fn resources_and_multiline_regions_agree_with_arena_rendering() {
 #[test]
 fn semantic_endings_ignore_trailing_blanks_and_container_prefixes() {
     for (source, expected) in [
-        ("a\r\r\n", "<p>a</p>\r"),
-        ("x\n\n- a\r\n", "<p>x</p>\n<ul>\n<li>a</li>\n</ul>\r\n"),
-        ("x\n\n> a\r\n", "<p>x</p>\n<blockquote>\n<p>a</p>\n</blockquote>\r\n"),
+        ("a\r\r\n", "<p>a</p>\n"),
+        ("x\n\n- a\r\n", "<p>x</p>\n<ul>\n<li>a</li>\n</ul>\n"),
+        ("x\n\n> a\r\n", "<p>x</p>\n<blockquote>\n<p>a</p>\n</blockquote>\n"),
         ("> -\n ", "<blockquote>\n<ul>\n<li></li>\n</ul>\n</blockquote>"),
         ("x\n\n- a\r\r\n", "<p>x</p>\n<ul>\n<li>a</li>\n</ul>\n"),
-        ("x\n\n> a\r\r\n", "<p>x</p>\n<blockquote>\n<p>a</p>\n</blockquote>\r"),
+        ("x\n\n> a\r\r\n", "<p>x</p>\n<blockquote>\n<p>a</p>\n</blockquote>\n"),
         (">     a\n ", "<blockquote>\n<pre><code>a\n</code></pre>\n</blockquote>\n"),
         ("x\n\n- # a\r\n ", "<p>x</p>\n<ul>\n<li>\n<h1>a</h1>\n</li>\n</ul>"),
         ("# a\n    ", "<h1>a</h1>\n"),
         ("---\n    ", "<hr />\n"),
-        ("- a\r\r\n", "<ul>\r<li>a</li>\r</ul>\r"),
+        ("- a\r\r\n", "<ul>\n<li>a</li>\n</ul>\n"),
         ("---\n> \r", "<hr />\n<blockquote>\n</blockquote>\n"),
         ("> a\n ", "<blockquote>\n<p>a</p>\n</blockquote>\n"),
         (">\n ", "<blockquote>\n</blockquote>"),
         ("# a\n\r", "<h1>a</h1>\n"),
         ("+ \n  ", "<ul>\n<li></li>\n</ul>"),
-        ("x\n\n> - - # a\r\n>   b", "<p>x</p>\n<blockquote>\n<ul>\n<li>\n<ul>\n<li>\n<h1>a</h1>\n</li>\n</ul>\r\nb</li>\n</ul>\n</blockquote>"),
+        ("x\n\n> - - # a\r\n>   b", "<p>x</p>\n<blockquote>\n<ul>\n<li>\n<ul>\n<li>\n<h1>a</h1>\n</li>\n</ul>\nb</li>\n</ul>\n</blockquote>"),
     ] {
         assert_eq!(to_html(source), expected, "{source:?}");
     }

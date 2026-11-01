@@ -7,7 +7,12 @@ use crate::{
     stream::{Tag, TagKind},
     NodeSyntax,
 };
-use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
+use alloc::{
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet},
+    string::String,
+    vec::Vec,
+};
 use core::{num::NonZeroUsize, ops::Range};
 
 /// A stable index into a document's contiguous node arena.
@@ -199,6 +204,7 @@ impl AstBuilder {
             source,
             nodes: self.nodes,
             syntax: BTreeMap::new(),
+            edited: BTreeSet::new(),
             append_hint: None,
         };
         // Public producers can supply arbitrary offsets. Validate their contract once before exposing the document.
@@ -227,6 +233,11 @@ pub struct Document<S = String> {
     source: S,
     nodes: Vec<Node>,
     syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
+    // Opaque nodes whose value was replaced through `text_mut` or `set_kind`. A parsed frontmatter value
+    // with LF in place of the source's CRs is the whole block only until it is edited, even if the
+    // edit makes it equal again.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "BTreeSet::is_empty"))]
+    edited: BTreeSet<NodeId>,
     // The child that `append_child` last appended. It is still its parent's last child while it has that parent and no next sibling, so a run of appends to one parent does not scan the parent's children each time.
     #[cfg_attr(feature = "serde", serde(skip))]
     append_hint: Option<NodeId>,
@@ -289,6 +300,11 @@ impl<S: AsRef<str>> Document<S> {
                 return Err(StreamError::Unbalanced);
             }
         }
+        if matches!(kind, EventKind::Opaque { .. }) {
+            self.edited.insert(id);
+        } else {
+            self.edited.remove(&id);
+        }
         self.nodes[id.index()].kind = kind;
         self.syntax.insert(id, None);
         self.refresh_context(id);
@@ -302,8 +318,7 @@ impl<S: AsRef<str>> Document<S> {
     /// Returns [`StreamError::InvalidRange`] for an invalid node ID or a non-text node.
     pub fn text_mut(&mut self, id: NodeId) -> Result<&mut String, StreamError> {
         // Frontmatter's semantic body detaches independently of its retained fence metadata.
-        let body = if matches!(self.node(id), Some(Node {kind:EventKind::Opaque {value:Text::Source(range),..},span,..}) if range==span)
-        {
+        let body = if self.whole_frontmatter(id) {
             self.frontmatter_value(id).map(String::from)
         } else {
             None
@@ -312,6 +327,9 @@ impl<S: AsRef<str>> Document<S> {
             .nodes
             .get_mut(id.index())
             .ok_or(StreamError::InvalidRange)?;
+        if matches!(node.kind, EventKind::Opaque { .. }) {
+            self.edited.insert(id);
+        }
         let (EventKind::Text(text)
         | EventKind::SoftBreak(text)
         | EventKind::Math(text)
@@ -629,14 +647,37 @@ impl<S: AsRef<str>> Document<S> {
         let value = text
             .resolve(self.source())
             .expect("document text is validated");
-        if let Text::Source(range) = text {
-            if *range == node.span {
-                if let Some((_, _, _, body)) = crate::node_syntax::frontmatter(value) {
-                    return value.get(body);
-                }
+        if self.whole_frontmatter(id) {
+            if let Some((_, _, _, body)) = crate::node_syntax::frontmatter(value) {
+                return value.get(body);
             }
         }
         Some(value)
+    }
+    /// Whether the value of an opaque node is still the whole block it was parsed from, with its
+    /// fences, rather than an edited body. Its line endings are LF, whichever the source used, so
+    /// a block with a CR in the source is a value rather than the source range until it is edited.
+    /// A parsed block without a CR is always the source range, so a value for it is an edit, even
+    /// in a document rebuilt from another's events, which does not keep the record of edits.
+    fn whole_frontmatter(&self, id: NodeId) -> bool {
+        let Some(Node {
+            kind: EventKind::Opaque { value, .. },
+            span,
+            ..
+        }) = self.node(id)
+        else {
+            return false;
+        };
+        match value {
+            Text::Source(range) => range == span,
+            Text::Value(value) => {
+                !self.edited.contains(&id)
+                    && self.source().get(span.clone()).is_some_and(|raw| {
+                        raw.contains('\r') && crate::util::line_ending::normalizes_to(raw, value)
+                    })
+            }
+            Text::Literal(_) => false,
+        }
     }
     /// Render the whole document through the shared event HTML writer.
     ///
@@ -1255,9 +1296,36 @@ fn unicode_whitespace(character: char) -> bool {
     character.is_whitespace()
 }
 
-// Whitespace at the edge of a paragraph, heading or table cell, which the parser trims: space, tab and line endings, but not other Unicode whitespace such as a no-break space.
+// Whitespace at the edge of a paragraph, heading or table cell, which the parser trims: space, tab and line endings, which are LF in values, but not other Unicode whitespace such as a no-break space. A CR in a value is a character reference, which the parser does not trim, so it stays.
 fn line_whitespace(character: char) -> bool {
-    matches!(character, ' ' | '\t' | '\n' | '\r')
+    matches!(character, ' ' | '\t' | '\n')
+}
+
+// No whitespace, for a paragraph that starts with inline HTML, which loses only the breaks at its edges.
+fn no_whitespace(_: char) -> bool {
+    false
+}
+
+// Whether `parent` is a paragraph whose phrasing starts with inline HTML once the whitespace and soft breaks at its start are skipped. Trimming the whitespace before the HTML would leave it at the start of a line, where it can start an HTML block, and trimming the whitespace after it could leave it alone on its line, where it is one, so the whitespace text of such a paragraph stays.
+fn starts_with_html(nodes: &[Node], source: &str, parent: NodeId) -> bool {
+    if !matches!(
+        nodes[parent.index()].kind,
+        EventKind::Start(Tag::Paragraph { .. })
+    ) {
+        return false;
+    }
+    let mut child = nodes[parent.index()].first_child;
+    while let Some(id) = child {
+        let kind = &nodes[id.index()].kind;
+        if matches!(kind, EventKind::Html { .. }) {
+            return true;
+        }
+        if leading_edge(kind, source, line_whitespace) != Edge::All {
+            return false;
+        }
+        child = nodes[id.index()].next_sibling;
+    }
+    false
 }
 
 // The whitespace, matched by `space`, at the start of a child: a soft break, or text that starts with it.
@@ -1300,15 +1368,21 @@ fn trailing_edge(kind: &EventKind<'_>, source: &str, space: fn(char) -> bool) ->
 
 // Whether the first and last children of `node` have no whitespace that normalization moves out of attached attention or trims from a paragraph, heading or table cell, other than a task item's paragraph.
 fn edges_normalized(
-    node: &Node,
+    nodes: &[Node],
+    id: NodeId,
     first: &EventKind<'_>,
     last: &EventKind<'_>,
     source: &str,
 ) -> bool {
+    let node = &nodes[id.index()];
     let space: fn(char) -> bool = if attention(&node.kind) && node.parent.is_some() {
         unicode_whitespace
     } else if trimmed(&node.kind) && !matches!(first, EventKind::TaskMarker(_)) {
-        line_whitespace
+        if starts_with_html(nodes, source, id) {
+            no_whitespace
+        } else {
+            line_whitespace
+        }
     } else {
         return true;
     };
@@ -1552,11 +1626,16 @@ fn resume(
     (linked, current)
 }
 
-// Trim space, tab and line endings from the edges of the phrasing of `parent`, a paragraph, heading or table cell, removing soft breaks at either edge and hard breaks at the end. Returns whether anything changed.
+// Trim space, tab and LF from the edges of the phrasing of `parent`, a paragraph, heading or table cell, removing soft breaks at either edge and hard breaks at the end. A paragraph that starts with inline HTML loses only the breaks. Returns whether anything changed.
 fn trim_edges(nodes: &mut [Node], source: &str, parent: NodeId) -> bool {
+    let space: fn(char) -> bool = if starts_with_html(nodes, source, parent) {
+        no_whitespace
+    } else {
+        line_whitespace
+    };
     let mut changed = false;
     while let Some(first) = nodes[parent.index()].first_child {
-        let edge = leading_edge(&nodes[first.index()].kind, source, line_whitespace);
+        let edge = leading_edge(&nodes[first.index()].kind, source, space);
         match (&mut nodes[first.index()].kind, edge) {
             (_, Edge::All) => {
                 nodes[parent.index()].first_child = nodes[first.index()].next_sibling.take();
@@ -1574,7 +1653,7 @@ fn trim_edges(nodes: &mut [Node], source: &str, parent: NodeId) -> bool {
     let mut last = None;
     let mut child = nodes[parent.index()].first_child;
     while let Some(id) = child {
-        if trailing_edge(&nodes[id.index()].kind, source, line_whitespace) != Edge::All {
+        if trailing_edge(&nodes[id.index()].kind, source, space) != Edge::All {
             last = Some(id);
         }
         child = nodes[id.index()].next_sibling;
@@ -1589,7 +1668,7 @@ fn trim_edges(nodes: &mut [Node], source: &str, parent: NodeId) -> bool {
         changed = true;
     }
     if let Some(last) = last {
-        let edge = trailing_edge(&nodes[last.index()].kind, source, line_whitespace);
+        let edge = trailing_edge(&nodes[last.index()].kind, source, space);
         if let (EventKind::Text(text), Edge::Part(at)) = (&mut nodes[last.index()].kind, edge) {
             split_text(text, at);
             changed = true;
@@ -1603,9 +1682,9 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// Empty text is removed, and so is emphasis, strong or strikethrough that has no children once its own children are normalized, such as emphasis of empty text or strong that holds only empty emphasis. Strikethrough inside other strikethrough, at any depth, is unwrapped: its children take its place, since strikethrough cannot be written inside strikethrough and renders the same once. Adjacent text is joined into the first text, adjacent inline code is joined into the first code when the second has no language of its own, and adjacent inline math is joined into the first math, as adjacent code spans or math cannot be written apart. Adjacent emphasis, strong or strikethrough of the same kind is merged by moving the children of the second to the end of the first.
     ///
-    /// Markdown cannot write whitespace at the edges of emphasis, strong or strikethrough, so it moves out: Unicode whitespace in text and soft breaks at either edge, and hard breaks at the end, move out through any attention nested at that edge to just before or after the outermost attention whose edge they are. Attention left empty is removed, and what moved out takes its place. A hard break at the start of attention stays, and links and images keep whitespace at their edges. The phrasing of a paragraph, heading or table cell is trimmed as the parser trims it: space, tab and line endings at either edge are removed, with soft breaks there and hard breaks at the end, including those that moved out of attention, but other Unicode whitespace, such as a no-break space, stays, and so does a hard break at the start. Markdown cannot write a hard break in a table cell, so one there, at any depth, becomes a space.
+    /// Markdown cannot write whitespace at the edges of emphasis, strong or strikethrough, so it moves out: Unicode whitespace in text and soft breaks at either edge, and hard breaks at the end, move out through any attention nested at that edge to just before or after the outermost attention whose edge they are. Attention left empty is removed, and what moved out takes its place. A hard break at the start of attention stays, and links and images keep whitespace at their edges. The phrasing of a paragraph, heading or table cell is trimmed as the parser trims it: space, tab and LF at either edge are removed, with soft breaks there and hard breaks at the end, including those that moved out of attention, but other Unicode whitespace, such as a no-break space or a CR, which is a character reference as line endings are LF in values, stays, and so does a hard break at the start. Markdown cannot write a hard break in a table cell, so one there, at any depth, becomes a space.
     ///
-    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code, math or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of whitespace alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. The paragraph of a task item is not trimmed, as the marker cannot be written without text after it. Nothing else changes: text keeps its value apart from whitespace moved or trimmed at these edges. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
+    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code, math or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of whitespace alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. The paragraph of a task item is not trimmed, as the marker cannot be written without text after it. A paragraph that starts with inline HTML, once whitespace and soft breaks at its start are skipped, keeps its whitespace text and loses only the breaks at its edges, as the HTML would otherwise start a line, where it can start an HTML block, or be alone on its line, where it is one. Nothing else changes: text keeps its value apart from whitespace moved or trimmed at these edges. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
     ///
     /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, adjacent attention of the same kind, such as `*a*_b_`, stays separate, and strikethrough inside strikethrough, such as `~a~~b~~c~`, stays nested. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
     ///
@@ -1622,7 +1701,7 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent inline math, adjacent attention of the same kind, or a separator in phrasing; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell, other than the paragraph of a task item, starts or ends with space, tab, a line ending or a soft break, or ends with a hard break; and no attached paragraph is empty. This takes time linear in the size of the arena.
+    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent inline math, adjacent attention of the same kind, or a separator in phrasing; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell, other than the paragraph of a task item, starts or ends with space, tab, LF or a soft break, or ends with a hard break, though a paragraph that starts with inline HTML after whitespace may start or end with whitespace text; and no attached paragraph is empty. This takes time linear in the size of the arena.
     pub fn is_normalized(&self) -> bool {
         let source = self.source.as_ref();
         let nodes = &self.nodes;
@@ -1658,7 +1737,7 @@ impl<S: AsRef<str>> Document<S> {
                         child = node.next_sibling;
                     }
                     if let (Some(first), Some(last)) = (node.first_child, last) {
-                        if !edges_normalized(node, &nodes[first.index()].kind, last, source) {
+                        if !edges_normalized(nodes, id, &nodes[first.index()].kind, last, source) {
                             return false;
                         }
                     }
@@ -1945,12 +2024,15 @@ impl<'de> serde::Deserialize<'de> for Document<String> {
             nodes: Vec<Node>,
             #[serde(default)]
             syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
+            #[serde(default)]
+            edited: BTreeSet<NodeId>,
         }
         let stored = Stored::deserialize(deserializer)?;
         let document = Self {
             source: stored.source,
             nodes: stored.nodes,
             syntax: stored.syntax,
+            edited: stored.edited,
             append_hint: None,
         };
         document
