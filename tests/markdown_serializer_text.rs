@@ -710,6 +710,12 @@ fn a_tilde_that_could_pair_as_strikethrough_is_escaped() {
         // A tilde next to a strikethrough sequence escapes with it.
         ("a \\~~~b~~\n", "a \\~~~b~~\n"),
         ("~~a \\~~~\n", "~~a \\~~~\n"),
+        // A character that attention writes as a reference is punctuation, so the tildes next to it
+        // are escaped.
+        ("x ~a *&#x20;\\~ b*\n", "x ~a *&#x20;\\~ b*\n"),
+        ("x ~a **&#x20;\\~ b**\n", "x ~a **&#x20;\\~ b**\n"),
+        ("~~&#x20;\\~\\~ b~~\n", "~~&#x20;\\~\\~ b~~\n"),
+        ("~~a \\~\\~&#xA;~~\n", "~~a \\~\\~&#xA;~~\n"),
         // Two tildes that can open are escaped, as a strikethrough sequence can close them.
         ("x \\~~a\n", "x \\~\\~a\n"),
         ("\\~~x a~~b~~\n", "\\~\\~x a~~b~~\n"),
