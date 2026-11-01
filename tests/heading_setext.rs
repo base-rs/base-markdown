@@ -363,3 +363,20 @@ fn setext_underlines_accept_trailing_spaces_and_tabs() {
         );
     }
 }
+
+// Regression test for #29: the legacy AST builder panicked with "Cannot push to non-parent" here.
+#[test]
+fn thematic_break_between_setext_headings() {
+    let source = "First heading\n-------------\n---\nSecond heading\n--------------\n";
+    let expected = "<h2>First heading</h2>\n<hr />\n<h2>Second heading</h2>\n";
+    for frontmatter in [false, true] {
+        let mut options = Options::gfm();
+        options.parse.constructs.frontmatter = frontmatter;
+        assert_eq!(to_html_with_options(source, &options), expected);
+
+        let mut document = base_markdown::Document::parse(source, &options.parse).unwrap();
+        document.normalize();
+        let markdown = base_markdown::markdown::to_markdown(&document).unwrap();
+        assert_eq!(to_html_with_options(&markdown, &options), expected);
+    }
+}
