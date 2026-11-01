@@ -17,10 +17,7 @@ use super::{
 use crate::{
     message::Message,
     stream::{EventKind, Tag},
-    util::{
-        char::{classify, Kind},
-        line_ending::line_endings,
-    },
+    util::line_ending::line_endings,
     CodeFence, Document, NodeId, NodeSyntax, ReferenceKind,
 };
 use alloc::{
@@ -186,53 +183,6 @@ impl State<'_> {
         }
     }
 
-    pub(super) fn delimited_phrasing<S: AsRef<str>>(
-        &mut self,
-        document: &Document<S>,
-        node: NodeId,
-        info: &Info,
-        marker: char,
-        length: usize,
-    ) -> Result<(), Message> {
-        // Whitespace next to a marker would stop it opening or closing, so it is written as a
-        // reference. A marker between a reference and a letter neither opens nor closes either, so
-        // that letter is a reference too.
-        let leading = starts_with_whitespace(document, node);
-        if leading {
-            // Output before the floor is final, so the character is only rewritten above it.
-            if let Some(previous) = self.output.chars().next_back().filter(|&previous| {
-                classify(previous) == Kind::Other
-                    && self.output.len() - previous.len_utf8() >= self.write_floor
-            }) {
-                let end = self.output.len() - previous.len_utf8();
-                self.output.truncate(end);
-                write!(self.output, "&#x{:X};", u32::from(previous))
-                    .expect("String writing is infallible");
-            }
-        }
-        let start = self.output.len();
-        self.output.extend(core::iter::repeat(marker).take(length));
-        let content = self.output.len();
-        if leading {
-            self.attention_start = Some(content);
-        }
-        if marker == '~' {
-            self.strikethrough_start = Some(content);
-        }
-        // The content follows the opening marker, so it never starts a line.
-        let inner = Info::at(start, content, info.after);
-        self.container_phrasing(document, node, &inner)?;
-        if marker == '~' && self.text_end == self.output.len() && self.output.len() > content {
-            escape_last_tilde(&mut self.output);
-        }
-        let trailing = encode_trailing_whitespace(&mut self.output, content);
-        self.output.extend(core::iter::repeat(marker).take(length));
-        if trailing && info.after.chars().next().map(classify) == Some(Kind::Other) {
-            self.attention_end = Some(self.output.len());
-        }
-        Ok(())
-    }
-
     pub(super) fn heading<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
@@ -393,34 +343,7 @@ impl State<'_> {
             crate::markdown::LineWrapping::Preserve => Cow::Borrowed(content),
             crate::markdown::LineWrapping::Unwrap => unwrap_soft_line_breaks(content),
         };
-        let at = Some(self.output.len());
-        // Next to an attention marker, the first character may need another form.
-        let consumed = if let Some(first) = value.chars().next().filter(|&first| {
-            self.attention_start == at && edge_whitespace(first)
-                || self.attention_end == at && classify(first) == Kind::Other
-        }) {
-            write!(self.output, "&#x{:X};", u32::from(first))
-                .expect("String writing is infallible");
-            first.len_utf8()
-        } else if self.strikethrough_start == at && value.starts_with('~') {
-            // A `~` would lengthen the opening marker, so it keeps an escape wherever the
-            // strikethrough sits.
-            self.output.push_str("\\~");
-            1
-        } else {
-            0
-        };
-        // An empty text writes nothing, so the text after it is still next to the same neighbour.
-        if !value.is_empty() {
-            self.clear_neighbours();
-        }
-        if consumed == 0 {
-            self.write_safe(&value, info, None);
-        } else {
-            let info = info.extended(self.output.len());
-            self.write_safe(&value[consumed..], &info, None);
-        }
-        self.text_end = self.output.len();
+        self.write_safe(&value, info, None);
         Ok(())
     }
 
@@ -836,59 +759,6 @@ fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
     }
 
     Cow::Owned(result)
-}
-
-/// Whitespace that a character reference can stand for. Line endings are left alone, since they
-/// belong to the line structure.
-fn edge_whitespace(character: char) -> bool {
-    character.is_whitespace() && !matches!(character, '\n' | '\r')
-}
-
-/// Whether the first text written in `node` is its own and starts with whitespace.
-fn starts_with_whitespace<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> bool {
-    document
-        .children(node)
-        .map(
-            |child| match &document.node(child).expect("child exists").kind {
-                EventKind::Text(text) => text.resolve(document.source()).unwrap().chars().next(),
-                // Other nodes write their own first character, which is not whitespace.
-                _ => Some('.'),
-            },
-        )
-        .find(Option::is_some)
-        .flatten()
-        .is_some_and(edge_whitespace)
-}
-
-/// Replace whitespace that ends the output after `start` with a character reference.
-fn encode_trailing_whitespace(output: &mut String, start: usize) -> bool {
-    let Some(last) = output[start..]
-        .chars()
-        .next_back()
-        .filter(|&character| edge_whitespace(character))
-    else {
-        return false;
-    };
-    let end = output.len() - last.len_utf8();
-    output.truncate(end);
-    write!(output, "&#x{:X};", u32::from(last)).expect("String writing is infallible");
-    true
-}
-
-/// Escape a `~` that ends the output unless an odd run of backslashes already escapes it, as it
-/// would lengthen the closing strikethrough marker.
-fn escape_last_tilde(output: &mut String) {
-    let Some(before) = output.strip_suffix('~') else {
-        return;
-    };
-    let backslashes = before
-        .bytes()
-        .rev()
-        .take_while(|&byte| byte == b'\\')
-        .count();
-    if backslashes % 2 == 0 {
-        output.insert(output.len() - 1, '\\');
-    }
 }
 
 /// Escape each pipe after `start` that an even run of backslashes leaves splitting a table cell.

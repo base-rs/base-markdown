@@ -430,7 +430,8 @@ fn ordered_list_markers_are_escaped_by_their_place_in_the_line() {
 fn underscores_after_attention_markers_do_not_depend_on_text_splits() {
     // The parser splits this text at `$` but not at `_`, so the first underscore follows the
     // opening marker's neighbour in one pass and the text node's start in the next.
-    for (source, expected) in [("*b_1=a$1.:]@\na~*\n", "*b_1=a\\$1.:]@\na~*\n")] {
+    // A `~` at the edge of attention is escaped so it cannot pair.
+    for (source, expected) in [("*b_1=a$1.:]@\na~*\n", "*b_1=a\\$1.:]@\na\\~*\n")] {
         let (first, second) = two_passes(source);
         assert_eq!(first, expected, "{source:?}");
         assert_eq!(second, first, "{source:?}");
