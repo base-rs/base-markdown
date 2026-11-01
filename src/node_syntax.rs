@@ -30,6 +30,27 @@ pub enum NodeSyntax<'a> {
     },
     /// Whether a list item contains blank lines between its own blocks.
     ListItem { spread: bool },
+    /// How a link that is not a reference was written.
+    Link { form: LinkForm },
+}
+
+/// The authored form of a link that is not a reference.
+///
+/// The serializer writes the stored form as it is, and a link without one explicitly.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "lowercase")
+)]
+pub enum LinkForm {
+    /// A GFM literal autolink, such as `www.example.com`, `https://example.com` or
+    /// `user@example.com`, written as the link's text.
+    Bare,
+    /// An autolink in angle brackets, such as `<https://example.com>` or `<user@example.com>`.
+    Angle,
+    /// A link with its text and destination, such as `[text](https://example.com)`.
+    Explicit,
 }
 
 impl NodeSyntax<'_> {
@@ -55,10 +76,11 @@ impl NodeSyntax<'_> {
                 closing_fence_length: *closing_fence_length,
             },
             Self::ListItem { spread } => NodeSyntax::ListItem { spread: *spread },
+            Self::Link { form } => NodeSyntax::Link { form: *form },
         }
     }
 
-    // References cross documents as resolved resources: the destination buffer may have a conflicting or missing definition with the same label.
+    // References cross documents as resolved resources: the destination buffer may have a conflicting or missing definition with the same label. A link's form describes only the link's own text and destination, which are copied with it, so it survives.
     pub(crate) fn copied(self, source: &str) -> Option<NodeSyntax<'static>> {
         let own = |text: Text<'_>| text.materialized(source);
         Some(match self {
@@ -75,6 +97,7 @@ impl NodeSyntax<'_> {
                 closing_fence_length,
             },
             Self::ListItem { spread } => NodeSyntax::ListItem { spread },
+            Self::Link { form } => NodeSyntax::Link { form },
         })
     }
 
@@ -102,7 +125,8 @@ impl NodeSyntax<'_> {
                     && fence.length >= 3
                     && *closing_fence_length >= fence.length
             }
-            (Self::ListItem { .. }, EventKind::Start(Tag::Item { .. })) => true,
+            (Self::ListItem { .. }, EventKind::Start(Tag::Item { .. }))
+            | (Self::Link { .. }, EventKind::Start(Tag::Link { .. })) => true,
             _ => false,
         }
     }
@@ -117,16 +141,16 @@ pub(crate) fn infer(
         .get(span.clone())
         .expect("document source extents are validated before syntax inference");
     match kind {
-        EventKind::Start(Tag::Link { .. } | Tag::Image { .. }) => {
+        EventKind::Start(tag @ (Tag::Link { .. } | Tag::Image { .. })) => {
             let prefix = if raw.starts_with("![") {
                 2
             } else if raw.starts_with('[') {
                 1
             } else {
-                return None;
+                return link_form(source, raw, tag);
             };
             if !raw.ends_with(']') {
-                return None;
+                return link_form(source, raw, tag);
             }
             // Match the final bracket pair, respecting nested and backslash-escaped brackets. Code inside the first label is irrelevant to matching the final reference suffix.
             let bytes = raw.as_bytes();
@@ -212,6 +236,36 @@ pub(crate) fn infer(
         ),
         _ => None,
     }
+}
+
+/// The form of a link that is not a reference, when its raw source has the shape of one: a
+/// resource, or an autolink whose text the destination derives from as a reader derives it.
+fn link_form(source: &str, raw: &str, tag: &Tag<'_>) -> Option<NodeSyntax<'static>> {
+    let Tag::Link { destination, .. } = tag else {
+        return None;
+    };
+    let destination = destination
+        .resolve(source)
+        .expect("document text ranges are validated");
+    let derives = |text: &str| {
+        destination == text
+            || ["mailto:", "http://"]
+                .iter()
+                .any(|prefix| destination.strip_prefix(prefix) == Some(text))
+    };
+    let form = if raw.starts_with('[') && raw.ends_with(')') && raw.contains("](") {
+        LinkForm::Explicit
+    } else if let Some(text) = raw.strip_prefix('<').and_then(|raw| raw.strip_suffix('>')) {
+        if !derives(text) {
+            return None;
+        }
+        LinkForm::Angle
+    } else if !raw.is_empty() && derives(raw) {
+        LinkForm::Bare
+    } else {
+        return None;
+    };
+    Some(NodeSyntax::Link { form })
 }
 
 /// Return info and body ranges relative to a full frontmatter source extent.

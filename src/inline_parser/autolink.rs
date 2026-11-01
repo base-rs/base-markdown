@@ -39,6 +39,28 @@ impl Trail {
     }
 }
 
+/// The prefix the parser adds to `text` to form its destination, when all of `text`, with
+/// nothing around it, is one GFM literal autolink.
+pub(crate) fn literal_autolink_prefix(text: &str) -> Option<&'static str> {
+    let whole = |found: Option<Match>| {
+        found
+            .filter(|found| found.start == 0 && found.end == text.len())
+            .map(|found| found.prefix.as_str())
+    };
+    let bytes = text.as_bytes();
+    let marker = if bytes.len() >= 4 && bytes[..4].eq_ignore_ascii_case(b"www.") {
+        Some(3)
+    } else {
+        text.find(':')
+    };
+    marker
+        .and_then(|marker| whole(web(text, 0, marker, text.len(), &mut Trail::default())))
+        .or_else(|| {
+            text.find('@')
+                .and_then(|at| whole(email(text, 0, at, text.len())))
+        })
+}
+
 /// Recognize a protocol colon or the dot after `www`. The lower bound excludes stripped container prefixes and preceding inline constructs.
 pub(super) fn web(
     source: &str,

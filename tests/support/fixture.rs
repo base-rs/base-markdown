@@ -594,6 +594,25 @@ impl<S: AsRef<str>> MarkdownFixture for Document<S> {
         base_markdown::to_markdown_with_options(self, options)
     }
 }
+/// The fixture's document with every link given `form`, as a parser records it.
+pub fn with_link_form(node: &Node, form: base_markdown::LinkForm) -> Document {
+    let mut document = node.document();
+    let links: Vec<_> = document
+        .descendants(document.root())
+        .filter(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Start(Tag::Link { .. })
+            )
+        })
+        .collect();
+    for link in links {
+        document
+            .set_syntax(link, Some(NodeSyntax::Link { form }))
+            .unwrap();
+    }
+    document
+}
 pub fn to_markdown(node: &impl MarkdownFixture) -> Result<String, base_markdown::message::Message> {
     node.markdown(&Default::default())
 }

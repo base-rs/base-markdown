@@ -10,13 +10,17 @@ use super::{
         contains_control_or_whitespace::contains_control_or_whitespace,
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::format_heading_as_setext,
-        format_link_as_auto_link::auto_link_text, scan::longest_run,
+        format_link_as_auto_link::{boundary, written_link, WrittenLink},
+        scan::longest_run,
     },
 };
 use crate::{
     message::Message,
     stream::{EventKind, Tag},
-    util::line_ending::line_endings,
+    util::{
+        char::{classify, Kind},
+        line_ending::line_endings,
+    },
     CodeFence, Document, NodeId, NodeSyntax, ReferenceKind,
 };
 use alloc::{
@@ -47,11 +51,7 @@ impl State<'_> {
 
     pub(super) fn hard_break(&mut self, info: &Info) -> Result<(), Message> {
         if super::escape::unsafe_newline(&self.stack) {
-            if !info
-                .before(&self.output)
-                .chars()
-                .any(|c| matches!(c, '\t' | ' '))
-            {
+            if !info.before(&self.output)[1].contains(['\t', ' ']) {
                 self.output.push(' ');
             }
         } else {
@@ -128,7 +128,7 @@ impl State<'_> {
         let start = self.output.len();
         self.enter(ConstructName::Label);
         self.output.push('[');
-        self.write_safe(label, &Info::at(start, self.output.len(), "]"), None);
+        self.write_label(label, &Info::at(start, self.output.len(), "]"));
         self.output.push_str("]: ");
         self.exit();
         self.destination_title(
@@ -194,9 +194,42 @@ impl State<'_> {
         marker: char,
         length: usize,
     ) -> Result<(), Message> {
+        // Whitespace next to a marker would stop it opening or closing, so it is written as a
+        // reference. A marker between a reference and a letter neither opens nor closes either, so
+        // that letter is a reference too.
+        let leading = starts_with_whitespace(document, node);
+        if leading {
+            // Output before the floor is final, so the character is only rewritten above it.
+            if let Some(previous) = self.output.chars().next_back().filter(|&previous| {
+                classify(previous) == Kind::Other
+                    && self.output.len() - previous.len_utf8() >= self.write_floor
+            }) {
+                let end = self.output.len() - previous.len_utf8();
+                self.output.truncate(end);
+                write!(self.output, "&#x{:X};", u32::from(previous))
+                    .expect("String writing is infallible");
+            }
+        }
+        let start = self.output.len();
         self.output.extend(core::iter::repeat(marker).take(length));
-        self.container_phrasing(document, node, info)?;
+        let content = self.output.len();
+        if leading {
+            self.attention_start = Some(content);
+        }
+        if marker == '~' {
+            self.strikethrough_start = Some(content);
+        }
+        // The content follows the opening marker, so it never starts a line.
+        let inner = Info::at(start, content, info.after);
+        self.container_phrasing(document, node, &inner)?;
+        if marker == '~' && self.text_end == self.output.len() && self.output.len() > content {
+            escape_last_tilde(&mut self.output);
+        }
+        let trailing = encode_trailing_whitespace(&mut self.output, content);
         self.output.extend(core::iter::repeat(marker).take(length));
+        if trailing && info.after.chars().next().map(classify) == Some(Kind::Other) {
+            self.attention_end = Some(self.output.len());
+        }
         Ok(())
     }
 
@@ -360,7 +393,34 @@ impl State<'_> {
             crate::markdown::LineWrapping::Preserve => Cow::Borrowed(content),
             crate::markdown::LineWrapping::Unwrap => unwrap_soft_line_breaks(content),
         };
-        self.write_safe(&value, info, None);
+        let at = Some(self.output.len());
+        // Next to an attention marker, the first character may need another form.
+        let consumed = if let Some(first) = value.chars().next().filter(|&first| {
+            self.attention_start == at && edge_whitespace(first)
+                || self.attention_end == at && classify(first) == Kind::Other
+        }) {
+            write!(self.output, "&#x{:X};", u32::from(first))
+                .expect("String writing is infallible");
+            first.len_utf8()
+        } else if self.strikethrough_start == at && value.starts_with('~') {
+            // A `~` would lengthen the opening marker, so it keeps an escape wherever the
+            // strikethrough sits.
+            self.output.push_str("\\~");
+            1
+        } else {
+            0
+        };
+        // An empty text writes nothing, so the text after it is still next to the same neighbour.
+        if !value.is_empty() {
+            self.clear_neighbours();
+        }
+        if consumed == 0 {
+            self.write_safe(&value, info, None);
+        } else {
+            let info = info.extended(self.output.len());
+            self.write_safe(&value[consumed..], &info, None);
+        }
+        self.text_end = self.output.len();
         Ok(())
     }
 
@@ -375,16 +435,33 @@ impl State<'_> {
         let quote = self.options.check_quote()?;
         let start = self.output.len();
         if !image {
-            if let Some(text) = auto_link_text(document, node, destination, title.is_some(), self) {
-                let stack = mem::take(&mut self.stack);
-                self.enter(ConstructName::Autolink);
-                // Autolinks do not process escapes, and `auto_link_text` only accepts text that reads back unchanged.
-                self.output.push('<');
-                self.output.push_str(text);
-                self.output.push('>');
-                self.exit();
-                self.stack = stack;
-                return Ok(());
+            let after_boundary = self.output.len() == self.line_start
+                || self.output.chars().next_back().map_or(true, boundary);
+            match written_link(
+                document,
+                node,
+                destination,
+                title.is_some(),
+                after_boundary,
+                self,
+            ) {
+                WrittenLink::Bare(text) => {
+                    // Between boundaries, nothing next to the link can change where it ends.
+                    self.output.push_str(text);
+                    return Ok(());
+                }
+                WrittenLink::Angle(text) => {
+                    let stack = mem::take(&mut self.stack);
+                    self.enter(ConstructName::Autolink);
+                    // Autolinks do not process escapes, and `auto_link_text` only accepts text that reads back unchanged.
+                    self.output.push('<');
+                    self.output.push_str(text);
+                    self.output.push('>');
+                    self.exit();
+                    self.stack = stack;
+                    return Ok(());
+                }
+                WrittenLink::Explicit => {}
             }
         }
         self.link_label(document, node, image, "](")?;
@@ -415,7 +492,7 @@ impl State<'_> {
         let stack = mem::take(&mut self.stack);
         self.enter(ConstructName::Reference);
         let reference_start = self.output.len();
-        self.write_safe(label, &Info::at(start, reference_start, "]"), None);
+        self.write_label(label, &Info::at(start, reference_start, "]"));
         self.exit();
         if stack.contains(&ConstructName::TableCell) {
             escape_table_pipes(&mut self.output, reference_start);
@@ -759,6 +836,59 @@ fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
     }
 
     Cow::Owned(result)
+}
+
+/// Whitespace that a character reference can stand for. Line endings are left alone, since they
+/// belong to the line structure.
+fn edge_whitespace(character: char) -> bool {
+    character.is_whitespace() && !matches!(character, '\n' | '\r')
+}
+
+/// Whether the first text written in `node` is its own and starts with whitespace.
+fn starts_with_whitespace<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> bool {
+    document
+        .children(node)
+        .map(
+            |child| match &document.node(child).expect("child exists").kind {
+                EventKind::Text(text) => text.resolve(document.source()).unwrap().chars().next(),
+                // Other nodes write their own first character, which is not whitespace.
+                _ => Some('.'),
+            },
+        )
+        .find(Option::is_some)
+        .flatten()
+        .is_some_and(edge_whitespace)
+}
+
+/// Replace whitespace that ends the output after `start` with a character reference.
+fn encode_trailing_whitespace(output: &mut String, start: usize) -> bool {
+    let Some(last) = output[start..]
+        .chars()
+        .next_back()
+        .filter(|&character| edge_whitespace(character))
+    else {
+        return false;
+    };
+    let end = output.len() - last.len_utf8();
+    output.truncate(end);
+    write!(output, "&#x{:X};", u32::from(last)).expect("String writing is infallible");
+    true
+}
+
+/// Escape a `~` that ends the output unless an odd run of backslashes already escapes it, as it
+/// would lengthen the closing strikethrough marker.
+fn escape_last_tilde(output: &mut String) {
+    let Some(before) = output.strip_suffix('~') else {
+        return;
+    };
+    let backslashes = before
+        .bytes()
+        .rev()
+        .take_while(|&byte| byte == b'\\')
+        .count();
+    if backslashes % 2 == 0 {
+        output.insert(output.len() - 1, '\\');
+    }
 }
 
 /// Escape each pipe after `start` that an even run of backslashes leaves splitting a table cell.

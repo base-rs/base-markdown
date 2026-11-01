@@ -7,9 +7,12 @@ mod support;
 use base_markdown::markdown::{LineWrapping, Options};
 use base_markdown::Document;
 use pretty_assertions::assert_eq;
+use support::fixture::canonical;
 use support::fixture::to_markdown as to;
 use support::fixture::to_markdown_with_options as to_with_options;
-use support::fixture::{Emphasis, Node, Paragraph, Text};
+use support::fixture::{
+    Blockquote, Delete, Emphasis, List, ListItem, Node, Paragraph, Root, Strong, Text,
+};
 
 #[test]
 fn text() {
@@ -104,9 +107,6 @@ fn intraword_underscores() {
         ("a\\_**b**\n", "a\\_**b**\n"),
         ("a\\*_b\n", "a\\*\\_b\n"),
         ("a_\\*b\n", "a\\_\\*b\n"),
-        ("x\\@a_b.com\n", "x@a\\_b.com\n"),
-        ("x&#64;a_b.com\n", "x@a\\_b.com\n"),
-        ("x\\@y.co1\\_www.\n", "x@y.co1\\_www.\n"),
         ("x\\@y a_b.com\n", "x@y a_b.com\n"),
     ] {
         let document = Document::parse(source, &base_markdown::ParseOptions::gfm()).unwrap();
@@ -140,8 +140,8 @@ fn intraword_underscores() {
         ("a__b", "a__b\n", "should not escape `__` between letters"),
         (
             "x@a_b.com",
-            "x@a\\_b.com\n",
-            "should escape `_` in email domains",
+            "x@a_b.com\n",
+            "should not escape `_` in email domains",
         ),
         (
             "a__.b",
@@ -208,4 +208,462 @@ fn intraword_underscores() {
         "a\\_\\__x_\n",
         "should escape `__` before emphasis"
     );
+}
+
+/// Serialize `source`, parsed with GFM, and serialize the result again.
+fn two_passes(source: &str) -> (String, String) {
+    let options = base_markdown::ParseOptions::gfm();
+    let first = base_markdown::to_markdown(&Document::parse(source, &options).unwrap()).unwrap();
+    let second =
+        base_markdown::to_markdown(&Document::parse(first.as_str(), &options).unwrap()).unwrap();
+    (first, second)
+}
+
+#[test]
+fn literal_autolinks_between_boundaries_are_written_as_authored() {
+    // A bare link is written bare when whitespace or a line boundary is on both sides of it.
+    for source in [
+        "www.example.com\n",
+        "https://a.b/c\n",
+        "a@b.co\n",
+        "x@a_b.com www.a.b_c\n",
+        "see www.a.b now\n",
+        "https://a.b/c\nnext\n",
+        "a\nhttps://a.b/c\n",
+        "x\thttps://a.b/c\ty\n",
+        "a\\\nhttps://a.b/c\n",
+        "- www.a.b\n- https://c.d\n",
+        "1. www.a.b\n",
+        "- [ ] www.a.b\n",
+        "> www.a.b\n",
+        "# www.a.b\n",
+        "## a www.a.b\n",
+        "| www.a.b |\n| --- |\n| x@y.z |\n",
+        "| a |\n| --- |\n| x https://a.b/c y |\n",
+        "www.a.b *x*\n",
+        "*x* www.a.b\n",
+        "xmpp:a@b.c/x\n",
+        "ssh://a.b\n",
+        "\\\\<1@a.b>\n",
+        "\\x@y.z\n",
+        "[www.a.b](http://www.a.b) <https://a.b> <a@b.c>\n",
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, source, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn literal_autolinks_next_to_anything_else_are_written_as_autolinks_or_explicitly() {
+    // No punctuation counts as a boundary. An address or a URL with a scheme is written between
+    // angle brackets, and a `www.` link explicitly.
+    for (source, expected) in [
+        ("www.x.org.\n", "[www.x.org](http://www.x.org).\n"),
+        ("a https://a.b/c, b\n", "a <https://a.b/c>, b\n"),
+        ("(https://a.b/c)\n", "(<https://a.b/c>)\n"),
+        (
+            "(www.a.b) - https://c.d\n",
+            "([www.a.b](http://www.a.b)) - https://c.d\n",
+        ),
+        ("https://a.b/c. x\n", "<https://a.b/c>. x\n"),
+        ("www.a.b. x\n", "[www.a.b](http://www.a.b). x\n"),
+        ("www.a.b* x\n", "[www.a.b](http://www.a.b)\\* x\n"),
+        ("www.com_\n", "[www.com](http://www.com)\\_\n"),
+        ("http://a.b/c_(d)_ x\n", "<http://a.b/c_(d)>\\_ x\n"),
+        ("https://a.b/?x=1&amp;\n", "<https://a.b/?x=1>&\n"),
+        ("www.a.b&amp;. c\n", "[www.a.b](http://www.a.b)&. c\n"),
+        ("WWW.www&amp;\n", "[WWW.www](http://WWW.www)&\n"),
+        ("xx@y.z\\-\n", "<xx@y.z>-\n"),
+        ("a@b.c&#x2D;d\n", "<a@b.c>-d\n"),
+        ("a@b.c&#46;d\n", "<a@b.c>.d\n"),
+        ("x@y.z\\.c\n", "<x@y.z>.c\n"),
+        ("x@y.z\\_a.b\n", "<x@y.z>\\_a.b\n"),
+        ("x@y.z&#x61;\n", "<x@y.z>a\n"),
+        ("x@y.co.\n", "<x@y.co>.\n"),
+        ("xmpp:a@b.c&#x2F;x\n", "<xmpp:a@b.c>/x\n"),
+        ("a@b.c\u{2014}\n", "<a@b.c>\u{2014}\n"),
+        ("x\u{2014}https://a.b/c\n", "x\u{2014}<https://a.b/c>\n"),
+        ("`x`https://a.b/c\n", "`x`<https://a.b/c>\n"),
+        ("\\.x@y.z\n", ".<x@y.z>\n"),
+        ("\\\\x@y.z\n", "\\\\<x@y.z>\n"),
+        ("\\<a@b.c>\n", "<<a@b.c>>\n"),
+        ("x@y.z~www.c.d\n", "<x@y.z>~[www.c.d](http://www.c.d)\n"),
+        ("x@y.co1_www.\n", "[x@y.co1_www](mailto:x@y.co1_www).\n"),
+        ("https://a.b/c  \nb\n", "<https://a.b/c>\\\nb\n"),
+        (
+            "https://api.example.com/**\n",
+            "<https://api.example.com/>\\*\\*\n",
+        ),
+        // Inside attention, the marker is next to the link.
+        ("*https://a.b/c*\n", "*<https://a.b/c>*\n"),
+        ("**www.a.b**.\n", "**[www.a.b](http://www.a.b)**.\n"),
+        ("~~e@f.gh~~\n", "~~<e@f.gh>~~\n"),
+        (
+            "**bold www.x.y**\\-\n",
+            "**bold [www.x.y](http://www.x.y)**-\n",
+        ),
+        ("~~*www.a.b*~~&amp;\n", "~~*[www.a.b](http://www.a.b)*~~&\n"),
+        ("*a@b.c*.d\n", "*<a@b.c>*.d\n"),
+        // In a table cell, the cell's pipe is not next to the link, but punctuation is.
+        (
+            "| a |\n| - |\n| https://a.b/c. |\n",
+            "| a |\n| --- |\n| <https://a.b/c>. |\n",
+        ),
+        (
+            "| a |\n| - |\n| www.a\\|b |\n",
+            "| a |\n| --- |\n| [www.a](http://www.a)\\|b |\n",
+        ),
+        // The node after the one next to the link is looked at without the link beside it.
+        (
+            "#/[$@--~_|;[a]/_|x@y.z(1~+\n",
+            "\\#/\\[\\$@--~~*|;\\[a]/*|<x@y.z>(1~~+\n",
+        ),
+        ("http://b<!/ @\n", "<http://b>\\<!/ @\n"),
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+        let options = base_markdown::ParseOptions::gfm();
+        assert_eq!(
+            canonical(&Document::parse(first.as_str(), &options).unwrap()),
+            canonical(&Document::parse(source, &options).unwrap()),
+            "{source:?}"
+        );
+    }
+}
+#[test]
+fn escapes_that_only_kept_text_from_linking_are_dropped() {
+    // Text is not escaped to keep GFM from linking it, so it may link once it is written.
+    for (source, expected) in [
+        ("www\\.example.com\n", "www.example.com\n"),
+        ("http\\://example.com\n", "http://example.com\n"),
+        ("x\\@example.com\n", "x@example.com\n"),
+        ("\\\\x&#64;y.z\n", "\\x@y.z\n"),
+        // Underscores in an email domain are not escaped either.
+        ("x\\@a_b.com\n", "x@a_b.com\n"),
+        ("x&#64;a_b.com\n", "x@a_b.com\n"),
+        // Adjacent escaped backslashes each keep their escape.
+        ("\\\\\\\\.\n", "\\\\\\\\.\n"),
+        ("a\\\\\\\\*b*\n", "a\\\\\\\\*b*\n"),
+        ("\\\\\\\\[a](b)\n", "\\\\\\\\[a](b)\n"),
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+#[test]
+fn text_that_becomes_a_literal_autolink_settles_after_two_passes() {
+    // Text that links once written is a bare link on the next pass, which falls back when
+    // something other than whitespace is next to it, and then stays.
+    for (source, second) in [
+        ("x\\\\x\\@y.z\n", "x\\x@y.z\n"),
+        (
+            "mailto:<a@b.c>\\\\www&#64;\\.0\\_a.b\n",
+            "mailto:<a@b.c>\\www@.0_a.b\n",
+        ),
+        ("x\\@y.co1\\_www.\n", "[x@y.co1_www](mailto:x@y.co1_www).\n"),
+        (
+            "> - //&amp;x@y.z9\\_www\n",
+            "> - //&[x@y.z9_www](mailto:x@y.z9_www)\n",
+        ),
+        ("&x&#64;y.z\n", "&<x@y.z>\n"),
+        ("&amp;http\\://a.b\n", "&<http://a.b>\n"),
+        ("\\\\http\\://a.b\n", "\\\\<http://a.b>\n"),
+    ] {
+        let (_, written) = two_passes(source);
+        assert_eq!(written, second, "{source:?}");
+        assert_eq!(
+            two_passes(&written),
+            (written.clone(), written.clone()),
+            "{source:?}"
+        );
+    }
+}
+#[test]
+fn literal_autolinks_keep_escapes_their_context_needs() {
+    for source in [
+        "x@y.z\\ \na\n",
+        "_a x@y.z* b_\n",
+        "[www. \\]: /u\n",
+        "[www. \\]\n\n[www. ]: /u\n",
+        "a\n    >x@y.z\n",
+        "~~a \\~~.a@b.c\n",
+        "~~! \\~~!a@b.c\n",
+        "~~# \\~~:a@b.c\n",
+    ] {
+        let (first, second) = two_passes(source);
+        let html = |value: &str| {
+            base_markdown::to_html_with_options(value, &base_markdown::Options::gfm())
+        };
+        assert_eq!(html(&first), html(source), "{source:?} gave {first:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn ordered_list_markers_are_escaped_by_their_place_in_the_line() {
+    // How the parser splits text at an escape does not change whether the marker is escaped.
+    for (source, expected) in [
+        ("1)a\n", "1\\)a\n"),
+        ("1\\)a\n", "1\\)a\n"),
+        ("1\\) a\n", "1\\) a\n"),
+        ("1\\. a\n", "1\\. a\n"),
+        ("x\n1\\) a\n", "x\n1\\) a\n"),
+        ("- 1\\)a\n", "- 1\\)a\n"),
+        ("x 1)a\n", "x 1)a\n"),
+        ("x 1\\)a\n", "x 1)a\n"),
+        ("x 1\\. a\n", "x 1. a\n"),
+        // Text after an opening emphasis marker does not start the line.
+        ("**1.** a\n", "**1.** a\n"),
+        ("*1)a* b\n", "*1)a* b\n"),
+        ("~~1\\. a~~\n", "~~1. a~~\n"),
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn underscores_after_attention_markers_do_not_depend_on_text_splits() {
+    // The parser splits this text at `$` but not at `_`, so the first underscore follows the
+    // opening marker's neighbour in one pass and the text node's start in the next.
+    for (source, expected) in [("*b_1=a$1.:]@\na~*\n", "*b_1=a\\$1.:]@\na~*\n")] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn whitespace_inside_attention_is_always_a_character_reference() {
+    for (source, expected) in [
+        ("*&#x20;a*\n", "*&#x20;a*\n"),
+        ("**&#x20;a**\n", "**&#x20;a**\n"),
+        ("~~&#x20;a~~\n", "~~&#x20;a~~\n"),
+        ("*&#9;a*\n", "*&#x9;a*\n"),
+        ("*a&#x20;*\n", "*a&#x20;*\n"),
+        ("*&#xA0;a*\n", "*&#xA0;a*\n"),
+        ("> *&#x20;a*\n", "> *&#x20;a*\n"),
+        ("- *&#x20;a*\n", "- *&#x20;a*\n"),
+        ("x *&#x20;a*\n", "x *&#x20;a*\n"),
+        ("x *a&#9;* b\n", "x *a&#x9;* b\n"),
+        ("x **&#x20;a&#x20;** b\n", "x **&#x20;a&#x20;** b\n"),
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+    }
+}
+
+#[test]
+fn whitespace_inside_constructed_attention_is_always_a_character_reference() {
+    fn text(value: &str) -> Node {
+        Node::Text(Text {
+            value: value.to_owned(),
+            position: None,
+        })
+    }
+    fn paragraph(children: Vec<Node>) -> Node {
+        Node::Paragraph(Paragraph {
+            children,
+            position: None,
+        })
+    }
+    type Wrap = fn(Vec<Node>) -> Node;
+    let attention: [(Wrap, &str); 3] = [
+        (
+            |children| {
+                Node::Emphasis(Emphasis {
+                    children,
+                    position: None,
+                })
+            },
+            "*",
+        ),
+        (
+            |children| {
+                Node::Strong(Strong {
+                    children,
+                    position: None,
+                })
+            },
+            "**",
+        ),
+        (
+            |children| {
+                Node::Delete(Delete {
+                    children,
+                    position: None,
+                })
+            },
+            "~~",
+        ),
+    ];
+    for (wrap, marker) in attention {
+        for (value, reference) in [
+            (" note", "&#x20;note"),
+            ("\tnote", "&#x9;note"),
+            ("\u{a0}note", "&#xA0;note"),
+        ] {
+            let inline = || wrap(vec![text(value)]);
+            let trailing = || wrap(vec![text("note ")]);
+            for (node, expected) in [
+                (
+                    Node::Root(Root {
+                        children: vec![paragraph(vec![inline()])],
+                        position: None,
+                    }),
+                    format!("{marker}{reference}{marker}\n"),
+                ),
+                (
+                    Node::Root(Root {
+                        children: vec![paragraph(vec![text("x "), inline(), text(" y")])],
+                        position: None,
+                    }),
+                    format!("x {marker}{reference}{marker} y\n"),
+                ),
+                (
+                    Node::Root(Root {
+                        children: vec![paragraph(vec![text("x "), trailing(), text("y")])],
+                        position: None,
+                    }),
+                    // A letter next to a marker after a reference is a reference too.
+                    format!("x {marker}note&#x20;{marker}&#x79;\n"),
+                ),
+                (
+                    Node::Root(Root {
+                        children: vec![paragraph(vec![text("x"), inline()])],
+                        position: None,
+                    }),
+                    format!("&#x78;{marker}{reference}{marker}\n"),
+                ),
+                // Only the character right before the marker changes, even when the text before
+                // it is split.
+                (
+                    Node::Root(Root {
+                        children: vec![paragraph(vec![text("x"), text(".y"), inline()])],
+                        position: None,
+                    }),
+                    format!("x.&#x79;{marker}{reference}{marker}\n"),
+                ),
+                // An empty text before the whitespace writes nothing.
+                (
+                    Node::Root(Root {
+                        children: vec![paragraph(vec![wrap(vec![text(""), text(value)])])],
+                        position: None,
+                    }),
+                    format!("{marker}{reference}{marker}\n"),
+                ),
+                (
+                    Node::Blockquote(Blockquote {
+                        children: vec![paragraph(vec![inline()])],
+                        position: None,
+                    }),
+                    format!("> {marker}{reference}{marker}\n"),
+                ),
+                (
+                    Node::List(List {
+                        children: vec![Node::ListItem(ListItem {
+                            children: vec![paragraph(vec![inline()])],
+                            position: None,
+                            spread: false,
+                            checked: None,
+                        })],
+                        position: None,
+                        ordered: false,
+                        start: None,
+                        spread: false,
+                    }),
+                    format!("- {marker}{reference}{marker}\n"),
+                ),
+            ] {
+                let markdown = to(&node).unwrap();
+                assert_eq!(markdown, expected, "{value:?}");
+                let (first, second) = two_passes(&markdown);
+                assert_eq!(first, markdown, "{value:?}");
+                assert_eq!(second, first, "{value:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn whitespace_inside_attention_keeps_the_text_before_it() {
+    // Escapes and references split the text before the marker into several nodes. Looking ahead
+    // at the attention from an earlier node must not change what that node wrote.
+    let options = base_markdown::Options::gfm();
+    for (open, close) in [("*", "*"), ("**", "**"), ("~~", "~~"), ("~", "~")] {
+        for whitespace in ["&#x20;", "&#x9;", "&#xA0;"] {
+            for prefix in [
+                "see e.g.",
+                "v1.2",
+                "word\\*",
+                "Caf&eacute;",
+                "Hi!",
+                "a.b",
+                "x&amp;y",
+            ] {
+                for (start, end) in [("", ""), ("> ", ""), ("- ", ""), ("| a |\n| - |\n| ", " |")] {
+                    for space in [" ", ""] {
+                        let source =
+                            format!("{start}{prefix}{space}{open}{whitespace}x{close}{end}\n");
+                        let (first, second) = two_passes(&source);
+                        assert_eq!(second, first, "{source:?}");
+                        assert_eq!(
+                            base_markdown::to_html_with_options(&first, &options),
+                            base_markdown::to_html_with_options(&source, &options),
+                            "{source:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn text_that_gfm_would_link_is_written_verbatim() {
+    for source in [
+        "www.example.com\n",
+        "https://a.b/c\n",
+        "a@b.co\n",
+        "x@a_b.com and http://y.z/w_v\n",
+    ] {
+        let document = Document::parse(source, &base_markdown::ParseOptions::default()).unwrap();
+        assert_eq!(base_markdown::to_markdown(&document).unwrap(), source);
+    }
+}
+
+#[test]
+fn a_tilde_at_the_edges_of_strikethrough_keeps_its_escape() {
+    // Unescaped, the `~` would lengthen a marker, and at the start of a line the opening one would
+    // open a code fence.
+    let options = base_markdown::ParseOptions::gfm();
+    for (source, expected) in [
+        ("~~\\~5 min~~\n", "~~\\~5 min~~\n"),
+        // Strikethrough is always written with two markers.
+        ("~\\~~\n", "~~\\~~~\n"),
+        ("w\\\n~~\\~x~~\n", "w\\\n~~\\~x~~\n"),
+        ("w\n~~\\~x~~\n", "w\n~~\\~x~~\n"),
+        ("- ~~\\~~~\n", "- ~~\\~~~\n"),
+        ("> ~~\\~~~\n", "> ~~\\~~~\n"),
+        ("x ~~\\~a~~\n", "x ~~\\~a~~\n"),
+        ("~~a\\~~~\n", "~~a\\~~~\n"),
+        ("x ~~a\\~~~ y\n", "x ~~a\\~~~ y\n"),
+        ("- ~~\\~a\\~~~\n", "- ~~\\~a\\~~~\n"),
+        ("~~a\\\\\\~~~\n", "~~a\\\\\\~~~\n"),
+        ("~~a~b~~\n", "~~a~b~~\n"),
+    ] {
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
+        assert_eq!(
+            canonical(&Document::parse(first.as_str(), &options).unwrap()),
+            canonical(&Document::parse(source, &options).unwrap()),
+            "{source:?}"
+        );
+    }
 }

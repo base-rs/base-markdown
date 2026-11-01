@@ -85,7 +85,7 @@ fn literal_lookahead_matches_rendering_across_scopes_and_wrapping_modes() {
         .append_child(document.root(), EventKind::Text(Text::Literal("")))
         .unwrap();
     assert_eq!(
-        State::new(&Options::default()).peek_node(&document, text),
+        State::new(&Options::default()).peek_node(&document, text, None),
         None
     );
     let scopes = [
@@ -111,7 +111,7 @@ fn literal_lookahead_matches_rendering_across_scopes_and_wrapping_modes() {
                         .unwrap();
                     let mut state = State::new(&options);
                     state.enter(scope);
-                    if let Some(prefix) = state.peek_node(&document, text) {
+                    if let Some(prefix) = state.peek_node(&document, text, None) {
                         state
                             .write_node(&document, text, &Info::new("", ""))
                             .unwrap();
@@ -225,4 +225,16 @@ fn serializes_table_cells_with_escaped_pipes() {
     let mut state = State::new(&options);
     state.render_table_row(&document, row).unwrap();
     assert_eq!(state.output, "| plain α | ``a`b`` | a\\|b | `a\\|b` |  |");
+}
+
+#[test]
+fn text_after_closed_attention_keeps_a_literal_context() {
+    // Text written first in its container sees what the container follows as a literal, which
+    // still holds once its first character is written as a reference.
+    let options = Options::default();
+    let mut state = State::new(&options);
+    state.output.push_str("*a&#x20;*");
+    state.attention_end = Some(state.output.len());
+    state.text("b_", &Info::new("", "")).unwrap();
+    assert_eq!(state.output, "*a&#x20;*&#x62;_");
 }
