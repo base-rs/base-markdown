@@ -332,7 +332,7 @@ impl<'a> State<'a> {
             }
             after_hard_break = matches!(kind, EventKind::HardBreak);
             *self.index_stack.last_mut().unwrap() = index;
-            let mut buffer = [0u8; 4];
+            let mut buffer = [0u8; 5];
             let next = children.get(position + 1).copied();
             let after = if let Some(next) = next {
                 if let Some(first) = self.peek_node(document, next, child) {
@@ -343,7 +343,10 @@ impl<'a> State<'a> {
                     self.write_node(document, next, &Info::new("", ""))?;
                     let first = self.output[checkpoint..].chars().next().unwrap_or_default();
                     self.output.truncate(checkpoint);
-                    first.encode_utf8(&mut buffer)
+                    // A line ending there is not the one that ends the block, so the NUL that
+                    // follows it in the buffer stands for the rest of the next node and after.
+                    let length = first.encode_utf8(&mut buffer).len();
+                    core::str::from_utf8(&buffer[..length + 1]).expect("NUL is a character")
                 }
             } else {
                 info.after
@@ -353,7 +356,7 @@ impl<'a> State<'a> {
                     Before::Literal(value) => Before::Literal(value),
                     Before::Output(lead, range) => Before::Output(lead, range.clone()),
                 }
-            } else if self.output.ends_with(['\n', '\r'])
+            } else if self.output.ends_with('\n')
                 && matches!(kind, EventKind::Html { value, .. }
                 if crate::block_parser::html_interrupts_paragraph(
                     value.resolve(document.source()).unwrap().as_bytes()
@@ -365,9 +368,6 @@ impl<'a> State<'a> {
                 } else {
                     // Replace the line ending before inline HTML so it cannot start an HTML block.
                     self.output.pop();
-                    if self.output.ends_with('\r') {
-                        self.output.pop();
-                    }
                     self.output.push(' ');
                 }
                 Before::Literal(" ")
@@ -519,7 +519,8 @@ impl<'a> State<'a> {
                 }
                 self.text(value, info)
             }
-            EventKind::SoftBreak(text) => self.text(text.resolve(source).unwrap(), info),
+            // A soft break is a line ending, which is LF whatever value a constructed one has.
+            EventKind::SoftBreak(_) => self.text("\n", info),
             EventKind::HardBreak => self.hard_break(info),
             EventKind::Rule => self.thematic_break(),
             EventKind::Code { value, language } => self.inline_code(
@@ -883,7 +884,8 @@ impl<'a> State<'a> {
         previous: NodeId,
     ) -> Option<char> {
         match &document.node(id).unwrap().kind {
-            EventKind::Text(value) | EventKind::SoftBreak(value) => {
+            // A soft break is written as a line ending, which is never a literal prefix.
+            EventKind::Text(value) => {
                 super::escape::literal_prefix(value.resolve(document.source()).unwrap())
             }
             EventKind::Start(Tag::Emphasis) => Some(self.options.emphasis),
@@ -1038,8 +1040,20 @@ impl<'a> State<'a> {
     }
 
     /// Write a definition or reference label. Labels match by their raw text, so backslashes are
-    /// written as they are and a character one already escapes needs no other escape.
+    /// written as they are and a character one already escapes needs no other escape. Labels match
+    /// after collapsing whitespace, so a CR or CRLF in a constructed label is written as LF.
     pub(super) fn write_label(&mut self, label: &str, info: &Info) {
+        let normalized;
+        let label = if label.contains('\r') {
+            normalized = {
+                let mut value = String::with_capacity(label.len());
+                crate::util::line_ending::push_normalized(&mut value, label);
+                value
+            };
+            normalized.as_str()
+        } else {
+            label
+        };
         let before = info.before(&self.output);
         let start = before[0].len() + before[1].len();
         self.escapes.clear();

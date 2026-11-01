@@ -465,7 +465,7 @@ fn document_completion_yields_one_terminal_separator_and_end() {
         ("", None),
         ("a", None),
         ("a\n", Some(("\n", false))),
-        ("a\r\n", Some(("\r\n", false))),
+        ("a\r\n", Some(("\n", false))),
         ("a\r\n\r\nb\n", Some(("\n", false))),
         ("- a\n\n", Some(("", true))),
         (">\n", Some(("", true))),
@@ -475,7 +475,7 @@ fn document_completion_yields_one_terminal_separator_and_end() {
         ("    code\n ", None),
         ("<!--\nbody\n", None),
         ("> <!--\n> body\n", None),
-        ("<!-- closed -->\r\n", Some(("\r\n", false))),
+        ("<!-- closed -->\r\n", Some(("\n", false))),
     ] {
         let mut parser = base_markdown::EventParser::new(source, &options.parse);
         assert!(matches!(

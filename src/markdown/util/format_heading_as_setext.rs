@@ -35,7 +35,7 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
                 || !unwrapped && matches!(kind, EventKind::SoftBreak(_))
                 || !unwrapped
                     && !matches!(kind, EventKind::CodeBlock { .. })
-                    && value.contains(['\r', '\n']);
+                    && value.contains('\n');
         }
         nonempty && setext
     })
@@ -97,7 +97,7 @@ mod tests {
         for kind in [
             EventKind::Text(Text::Literal("first\nsecond")),
             EventKind::Code {
-                value: Text::Literal("first\rsecond"),
+                value: Text::Literal("first\nsecond"),
                 language: None,
             },
             EventKind::Math(Text::Literal("first\r\nsecond")),

@@ -2,7 +2,10 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Source-backed text construction and syntax-aware string decoding.
-use crate::{stream::Text, util::constant::CHARACTER_REFERENCES};
+use crate::{
+    stream::Text,
+    util::{constant::CHARACTER_REFERENCES, line_ending::push_normalized},
+};
 use alloc::{borrow::Cow, string::String};
 use core::ops::Range;
 
@@ -10,6 +13,9 @@ static STRING_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::
 static UNPADDED_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\\&\0\r\n");
 
 /// Keep a contiguous source range until normalization actually requires an owned string.
+///
+/// Source fragments copied into an owned string have their line endings written as LF, as
+/// [`Text::normalized`] does for a source range when the event is yielded.
 pub(crate) struct ValueBuilder<'a> {
     source: &'a str,
     value: Option<Text<'static>>,
@@ -37,10 +43,17 @@ impl<'a> ValueBuilder<'a> {
                     return;
                 }
             }
-            value
-                .to_mut(self.source)
-                .unwrap()
-                .push_str(text.resolve(self.source).unwrap());
+            let source = self.source;
+            if let Text::Source(range) = value {
+                let mut owned = String::with_capacity(range.len());
+                push_normalized(&mut owned, &source[range.clone()]);
+                *value = Text::from(owned);
+            }
+            let value = value.to_mut(source).unwrap();
+            match text {
+                Text::Source(range) => push_normalized(value, &source[range]),
+                text => value.push_str(text.resolve(source).unwrap()),
+            }
         } else {
             self.value = Some(match text {
                 Text::Literal(value) | Text::Value(Cow::Borrowed(value)) => {
@@ -324,10 +337,10 @@ mod tests {
     fn continuation_padding_is_removed_before_entity_and_escape_decoding() {
         let source = "a&NewLine;  b\r\n \t&amp;\\* &#x1F980;\0";
         for (escapes, references, expected) in [
-            (true, true, "a\n  b\r\n&* 🦀�"),
-            (false, true, "a\n  b\r\n&\\* 🦀�"),
-            (true, false, "a&NewLine;  b\r\n&amp;* &#x1F980;�"),
-            (false, false, "a&NewLine;  b\r\n&amp;\\* &#x1F980;�"),
+            (true, true, "a\n  b\n&* 🦀�"),
+            (false, true, "a\n  b\n&\\* 🦀�"),
+            (true, false, "a&NewLine;  b\n&amp;* &#x1F980;�"),
+            (false, false, "a&NewLine;  b\n&amp;\\* &#x1F980;�"),
         ] {
             let mut options = ParseOptions::default();
             options.constructs.character_escape = escapes;
@@ -343,7 +356,7 @@ mod tests {
             decode_unpadded(source, 0..source.len(), None)
                 .resolve(source)
                 .unwrap(),
-            "a&NewLine;  b\r\n&amp;\\* &#x1F980;�"
+            "a&NewLine;  b\n&amp;\\* &#x1F980;�"
         );
         for source in ["", "plain é", "a\nb", "a\rb", "a\r\nb", "&invalid; \\q"] {
             assert_eq!(

@@ -9,8 +9,8 @@ fn paragraphs_preserve_container_chunks_and_source_positions() {
     let source = "> a\tb\r\n> *c*\r\n\r\ntext\r\nnext";
     assert_eq!(
         to_html_with_options(source, &Options::default()),
+        // Line endings in content are LF, and those between blocks are authored.
         "<blockquote>\n<p>a\tb\n<em>c</em></p>\n</blockquote>\n<p>text\nnext</p>"
-            .replace('\n', "\r\n")
     );
     let tree = Document::parse(source, &ParseOptions::default()).unwrap();
     let children: Vec<_> = tree
@@ -39,7 +39,7 @@ fn paragraphs_preserve_container_chunks_and_source_positions() {
         .unwrap();
     assert_eq!(tree.node(emphasis).unwrap().span, 9..12);
     assert_eq!(tree.node(children[1]).unwrap().span, 16..26);
-    assert_eq!(tree.text_content(paragraph), "a\tb\r\nc");
+    assert_eq!(tree.text_content(paragraph), "a\tb\nc");
 }
 
 #[test]

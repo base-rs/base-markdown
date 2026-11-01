@@ -543,13 +543,13 @@ pub struct CompileOptions {
     /// Default line ending to use when compiling to HTML, for line endings not
     /// in `value`.
     ///
-    /// Generally, `markdown-rs` copies line endings (`\r`, `\n`, `\r\n`) in
-    /// the markdown document over to the compiled HTML.
+    /// Parsed values store every line ending as `\n`, whether the document
+    /// uses `\n`, `\r\n` or `\r`, so line endings in content and between
+    /// blocks are compiled as `\n`.
     /// In some cases, such as `> a`, CommonMark requires that extra line
     /// endings are added: `<blockquote>\n<p>a</p>\n</blockquote>`.
     ///
-    /// To create that line ending, the document is checked for the first line
-    /// ending that is used.
+    /// Those are `\n` too when the document has a line ending.
     /// If there is no line ending, `default_line_ending` is used.
     /// If that isn’t configured, `\n` is used.
     ///

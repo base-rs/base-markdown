@@ -7,7 +7,11 @@ use crate::{
     stream::{Tag, TagKind},
     NodeSyntax,
 };
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    string::String,
+    vec::Vec,
+};
 use core::{num::NonZeroUsize, ops::Range};
 
 /// A stable index into a document's contiguous node arena.
@@ -199,6 +203,7 @@ impl AstBuilder {
             source,
             nodes: self.nodes,
             syntax: BTreeMap::new(),
+            edited: BTreeSet::new(),
             append_hint: None,
         };
         // Public producers can supply arbitrary offsets. Validate their contract once before exposing the document.
@@ -227,6 +232,11 @@ pub struct Document<S = String> {
     source: S,
     nodes: Vec<Node>,
     syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
+    // Opaque nodes whose value was replaced through `text_mut` or `set_kind`. A parsed frontmatter value
+    // with LF in place of the source's CRs is the whole block only until it is edited, even if the
+    // edit makes it equal again.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "BTreeSet::is_empty"))]
+    edited: BTreeSet<NodeId>,
     // The child that `append_child` last appended. It is still its parent's last child while it has that parent and no next sibling, so a run of appends to one parent does not scan the parent's children each time.
     #[cfg_attr(feature = "serde", serde(skip))]
     append_hint: Option<NodeId>,
@@ -289,6 +299,11 @@ impl<S: AsRef<str>> Document<S> {
                 return Err(StreamError::Unbalanced);
             }
         }
+        if matches!(kind, EventKind::Opaque { .. }) {
+            self.edited.insert(id);
+        } else {
+            self.edited.remove(&id);
+        }
         self.nodes[id.index()].kind = kind;
         self.syntax.insert(id, None);
         self.refresh_context(id);
@@ -302,8 +317,7 @@ impl<S: AsRef<str>> Document<S> {
     /// Returns [`StreamError::InvalidRange`] for an invalid node ID or a non-text node.
     pub fn text_mut(&mut self, id: NodeId) -> Result<&mut String, StreamError> {
         // Frontmatter's semantic body detaches independently of its retained fence metadata.
-        let body = if matches!(self.node(id), Some(Node {kind:EventKind::Opaque {value:Text::Source(range),..},span,..}) if range==span)
-        {
+        let body = if self.whole_frontmatter(id) {
             self.frontmatter_value(id).map(String::from)
         } else {
             None
@@ -312,6 +326,9 @@ impl<S: AsRef<str>> Document<S> {
             .nodes
             .get_mut(id.index())
             .ok_or(StreamError::InvalidRange)?;
+        if matches!(node.kind, EventKind::Opaque { .. }) {
+            self.edited.insert(id);
+        }
         let (EventKind::Text(text)
         | EventKind::SoftBreak(text)
         | EventKind::Math(text)
@@ -629,14 +646,37 @@ impl<S: AsRef<str>> Document<S> {
         let value = text
             .resolve(self.source())
             .expect("document text is validated");
-        if let Text::Source(range) = text {
-            if *range == node.span {
-                if let Some((_, _, _, body)) = crate::node_syntax::frontmatter(value) {
-                    return value.get(body);
-                }
+        if self.whole_frontmatter(id) {
+            if let Some((_, _, _, body)) = crate::node_syntax::frontmatter(value) {
+                return value.get(body);
             }
         }
         Some(value)
+    }
+    /// Whether the value of an opaque node is still the whole block it was parsed from, with its
+    /// fences, rather than an edited body. Its line endings are LF, whichever the source used, so
+    /// a block with a CR in the source is a value rather than the source range until it is edited.
+    /// A parsed block without a CR is always the source range, so a value for it is an edit, even
+    /// in a document rebuilt from another's events, which does not keep the record of edits.
+    fn whole_frontmatter(&self, id: NodeId) -> bool {
+        let Some(Node {
+            kind: EventKind::Opaque { value, .. },
+            span,
+            ..
+        }) = self.node(id)
+        else {
+            return false;
+        };
+        match value {
+            Text::Source(range) => range == span,
+            Text::Value(value) => {
+                !self.edited.contains(&id)
+                    && self.source().get(span.clone()).is_some_and(|raw| {
+                        raw.contains('\r') && crate::util::line_ending::normalizes_to(raw, value)
+                    })
+            }
+            Text::Literal(_) => false,
+        }
     }
     /// Render the whole document through the shared event HTML writer.
     ///
@@ -1401,12 +1441,15 @@ impl<'de> serde::Deserialize<'de> for Document<String> {
             nodes: Vec<Node>,
             #[serde(default)]
             syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
+            #[serde(default)]
+            edited: BTreeSet<NodeId>,
         }
         let stored = Stored::deserialize(deserializer)?;
         let document = Self {
             source: stored.source,
             nodes: stored.nodes,
             syntax: stored.syntax,
+            edited: stored.edited,
             append_hint: None,
         };
         document

@@ -6,6 +6,8 @@
 use base_markdown::{to_html, to_html_with_options, CompileOptions, Options};
 use pretty_assertions::assert_eq;
 
+// Line endings in content, such as text, code and HTML, are LF. Those the HTML renderer writes
+// itself, between blocks and after code without a final line ending, are authored.
 #[test]
 fn line_ending() {
     let danger = &Options {
@@ -49,13 +51,13 @@ fn line_ending() {
 
     assert_eq!(
         to_html("a\rb"),
-        "<p>a\rb</p>",
+        "<p>a\nb</p>",
         "should support a carriage return for a line ending inside a paragraph"
     );
 
     assert_eq!(
         to_html("a\r\nb"),
-        "<p>a\r\nb</p>",
+        "<p>a\nb</p>",
         "should support a carriage return + line feed for a line ending inside a paragraph"
     );
 
@@ -67,13 +69,13 @@ fn line_ending() {
 
     assert_eq!(
         to_html("\ta\r\tb"),
-        "<pre><code>a\rb\r</code></pre>",
+        "<pre><code>a\nb\n</code></pre>",
         "should support a carriage return in indented code (and prefer it)"
     );
 
     assert_eq!(
         to_html("\ta\r\n\tb"),
-        "<pre><code>a\r\nb\r\n</code></pre>",
+        "<pre><code>a\nb\n</code></pre>",
         "should support a carriage return + line feed in indented code (and prefer it)"
     );
 
@@ -85,13 +87,13 @@ fn line_ending() {
 
     assert_eq!(
         to_html("***\r### Heading"),
-        "<hr />\r<h3>Heading</h3>",
+        "<hr />\n<h3>Heading</h3>",
         "should support a carriage return between flow"
     );
 
     assert_eq!(
         to_html("***\r\n### Heading"),
-        "<hr />\r\n<h3>Heading</h3>",
+        "<hr />\n<h3>Heading</h3>",
         "should support a carriage return + line feed between flow"
     );
 
@@ -103,13 +105,13 @@ fn line_ending() {
 
     assert_eq!(
         to_html("***\r\r\r### Heading\r"),
-        "<hr />\r<h3>Heading</h3>\r",
+        "<hr />\n<h3>Heading</h3>\n",
         "should support several carriage returns between flow"
     );
 
     assert_eq!(
         to_html("***\r\n\r\n\r\n### Heading\r\n"),
-        "<hr />\r\n<h3>Heading</h3>\r\n",
+        "<hr />\n<h3>Heading</h3>\n",
         "should support several carriage return + line feeds between flow"
     );
 
@@ -121,19 +123,19 @@ fn line_ending() {
 
     assert_eq!(
         to_html("```x\r\r\ry\r\r\r```\r\r\r"),
-        "<pre><code class=\"language-x\">\r\ry\r\r\r</code></pre>\r",
+        "<pre><code class=\"language-x\">\n\ny\n\n\n</code></pre>\n",
         "should support several carriage returns in fenced code"
     );
 
     assert_eq!(
         to_html("```x\r\n\r\n\r\ny\r\n\r\n\r\n```\r\n\r\n\r\n"),
-        "<pre><code class=\"language-x\">\r\n\r\ny\r\n\r\n\r\n</code></pre>\r\n",
+        "<pre><code class=\"language-x\">\n\ny\n\n\n</code></pre>\n",
         "should support several carriage return + line feeds in fenced code"
     );
 
     assert_eq!(
         to_html("A\r\nB\r\n-\r\nC"),
-        "<h2>A\r\nB</h2>\r\n<p>C</p>",
+        "<h2>A\nB</h2>\n<p>C</p>",
         "should support a carriage return + line feed in content"
     );
 
@@ -145,13 +147,13 @@ fn line_ending() {
 
     assert_eq!(
         to_html_with_options("<div\r", danger),
-        "<div\r",
+        "<div\n",
         "should support a carriage return after html"
     );
 
     assert_eq!(
         to_html_with_options("<div\r\n", danger),
-        "<div\r\n",
+        "<div\n",
         "should support a carriage return + line feed after html"
     );
 
@@ -163,13 +165,13 @@ fn line_ending() {
 
     assert_eq!(
         to_html_with_options("<div>\r\rx", danger),
-        "<div>\r<p>x</p>",
+        "<div>\n<p>x</p>",
         "should support a blank line w/ carriage returns after html"
     );
 
     assert_eq!(
         to_html_with_options("<div>\r\n\r\nx", danger),
-        "<div>\r\n<p>x</p>",
+        "<div>\n<p>x</p>",
         "should support a blank line w/ carriage return + line feeds after html"
     );
 
@@ -180,14 +182,14 @@ fn line_ending() {
     );
 
     assert_eq!(
-        to_html_with_options("<div>\rx", danger),
-        "<div>\rx",
+        to_html_with_options("<div>\nx", danger),
+        "<div>\nx",
         "should support a non-blank line w/ carriage return in html"
     );
 
     assert_eq!(
-        to_html_with_options("<div>\r\nx", danger),
-        "<div>\r\nx",
+        to_html_with_options("<div>\nx", danger),
+        "<div>\nx",
         "should support a non-blank line w/ carriage return + line feed in html"
     );
 }

@@ -181,11 +181,6 @@ fn frontmatter() -> Result<(), message::Message> {
     Ok(())
 }
 
-/// Serialization writes every line ending as LF.
-fn unix_line_endings(value: &str) -> String {
-    value.replace("\r\n", "\n").replace('\r', "\n")
-}
-
 fn parse_options() -> ParseOptions {
     ParseOptions {
         constructs: Constructs {
@@ -233,9 +228,9 @@ fn delimiter_defaults_keep_the_authored_info_and_body() {
         ),
         ("--- \t\n---", "yaml", "", ""),
         ("+++\n+++", "toml", "", ""),
-        ("---\r\na: b\r\n---", "yaml", "", "a: b\r\n"),
-        ("+++\r\na = 1\r\n+++", "toml", "", "a = 1\r\n"),
-        ("+++\ra = 1\r+++", "toml", "", "a = 1\r"),
+        ("---\r\na: b\r\n---", "yaml", "", "a: b\n"),
+        ("+++\r\na = 1\r\n+++", "toml", "", "a = 1\n"),
+        ("+++\ra = 1\r+++", "toml", "", "a = 1\n"),
         ("---\n\na: b\n\n---", "yaml", "", "\na: b\n\n"),
         ("--- json title=x\n{}\n---", "json", "json title=x", "{}\n"),
         ("+++ yaml\na: b\n+++", "yaml", "yaml", "a: b\n"),
@@ -250,7 +245,7 @@ fn delimiter_defaults_keep_the_authored_info_and_body() {
         let reparsed = parse_frontmatter(&output);
         assert_eq!(reparsed.language(), Some(language));
         assert_eq!(reparsed.info, info);
-        assert_eq!(reparsed.value, unix_line_endings(body));
+        assert_eq!(reparsed.value, body);
         let fence = reparsed.fence.to_string().repeat(3);
         let opening = if info.is_empty() {
             fence
@@ -317,8 +312,8 @@ fn tagged_frontmatter_keeps_opaque_info_and_literal_body() {
             "raw\n",
         ),
         ("~~~json\n~~~", '~', 3, 3, "json", ""),
-        ("```json\r\n{}\r\n```", '`', 3, 3, "json", "{}\r\n"),
-        ("~~~json\r{}\r~~~", '~', 3, 3, "json", "{}\r"),
+        ("```json\r\n{}\r\n```", '`', 3, 3, "json", "{}\n"),
+        ("~~~json\r{}\r~~~", '~', 3, 3, "json", "{}\n"),
         (
             "~~~some`format\nraw\n   ~~~~ \t",
             '~',
@@ -341,7 +336,7 @@ fn tagged_frontmatter_keeps_opaque_info_and_literal_body() {
         let output = base_markdown::to_markdown(&document).unwrap();
         let reparsed = parse_frontmatter(&output);
         assert_eq!(reparsed.info, info);
-        assert_eq!(reparsed.value, unix_line_endings(body));
+        assert_eq!(reparsed.value, body);
         assert_eq!(
             (
                 reparsed.fence,
@@ -462,6 +457,80 @@ fn frontmatter_preserves_source_spans_and_body_after_detaching() {
 }
 
 #[test]
+fn an_edited_lf_body_equal_to_the_whole_block_stays_an_edit_after_rebuilding() {
+    let source = "---\na: 1\n---\n\n# x\n";
+    let mut document = Document::parse(source.to_string(), &ParseOptions::normalize()).unwrap();
+    let node = document.children(document.root()).next().unwrap();
+    *document.text_mut(node).unwrap() = "---\na: 1\n---".into();
+    // Rebuilding from events keeps the values but not the record of edits.
+    let mut builder = base_markdown::AstBuilder::new();
+    builder.consume(&mut document.events(), usize::MAX).unwrap();
+    let rebuilt = builder.finish(document.source().to_string()).unwrap();
+    let node = rebuilt.children(rebuilt.root()).next().unwrap();
+    assert_eq!(rebuilt.frontmatter_value(node), Some("---\na: 1\n---"));
+    assert_eq!(
+        base_markdown::to_markdown(&rebuilt).unwrap(),
+        "~~~yaml\n---\na: 1\n---\n~~~\n\n# x\n"
+    );
+}
+
+#[test]
+fn an_edited_body_equal_to_the_whole_block_stays_an_edit() {
+    for ending in ["\n", "\r\n", "\r"] {
+        let source = "---\na\n---\n\nx\n".replace('\n', ending);
+        let mut document = parse_document(source.as_str(), &parse_options());
+        let node = document.children(document.root()).next().unwrap();
+        assert_eq!(document.frontmatter_value(node), Some("a\n"), "{source:?}");
+        *document.text_mut(node).unwrap() = "---\na\n---".into();
+        assert_eq!(
+            document.frontmatter_value(node),
+            Some("---\na\n---"),
+            "{source:?}"
+        );
+        assert_eq!(
+            base_markdown::to_markdown(&document).unwrap(),
+            "~~~yaml\n---\na\n---\n~~~\n\nx\n",
+            "{source:?}"
+        );
+        // Replacing the node with the parsed block, as a value, is an edit too.
+        let mut document = parse_document(source.as_str(), &parse_options());
+        let node = document.children(document.root()).next().unwrap();
+        let Some(NodeSyntax::Frontmatter {
+            fence,
+            closing_fence_length,
+            ..
+        }) = document.syntax(node)
+        else {
+            panic!("{:?}", source);
+        };
+        document
+            .set_kind(
+                node,
+                base_markdown::stream::EventKind::Opaque {
+                    value: base_markdown::stream::Text::Value("---\na\n---".to_string().into()),
+                    block: true,
+                },
+            )
+            .unwrap();
+        document
+            .set_syntax(
+                node,
+                Some(NodeSyntax::Frontmatter {
+                    info: base_markdown::stream::Text::Literal(""),
+                    fence,
+                    closing_fence_length,
+                }),
+            )
+            .unwrap();
+        assert_eq!(
+            document.frontmatter_value(node),
+            Some("---\na\n---"),
+            "{source:?}"
+        );
+    }
+}
+
+#[test]
 fn serialization_protects_edited_frontmatter_bodies() {
     for (source, body, expected) in [
         (
@@ -471,7 +540,7 @@ fn serialization_protects_edited_frontmatter_bodies() {
         ),
         ("~~~custom\n~~~", "~~~~\n", "~~~~~custom\n~~~~\n~~~~~\n"),
         ("--- json\n---", "--- \t\n", "~~~json\n--- \t\n~~~\n"),
-        ("+++ json\n+++", "+++\rbody\r", "~~~json\n+++\nbody\n~~~\n"),
+        ("+++ json\n+++", "+++\nbody\n", "~~~json\n+++\nbody\n~~~\n"),
         ("--- json\n---", "value", "--- json\nvalue\n---\n"),
         ("~~~json\n~~~~~", "", "~~~json\n~~~~~\n"),
         ("---\n---", "---\n", "~~~yaml\n---\n~~~\n"),
@@ -488,8 +557,8 @@ fn serialization_protects_edited_frontmatter_bodies() {
         assert_eq!(parse_frontmatter(&output).language(), language.as_deref());
         assert_eq!(
             parse_frontmatter(&output).value,
-            if body.is_empty() || body.ends_with(['\r', '\n']) {
-                unix_line_endings(body)
+            if body.is_empty() || body.ends_with('\n') {
+                body.to_string()
             } else {
                 format!("{body}\n")
             }

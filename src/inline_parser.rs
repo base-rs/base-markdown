@@ -935,7 +935,9 @@ impl InlineParser {
         if mapped.len() == range.len() {
             return Text::Source(mapped);
         }
-        Text::from(source[range].to_string())
+        let mut value = String::with_capacity(range.len());
+        crate::util::line_ending::push_normalized(&mut value, &source[range]);
+        Text::from(value)
     }
 
     fn decoded(

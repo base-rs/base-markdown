@@ -84,6 +84,21 @@ impl Text<'_> {
         }
     }
 
+    /// Write the source line endings of a source slice as LF. Other values are kept: a CR in a
+    /// decoded value comes from a character reference, and a constructed one is the caller's.
+    pub(crate) fn normalized(self, source: &str) -> Self {
+        match self {
+            Self::Source(range)
+                if memchr::memchr(b'\r', &source.as_bytes()[range.clone()]).is_some() =>
+            {
+                let mut value = String::with_capacity(range.len());
+                crate::util::line_ending::push_normalized(&mut value, &source[range]);
+                Self::Value(Cow::Owned(value))
+            }
+            text => text,
+        }
+    }
+
     pub(crate) fn owned(self) -> Text<'static> {
         match self {
             Self::Source(range) => Text::Source(range),
@@ -152,7 +167,7 @@ impl TagKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Tag<'a> {
-    /// The preferred output line ending, inferred from parsed block structure.
+    /// The output line ending: LF when the source has a line ending, since parsed values store every line ending as LF, or `None` when it has none.
     Document(Option<LineEnding>),
     /// Whether the containing list suppresses paragraph tags.
     Paragraph { tight: bool },

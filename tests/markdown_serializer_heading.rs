@@ -128,7 +128,7 @@ fn heading() {
         to_md_with_opts(
             &Node::Heading(Heading {
                 children: vec![Node::Text(Text {
-                    value: String::from("aa\rb"),
+                    value: String::from("aa\nb"),
                     position: None
                 })],
                 position: None,
@@ -160,8 +160,8 @@ fn heading() {
             }
         )
         .unwrap(),
-        "a\nbbb\n===\n",
-        "should serialize a setext underline as long as the last line (2)"
+        "a&#xD;\nbbb\n===\n",
+        "should serialize a setext underline as long as the last line (2), and a CR as a reference, as output line endings are LF"
     );
 
     assert_eq!(
