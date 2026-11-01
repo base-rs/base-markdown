@@ -273,6 +273,7 @@ impl<'a> State<'a> {
         self.index_stack.push(0);
         let mut index = 0;
         let mut position = 0;
+        let mut scan = 0;
         let mut after_hard_break = false;
         // Whether the output ends with a hard break's line ending, past any skipped soft break.
         let mut hard_break_line = false;
@@ -308,10 +309,15 @@ impl<'a> State<'a> {
             *self.index_stack.last_mut().unwrap() = index;
             let mut buffer = [0u8; 4];
             // Empty text writes nothing, so what follows it is the next node that writes something.
-            let next = children[end..].iter().copied().find(|&next| {
-                !matches!(&document.node(next).unwrap().kind,
+            // The scan only moves forward, so each child is skipped at most once.
+            scan = scan.max(end);
+            while children.get(scan).is_some_and(|&next| {
+                matches!(&document.node(next).unwrap().kind,
                     EventKind::Text(value) if value.resolve(document.source()).unwrap().is_empty())
-            });
+            }) {
+                scan += 1;
+            }
+            let next = children.get(scan).copied();
             let after = if let Some(next) = next {
                 if let Some(first) = self.peek_node(document, next, members.last().copied()) {
                     first.encode_utf8(&mut buffer) as &str
