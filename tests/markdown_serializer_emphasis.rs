@@ -17,8 +17,8 @@ fn emphasis() {
             position: None
         }))
         .unwrap(),
-        "**\n",
-        "should support an empty emphasis"
+        "",
+        "should remove an empty emphasis when normalizing"
     );
 
     assert_eq!(

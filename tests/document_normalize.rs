@@ -133,8 +133,231 @@ fn removes_empty_text() {
     );
     assert_eq!(
         normalized(build(concat([emphasis(vec![text("")]), vec![text("")]]))),
-        "paragraph(emphasis())"
+        "paragraph()"
     );
+}
+
+#[test]
+fn removes_empty_attention() {
+    // Empty attention between text, which then joins.
+    assert_eq!(
+        normalized(build(concat([
+            vec![text("a")],
+            emphasis(vec![]),
+            vec![text("b")],
+        ]))),
+        r#"paragraph("ab")"#
+    );
+    // Attention that is empty once its empty text is removed.
+    assert_eq!(
+        normalized(build(concat([
+            vec![text("a")],
+            strong(vec![text("")]),
+            delete(vec![text(""), separator()]),
+            vec![text("b")],
+        ]))),
+        r#"paragraph("ab")"#
+    );
+    // Empty attention between attention of the same kind, which then merges.
+    assert_eq!(
+        normalized(build(concat([
+            emphasis(vec![text("a")]),
+            strong(vec![]),
+            emphasis(vec![text("b")]),
+        ]))),
+        r#"paragraph(emphasis("ab"))"#
+    );
+    assert_eq!(
+        normalized(build(concat([
+            delete(vec![text("a")]),
+            emphasis(vec![text("")]),
+            vec![text("")],
+            delete(vec![text("b")]),
+        ]))),
+        r#"paragraph(delete("ab"))"#
+    );
+    // Empty attention of the same kind as its neighbours.
+    assert_eq!(
+        normalized(build(concat([
+            strong(vec![text("a")]),
+            strong(vec![]),
+            strong(vec![text("b")]),
+        ]))),
+        r#"paragraph(strong("ab"))"#
+    );
+}
+
+#[test]
+fn removes_nested_empty_attention() {
+    assert_eq!(
+        normalized(build(concat([
+            vec![text("a")],
+            strong(concat([
+                emphasis(delete(vec![text("")])),
+                emphasis(vec![]),
+                vec![text("")],
+            ])),
+            vec![text("b")],
+        ]))),
+        r#"paragraph("ab")"#
+    );
+    // Empty attention at the seam of merged attention, so the children on either side of it meet.
+    assert_eq!(
+        normalized(build(concat([
+            emphasis(concat([
+                vec![text("a")],
+                strong(vec![text("b")]),
+                delete(vec![])
+            ])),
+            emphasis(concat([
+                strong(emphasis(vec![text("")])),
+                strong(vec![text("c")]),
+                vec![text("d")],
+            ])),
+        ]))),
+        r#"paragraph(emphasis("a" strong("bc") "d"))"#
+    );
+    // Attention that holds other content stays.
+    assert_eq!(
+        normalized(build(concat([
+            emphasis(vec![event(EventKind::HardBreak, 0..0)]),
+            strong(emphasis(vec![text("a")])),
+        ]))),
+        r#"paragraph(emphasis(break) strong(emphasis("a")))"#
+    );
+}
+
+#[test]
+fn keeps_the_root_of_a_detached_subtree() {
+    let mut document = build(emphasis(vec![text(""), text("")]));
+    let paragraph = document.children(document.root()).next().unwrap();
+    let attention = document.children(paragraph).next().unwrap();
+    document.detach(attention).unwrap();
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert!(document.is_normalized());
+    assert_eq!(describe(&document, attention), "emphasis()");
+    assert_eq!(describe(&document, document.root()), "paragraph()");
+}
+
+#[test]
+fn unwraps_strikethrough_in_strikethrough() {
+    assert_eq!(
+        normalized(build(delete(concat([
+            vec![text("a")],
+            delete(vec![text("b")]),
+            vec![text("c")],
+        ])))),
+        r#"paragraph(delete("abc"))"#
+    );
+    // At depth 2, through emphasis.
+    assert_eq!(
+        normalized(build(delete(concat([
+            vec![text("a")],
+            emphasis(concat([
+                vec![text("b")],
+                delete(vec![text("c")]),
+                vec![text("d")]
+            ])),
+            vec![text("e")],
+        ])))),
+        r#"paragraph(delete("a" emphasis("bcd") "e"))"#
+    );
+    // Through a link, and several levels at once.
+    assert_eq!(
+        normalized(build(delete(link(delete(delete(delete(vec![text("a")]))))))),
+        r#"paragraph(delete(link "http://a.b"("a")))"#
+    );
+    // Adjacent strikethrough inside strikethrough is unwrapped rather than merged.
+    assert_eq!(
+        normalized(build(delete(concat([
+            delete(vec![text("a")]),
+            delete(vec![text("b")]),
+        ])))),
+        r#"paragraph(delete("ab"))"#
+    );
+    // Strikethrough next to strikethrough with nested strikethrough is merged, and then unwrapped inside.
+    assert_eq!(
+        normalized(build(concat([
+            delete(vec![text("a")]),
+            delete(delete(vec![text("b")])),
+        ]))),
+        r#"paragraph(delete("ab"))"#
+    );
+    // Strikethrough outside strikethrough stays.
+    assert_eq!(
+        normalized(build(emphasis(delete(emphasis(vec![text("a")]))))),
+        r#"paragraph(emphasis(delete(emphasis("a"))))"#
+    );
+}
+
+#[test]
+fn unwrapped_strikethrough_joins_its_neighbours() {
+    // The first and last children of the unwrapped strikethrough meet the children around it.
+    assert_eq!(
+        normalized(build(delete(concat([
+            emphasis(vec![text("a")]),
+            delete(concat([
+                emphasis(vec![text("b")]),
+                strong(vec![text("c")]),
+                vec![text("d")],
+            ])),
+            vec![text("e")],
+            strong(vec![text("f")]),
+        ])))),
+        r#"paragraph(delete(emphasis("ab") strong("c") "de" strong("f")))"#
+    );
+    // Its first child is strikethrough too, and an empty one is removed.
+    assert_eq!(
+        normalized(build(delete(concat([
+            vec![text("a")],
+            delete(concat([delete(vec![text("b")]), vec![text("c")]])),
+            delete(vec![text("")]),
+            emphasis(vec![text("d")]),
+            delete(emphasis(vec![text("e")])),
+        ])))),
+        r#"paragraph(delete("abc" emphasis("de")))"#
+    );
+}
+
+#[test]
+fn unwraps_strikethrough_in_detached_subtrees() {
+    let mut document = build(delete(concat([vec![text("a")], delete(vec![text("b")])])));
+    let paragraph = document.children(document.root()).next().unwrap();
+    let attention = document.children(paragraph).next().unwrap();
+    document.detach(attention).unwrap();
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert!(document.is_normalized());
+    assert_eq!(describe(&document, attention), r#"delete("ab")"#);
+}
+
+#[test]
+fn nested_strikethrough_from_markdown_reads_back() {
+    for (source, expected, tree) in [
+        ("~a~~b~~c~", "~~abc~~\n", r#"paragraph(delete("abc"))"#),
+        (
+            "~5a~~del~~(*foo~",
+            "~~5adel(\\*foo~~\n",
+            r#"paragraph(delete("5adel(*foo"))"#,
+        ),
+    ] {
+        let mut document = Document::parse(source, &ParseOptions::gfm()).unwrap();
+        assert!(!document.is_normalized());
+        document.normalize();
+        assert_eq!(describe(&document, document.root()), tree, "{source:?}");
+        let markdown = to_markdown(&document).unwrap();
+        assert_eq!(markdown, expected, "{source:?}");
+        let mut reparsed = Document::parse(markdown.as_str(), &ParseOptions::gfm()).unwrap();
+        reparsed.normalize();
+        // The serialized Markdown ends with a line ending, which is a separator after the paragraph.
+        assert_eq!(
+            describe(&reparsed, reparsed.root()),
+            format!("{tree} separator"),
+            "{markdown:?}"
+        );
+        assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{markdown:?}");
+    }
 }
 
 #[test]
@@ -382,6 +605,14 @@ fn is_normalized_finds_each_shape() {
     assert!(!build(vec![text("a"), text("b")]).is_normalized());
     assert!(!build(concat([delete(vec![text("a")]), delete(vec![text("b")])])).is_normalized());
     assert!(!build(emphasis(vec![text("a"), text("")])).is_normalized());
+    assert!(!build(concat([vec![text("a")], strong(vec![])])).is_normalized());
+    assert!(!build(delete(emphasis(delete(vec![text("a")])))).is_normalized());
+    assert!(build(delete(emphasis(vec![text("a")]))).is_normalized());
+    assert!(build(concat([
+        delete(vec![text("a")]),
+        emphasis(delete(vec![text("b")]))
+    ]))
+    .is_normalized());
 }
 
 #[test]
@@ -415,7 +646,7 @@ impl Random {
 fn random_phrasing(random: &mut Random, depth: u32) -> Vec<Result<Event<'static>, StreamError>> {
     let mut events = Vec::new();
     for _ in 0..random.below(6) {
-        let choice = random.below(if depth == 0 { 3 } else { 7 });
+        let choice = random.below(if depth == 0 { 3 } else { 8 });
         match choice {
             0 => events.push(text("")),
             1 => events.push(text(["a", "*", " ", "_"][random.below(4) as usize])),
@@ -423,6 +654,7 @@ fn random_phrasing(random: &mut Random, depth: u32) -> Vec<Result<Event<'static>
             3 => events.push(event(EventKind::HardBreak, 0..0)),
             4 => events.extend(emphasis(random_phrasing(random, depth - 1))),
             5 => events.extend(strong(random_phrasing(random, depth - 1))),
+            6 => events.extend(link(random_phrasing(random, depth - 1))),
             _ => events.extend(delete(random_phrasing(random, depth - 1))),
         }
     }
@@ -435,12 +667,16 @@ fn normalize_makes_any_tree_normalized_and_is_idempotent() {
     let mut unnormalized = 0;
     for _ in 0..5_000 {
         let mut document = build(random_phrasing(&mut random, 4));
-        unnormalized += usize::from(!document.is_normalized());
+        let normal = document.is_normalized();
+        unnormalized += usize::from(!normal);
         // Serializing a tree that is not normalized may be wrong, but it must not panic.
         to_markdown(&document).unwrap();
+        let before = describe(&document, document.root());
         document.normalize();
         assert!(document.is_normalized());
         let once = describe(&document, document.root());
+        // A tree is reported as normalized exactly when normalizing changes nothing.
+        assert_eq!(normal, once == before, "{before}");
         let markdown = to_markdown(&document).unwrap();
         document.normalize();
         assert_eq!(describe(&document, document.root()), once);
@@ -535,6 +771,94 @@ fn merging_nested_attention_is_linear() {
         let elapsed = started.elapsed();
         assert!(document.is_normalized());
         assert_eq!(document.descendants(document.root()).count(), size / 2 + 3);
+        elapsed
+    });
+}
+
+#[test]
+fn removing_empty_attention_is_linear() {
+    assert_normalize_linear(|size| {
+        build(concat([
+            vec![text("a")],
+            concat((0..size / 4).map(|_| {
+                concat([
+                    emphasis(vec![text("")]),
+                    strong(vec![]),
+                    delete(emphasis(vec![])),
+                ])
+            })),
+            vec![text("b")],
+        ]))
+    });
+}
+
+#[test]
+fn removing_nested_empty_attention_is_linear() {
+    // The serializer recurses per level, so only normalizing is timed.
+    assert_linear(|size| {
+        let mut events = vec![text("a")];
+        events.extend((0..size).map(|_| start(Tag::Emphasis)));
+        events.push(text(""));
+        events.extend((0..size).map(|_| end(TagKind::Emphasis)));
+        events.push(text("b"));
+        let mut document = build(events);
+        let started = Instant::now();
+        document.normalize();
+        let elapsed = started.elapsed();
+        assert!(document.is_normalized());
+        assert_eq!(document.descendants(document.root()).count(), 3);
+        elapsed
+    });
+}
+
+#[test]
+fn unwrapping_nested_strikethrough_is_linear() {
+    // Deep strikethrough becomes one level, which is serialized too. The serializer recurses per level, so the tree is not serialized before normalizing.
+    let deep = |size: usize| {
+        let mut events = Vec::new();
+        for index in 0..size {
+            events.push(text("a"));
+            events.push(start(Tag::Delete));
+            if index % 2 == 0 {
+                events.push(text("b"));
+            }
+        }
+        events.push(text("c"));
+        for _ in 0..size {
+            events.push(end(TagKind::Delete));
+            events.push(text("d"));
+        }
+        build(events)
+    };
+    assert_linear(|size| {
+        let mut document = deep(size);
+        let started = Instant::now();
+        document.normalize();
+        assert!(document.is_normalized());
+        to_markdown(&document).unwrap();
+        let elapsed = started.elapsed();
+        // The root, the paragraph, and text, strikethrough of text, and text in it.
+        assert_eq!(document.descendants(document.root()).count(), 6);
+        elapsed
+    });
+    // Strikethrough alternating with emphasis keeps the emphasis, so only normalizing is timed.
+    assert_linear(|size| {
+        let mut events = Vec::new();
+        for _ in 0..size / 2 {
+            events.push(start(Tag::Delete));
+            events.push(start(Tag::Emphasis));
+        }
+        events.push(text("a"));
+        for _ in 0..size / 2 {
+            events.push(end(TagKind::Emphasis));
+            events.push(end(TagKind::Delete));
+        }
+        let mut document = build(events);
+        let started = Instant::now();
+        document.normalize();
+        let elapsed = started.elapsed();
+        assert!(document.is_normalized());
+        assert_eq!(document.descendants(document.root()).count(), size / 2 + 4);
         elapsed
     });
 }

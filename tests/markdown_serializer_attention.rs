@@ -116,9 +116,11 @@ fn serialize(children: Vec<Node>, options: &Options) -> String {
     let tree = paragraph(children);
     let markdown = to_md_with_opts(&tree, options).unwrap();
     let parsed = Document::parse(&markdown, &ParseOptions::gfm()).unwrap();
+    let mut expected = tree.document();
+    expected.normalize();
     assert_eq!(
         merged(&parsed),
-        merged(&tree.document()),
+        merged(&expected),
         "{markdown:?} should parse to the serialized tree"
     );
     assert_stable(&markdown, options);
@@ -453,8 +455,8 @@ fn attention() {
             ],
             &Options::default()
         ),
-        "a ~~b ~~c~~ d~~ e\n",
-        "should support strikethrough"
+        "a ~~b c d~~ e\n",
+        "should unwrap strikethrough in strikethrough"
     );
 
     assert_eq!(
@@ -533,25 +535,23 @@ fn encode() {
         "should encode letters around emphasis using `_` between letters"
     );
 
-    // Empty attention cannot be represented, so these do not round-trip.
+    // Empty attention cannot be written, so normalizing removes it and joins the text around it.
     assert_eq!(
-        to_md_with_opts(
-            &paragraph(vec![text("a"), emphasis(Vec::new()), text("b")]),
+        serialize(
+            vec![text("a"), emphasis(Vec::new()), text("b")],
             &markers('_', '*')
-        )
-        .unwrap(),
-        "a**b\n",
-        "should not encode characters in empty emphasis"
+        ),
+        "ab\n",
+        "should remove empty emphasis"
     );
 
     assert_eq!(
-        to_md_with_opts(
-            &paragraph(vec![text("a"), strong(Vec::new()), text("b")]),
+        serialize(
+            vec![text("a"), strong(Vec::new()), text("b")],
             &markers('*', '_')
-        )
-        .unwrap(),
-        "a****b\n",
-        "should not encode characters in empty strong"
+        ),
+        "ab\n",
+        "should remove empty strong"
     );
 
     assert_eq!(
@@ -651,8 +651,8 @@ fn encode() {
             &Options::default()
         )
         .unwrap(),
-        "> ~~~~\n",
-        "should serialize empty strikethrough"
+        ">\n",
+        "should remove empty strikethrough outside phrasing"
     );
 
     for options in [markers('x', '*'), markers('*', 'x')] {
