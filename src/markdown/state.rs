@@ -7,7 +7,7 @@
 //!
 //! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L195.
 use crate::markdown::{
-    attention::{self, Edge, Surroundings},
+    attention::{self, Edge, Runs, Surroundings},
     construct_name::ConstructName,
     util::{
         format_code_as_indented::format_code_as_indented,
@@ -51,6 +51,8 @@ pub struct State<'a> {
     attention_open: [[usize; 2]; 2],
     /// The size of the run of markers the last opening sequence ends, including enclosing opening sequences it joins.
     opening_run: usize,
+    /// The opening sequences of the attention being written, innermost last.
+    open_sequences: Vec<OpenSequence>,
     pub bullet_current: Option<char>,
     pub bullet_last_used: Option<char>,
     pub index_stack: Vec<usize>,
@@ -140,7 +142,7 @@ impl<'a> State<'a> {
             self.line_start = self.output.len();
         }
         let children: Vec<NodeId> = flow_children(document, parent).collect();
-        self.phrasing(document, &children, info, &Edge::default())?;
+        self.phrasing(document, &children, info, &Edge::default(), None)?;
         Ok(())
     }
 
@@ -189,6 +191,20 @@ impl<'a> State<'a> {
             .last()
             .and_then(|&child| edge_character(document, child, false));
         let after = info.after.chars().next();
+        let enclosing_runs = self.open_sequences.last().map(|open| {
+            let owner = &self.open_sequences[open.run_owner];
+            let run_end = owner.sequence_start + owner.opening_run;
+            let before = owner.before;
+            // Nothing written after the run yet means this attention follows it, starting with punctuation.
+            let after = self.output[run_end..].chars().next().or(Some('*'));
+            let (opens, closes) = attention::flanks(open.marker, before, after);
+            Runs {
+                opening: owner.opening_run,
+                opening_both: opens && closes,
+                closing: open.closing_run,
+                after: open.run_after,
+            }
+        });
         let choice = attention::choose(
             sequences,
             &Surroundings {
@@ -205,30 +221,74 @@ impl<'a> State<'a> {
                     }
                 }),
                 last,
+                last_attention: children.last().is_some_and(|&child| {
+                    matches!(
+                        document.node(child).unwrap().kind,
+                        EventKind::Start(Tag::Emphasis | Tag::Strong)
+                    )
+                }),
                 after,
                 after_closes: last_child,
                 enclosing: [
                     [self.attention_open[0][0] > 0, self.attention_open[0][1] > 0],
                     [self.attention_open[1][0] > 0, self.attention_open[1][1] > 0],
                 ],
+                enclosing_runs,
             },
         );
         let sequence = choice.sequence;
         let tilde = sequence.starts_with('~');
+        // The character before the opening sequence as written, which ends a reference once encoded.
+        let mut written_before = before;
         if let (Previous::Text(start), Some(character)) = (previous, before) {
             let start = *start;
             if choice.encode_before && !matches!(character, '\n' | '\r') {
                 attention::encode_end(&mut self.output, start, character);
+                if self.output.ends_with(';') {
+                    written_before = Some(';');
+                }
             }
             if tilde {
                 attention::escape_tilde_end(&mut self.output, start);
             }
+            self.reopen(start);
         }
-        let joins = matches!(previous, Previous::Start) && before == sequence.chars().next();
+        let marker = sequence.chars().next().expect("sequences are not empty");
+        let joins = matches!(previous, Previous::Start) && before == Some(marker);
         self.opening_run = sequence.len() + if joins { self.opening_run } else { 0 };
+        let sequence_start = self.output.len();
         self.output.push_str(sequence);
+        let index = self.open_sequences.len();
+        let enclosing = self.open_sequences.last().copied();
+        let run_owner = match enclosing {
+            Some(enclosing) if joins => {
+                self.open_sequences[enclosing.run_owner].opening_run = self.opening_run;
+                enclosing.run_owner
+            }
+            _ => index,
+        };
+        let (closing_run, run_after) = match enclosing {
+            Some(enclosing) if last_child && after == Some(marker) => {
+                (sequence.len() + enclosing.closing_run, enclosing.run_after)
+            }
+            _ => (sequence.len(), after),
+        };
+        self.open_sequences.push(OpenSequence {
+            marker,
+            sequence_start,
+            content_start: self.output.len(),
+            before: written_before,
+            before_text: match previous {
+                Previous::Text(start) => Some(*start),
+                _ => None,
+            },
+            run_owner,
+            opening_run: self.opening_run,
+            closing_run,
+            run_after,
+        });
         // Strikethrough has one sequence, so enclosing strikethrough is not tracked.
-        let open = (!tilde).then(|| usize::from(sequence.starts_with('_')));
+        let open = (!tilde).then(|| usize::from(marker == '_'));
         if let Some(open) = open {
             self.attention_open[open][sequence.len() - 1] += 1;
         }
@@ -236,8 +296,18 @@ impl<'a> State<'a> {
             encode: first.filter(|_| choice.encode_first),
             tilde: true,
         };
-        let last_text =
-            self.phrasing(document, &children, &Info::new(sequence, sequence), &edge)?;
+        let last_text = self.phrasing(
+            document,
+            &children,
+            &Info::new(sequence, sequence),
+            &edge,
+            Some(self.open_sequences.len() - 1),
+        )?;
+        let content_start = self
+            .open_sequences
+            .pop()
+            .expect("the sequence was pushed")
+            .content_start;
         if let Some(open) = open {
             self.attention_open[open][sequence.len() - 1] -= 1;
         }
@@ -247,24 +317,99 @@ impl<'a> State<'a> {
                 attention::encode_end(&mut self.output, start, character);
             }
         }
+        // Nested attention can encode the last character of the content after the sequence was chosen, so the closing sequence is checked against what was written. Empty content cannot be represented, and is left alone.
+        let written = self.output.chars().next_back();
+        let closes = |after| attention::flanks(marker, written, after).1;
+        let encode_after = choice.encode_after
+            || self.output.len() > content_start
+                && after.is_some_and(|character| !closes(Some(character)) && closes(Some('&')));
         self.output.push_str(sequence);
         Ok(Edge {
-            encode: after.filter(|_| choice.encode_after),
+            encode: after.filter(|_| encode_after),
             tilde,
         })
+    }
+
+    /// Check the opening sequences that text at `edited` follows directly, after its last character was encoded.
+    ///
+    /// Text that starts the content of attention and has one character changes the first character of that content when the character is encoded, and the opening sequence may no longer open. The character before the sequence is then encoded too, which can in turn change the first character of enclosing content.
+    ///
+    /// Each sequence is checked against how the text before the sequence it encloses will be written, and the output is rebuilt once from the outermost text that changes, so a deep chain of such sequences takes linear time. A sequence encodes the character before it at most once, after which it opens, so each text is rewritten at most once.
+    fn reopen(&mut self, mut edited: usize) {
+        // The text before each sequence that now encodes its last character, innermost first: where the text begins, where the sequence begins, and how the text is written.
+        let mut edits: Vec<(usize, usize, String)> = Vec::new();
+        let mut level = self.open_sequences.len();
+        while level > 0 {
+            level -= 1;
+            let OpenSequence {
+                marker,
+                sequence_start,
+                content_start,
+                before,
+                before_text,
+                ..
+            } = self.open_sequences[level];
+            if content_start != edited {
+                break;
+            }
+            let first = match edits.last() {
+                Some((_, _, written)) => written.chars().next(),
+                None => self.output[content_start..].chars().next(),
+            };
+            let opens = |before| attention::flanks(marker, before, first).0;
+            let (Some(character), Some(text)) = (before, before_text) else {
+                break;
+            };
+            if opens(before) || !opens(Some(';')) {
+                break;
+            }
+            let mut written = String::from(&self.output[text..sequence_start]);
+            attention::encode_end(&mut written, 0, character);
+            self.open_sequences[level].before = written.chars().next_back();
+            edits.push((text, sequence_start, written));
+            edited = text;
+        }
+        let Some(&(outermost, _, _)) = edits.last() else {
+            return;
+        };
+        let tail = self.output.split_off(outermost);
+        let mut copied = outermost;
+        for (text, sequence_start, written) in edits.iter().rev() {
+            self.output
+                .push_str(&tail[copied - outermost..*text - outermost]);
+            self.output.push_str(written);
+            copied = *sequence_start;
+        }
+        self.output.push_str(&tail[copied - outermost..]);
+        // The checked sequences are the innermost ones, and each changed text moves the sequence after it and everything that sequence encloses.
+        let checked = self.open_sequences.len() - edits.len();
+        let mut shift = 0;
+        for (open, (text, sequence_start, written)) in self.open_sequences[checked..]
+            .iter_mut()
+            .zip(edits.iter().rev())
+        {
+            // Each checked sequence follows the text that was edited for it.
+            open.before_text = Some(text + shift);
+            shift += written.len() - (sequence_start - text);
+            open.sequence_start += shift;
+            open.content_start += shift;
+        }
     }
 
     /// Serialize phrasing children, returning where the last one begins if it is text.
     ///
     /// `edge` edits the first child if it is text.
+    ///
+    /// `level` is the opening sequence the children are the content of, if any, whose content can move when the character before the sequence is encoded.
     fn phrasing<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         children: &[NodeId],
         info: &Info,
         edge: &Edge,
+        level: Option<usize>,
     ) -> Result<Option<usize>, Message> {
-        let start = self.output.len();
+        let mut start = self.output.len();
         self.index_stack.push(0);
         let mut index = 0;
         let mut after_hard_break = false;
@@ -276,6 +421,9 @@ impl<'a> State<'a> {
         };
         let mut previous = Previous::Start;
         for (position, &child) in children.iter().enumerate() {
+            if let Some(level) = level {
+                start = self.open_sequences[level].content_start;
+            }
             let kind = &document.node(child).unwrap().kind;
             if !is_phrasing(kind) {
                 return Err(unsupported_content());
@@ -412,7 +560,7 @@ impl<'a> State<'a> {
                 Tag::Emphasis | Tag::Strong | Tag::Delete => {
                     // Attention outside a phrasing container is written on its own.
                     self.enter(ConstructName::Phrasing);
-                    self.phrasing(document, &[id], info, &Edge::default())?;
+                    self.phrasing(document, &[id], info, &Edge::default(), None)?;
                     self.exit();
                     Ok(())
                 }
@@ -773,6 +921,7 @@ impl<'a> State<'a> {
             applied: Vec::new(),
             attention_open: [[0; 2]; 2],
             opening_run: 0,
+            open_sequences: Vec::new(),
             bullet_current: None,
             bullet_last_used: None,
             index_stack: Vec::new(),
@@ -1068,6 +1217,29 @@ fn starts_email(rest: &str, position: usize, applied: &[usize]) -> bool {
         }
     }
     false
+}
+
+/// The opening sequence of attention being written, by output offset.
+#[derive(Clone, Copy)]
+struct OpenSequence {
+    /// The marker of the sequence.
+    marker: char,
+    /// Where the sequence begins.
+    sequence_start: usize,
+    /// Where the content begins, after the sequence.
+    content_start: usize,
+    /// The character before the sequence, as written; `None` is the edge of a block.
+    before: Option<char>,
+    /// Where the text the sequence follows begins, if it follows text.
+    before_text: Option<usize>,
+    /// The index of the sequence that starts the run this one is part of, which may be this one.
+    run_owner: usize,
+    /// The size of the run, kept up to date on the sequence that starts it as later sequences join it.
+    opening_run: usize,
+    /// The size of the run the closing sequence will be part of, including enclosing closing sequences it joins.
+    closing_run: usize,
+    /// The character after that closing run; `None` is the edge of a block.
+    run_after: Option<char>,
 }
 
 /// What a phrasing child was written after.

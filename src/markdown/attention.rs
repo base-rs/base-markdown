@@ -3,7 +3,7 @@
 
 //! Attention sequence selection.
 //!
-//! Adjacent emphasis, strong or strikethrough of the same kind is written as one node, as its sequences would otherwise join into one run. Each other attention node chooses its sequence from the characters immediately around it, in constant time, so that its sequences open and close: a marker that would join a neighbouring run is avoided, and characters that would keep a sequence from flanking are encoded as character references, as `encodeInfo` in `mdast-util-to-markdown` does. Where neither marker works locally, the configured marker is used.
+//! Adjacent emphasis, strong or strikethrough of the same kind is written as one node, as its sequences would otherwise join into one run. Each other attention node chooses its sequence from the characters immediately around it, in constant time, so that its sequences open and close: a marker that would join a neighbouring run is avoided, and characters that would keep a sequence from flanking are encoded as character references, as `encodeInfo` in `mdast-util-to-markdown` does. Where neither marker works locally, the configured marker is used. Nested attention can encode a neighbour after a sequence was chosen, so the serializer checks each sequence again against the characters actually written, with `flanks`.
 use crate::util::char::{classify, Kind};
 use alloc::string::String;
 use core::fmt::Write;
@@ -29,6 +29,8 @@ pub(super) struct Surroundings {
     pub first: Option<char>,
     /// The sequence size of emphasis (1) or strong (2) the content starts with, which may join the opening sequence, or 0.
     pub first_size: usize,
+    /// Whether the content ends with emphasis or strong, whose closing sequence may join the closing sequence.
+    pub last_attention: bool,
     /// The last character of the content, or `None` if it is empty.
     pub last: Option<char>,
     /// The character after the closing sequence; `None` is the edge of a block.
@@ -37,6 +39,21 @@ pub(super) struct Surroundings {
     pub after_closes: bool,
     /// Whether enclosing attention is open, by marker (`*`, `_`) and sequence size (1, 2).
     pub enclosing: [[bool; 2]; 2],
+    /// The runs of the attention directly enclosing this one, if any.
+    pub enclosing_runs: Option<Runs>,
+}
+
+/// The delimiter runs of attention whose content is being written.
+#[derive(Clone, Copy)]
+pub(super) struct Runs {
+    /// The size of the run its opening sequence is part of.
+    pub opening: usize,
+    /// Whether that run can both open and close, as written.
+    pub opening_both: bool,
+    /// The size of the run its closing sequence will be part of, including enclosing closing sequences it joins.
+    pub closing: usize,
+    /// The character after that run; `None` is the edge of a block.
+    pub after: Option<char>,
 }
 
 /// The chosen sequence and the characters around it to encode.
@@ -66,6 +83,7 @@ pub(super) fn choose(sequences: &'static [&'static str], surroundings: &Surround
         } else {
             !(surroundings.before_closes && joins_before)
                 && !closes_enclosing(&choice, marker, surroundings)
+                && !closing_blocked(&choice, marker, surroundings)
         };
         if !forms {
             continue;
@@ -102,6 +120,13 @@ fn flanking(marker: char, before: Kind, after: Kind) -> (bool, bool) {
     } else {
         (left, right)
     }
+}
+
+/// Whether a sequence of `marker` written between `before` and `after`, where `None` is the edge of a block, can open and close.
+///
+/// This checks the characters as written, where the choice of sequence predicts them: characters next to nested attention can be encoded after the choice is made.
+pub(super) fn flanks(marker: char, before: Option<char>, after: Option<char>) -> (bool, bool) {
+    flanking(marker, kind(before), kind(after))
 }
 
 /// The kind of a character next to a sequence, where an encoded character is written as a reference, which starts with `&` and ends with `;`.
@@ -141,6 +166,32 @@ fn closing_unpaired(choice: &Choice, marker: char, surroundings: &Surroundings) 
     let after = written(kind(surroundings.after), choice.encode_after);
     let (open, close) = flanking(marker, last, after);
     open && close
+}
+
+/// Whether the rule of 3 keeps the enclosing opening sequence from pairing with what remains of a closing run that this closing sequence joins, where it would pair if this sequence did not join it.
+///
+/// The joined run pairs with this opening sequence first, then with the enclosing one. That pair fails if one of its runs can both open and close and their sizes add up to a multiple of 3, unless both are multiples of 3. Encoded whitespace before `*` can make an opening run that can also close, as in `&#x9;*<http://a.b>*em**`, so this one is written with `_` instead.
+fn closing_blocked(choice: &Choice, marker: char, surroundings: &Surroundings) -> bool {
+    let Some(enclosing) = surroundings.enclosing_runs else {
+        return false;
+    };
+    // The closing sequences of emphasis or strong the content ends with may join the run too, which is not known yet.
+    if !surroundings.after_closes
+        || surroundings.after != Some(marker)
+        || surroundings.last_attention
+    {
+        return false;
+    }
+    let unpaired = |run: usize, before: Kind| {
+        let (open, close) = flanking(marker, before, kind(enclosing.after));
+        (enclosing.opening_both || open && close)
+            && (enclosing.opening + run) % 3 == 0
+            && (enclosing.opening % 3 != 0 || run % 3 != 0)
+    };
+    let last = written(inside(surroundings.last), choice.encode_last);
+    // Alone, the enclosing closing run follows the other marker.
+    unpaired(choice.sequence.len() + enclosing.closing, last)
+        && !unpaired(enclosing.closing, Kind::Punctuation)
 }
 
 /// Classify a character inside attention, where empty attention counts as a letter, as in JS.

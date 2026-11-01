@@ -1004,3 +1004,125 @@ fn roundtrip_documents() {
         assert_eq!(roundtrip(&once, &Options::default()), once, "{value:?}");
     }
 }
+
+#[test]
+fn flanking_nested() {
+    // Nested attention can encode the character next to a sequence chosen before it, so each sequence is checked against what was written.
+    for (source, expected) in [
+        ("_*a*b_&#97;", "*_&#x61;_&#x62;*&#x61;\n"),
+        ("&#97;_a*b*_.", "&#x61;*&#x61;_&#x62;_*.\n"),
+        ("x **&#x61;*&#x62;_c_***", "x **&#x61;*&#x62;_&#x63;_***\n"),
+        ("**~~a~~**&#98;", "**~~a~~**&#x62;\n"),
+        ("&#97;**~~b~~**", "&#x61;**~~b~~**\n"),
+        ("**.a.**&#98;", "**.a.**&#x62;\n"),
+        ("**`c`**&#98;", "**`c`**&#x62;\n"),
+    ] {
+        assert_eq!(
+            roundtrip(source, &Options::default()),
+            expected,
+            "{source:?}"
+        );
+    }
+
+    // Encoding before the innermost sequence of a chain encodes before every sequence enclosing it. Strong and emphasis alternate, as an opening sequence after a reference can also close, and would close an enclosing one of the same size.
+    let mut node = emphasis(vec![text(".")]);
+    for level in 0..2 {
+        let wrap = if level % 2 == 0 { strong } else { emphasis };
+        node = wrap(vec![text("a"), node]);
+    }
+    for options in [markers('*', '*'), markers('_', '_')] {
+        let markdown = serialize(vec![text("a"), node.clone()], &options);
+        assert_eq!(markdown.matches("&#x61;").count(), 3, "{markdown:?}");
+    }
+}
+
+#[test]
+fn flanking_rule_of_three() {
+    // An encoded tab lets the opening run close too, so the inner closing run must not join the outer one into a multiple of three.
+    for (options, expected) in [
+        (markers('*', '*'), "- [ ] &#x9;*<http://a.b>_em_*\n"),
+        (markers('_', '_'), "- [ ] &#x9;_<http://a.b>*em*_\n"),
+    ] {
+        assert_eq!(roundtrip("- [ ] \t*<http://a.b>*em**", &options), expected);
+    }
+    assert_eq!(
+        roundtrip("&#9;*<http://a.b>*em**", &Options::default()),
+        "&#x9;\\*<http://a.b>*em*\\*\n"
+    );
+}
+
+#[test]
+fn flanking_nested_stays_linear() {
+    // Encoding the character before each opening sequence of a deep chain encodes the one before the sequence enclosing it, which must not move what was written after it again and again. Four times the depth takes about four times as long; each depth takes the fastest of five runs, alternating between the depths so that load slows both alike.
+    let time = |depth: usize| {
+        let mut node = emphasis(vec![text(".")]);
+        for _ in 0..depth {
+            node = emphasis(vec![text("a"), node]);
+        }
+        let document = paragraph(vec![text("a"), node]).document();
+        let started = std::time::Instant::now();
+        let markdown = to_markdown(&document, &Options::default());
+        let elapsed = started.elapsed();
+        assert!(
+            markdown.starts_with("&#x61;*&#x61;_"),
+            "{:?}",
+            &markdown[..32]
+        );
+        elapsed
+    };
+    // Serializing recurses into each level, so give the deep trees room.
+    std::thread::Builder::new()
+        .stack_size(1 << 30)
+        .spawn(move || {
+            let mut small = std::time::Duration::MAX;
+            let mut large = std::time::Duration::MAX;
+            for _ in 0..5 {
+                small = small.min(time(1_000));
+                large = large.min(time(4_000));
+            }
+            assert!(
+                large < small * 8,
+                "4x depth took {:?} against {:?}",
+                large,
+                small
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn flanking_neighbours() {
+    // Encoded neighbours are written as characters, which must still let each sequence flank.
+    let neighbours = [
+        "", "&#97;", "&#49;", "&#233;", "&#x436;", "&#46;", "&#32;", "&#9;",
+    ];
+    let contents = [
+        "a", ".a.", "`c`", "a*b*", "*a*b", "_a_b", "a_b_", "a**b**", "**a**b",
+    ];
+    let mut failures = Vec::new();
+    for marker in ["*", "_", "**", "__", "~", "~~"] {
+        for content in contents {
+            for before in neighbours {
+                for after in neighbours {
+                    let source = format!("{before}{marker}{content}{marker}{after}");
+                    for (emphasis, strong) in [('*', '*'), ('_', '_'), ('*', '_'), ('_', '*')] {
+                        let options = markers(emphasis, strong);
+                        let mut document = Document::parse(&source, &ParseOptions::gfm()).unwrap();
+                        document.normalize();
+                        let markdown = to_markdown(&document, &options);
+                        let mut again = Document::parse(&markdown, &ParseOptions::gfm()).unwrap();
+                        again.normalize();
+                        if html(&markdown) != html(&source)
+                            || to_markdown(&again, &options) != markdown
+                        {
+                            failures.push(format!("{emphasis}{strong} {source:?} -> {markdown:?}"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

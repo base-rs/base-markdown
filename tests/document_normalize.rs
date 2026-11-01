@@ -449,7 +449,7 @@ fn normalize_makes_any_tree_normalized_and_is_idempotent() {
     assert!(unnormalized > 1_000, "{}", unnormalized);
 }
 
-/// Assert that four times the input takes less than sixteen times as long, after a warm-up.
+/// Assert that four times the input takes less than eight times as long, after a warm-up.
 ///
 /// Each size takes the fastest of five runs, alternating between the sizes, so that a pause, or a stretch of load from other tests or instrumentation, slows both sizes alike and does not count. Only one scaling test times at once, as large allocations in parallel tests contend with each other.
 fn assert_linear(mut time: impl FnMut(usize) -> Duration) {
@@ -463,7 +463,7 @@ fn assert_linear(mut time: impl FnMut(usize) -> Duration) {
         large = large.min(time(200_000));
     }
     assert!(
-        large < small * 16,
+        large < small * 8,
         "4x input took {:?} against {:?}",
         large,
         small
