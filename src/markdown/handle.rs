@@ -209,17 +209,9 @@ impl State<'_> {
         self.output.push(' ');
         let content_start = self.output.len();
         self.container_phrasing(document, node, &Info::new("# ", "\n"))?;
+        // Normalized phrasing has no space or tab at its start, which the parser would trim.
         if self.output.len() == content_start {
             self.output.pop();
-        } else if let Some(character) = self.output[content_start..]
-            .chars()
-            .next()
-            .filter(|c| matches!(c, ' ' | '\t'))
-        {
-            self.output.replace_range(
-                content_start..content_start + 1,
-                if character == ' ' { "&#x20;" } else { "&#x9;" },
-            );
         }
         if self.options.close_atx {
             self.output.push(' ');

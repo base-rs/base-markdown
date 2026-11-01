@@ -214,7 +214,7 @@ impl<'a> State<'a> {
         let tilde = sequence.starts_with('~');
         if let (Previous::Text(start), Some(character)) = (previous, before) {
             let start = *start;
-            if choice.encode_before && !matches!(character, '\n' | '\r') {
+            if choice.encode_before {
                 self.encode_end(start, character);
             }
             if tilde {
@@ -1156,8 +1156,7 @@ fn edge_character<S: AsRef<str>>(document: &Document<S>, id: NodeId, first: bool
                 value.chars().next_back()
             }
         }
-        // A hard break ends with a line ending, and starts with a backslash, punctuation like other nodes. Parsed attention cannot start or end with a soft break, as its sequences would not flank.
-        EventKind::HardBreak if !first => Some('\n'),
+        // Other nodes start and end with punctuation, such as the backslash a hard break starts with. Normalized attention does not end with a hard break, or start or end with a soft break.
         _ => Some('.'),
     }
 }

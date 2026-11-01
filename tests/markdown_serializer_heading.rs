@@ -431,8 +431,8 @@ fn heading() {
             depth: 1
         }))
         .unwrap(),
-        "# &#x20; a\n",
-        "should encode a space at the start of an atx heading"
+        "# a\n",
+        "should trim a space at the start of an atx heading"
     );
 
     assert_eq!(
@@ -445,8 +445,8 @@ fn heading() {
             depth: 1
         }))
         .unwrap(),
-        "# &#x9;\ta\n",
-        "should encode a tab at the start of an atx heading"
+        "# a\n",
+        "should trim a tab at the start of an atx heading"
     );
 
     assert_eq!(
@@ -459,8 +459,8 @@ fn heading() {
             depth: 1
         }))
         .unwrap(),
-        "# a &#x20;\n",
-        "should encode a space at the end of an atx heading"
+        "# a\n",
+        "should trim a space at the end of an atx heading"
     );
 
     assert_eq!(
@@ -473,8 +473,8 @@ fn heading() {
             depth: 1
         }))
         .unwrap(),
-        "# a\t&#x9;\n",
-        "should encode a tab at the end of an atx heading"
+        "# a\n",
+        "should trim a tab at the end of an atx heading"
     );
 
     assert_eq!(

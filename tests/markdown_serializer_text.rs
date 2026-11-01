@@ -443,19 +443,20 @@ fn underscores_after_attention_markers_do_not_depend_on_text_splits() {
 }
 
 #[test]
-fn whitespace_inside_attention_is_always_a_character_reference() {
+fn whitespace_at_the_edges_of_attention_moves_out() {
+    // Markdown cannot write whitespace at the edges of attention, so normalizing moves it out, and the paragraph trims it at its own edges, other than a no-break space.
     for (source, expected) in [
-        ("*&#x20;a*\n", "*&#x20;a*\n"),
-        ("**&#x20;a**\n", "**&#x20;a**\n"),
-        ("~~&#x20;a~~\n", "~~&#x20;a~~\n"),
-        ("*&#9;a*\n", "*&#x9;a*\n"),
-        ("*a&#x20;*\n", "*a&#x20;*\n"),
-        ("*&#xA0;a*\n", "*&#xA0;a*\n"),
-        ("> *&#x20;a*\n", "> *&#x20;a*\n"),
-        ("- *&#x20;a*\n", "- *&#x20;a*\n"),
-        ("x *&#x20;a*\n", "x *&#x20;a*\n"),
-        ("x *a&#9;* b\n", "x *a&#x9;* b\n"),
-        ("x **&#x20;a&#x20;** b\n", "x **&#x20;a&#x20;** b\n"),
+        ("*&#x20;a*\n", "*a*\n"),
+        ("**&#x20;a**\n", "**a**\n"),
+        ("~~&#x20;a~~\n", "~~a~~\n"),
+        ("*&#9;a*\n", "*a*\n"),
+        ("*a&#x20;*\n", "*a*\n"),
+        ("*&#xA0;a*\n", "\u{a0}*a*\n"),
+        ("> *&#x20;a*\n", "> *a*\n"),
+        ("- *&#x20;a*\n", "- *a*\n"),
+        ("x *&#x20;a*\n", "x  *a*\n"),
+        ("x *a&#9;* b\n", "x *a*\t b\n"),
+        ("x **&#x20;a&#x20;** b\n", "x  **a**  b\n"),
     ] {
         let (first, second) = two_passes(source);
         assert_eq!(first, expected, "{source:?}");
@@ -464,7 +465,7 @@ fn whitespace_inside_attention_is_always_a_character_reference() {
 }
 
 #[test]
-fn whitespace_inside_constructed_attention_is_always_a_character_reference() {
+fn whitespace_at_the_edges_of_constructed_attention_moves_out() {
     fn text(value: &str) -> Node {
         Node::Text(Text {
             value: value.to_owned(),
@@ -508,10 +509,11 @@ fn whitespace_inside_constructed_attention_is_always_a_character_reference() {
         ),
     ];
     for (wrap, marker) in attention {
-        for (value, reference) in [
-            (" note", "&#x20;note"),
-            ("\tnote", "&#x9;note"),
-            ("\u{a0}note", "&#xA0;note"),
+        // The whitespace that moves out, and what of it a paragraph keeps at its start.
+        for (value, space, kept) in [
+            (" note", " ", ""),
+            ("\tnote", "\t", ""),
+            ("\u{a0}note", "\u{a0}", "\u{a0}"),
         ] {
             let inline = || wrap(vec![text(value)]);
             let trailing = || wrap(vec![text("note ")]);
@@ -521,53 +523,50 @@ fn whitespace_inside_constructed_attention_is_always_a_character_reference() {
                         children: vec![paragraph(vec![inline()])],
                         position: None,
                     }),
-                    format!("{marker}{reference}{marker}\n"),
+                    format!("{kept}{marker}note{marker}\n"),
                 ),
                 (
                     Node::Root(Root {
                         children: vec![paragraph(vec![text("x "), inline(), text(" y")])],
                         position: None,
                     }),
-                    format!("x {marker}{reference}{marker} y\n"),
+                    format!("x {space}{marker}note{marker} y\n"),
                 ),
                 (
                     Node::Root(Root {
                         children: vec![paragraph(vec![text("x "), trailing(), text("y")])],
                         position: None,
                     }),
-                    // A letter next to a marker after a reference is a reference too.
-                    format!("x {marker}note&#x20;{marker}&#x79;\n"),
+                    format!("x {marker}note{marker} y\n"),
                 ),
                 (
                     Node::Root(Root {
                         children: vec![paragraph(vec![text("x"), inline()])],
                         position: None,
                     }),
-                    format!("&#x78;{marker}{reference}{marker}\n"),
+                    format!("x{space}{marker}note{marker}\n"),
                 ),
-                // Only the character right before the marker changes, even when the text before
-                // it is split.
                 (
                     Node::Root(Root {
                         children: vec![paragraph(vec![text("x"), text(".y"), inline()])],
                         position: None,
                     }),
-                    format!("x.&#x79;{marker}{reference}{marker}\n"),
+                    format!("x.y{space}{marker}note{marker}\n"),
                 ),
-                // An empty text before the whitespace writes nothing.
+                // An empty text before the whitespace does not keep it inside.
                 (
                     Node::Root(Root {
                         children: vec![paragraph(vec![wrap(vec![text(""), text(value)])])],
                         position: None,
                     }),
-                    format!("{marker}{reference}{marker}\n"),
+                    format!("{kept}{marker}note{marker}\n"),
                 ),
                 (
                     Node::Blockquote(Blockquote {
                         children: vec![paragraph(vec![inline()])],
                         position: None,
                     }),
-                    format!("> {marker}{reference}{marker}\n"),
+                    format!("> {kept}{marker}note{marker}\n"),
                 ),
                 (
                     Node::List(List {
@@ -582,7 +581,7 @@ fn whitespace_inside_constructed_attention_is_always_a_character_reference() {
                         start: None,
                         spread: false,
                     }),
-                    format!("- {marker}{reference}{marker}\n"),
+                    format!("- {kept}{marker}note{marker}\n"),
                 ),
             ] {
                 let markdown = to(&node).unwrap();
@@ -596,10 +595,11 @@ fn whitespace_inside_constructed_attention_is_always_a_character_reference() {
 }
 
 #[test]
-fn whitespace_inside_attention_keeps_the_text_before_it() {
+fn whitespace_at_the_edge_of_attention_keeps_the_text_before_it() {
     // Escapes and references split the text before the marker into several nodes. Looking ahead
-    // at the attention from an earlier node must not change what that node wrote.
-    let options = base_markdown::Options::gfm();
+    // at the attention from an earlier node must not change what that node wrote, so the output
+    // reads back as the normalized tree.
+    let options = base_markdown::ParseOptions::gfm();
     for (open, close) in [("*", "*"), ("**", "**"), ("~~", "~~"), ("~", "~")] {
         for whitespace in ["&#x20;", "&#x9;", "&#xA0;"] {
             for prefix in [
@@ -617,11 +617,11 @@ fn whitespace_inside_attention_keeps_the_text_before_it() {
                             format!("{start}{prefix}{space}{open}{whitespace}x{close}{end}\n");
                         let (first, second) = two_passes(&source);
                         assert_eq!(second, first, "{source:?}");
-                        assert_eq!(
-                            base_markdown::to_html_with_options(&first, &options),
-                            base_markdown::to_html_with_options(&source, &options),
-                            "{source:?}"
-                        );
+                        let mut document = Document::parse(source.as_str(), &options).unwrap();
+                        document.normalize();
+                        let mut reparsed = Document::parse(first.as_str(), &options).unwrap();
+                        reparsed.normalize();
+                        assert_eq!(canonical(&reparsed), canonical(&document), "{source:?}");
                     }
                 }
             }
@@ -698,7 +698,7 @@ fn a_tilde_that_could_pair_as_strikethrough_is_escaped() {
         ("x *\\~a~*\n", "x *\\~a\\~*\n"),
         ("x \\~a \\*b\\~ c\\*\n", "x ~a \\*b\\~ c\\*\n"),
         // A run escapes whole, as what is left of a run can still pair.
-        ("&#x20; ~~a~\n", "&#x20; \\~\\~a\\~\n"),
+        ("x ~~a~\n", "x \\~\\~a\\~\n"),
         // The run after an escaped backslash is judged by the backslash before it.
         ("~\\\\~~:~\n", "~~\\\\\\~\\~:~~\n"),
         ("a\\\\~b\n", "a\\\\~b\n"),
@@ -712,10 +712,10 @@ fn a_tilde_that_could_pair_as_strikethrough_is_escaped() {
         ("~~a \\~~~\n", "~~a \\~~~\n"),
         // A character that attention writes as a reference is punctuation, so the tildes next to it
         // are escaped.
-        ("x ~a *&#x20;\\~ b*\n", "x ~a *&#x20;\\~ b*\n"),
-        ("x ~a **&#x20;\\~ b**\n", "x ~a **&#x20;\\~ b**\n"),
-        ("~~&#x20;\\~\\~ b~~\n", "~~&#x20;\\~\\~ b~~\n"),
-        ("~~a \\~\\~&#xA;~~\n", "~~a \\~\\~&#xA;~~\n"),
+        ("x \\~&#x61;*.b* c\\~\n", "x \\~&#x61;*.b* c\\~\n"),
+        ("x \\~&#x61;**.b** c\\~\n", "x \\~&#x61;**.b** c\\~\n"),
+        ("*a.*&#x62;\\~ c~\n", "*a.*&#x62;\\~ c\\~\n"),
+        ("**a.**&#x62;\\~\\~ c~\n", "**a.**&#x62;\\~\\~ c\\~\n"),
         // Two tildes that can open are escaped, as a strikethrough sequence can close them.
         ("x \\~~a\n", "x \\~\\~a\n"),
         ("\\~~x a~~b~~\n", "\\~\\~x a~~b~~\n"),
