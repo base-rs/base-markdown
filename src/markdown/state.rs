@@ -468,7 +468,8 @@ impl<'a> State<'a> {
                     if document.node(marker).unwrap().next_sibling() == Some(id)
                         && self.is_item_task(document, marker)
                     {
-                        value = value.trim_start_matches([' ', '\t']);
+                        // The marker is written with its separating space, so only the one the parser keeps after it is dropped. Other whitespace is content.
+                        value = value.strip_prefix([' ', '\t']).unwrap_or(value);
                     }
                 }
                 self.text(value, info)

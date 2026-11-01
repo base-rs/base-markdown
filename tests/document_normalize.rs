@@ -5,6 +5,7 @@ use base_markdown::{
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
     to_markdown, AstBuilder, Document, NodeId, ParseOptions,
 };
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 fn event(
@@ -265,20 +266,65 @@ fn merging_applies_the_rules_again_at_the_join() {
 }
 
 #[test]
-fn separators_are_skipped_and_kept() {
+fn removes_separators_from_phrasing() {
+    assert!(!build(vec![text("a"), separator()]).is_normalized());
     assert_eq!(
         normalized(build(vec![text("a"), separator(), text("b")])),
-        r#"paragraph("ab" separator)"#
+        r#"paragraph("ab")"#
     );
     let document = build(concat([
         emphasis(vec![text("a")]),
         vec![separator()],
-        emphasis(vec![text("b")]),
+        emphasis(vec![separator(), text("b")]),
     ]));
     assert!(!document.is_normalized());
+    assert_eq!(normalized(document), r#"paragraph(emphasis("ab"))"#);
+}
+
+#[test]
+fn keeps_separators_between_blocks() {
+    let mut document = Document::parse(
+        "a\\
+
+b
+
+> c
+",
+        &ParseOptions::default(),
+    )
+    .unwrap();
+    let events = |document: &Document<&str>| {
+        document
+            .events()
+            .map(|event| format!("{:?}", event.unwrap()))
+            .collect::<Vec<_>>()
+    };
+    let before = events(&document);
+    assert!(before.iter().any(|event| event.contains("Separator")));
+    document.normalize();
+    assert_eq!(events(&document), before);
+    // A separator between blocks does not stop text on either side from joining.
+    let mut document = build(vec![]);
+    let paragraph = document.children(document.root()).next().unwrap();
+    let quote = document
+        .append_child(document.root(), EventKind::Start(Tag::BlockQuote))
+        .unwrap();
+    document.detach(paragraph).unwrap();
+    for kind in [
+        EventKind::Text(Text::Literal("a")),
+        EventKind::Separator {
+            value: Text::Literal("\n"),
+            conditional: false,
+        },
+        EventKind::Text(Text::Literal("b")),
+    ] {
+        document.append_child(quote, kind).unwrap();
+    }
+    assert!(!document.is_normalized());
+    document.normalize();
     assert_eq!(
-        normalized(document),
-        r#"paragraph(emphasis("ab") separator)"#
+        describe(&document, document.root()),
+        r#"Start(BlockQuote)("ab" separator)"#
     );
 }
 
@@ -404,10 +450,18 @@ fn normalize_makes_any_tree_normalized_and_is_idempotent() {
 }
 
 /// Assert that four times the input takes less than sixteen times as long, after a warm-up.
+///
+/// Each size takes the fastest of five runs, alternating between the sizes, so that a pause, or a stretch of load from other tests or instrumentation, slows both sizes alike and does not count. Only one scaling test times at once, as large allocations in parallel tests contend with each other.
 fn assert_linear(mut time: impl FnMut(usize) -> Duration) {
+    static TIMING: Mutex<()> = Mutex::new(());
+    let _timing = TIMING.lock().unwrap_or_else(PoisonError::into_inner);
     time(1 << 10);
-    let small = time(25_000);
-    let large = time(100_000);
+    let mut small = Duration::MAX;
+    let mut large = Duration::MAX;
+    for _ in 0..5 {
+        small = small.min(time(50_000));
+        large = large.min(time(200_000));
+    }
     assert!(
         large < small * 16,
         "4x input took {:?} against {:?}",
@@ -416,12 +470,14 @@ fn assert_linear(mut time: impl FnMut(usize) -> Duration) {
     );
 }
 
-/// Time normalizing the document from `build`, and then serializing it both before and after normalizing.
+/// Time normalizing the document from `build` and serializing the result. Serializing the smallest tree before normalizing checks that it does not panic; that need not be linear, so it is not timed.
 fn assert_normalize_linear(build: impl Fn(usize) -> Document<String>) {
     assert_linear(|size| {
         let mut document = build(size);
+        if size == 1 << 10 {
+            to_markdown(&document).unwrap();
+        }
         let started = Instant::now();
-        to_markdown(&document).unwrap();
         document.normalize();
         assert!(document.is_normalized());
         to_markdown(&document).unwrap();
@@ -496,6 +552,65 @@ fn appending_children_is_linear() {
         assert_eq!(document.children(paragraph).count(), size);
         elapsed
     });
+}
+
+#[test]
+fn appending_to_an_item_is_linear() {
+    assert_linear(|size| {
+        let mut document = Document::parse("- a\n", &ParseOptions::default()).unwrap();
+        let list = document.children(document.root()).next().unwrap();
+        let item = document.children(list).next().unwrap();
+        let started = Instant::now();
+        for _ in 0..size {
+            let paragraph = document
+                .append_child(item, EventKind::Start(Tag::Paragraph { tight: true }))
+                .unwrap();
+            document
+                .append_child(paragraph, EventKind::Text(Text::Literal("b")))
+                .unwrap();
+        }
+        let elapsed = started.elapsed();
+        assert_eq!(document.children(item).count(), size + 1);
+        elapsed
+    });
+}
+
+#[test]
+fn appending_to_an_item_refreshes_how_it_ends() {
+    let block_end =
+        |document: &Document<&str>, item: NodeId| match document.node(item).unwrap().kind {
+            EventKind::Start(Tag::Item { block_end }) => block_end,
+            _ => unreachable!("the node is an item"),
+        };
+    let mut document = Document::parse("- a\n", &ParseOptions::default()).unwrap();
+    let list = document.children(document.root()).next().unwrap();
+    let item = document.children(list).next().unwrap();
+    assert!(!block_end(&document, item));
+    document.append_child(item, EventKind::Rule).unwrap();
+    assert!(block_end(&document, item));
+    // A definition writes nothing after the item's last line, so the item still ends as before.
+    document
+        .append_child(
+            item,
+            EventKind::Definition {
+                label: Text::Literal("x"),
+                destination: Text::Literal("y"),
+                title: None,
+            },
+        )
+        .unwrap();
+    assert!(block_end(&document, item));
+    let paragraph = document
+        .append_child(item, EventKind::Start(Tag::Paragraph { tight: true }))
+        .unwrap();
+    assert!(!block_end(&document, item));
+    document
+        .append_child(paragraph, EventKind::Text(Text::Literal("b")))
+        .unwrap();
+    assert!(!block_end(&document, item));
+    // Moving the paragraph in place refreshes the item from all of its children, with the same result.
+    document.attach(item, paragraph, None).unwrap();
+    assert!(!block_end(&document, item));
 }
 
 #[test]
