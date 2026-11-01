@@ -583,7 +583,10 @@ impl MarkdownFixture for Node {
         &self,
         options: &base_markdown::MarkdownOptions,
     ) -> Result<String, base_markdown::message::Message> {
-        base_markdown::to_markdown_with_options(&self.document(), options)
+        // A constructed tree is normalized before serializing, as the serializer requires.
+        let mut document = self.document();
+        document.normalize();
+        base_markdown::to_markdown_with_options(&document, options)
     }
 }
 impl<S: AsRef<str>> MarkdownFixture for Document<S> {

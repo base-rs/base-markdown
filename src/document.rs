@@ -199,6 +199,7 @@ impl AstBuilder {
             source,
             nodes: self.nodes,
             syntax: BTreeMap::new(),
+            append_hint: None,
         };
         // Public producers can supply arbitrary offsets. Validate their contract once before exposing the document.
         for event in document.events() {
@@ -226,6 +227,9 @@ pub struct Document<S = String> {
     source: S,
     nodes: Vec<Node>,
     syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
+    // The child that `append_child` last appended. It is still its parent's last child while it has that parent and no next sibling, so a run of appends to one parent does not scan the parent's children each time.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    append_hint: Option<NodeId>,
 }
 
 impl<S: AsRef<str>> Document<S> {
@@ -713,18 +717,40 @@ impl<S: AsRef<str>> Document<S> {
         }
         let last = self
             .children(id)
-            .filter(|child| {
-                !matches!(
-                    self.nodes[child.index()].kind,
-                    EventKind::Separator { .. }
-                        | EventKind::Definition { .. }
-                        | EventKind::Opaque { .. }
-                        | EventKind::Start(Tag::FootnoteDefinition(_))
-                )
-            })
+            .filter(|child| ends_item(&self.nodes[child.index()].kind))
             .last();
         let block_end = last.is_some_and(|last| !self.tight_paragraph(last));
         self.nodes[id.index()].kind = EventKind::Start(Tag::Item { block_end });
+    }
+    // The last child of `parent`, if the last node appended shows it: when appending in document order, `parent` is that node or one of its ancestors, and the nodes passed on the way up hold complete subtrees, which are not passed again.
+    #[allow(clippy::option_option)]
+    fn appended_last_child(&self, parent: NodeId) -> Option<Option<NodeId>> {
+        let hint = self.append_hint?;
+        if hint == parent {
+            return self.nodes[parent.index()]
+                .first_child
+                .is_none()
+                .then_some(None);
+        }
+        let mut current = hint;
+        loop {
+            let node = &self.nodes[current.index()];
+            if node.parent == Some(parent) {
+                return node.next_sibling.is_none().then_some(Some(current));
+            }
+            current = node.parent?;
+        }
+    }
+    // Refresh an item after `child` was appended as its last child, from that child alone.
+    fn refresh_item_after_append(&mut self, parent: NodeId, child: NodeId) {
+        if matches!(
+            self.nodes[parent.index()].kind,
+            EventKind::Start(Tag::Item { .. })
+        ) && ends_item(&self.nodes[child.index()].kind)
+        {
+            let block_end = !self.tight_paragraph(child);
+            self.nodes[parent.index()].kind = EventKind::Start(Tag::Item { block_end });
+        }
     }
     // Edits can change the context of existing paragraphs and item endings. Refresh those rendering hints without adding caches or links to every arena node.
     fn refresh_context(&mut self, root: NodeId) {
@@ -754,6 +780,8 @@ impl<S: AsRef<str>> Document<S> {
     }
     /// Append a new semantic node. Its source provenance is empty; values may still reference the source buffer.
     ///
+    /// Appending in document order, each node after the subtree before it is complete, takes amortized constant time per node. Appending to another parent scans its children.
+    ///
     /// # Errors
     /// Rejects invalid parents, document/end kinds, source ranges, or forbidden nested capture containers.
     pub fn append_child(
@@ -775,10 +803,14 @@ impl<S: AsRef<str>> Document<S> {
             EventKind::Start(tag) => self.check_capture(Some(parent), tag.kind())?,
             _ => {}
         }
-        let previous = self.children(parent).last();
+        let previous = match self.appended_last_child(parent) {
+            Some(previous) => previous,
+            None => self.children(parent).last(),
+        };
         let id = self.insert_child(parent, kind, previous, None);
+        self.append_hint = Some(id);
         self.refresh_context(id);
-        self.refresh_item(Some(parent));
+        self.refresh_item_after_append(parent, id);
         Ok(id)
     }
     // Callers validate the semantic content and insertion position before changing links, then refresh context once the operation is complete.
@@ -1033,6 +1065,209 @@ impl<S: AsRef<str>> Document<S> {
     }
 }
 
+// Whether a child of an item decides how the item ends: other children write nothing after the item's last line.
+fn ends_item(kind: &EventKind<'_>) -> bool {
+    !matches!(
+        kind,
+        EventKind::Separator { .. }
+            | EventKind::Definition { .. }
+            | EventKind::Opaque { .. }
+            | EventKind::Start(Tag::FootnoteDefinition(_))
+    )
+}
+
+/// Whether two nodes are emphasis, strong or strikethrough of the same kind, which form one run when adjacent.
+fn same_attention(left: &EventKind<'_>, right: &EventKind<'_>) -> bool {
+    matches!(
+        (left, right),
+        (
+            EventKind::Start(Tag::Emphasis),
+            EventKind::Start(Tag::Emphasis)
+        ) | (EventKind::Start(Tag::Strong), EventKind::Start(Tag::Strong))
+            | (EventKind::Start(Tag::Delete), EventKind::Start(Tag::Delete))
+    )
+}
+
+fn empty_text(kind: &EventKind<'_>) -> bool {
+    match kind {
+        EventKind::Text(Text::Source(range)) => range.is_empty(),
+        EventKind::Text(Text::Literal(value)) => value.is_empty(),
+        EventKind::Text(Text::Value(value)) => value.is_empty(),
+        _ => false,
+    }
+}
+
+// Whether a container holds phrasing, where separators, which are block-level, have no place.
+fn phrasing_container(kind: &EventKind<'_>) -> bool {
+    matches!(
+        kind,
+        EventKind::Start(
+            Tag::Paragraph { .. }
+                | Tag::Heading(_)
+                | Tag::TableCell { .. }
+                | Tag::Emphasis
+                | Tag::Strong
+                | Tag::Delete
+                | Tag::Link { .. }
+                | Tag::Image { .. }
+        )
+    )
+}
+
+// Whether normalization removes a child without joining it into another: empty text, and a separator in phrasing.
+fn dropped(kind: &EventKind<'_>) -> bool {
+    empty_text(kind) || matches!(kind, EventKind::Separator { .. })
+}
+
+// Whether normalization removes `kind` after the child kept before it, in a container that holds phrasing or not: empty text, a separator in phrasing, text after text, and attention after attention of the same kind.
+fn redundant(kept: Option<&EventKind<'_>>, kind: &EventKind<'_>, phrasing: bool) -> bool {
+    empty_text(kind)
+        || (phrasing && matches!(kind, EventKind::Separator { .. }))
+        || kept.is_some_and(|kept| {
+            matches!((kept, kind), (EventKind::Text(_), EventKind::Text(_)))
+                || same_attention(kept, kind)
+        })
+}
+
+// The span of two joined nodes. Constructed nodes have an empty span, which joining does not extend.
+fn joined_span(left: &Range<usize>, right: &Range<usize>) -> Range<usize> {
+    if left.is_empty() {
+        right.clone()
+    } else if right.is_empty() {
+        left.clone()
+    } else {
+        left.start.min(right.start)..left.end.max(right.end)
+    }
+}
+
+impl<S: AsRef<str>> Document<S> {
+    /// Normalize every child list in place, in time linear in the size of the arena.
+    ///
+    /// Empty text is removed, adjacent text is joined into the first text, and adjacent emphasis, strong or strikethrough of the same kind is merged by moving the children of the second to the end of the first. The children that meet at a merge are normalized in turn, so text or attention on either side of the join is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. Nothing else changes: text keeps its value, including whitespace at the edges of attention, and detached subtrees are normalized too.
+    ///
+    /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking and in linear time, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, and adjacent attention of the same kind, such as `*a*_b_`, stays separate. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
+    ///
+    /// The IDs of removed text and merged attention no longer refer to nodes in the tree. Their arena slots remain, detached, but their contents are unspecified. Other IDs stay valid.
+    pub fn normalize(&mut self) {
+        for index in 0..self.nodes.len() {
+            if self.nodes[index].parent.is_none() {
+                self.normalize_subtree(NodeId::new(index));
+            }
+        }
+    }
+
+    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, adjacent text, adjacent attention of the same kind, or a separator in phrasing. This reads every node once.
+    pub fn is_normalized(&self) -> bool {
+        self.nodes.iter().all(|node| {
+            let phrasing = phrasing_container(&node.kind);
+            let mut kept: Option<&EventKind<'_>> = None;
+            core::iter::successors(node.first_child, |&child| {
+                self.nodes[child.index()].next_sibling
+            })
+            .all(|child| {
+                let kind = &self.nodes[child.index()].kind;
+                let normal = !redundant(kept, kind, phrasing);
+                if !matches!(kind, EventKind::Separator { .. }) {
+                    kept = Some(kind);
+                }
+                normal
+            })
+        })
+    }
+
+    // Normalize each child list from the top down, so that children moved into attention are normalized with its own children.
+    fn normalize_subtree(&mut self, root: NodeId) {
+        let mut current = Some(root);
+        while let Some(id) = current {
+            if self.nodes[id.index()].first_child.is_some() {
+                self.normalize_children(id);
+            }
+            current = next_descendant(&self.nodes, root, id);
+        }
+    }
+
+    // Normalize the children of `parent` in one pass, unlinking each removed child as it is met and joining it into the last child kept.
+    fn normalize_children(&mut self, parent: NodeId) {
+        let source = self.source.as_ref();
+        let nodes = &mut self.nodes;
+        let mut changed = false;
+        let phrasing = phrasing_container(&nodes[parent.index()].kind);
+        // The last kept child that is not a separator, and the last kept child.
+        let mut kept: Option<NodeId> = None;
+        let mut linked: Option<NodeId> = None;
+        // Attention that children were moved into, and its last child, so that moving more children does not walk its children again.
+        let mut tail: Option<(NodeId, Option<NodeId>)> = None;
+        let mut current = nodes[parent.index()].first_child;
+        while let Some(id) = current {
+            current = nodes[id.index()].next_sibling;
+            if !redundant(
+                kept.map(|kept| &nodes[kept.index()].kind),
+                &nodes[id.index()].kind,
+                phrasing,
+            ) {
+                if !matches!(nodes[id.index()].kind, EventKind::Separator { .. }) {
+                    kept = Some(id);
+                }
+                linked = Some(id);
+                continue;
+            }
+            changed = true;
+            match linked {
+                Some(linked) => nodes[linked.index()].next_sibling = current,
+                None => nodes[parent.index()].first_child = current,
+            }
+            nodes[id.index()].parent = None;
+            nodes[id.index()].next_sibling = None;
+            let Some(kept) = kept.filter(|_| !dropped(&nodes[id.index()].kind)) else {
+                continue;
+            };
+            nodes[kept.index()].span =
+                joined_span(&nodes[kept.index()].span, &nodes[id.index()].span);
+            // Hold the removed node's value while joining it, so the kept node can be borrowed mutably.
+            let removed = core::mem::replace(&mut nodes[id.index()].kind, EventKind::Rule);
+            if let (EventKind::Text(left), EventKind::Text(right)) =
+                (&mut nodes[kept.index()].kind, &removed)
+            {
+                match (&*left, right) {
+                    (Text::Source(left_range), Text::Source(right_range))
+                        if left_range.end == right_range.start =>
+                    {
+                        *left = Text::Source(left_range.start..right_range.end);
+                    }
+                    _ => left
+                        .to_mut(source)
+                        .expect("document text is validated")
+                        .push_str(right.resolve(source).expect("document text is validated")),
+                }
+            } else {
+                // Move the children of the removed attention to the end of the kept attention.
+                let mut last = match tail {
+                    Some((attention, last)) if attention == kept => last,
+                    _ => core::iter::successors(nodes[kept.index()].first_child, |&child| {
+                        nodes[child.index()].next_sibling
+                    })
+                    .last(),
+                };
+                let mut child = nodes[id.index()].first_child.take();
+                match last {
+                    Some(last) => nodes[last.index()].next_sibling = child,
+                    None => nodes[kept.index()].first_child = child,
+                }
+                while let Some(moved) = child {
+                    nodes[moved.index()].parent = Some(kept);
+                    last = Some(moved);
+                    child = nodes[moved.index()].next_sibling;
+                }
+                tail = Some((kept, last));
+            }
+            nodes[id.index()].kind = removed;
+        }
+        if changed {
+            self.refresh_item(Some(parent));
+        }
+    }
+}
+
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for Document<String> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -1048,6 +1283,7 @@ impl<'de> serde::Deserialize<'de> for Document<String> {
             source: stored.source,
             nodes: stored.nodes,
             syntax: stored.syntax,
+            append_hint: None,
         };
         document
             .validate_storage()

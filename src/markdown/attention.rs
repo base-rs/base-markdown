@@ -217,13 +217,12 @@ pub(super) struct Edge {
     pub tilde: bool,
 }
 
-/// Apply `edge` to text written at `output[start..]`, returning whether the text is all tildes, so text after it is edited too.
+/// Apply `edge` to text written at `output[start..]`.
 ///
 /// Underscores between letters are written unescaped, but next to a reference they can form attention, so they are escaped here.
-pub(super) fn edit_start(output: &mut String, start: usize, edge: &Edge) -> bool {
+pub(super) fn edit_start(output: &mut String, start: usize, edge: &Edge) {
     let text = &output[start..];
     let mut result = String::new();
-    let tildes = edge.tilde && text.bytes().all(|byte| matches!(byte, b'~' | b'\\'));
     if edge.tilde && text.starts_with('~') {
         let run = text.bytes().take_while(|&byte| byte == b'~').count();
         result.extend(core::iter::repeat("\\~").take(run));
@@ -235,11 +234,10 @@ pub(super) fn edit_start(output: &mut String, start: usize, edge: &Edge) -> bool
         result.extend(core::iter::repeat("\\_").take(run));
         result.push_str(&rest[run..]);
     } else {
-        return tildes;
+        return;
     }
     output.truncate(start);
     output.push_str(&result);
-    tildes
 }
 
 /// Escape tildes at the end of text written at `output[start..]`, as a sequence follows it.

@@ -87,6 +87,22 @@ fn preserves_gfm_tables_and_normalizes_task_list_markers() {
 }
 
 #[test]
+fn keeps_whitespace_after_the_task_marker_separator() {
+    // Only the space that separates the marker from the text is dropped; once text is joined, an encoded space after it is content.
+    for source in ["- [ ] &#x20;a\n", "- [ ] &#x20;\n", "- [x] &#x9;a\n"] {
+        let normalized = normalize_markdown(source).unwrap();
+        assert_eq!(normalized, source);
+        assert_eq!(
+            base_markdown::to_html_with_options(&normalized, &base_markdown::Options::gfm()),
+            base_markdown::to_html_with_options(source, &base_markdown::Options::gfm()),
+            "{source:?}"
+        );
+    }
+    // The second space of an authored double space is content too, so it is kept as a reference.
+    assert_eq!(normalize_markdown("- [ ]  a\n").unwrap(), "- [ ] &#x20;a\n");
+}
+
+#[test]
 fn honors_independently_disabled_constructs() {
     let mut options = ParseOptions::gfm();
     options.constructs.strikethrough = false;

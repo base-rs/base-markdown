@@ -85,7 +85,7 @@ fn literal_lookahead_matches_rendering_across_scopes_and_wrapping_modes() {
         .append_child(document.root(), EventKind::Text(Text::Literal("")))
         .unwrap();
     assert_eq!(
-        State::new(&Options::default()).peek_node(&document, text, None),
+        State::new(&Options::default()).peek_node(&document, text, document.root()),
         None
     );
     let scopes = [
@@ -111,7 +111,7 @@ fn literal_lookahead_matches_rendering_across_scopes_and_wrapping_modes() {
                         .unwrap();
                     let mut state = State::new(&options);
                     state.enter(scope);
-                    if let Some(prefix) = state.peek_node(&document, text, None) {
+                    if let Some(prefix) = state.peek_node(&document, text, document.root()) {
                         state
                             .write_node(&document, text, &Info::new("", ""))
                             .unwrap();
