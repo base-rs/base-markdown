@@ -1013,3 +1013,188 @@ fn roundtrip_documents() {
         assert_eq!(roundtrip(&once, &Options::default()), once, "{value:?}");
     }
 }
+
+/// Serialize phrasing in a paragraph, returning the Markdown and whether it parses back to the same tree and serializes to itself again.
+fn exact(children: Vec<Node>, options: &Options) -> (String, bool) {
+    let tree = paragraph(children);
+    let markdown = to_md_with_opts(&tree, options).unwrap();
+    let mut parsed = Document::parse(&markdown, &ParseOptions::gfm()).unwrap();
+    let same = merged(&parsed) == merged(&tree.document());
+    parsed.normalize();
+    let stable = to_markdown(&parsed, options) == markdown;
+    (markdown, same && stable)
+}
+
+/// Parse, normalize and serialize Markdown, checking the result parses to the same tree and serializes to itself again.
+fn exact_roundtrip(source: &str, options: &Options) -> String {
+    let mut document = Document::parse(source, &ParseOptions::gfm()).unwrap();
+    document.normalize();
+    let markdown = to_markdown(&document, options);
+    let parsed = Document::parse(&markdown, &ParseOptions::gfm()).unwrap();
+    assert_eq!(
+        merged(&parsed),
+        merged(&document),
+        "{source:?} serialized as {markdown:?} should parse to the same tree"
+    );
+    assert_stable(&markdown, options);
+    markdown
+}
+
+#[test]
+fn nested_attention_sharing_an_edge() {
+    // The enclosing sequence at the other edge would fail the rule of 3 against the joined run.
+    for (source, expected) in [
+        ("**a*~**", "*_a_\\~*\\*\n"),
+        ("**a*.**", "*_a_.*\\*\n"),
+        ("**a*.**.", "*_a_.*\\*.\n"),
+        ("*.*a**.", "*.*a**.\n"),
+    ] {
+        assert_eq!(
+            exact_roundtrip(source, &Options::default()),
+            expected,
+            "{source:?}"
+        );
+    }
+
+    for (children, expected) in [
+        (
+            vec![
+                emphasis(vec![emphasis(vec![text("a")]), text(".")]),
+                text("."),
+            ],
+            "*_a_.*.\n",
+        ),
+        (
+            vec![
+                text("."),
+                emphasis(vec![text("."), emphasis(vec![text("a")])]),
+                text("."),
+            ],
+            ".*._a_*.\n",
+        ),
+        (
+            vec![strong(vec![strong(vec![text("a")]), text(".")]), text(".")],
+            "**__a__.**.\n",
+        ),
+        (
+            vec![
+                text("."),
+                strong(vec![text("."), strong(vec![text("a")])]),
+                text("."),
+            ],
+            ".**.__a__**.\n",
+        ),
+        // Where the rule of 3 does not apply, the sequences still join.
+        (
+            vec![emphasis(vec![emphasis(vec![text("a")]), text(" b")])],
+            "**a* b*\n",
+        ),
+        (
+            vec![emphasis(vec![text("a "), strong(vec![text("b")])])],
+            "*a **b***\n",
+        ),
+        (
+            vec![
+                emphasis(vec![strong(vec![text("a")]), text(".")]),
+                text("."),
+            ],
+            "***a**.*.\n",
+        ),
+    ] {
+        assert_eq!(serialize(children, &Options::default()), expected);
+    }
+
+    // Once a child joins the opening run, the parent checks its closing sequence against the longer run.
+    let children = vec![
+        emphasis(vec![strong(vec![
+            emphasis(vec![text("c")]),
+            text(" "),
+            strong(vec![text(" ")]),
+        ])]),
+        text("a"),
+    ];
+    assert_eq!(
+        exact(children, &markers('*', '*')),
+        ("****c* __&#x20;__***&#x61;\n".to_string(), true)
+    );
+}
+
+#[test]
+fn nested_attention_edges() {
+    let attention = |strong_kind: bool, children: Vec<Node>| {
+        if strong_kind {
+            strong(children)
+        } else {
+            emphasis(children)
+        }
+    };
+    let name = |strong_kind: bool| if strong_kind { "strong" } else { "emphasis" };
+    // An empty neighbour is the edge of the block.
+    let neighbours = [".", "~", "a", " ", ""];
+    let mut failures = Vec::new();
+    let mut encoded = 0;
+    for options in [markers('*', '*'), markers('_', '_')] {
+        for outer in [false, true] {
+            for inner in [false, true] {
+                for edge in ["opening", "closing", "both"] {
+                    for content in neighbours.iter().filter(|value| !value.is_empty()) {
+                        // The text between the inner attention and the other edge of the outer one.
+                        for middle in neighbours {
+                            if (edge == "both") != middle.is_empty() {
+                                continue;
+                            }
+                            for before in neighbours {
+                                for after in neighbours {
+                                    let nested = attention(inner, vec![text(content)]);
+                                    let children = match edge {
+                                        "opening" => vec![nested, text(middle)],
+                                        "closing" => vec![text(middle), nested],
+                                        _ => vec![nested],
+                                    };
+                                    let mut phrasing = Vec::new();
+                                    if !before.is_empty() {
+                                        phrasing.push(text(before));
+                                    }
+                                    phrasing.push(attention(outer, children));
+                                    if !after.is_empty() {
+                                        phrasing.push(text(after));
+                                    }
+                                    let (markdown, same) = exact(phrasing, &options);
+                                    if same {
+                                        continue;
+                                    }
+                                    // A character reference next to a sequence can keep it from flanking, which is not checked again (#101).
+                                    if [";*", ";_", "*&", "_&"]
+                                        .iter()
+                                        .any(|pair| markdown.contains(pair))
+                                    {
+                                        encoded += 1;
+                                        continue;
+                                    }
+                                    failures.push(format!(
+                                        "{} in {} at the {edge} edge, with {content:?} inside, {middle:?} between, {before:?} before and {after:?} after, with `{}`: {markdown:?}",
+                                        name(inner),
+                                        name(outer),
+                                        options.emphasis,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} cases do not round-trip:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+    // Lower this as cases with character references next to sequences are fixed.
+    assert!(
+        encoded <= 336,
+        "{} cases with character references",
+        encoded
+    );
+}

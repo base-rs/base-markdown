@@ -7,7 +7,7 @@
 use crate::util::unicode::PUNCTUATION;
 
 /// Character kinds.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     /// Whitespace.
     ///
