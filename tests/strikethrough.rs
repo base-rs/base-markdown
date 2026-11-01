@@ -220,6 +220,7 @@ a ~~twoLeft b ~~twoLeft c ~~twoLeft d
         "should handle flanking like GitHub"
     );
 
+    // Deliberate divergence from micromark, markdown-rs and cmark-gfm in `e`, `f` and `g`: micromark and markdown-rs treat `*` or `_` next to `~` as flanking on that side, and cmark-gfm looks through `~` to the next character when classifying flanking; neither CommonMark nor GFM specifies either. A closing `***` preceded by `~` and followed by a letter is not right-flanking, so it stays literal. They expect `<p>e <em><strong><del>xxx</del></strong></em>yyy</p>`, `<p>f <strong><del>xxx</del></strong>yyy</p>` and `<p>g <em><del>xxx</del></em>yyy</p>`.
     assert_eq!(
         to_html_with_options(
             r###"
@@ -346,9 +347,9 @@ u ~**xxx**~ zzz
 <p>b <em><strong>xxx</strong></em>zzz</p>
 <p>c <strong>xxx</strong>zzz</p>
 <p>d <em>xxx</em>zzz</p>
-<p>e <em><strong><del>xxx</del></strong></em>yyy</p>
-<p>f <strong><del>xxx</del></strong>yyy</p>
-<p>g <em><del>xxx</del></em>yyy</p>
+<p>e ***<del>xxx</del>***yyy</p>
+<p>f **<del>xxx</del>**yyy</p>
+<p>g *<del>xxx</del>*yyy</p>
 <p>h <em><strong><del>xxx</del></strong></em> zzz</p>
 <p>i <strong><del>xxx</del></strong> zzz</p>
 <p>j <em><del>xxx</del></em> zzz</p>
@@ -363,13 +364,14 @@ u ~**xxx**~ zzz
 <p>t <del><strong>xxx</strong></del> zzz</p>
 <p>u <del><strong>xxx</strong></del> zzz</p>
 "###,
-        "should handle interplay like GitHub"
+        "should handle interplay with strikethrough"
     );
 
+    // Deliberate divergence from micromark, markdown-rs and cmark-gfm, for the same reason: `*` after a letter and before `~` is not left-flanking. They expect `<p>a<em><del>b</del></em>c</p>`; `~` is punctuation here, exactly as `.` is in `a*.b.*c`.
     assert_eq!(
         to_html_with_options("a*~b~*c\n\na*.b.*c", &Options::gfm()),
-        "<p>a<em><del>b</del></em>c</p>\n<p>a*.b.*c</p>",
-        "should handle interplay w/ other attention markers (GFM)"
+        "<p>a*<del>b</del>*c</p>\n<p>a*.b.*c</p>",
+        "should treat `~` next to other attention markers as punctuation (GFM)"
     );
 
     assert_eq!(

@@ -845,9 +845,18 @@ fn encode_tilde() {
 fn encode_literal_domain() {
     // Escaping the underscore before a reference would end the domain early and link it.
     for (source, expected) in [
-        ("**www.a.bx_b*~b*", "\\*\\*www.a.bx_&#x62;_\\~b_\n"),
-        ("**http://a.bx_b*~b*", "\\*\\*http://a.bx_&#x62;_\\~b_\n"),
-        ("**https://a.bx_b*~b*", "\\*\\*https://a.bx_&#x62;_\\~b_\n"),
+        (
+            "\\*\\*www.a.bx_&#x62;_\\~b_",
+            "\\*\\*www.a.bx_&#x62;_\\~b_\n",
+        ),
+        (
+            "\\*\\*http://a.bx_&#x62;_\\~b_",
+            "\\*\\*http://a.bx_&#x62;_\\~b_\n",
+        ),
+        (
+            "\\*\\*https://a.bx_&#x62;_\\~b_",
+            "\\*\\*https://a.bx_&#x62;_\\~b_\n",
+        ),
         ("*www\\.a\\_1*", "_www.a_1_\n"),
         ("*http\\://www\\.a\\_b*", "_http://www.a_b_\n"),
     ] {
