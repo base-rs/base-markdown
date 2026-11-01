@@ -65,8 +65,8 @@ fn html() {
             position: None
         }))
         .unwrap(),
-        "a <div>\n",
-        "should prevent html (text) from becoming html (flow) (2)"
+        "a&#xD;<div>\n",
+        "should prevent html (text) from becoming html (flow) (2), with a CR written as a reference, as output line endings are LF"
     );
 
     assert_eq!(
@@ -84,8 +84,27 @@ fn html() {
             position: None
         }))
         .unwrap(),
-        "a <div>\n",
+        "a&#xD; <div>\n",
         "should prevent html (text) from becoming html (flow) (3)"
+    );
+
+    assert_eq!(
+        to(&Node::Paragraph(Paragraph {
+            children: vec![
+                Node::Html(Html {
+                    value: "<b>\r\n".to_string(),
+                    position: None
+                }),
+                Node::Html(Html {
+                    value: "<div>".to_string(),
+                    position: None
+                })
+            ],
+            position: None
+        }))
+        .unwrap(),
+        "<b> <div>\n",
+        "should prevent html (text) from becoming html (flow) after html ending in a CRLF"
     );
 
     assert_eq!(

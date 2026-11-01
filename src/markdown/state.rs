@@ -332,7 +332,7 @@ impl<'a> State<'a> {
             }
             after_hard_break = matches!(kind, EventKind::HardBreak);
             *self.index_stack.last_mut().unwrap() = index;
-            let mut buffer = [0u8; 4];
+            let mut buffer = [0u8; 5];
             let next = children.get(position + 1).copied();
             let after = if let Some(next) = next {
                 if let Some(first) = self.peek_node(document, next, child) {
@@ -343,7 +343,10 @@ impl<'a> State<'a> {
                     self.write_node(document, next, &Info::new("", ""))?;
                     let first = self.output[checkpoint..].chars().next().unwrap_or_default();
                     self.output.truncate(checkpoint);
-                    first.encode_utf8(&mut buffer)
+                    // A line ending there is not the one that ends the block, so the NUL that
+                    // follows it in the buffer stands for the rest of the next node and after.
+                    let length = first.encode_utf8(&mut buffer).len();
+                    core::str::from_utf8(&buffer[..length + 1]).expect("NUL is a character")
                 }
             } else {
                 info.after
@@ -519,7 +522,8 @@ impl<'a> State<'a> {
                 }
                 self.text(value, info)
             }
-            EventKind::SoftBreak(text) => self.text(text.resolve(source).unwrap(), info),
+            // Output line endings are LF, and a CR in text is encoded, so a soft break is written as LF.
+            EventKind::SoftBreak(_) => self.text("\n", info),
             EventKind::HardBreak => self.hard_break(info),
             EventKind::Rule => self.thematic_break(),
             EventKind::Code { value, language } => self.inline_code(

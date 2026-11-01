@@ -44,6 +44,8 @@ enum After {
     /// A byte that can start an email local part but not HTML, so `<` needs an escape only before a complete email autolink.
     Email,
     Math,
+    /// A line ending that ends the context, such as the one written after a paragraph.
+    Closing,
 }
 struct Rule {
     byte: u8,
@@ -73,6 +75,14 @@ static RULES: &[Rule] = &[
     rule!(b'\t', B, A, LANGUAGE, 0),
     rule!(b'\r', B, A, NEWLINES, 0),
     rule!(b'\n', B, A, NEWLINES, 0),
+    // Output line endings are LF, so a CR in phrasing would read back as LF.
+    rule!(b'\r', B, A, PHRASING, 0),
+    // A line ending after another one is a blank line, which ends the paragraph, and one before
+    // the line ending that ends a block is trimmed or makes a blank line.
+    rule!(b'\n', Previous(b'\n'), A, PHRASING, 0),
+    rule!(b'\n', B, After::Closing, PHRASING, 0),
+    // A table row is one line.
+    rule!(b'\n', B, A, bit(TableCell), 0),
     rule!(b' ', B, Set(b"\r\n"), PHRASING, 0),
     rule!(b' ', Previous(b'\n'), A, PHRASING, 0),
     rule!(b' ', Previous(b'\r'), A, PHRASING, 0),
@@ -267,6 +277,10 @@ impl Rule {
                     return None;
                 }
             }
+            After::Closing => match (next, value.get(position + 2), value.get(position + 3)) {
+                (Some(b'\n' | b'\r'), None, _) | (Some(b'\r'), Some(b'\n'), None) => 0,
+                _ => return None,
+            },
         };
         Some(start..position + 1 + width)
     }
@@ -355,7 +369,8 @@ pub(super) fn collect(
         // before it no longer change which neighbours later matches consume.
         let flags = || EscapeInfos {
             before: !matches!(rule.before, Before::Any),
-            after: !matches!(rule.after, After::Any)
+            // What closes the context is never escaped, so an escape before it always applies.
+            after: !matches!(rule.after, After::Any | After::Closing)
                 && !(matches!(rule.after, After::Math) && single_math),
             email: matches!(rule.after, After::Email),
         };
@@ -548,7 +563,7 @@ mod tests {
                                         expected.push((
                                             position,
                                             !matches!(rule.before, Before::Any),
-                                            !matches!(rule.after, After::Any)
+                                            !matches!(rule.after, After::Any | After::Closing)
                                                 && !(matches!(rule.after, After::Math) && single),
                                         ));
                                     }
@@ -569,8 +584,10 @@ mod tests {
     #[test]
     fn fixed_matchers_preserve_non_overlapping_regex_rules() {
         let contexts = [
-            "", "\n", "\r\n  ", "\n\t123", "x]", "\n12", "\n123 ", "é", "\n\n",
+            "", "\n", "\r\n  ", "\n\t123", "x]", "\n12", "\n123 ", "é", "\n\n", "\r", "\r\n",
         ];
+        // A regular expression consumes what follows, so `After::Closing` is checked at each byte.
+        let closing = regex::Regex::new("\\A(?:\n|\r\n?)\\z").unwrap();
         for rule in RULES {
             for single in [false, true] {
                 let before = match rule.before {
@@ -593,6 +610,7 @@ mod tests {
                     After::Email => "[#-'*+\\-.0-9=^-`{-~]".into(),
                     After::Math if single => "".into(),
                     After::Math => "\\$".into(),
+                    After::Closing => "".into(),
                 };
                 let expression = regex::Regex::new(&format!(
                     "{before}{}{after}",
@@ -611,15 +629,26 @@ mod tests {
                             let actual: Vec<_> = rule
                                 .matches(Context([b"", b"", value.as_bytes(), b""]), single)
                                 .collect();
-                            let expected: Vec<_> = expression
-                                .captures_iter(&value)
-                                .map(|capture| {
-                                    let found = capture.get(0).unwrap();
-                                    let position = found.start()
-                                        + capture.get(1).map_or(0, |group| group.len());
-                                    (found.range(), position)
-                                })
-                                .collect();
+                            let expected: Vec<_> = if matches!(rule.after, After::Closing) {
+                                value
+                                    .bytes()
+                                    .enumerate()
+                                    .filter(|&(at, byte)| {
+                                        byte == rule.byte && closing.is_match(&value[at + 1..])
+                                    })
+                                    .map(|(at, _)| (at..at + 1, at))
+                                    .collect()
+                            } else {
+                                expression
+                                    .captures_iter(&value)
+                                    .map(|capture| {
+                                        let found = capture.get(0).unwrap();
+                                        let position = found.start()
+                                            + capture.get(1).map_or(0, |group| group.len());
+                                        (found.range(), position)
+                                    })
+                                    .collect()
+                            };
                             assert_eq!(actual, expected, "{value:?}");
                         }
                     }
