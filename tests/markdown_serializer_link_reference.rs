@@ -9,8 +9,8 @@ use base_markdown::{Document, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::to_markdown as to;
 use support::fixture::{
-    canonical, Definition, FootnoteDefinition, FootnoteReference, Fragment, Heading, LinkReference,
-    Node, Paragraph, ReferenceKind, Root, Text,
+    canonical, Break, Definition, FootnoteDefinition, FootnoteReference, Fragment, Heading,
+    LinkReference, Node, Paragraph, ReferenceKind, Root, Text,
 };
 
 #[test]
@@ -216,11 +216,11 @@ fn link_reference() {
 }
 
 /// Serializes `document`, normalized, as `expected`, which reads back as the same tree and serializes the same.
-fn assert_round_trip(mut document: Document<String>, expected: &str) {
+fn assert_round_trip(mut document: Document<String>, options: &ParseOptions, expected: &str) {
     document.normalize();
     let markdown = to_markdown(&document).unwrap();
     assert_eq!(markdown, expected);
-    let mut reparsed = Document::parse(markdown.clone(), &ParseOptions::default()).unwrap();
+    let mut reparsed = Document::parse(markdown.clone(), options).unwrap();
     reparsed.normalize();
     assert_eq!(canonical(&reparsed), canonical(&document), "{markdown:?}");
     assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{markdown:?}");
@@ -280,7 +280,6 @@ fn reference_before_colon_round_trip() {
         // Indentation is not written, and containers start a line.
         ("   [r]\\:x\n\n[r]: /u", "[r]\\:x\n\n[r]: /u\n"),
         ("- [r]\\:x\n\n[r]: /u", "- [r]\\:x\n\n[r]: /u\n"),
-        ("- [ ] [r]\\:x\n\n[r]: /u", "- [ ] [r]\\:x\n\n[r]: /u\n"),
         ("> [r]\\:x\n\n[r]: /u", "> [r]\\:x\n\n[r]: /u\n"),
         ("[^1]: [r]\\:x\n\n[r]: /u", "[^1]: [r]\\:x\n\n[r]: /u\n"),
         (
@@ -289,6 +288,44 @@ fn reference_before_colon_round_trip() {
         ),
         // Definitions are taken from the start of a setext heading's content too.
         ("[r]\\:x\nb\n===\n\n[r]: /u", "[r]\\:x\nb\n=\n\n[r]: /u\n"),
+        // A task marker is written before the item's content, so a paragraph that starts with one
+        // cannot start with a definition.
+        ("- [ ] [r]\\:x\n\n[r]: /u", "- [ ] [r]:x\n\n[r]: /u\n"),
+        ("- [ ] [r]: /u\n\n[r]: /u", "- [ ] [r]: /u\n\n[r]: /u\n"),
+        ("- [ ] [r]: <u>\n\n[r]: /u", "- [ ] [r]: <u>\n\n[r]: /u\n"),
+        ("- [x] [^1]: x\n\n[^1]: n", "- [x] [^1]: x\n\n[^1]: n\n"),
+        // A footnote definition interrupts a paragraph, so a footnote reference starting any line
+        // is escaped before `:`, after a soft or hard break, also in a container or attention.
+        ("a\n[^1]\\: u\n\n[^1]: n", "a\n[^1]\\: u\n\n[^1]: n\n"),
+        ("a\\\n[^1]\\: u\n\n[^1]: n", "a\\\n[^1]\\: u\n\n[^1]: n\n"),
+        ("a  \n[^1]\\: u\n\n[^1]: n", "a\\\n[^1]\\: u\n\n[^1]: n\n"),
+        ("> a\n[^1]\\: u\n\n[^1]: n", "> a\n> [^1]\\: u\n\n[^1]: n\n"),
+        (
+            "- a\n  [^1]\\: x\n\n[^1]: n",
+            "- a\n  [^1]\\: x\n\n[^1]: n\n",
+        ),
+        (
+            "- [ ] a\n  [^1]\\: x\n\n[^1]: n",
+            "- [ ] a\n  [^1]\\: x\n\n[^1]: n\n",
+        ),
+        ("*a\n[^1]\\: x*\n\n[^1]: n", "*a\n[^1]\\: x*\n\n[^1]: n\n"),
+        ("a&#xA;[^1]\\: x\n\n[^1]: n", "a\n[^1]\\: x\n\n[^1]: n\n"),
+        (
+            "a\n[^a\\]b]\\: x\n\n[^a\\]b]: n",
+            "a\n[^a\\]b]\\: x\n\n[^a\\]b]: n\n",
+        ),
+        // Not at the start of a line, in a table cell, where line endings are references, or with a
+        // label that a footnote definition cannot have, it is written as it is.
+        ("a\nb [^1]\\: x\n\n[^1]: n", "a\nb [^1]: x\n\n[^1]: n\n"),
+        ("a\n[^1] \\: x\n\n[^1]: n", "a\n[^1] : x\n\n[^1]: n\n"),
+        (
+            "| a |\n| - |\n| b<br>[^1]\\: x |\n\n[^1]: n",
+            "| a |\n| --- |\n| b<br>[^1]: x |\n\n[^1]: n\n",
+        ),
+        ("a\n[^ 1]\\: x\n\n[^1]: n", "a\n[^ 1]: x\n\n[^1]: n\n"),
+        // At the start of a paragraph, such a label can still start a link definition.
+        ("[^ 1]\\: x\n\n[^1]: n", "[^ 1]\\: x\n\n[^1]: n\n"),
+        ("[^ 1]\\: a b\n\n[^1]: n", "[^ 1]: a b\n\n[^1]: n\n"),
         // Only the start of a paragraph can hold a definition.
         (
             "[r]\\:x\n[s]\\:y\n\n[r]: /u\n[s]: /v",
@@ -311,8 +348,10 @@ fn reference_before_colon_round_trip() {
         // Text brackets at the start of a line are escaped already.
         ("[r]\\:x", "\\[r]:x\n"),
     ] {
-        let document = Document::parse(source.to_string(), &ParseOptions::default()).unwrap();
-        assert_round_trip(document, expected);
+        for options in [ParseOptions::default(), ParseOptions::gfm()] {
+            let document = Document::parse(source.to_string(), &options).unwrap();
+            assert_round_trip(document, &options, expected);
+        }
     }
 }
 
@@ -396,11 +435,36 @@ fn reference_before_colon_tree_round_trip() {
             ],
             "[^1]\\: x\n\n[^1]: n\n",
         ),
+        (
+            vec![
+                Node::Paragraph(Paragraph {
+                    children: vec![text("a\n"), footnote.clone(), text(": x")],
+                    position: None,
+                }),
+                footnote_definition.clone(),
+            ],
+            "a\n[^1]\\: x\n\n[^1]: n\n",
+        ),
+        (
+            vec![
+                Node::Paragraph(Paragraph {
+                    children: vec![
+                        text("a"),
+                        Node::Break(Break { position: None }),
+                        footnote.clone(),
+                        text(": x"),
+                    ],
+                    position: None,
+                }),
+                footnote_definition.clone(),
+            ],
+            "a\\\n[^1]\\: x\n\n[^1]: n\n",
+        ),
     ] {
         let tree = Node::Root(Root {
             children: tree,
             position: None,
         });
-        assert_round_trip(tree.document(), expected);
+        assert_round_trip(tree.document(), &ParseOptions::default(), expected);
     }
 }

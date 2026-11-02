@@ -362,8 +362,8 @@ impl<'a> State<'a> {
         let mut previous = Previous::Start;
         // Where the text children written directly before the current child start.
         let mut run = None;
-        // Whether the previous child is a label that starts a paragraph, which `:` can make a
-        // definition's, and whether it is a footnote reference (#122).
+        // Where the previous child starts if it is a label that `:` can make a definition's,
+        // whether it is a footnote reference, and whether it starts the block (#122).
         let mut definition_label = None;
         for (position, &child) in children.iter().enumerate() {
             let kind = &document.node(child).unwrap().kind;
@@ -450,12 +450,21 @@ impl<'a> State<'a> {
                     }
                     if self.output[length..].starts_with(':') {
                         match definition_label {
-                            // `[^1]:` always starts a footnote definition.
-                            Some(true) => self.output.insert(length, '\\'),
+                            // `[^1]:` starts a footnote definition whatever follows, when its
+                            // label is one a footnote definition can have.
+                            Some((start, true, _))
+                                if crate::block_parser::starts_footnote_definition(
+                                    &self.output.as_bytes()[start..],
+                                ) =>
+                            {
+                                self.output.insert(length, '\\');
+                            }
                             // `[r]:` starts a definition only if a destination follows, which
                             // can be in later children, so the paragraph is judged once written.
-                            Some(false) => self.definition_colon = Some(length),
-                            None => {}
+                            // So does a footnote reference whose label, such as `^ 1`, only a
+                            // definition can have.
+                            Some((_, _, true)) => self.definition_colon = Some(length),
+                            _ => {}
                         }
                     }
                     pending = Edge::default();
@@ -468,14 +477,24 @@ impl<'a> State<'a> {
             definition_label = self
                 .label_end
                 .filter(|&(end, _)| {
-                    length == self.line_start
-                        && end == self.output.len()
+                    end == self.output.len()
                         && end != length
                         && !self.stack.iter().any(|name| {
                             matches!(name, ConstructName::HeadingAtx | ConstructName::TableCell)
                         })
                 })
-                .map(|(_, footnote)| footnote);
+                .and_then(|(_, footnote)| {
+                    // The first child of a paragraph or setext heading starts it, unless a task
+                    // marker, which is written before the item's content, comes first.
+                    let block_start = position == 0 && length == self.line_start;
+                    // A footnote definition also interrupts a paragraph, so a footnote reference
+                    // after a line ending in the block, such as a soft or hard break, can start
+                    // one too.
+                    let line_start = footnote
+                        && length > self.line_start
+                        && self.output[..length].ends_with('\n');
+                    (block_start || line_start).then_some((length, footnote, block_start))
+                });
             if text {
                 run = run.or(Some(length));
             } else if self.output.len() != length {

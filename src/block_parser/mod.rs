@@ -1096,6 +1096,12 @@ pub(crate) fn starts_definition(source: &str) -> bool {
     .is_some()
 }
 
+/// Whether `bytes`, at the start of a line, starts a footnote definition, which can interrupt a
+/// paragraph.
+pub(crate) fn starts_footnote_definition(bytes: &[u8]) -> bool {
+    footnote_prefix(bytes, 0).is_some()
+}
+
 /// Whether HTML at the start of a line would start an HTML block inside a paragraph (kinds 1–6).
 pub(crate) fn html_interrupts_paragraph(bytes: &[u8]) -> bool {
     html::Html::start(bytes, false, false).is_some()
