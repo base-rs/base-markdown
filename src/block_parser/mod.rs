@@ -1085,6 +1085,17 @@ impl Builder<'_> {
     }
 }
 
+/// Whether `source`, which starts with `[` at the start of a paragraph and has no container
+/// prefixes, starts with a definition.
+pub(crate) fn starts_definition(source: &str) -> bool {
+    definition::scan(
+        source,
+        core::iter::once(0..source.len()),
+        &ParseOptions::default(),
+    )
+    .is_some()
+}
+
 /// Whether HTML at the start of a line would start an HTML block inside a paragraph (kinds 1–6).
 pub(crate) fn html_interrupts_paragraph(bytes: &[u8]) -> bool {
     html::Html::start(bytes, false, false).is_some()

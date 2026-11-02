@@ -76,6 +76,13 @@ pub struct State<'a> {
     /// Where the phrasing of the paragraph, heading or table cell being written starts. A prefix
     /// added later, such as a list item's indent, puts it at the start of a line.
     pub(super) line_start: usize,
+    /// Where the last label written as a whole reference ends, and whether it is a footnote
+    /// reference, such as `[^1]`, rather than a shortcut reference, such as `[r]`. Followed by
+    /// `:`, such a label at the start of a paragraph can read as a definition's.
+    pub(super) label_end: Option<(usize, bool)>,
+    /// Where the `:` after a shortcut reference that starts the paragraph being written is, to
+    /// be escaped if the paragraph would otherwise start with a definition.
+    definition_colon: Option<usize>,
 }
 
 impl<'a> Info<'a> {
@@ -149,14 +156,31 @@ impl<'a> State<'a> {
         parent: NodeId,
         info: &Info,
     ) -> Result<(), Message> {
+        let start = self.output.len();
+        let kind = &document.node(parent).unwrap().kind;
         if matches!(
-            document.node(parent).unwrap().kind,
+            kind,
             EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_) | Tag::TableCell { .. })
         ) {
-            self.line_start = self.output.len();
+            self.line_start = start;
+        }
+        // Phrasing directly in the document is written as a paragraph. Link text is not a block.
+        let block = matches!(
+            kind,
+            EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_) | Tag::Document(_))
+        );
+        if block {
+            self.definition_colon = None;
         }
         let children: Vec<NodeId> = flow_children(document, parent).collect();
         self.phrasing(document, &children, info, &Edge::default())?;
+        if block {
+            if let Some(colon) = self.definition_colon.take() {
+                if crate::block_parser::starts_definition(&self.output[start..]) {
+                    self.output.insert(colon, '\\');
+                }
+            }
+        }
         Ok(())
     }
 
@@ -338,6 +362,9 @@ impl<'a> State<'a> {
         let mut previous = Previous::Start;
         // Where the text children written directly before the current child start.
         let mut run = None;
+        // Whether the previous child is a label that starts a paragraph, which `:` can make a
+        // definition's, and whether it is a footnote reference (#122).
+        let mut definition_label = None;
         for (position, &child) in children.iter().enumerate() {
             let kind = &document.node(child).unwrap().kind;
             if !is_phrasing(kind) {
@@ -421,6 +448,16 @@ impl<'a> State<'a> {
                     if super::escape::autolink_literals(&self.stack) {
                         self.escape_literals(length, &info);
                     }
+                    if self.output[length..].starts_with(':') {
+                        match definition_label {
+                            // `[^1]:` always starts a footnote definition.
+                            Some(true) => self.output.insert(length, '\\'),
+                            // `[r]:` starts a definition only if a destination follows, which
+                            // can be in later children, so the paragraph is judged once written.
+                            Some(false) => self.definition_colon = Some(length),
+                            None => {}
+                        }
+                    }
                     pending = Edge::default();
                     previous = Previous::Text(length);
                 } else if self.output.len() != length {
@@ -428,6 +465,17 @@ impl<'a> State<'a> {
                     previous = Previous::Other;
                 }
             }
+            definition_label = self
+                .label_end
+                .filter(|&(end, _)| {
+                    length == self.line_start
+                        && end == self.output.len()
+                        && end != length
+                        && !self.stack.iter().any(|name| {
+                            matches!(name, ConstructName::HeadingAtx | ConstructName::TableCell)
+                        })
+                })
+                .map(|(_, footnote)| footnote);
             if text {
                 run = run.or(Some(length));
             } else if self.output.len() != length {
@@ -647,6 +695,7 @@ impl<'a> State<'a> {
                 self.output.push_str("[^");
                 self.output.push_str(label);
                 self.output.push(']');
+                self.label_end = Some((self.output.len(), true));
                 Ok(())
             }
             EventKind::Separator { .. } => Ok(()),
@@ -862,6 +911,8 @@ impl<'a> State<'a> {
             definitions: None,
             reference_key: String::new(),
             line_start: 0,
+            label_end: None,
+            definition_colon: None,
         }
     }
 
