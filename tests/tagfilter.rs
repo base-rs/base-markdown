@@ -20,7 +20,7 @@ fn tagfilter() {
                     allow_dangerous_html: true,
                     ..Default::default()
                 },
-                ..Default::default()
+                ..Options::commonmark()
             }
         ),
         "<iframe>",
@@ -35,7 +35,7 @@ fn tagfilter() {
                     tagfilter: true,
                     ..Default::default()
                 },
-                ..Default::default()
+                ..Options::commonmark()
             }
         ),
         "<p>a &lt;i&gt;</p>\n&lt;script&gt;",
@@ -51,7 +51,7 @@ fn tagfilter() {
                     tagfilter: true,
                     ..Default::default()
                 },
-                ..Default::default()
+                ..Options::commonmark()
             }
         ),
         "&lt;iframe>",
@@ -67,7 +67,7 @@ fn tagfilter() {
                     tagfilter: true,
                     ..Default::default()
                 },
-                ..Default::default()
+                ..Options::commonmark()
             }
         ),
         "&lt;iframe\n>",
@@ -83,7 +83,7 @@ fn tagfilter() {
                     tagfilter: true,
                     ..Default::default()
                 },
-                ..Default::default()
+                ..Options::commonmark()
             }
         ),
         "<div\n>",
@@ -141,7 +141,7 @@ javascript:/*--></title></style></textarea></script></xmp><svg/onload='+/"/+/onm
                     tagfilter: true,
                     ..Default::default()
                 },
-                ..Default::default()
+                ..Options::commonmark()
             }
         ),
         r###"&lt;title>

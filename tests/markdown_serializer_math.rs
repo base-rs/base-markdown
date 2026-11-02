@@ -6,7 +6,7 @@ mod support;
 use base_markdown::markdown::Options;
 use pretty_assertions::assert_eq;
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
-use support::fixture::{Definition, InlineMath, Math, Node, Paragraph, Text};
+use support::fixture::{Definition, InlineMath, Math, Node, Paragraph, Root, Text};
 
 #[test]
 fn math() {
@@ -153,14 +153,56 @@ fn math() {
     assert_eq!(
         to(&Node::Paragraph(Paragraph {
             children: vec![Node::Text(Text {
-                value: String::from("a $ b"),
+                value: String::from("a $ b $$ c"),
                 position: None
             })],
             position: None
         }))
         .unwrap(),
-        "a \\$ b\n",
-        "should escape `$` in phrasing"
+        "a $ b $$ c\n",
+        "should not escape `$` in phrasing when the tree has no math, which is off by default"
+    );
+
+    assert_eq!(
+        to(&Node::Paragraph(Paragraph {
+            children: vec![
+                Node::Text(Text {
+                    value: String::from("a $ b "),
+                    position: None
+                }),
+                Node::InlineMath(InlineMath {
+                    value: String::from("x"),
+                    position: None
+                }),
+            ],
+            position: None
+        }))
+        .unwrap(),
+        "a \\$ b $x$\n",
+        "should escape `$` in phrasing when the tree has math"
+    );
+
+    assert_eq!(
+        to(&Node::Root(Root {
+            children: vec![
+                Node::Paragraph(Paragraph {
+                    children: vec![Node::Text(Text {
+                        value: String::from("a $ b"),
+                        position: None
+                    })],
+                    position: None
+                }),
+                Node::Math(Math {
+                    value: String::from("x"),
+                    position: None,
+                    meta: None
+                }),
+            ],
+            position: None
+        }))
+        .unwrap(),
+        "a \\$ b\n\n$$\nx\n$$\n",
+        "should escape `$` in phrasing when the tree has math (flow)"
     );
 
     assert_eq!(
@@ -185,10 +227,16 @@ fn math() {
     assert_eq!(
         to_md_with_opts(
             &Node::Paragraph(Paragraph {
-                children: vec![Node::Text(Text {
-                    value: String::from("a $$ b"),
-                    position: None
-                })],
+                children: vec![
+                    Node::Text(Text {
+                        value: String::from("a $$ b "),
+                        position: None
+                    }),
+                    Node::InlineMath(InlineMath {
+                        value: String::from("x"),
+                        position: None
+                    }),
+                ],
                 position: None
             }),
             &Options {
@@ -197,7 +245,7 @@ fn math() {
             }
         )
         .unwrap(),
-        "a \\$$ b\n",
+        "a \\$$ b $$x$$\n",
         "should escape two dollars in phrasing w/ `single_dollar_text_math: false`"
     );
 

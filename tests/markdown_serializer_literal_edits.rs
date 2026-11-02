@@ -69,7 +69,7 @@ fn moved_literal_autolinks_keep_their_form_but_fall_back_next_to_each_other() {
     // Neither link has whitespace on both sides, so neither is written bare.
     assert_serializes(
         &document,
-        "[www.c.d](http://www.c.d)[www.a.b](http://www.a.b)&#x20;\n",
+        "[www.c.d](https://www.c.d)[www.a.b](https://www.a.b)&#x20;\n",
     );
 }
 
@@ -80,13 +80,13 @@ fn literal_autolinks_moved_between_paragraphs_fall_back_next_to_text() {
             "www.a.b x\n\nc d\n",
             0,
             1,
-            "&#x20;x\n\nc d[www.a.b](http://www.a.b)\n",
+            "&#x20;x\n\nc d[www.a.b](https://www.a.b)\n",
         ),
         (
             "c d\n\nwww.a.b x\n",
             1,
             0,
-            "c d[www.a.b](http://www.a.b)\n\n&#x20;x\n",
+            "c d[www.a.b](https://www.a.b)\n\n&#x20;x\n",
         ),
         (
             "c d\n\nhttps://a.b x\n",
@@ -127,7 +127,7 @@ fn literal_autolinks_after_edited_neighbours_fall_back() {
         .append_child(emphasis, EventKind::Text(Text::from("a".to_owned())))
         .unwrap();
     document.attach(paragraph, emphasis, Some(link)).unwrap();
-    assert_serializes(&document, "*a*[www.a.b](http://www.a.b)\n");
+    assert_serializes(&document, "*a*[www.a.b](https://www.a.b)\n");
 }
 
 #[test]
@@ -158,9 +158,9 @@ fn constructed_links_are_explicit() {
         ("http://", None, "www.a.b\n\n[](http://)\n"),
         ("http://", Some(""), "www.a.b\n\n[](http://)\n"),
         (
-            "http://www.c.d",
+            "https://www.c.d",
             Some("www.c.d"),
-            "www.a.b\n\n[www.c.d](http://www.c.d)\n",
+            "www.a.b\n\n[www.c.d](https://www.c.d)\n",
         ),
         (
             "https://c.d",
@@ -331,7 +331,7 @@ fn constructed_bare_links_are_bare_only_between_boundaries() {
             "a\t",
             None,
             "www.a.b",
-            "http://www.a.b",
+            "https://www.a.b",
             "\tb",
             "a\twww.a.b\tb\n",
         ),
@@ -364,9 +364,9 @@ fn constructed_bare_links_are_bare_only_between_boundaries() {
             "a ",
             None,
             "www.a.b",
-            "http://www.a.b",
+            "https://www.a.b",
             "\u{2014}",
-            "a [www.a.b](http://www.a.b)\u{2014}\n",
+            "a [www.a.b](https://www.a.b)\u{2014}\n",
         ),
         ("a ", None, "a@b.c", "mailto:a@b.c", "-", "a <a@b.c>-\n"),
         (
@@ -381,9 +381,9 @@ fn constructed_bare_links_are_bare_only_between_boundaries() {
             "",
             Some(Tag::Strong),
             "www.a.b",
-            "http://www.a.b",
+            "https://www.a.b",
             "",
-            "**[www.a.b](http://www.a.b)**\n",
+            "**[www.a.b](https://www.a.b)**\n",
         ),
         (
             "",
@@ -455,7 +455,7 @@ fn bare_links_in_table_cells_with_a_pipe_are_explicit() {
     assert_eq!(document.syntax(link), bare());
     assert_serializes(
         &document,
-        "| a |\n| --- |\n| [www.a.b/x\\|y](http://www.a.b/x\\|y) |\n",
+        "| a |\n| --- |\n| [www.a.b/x\\|y](https://www.a.b/x\\|y) |\n",
     );
 }
 
@@ -482,7 +482,7 @@ fn text_moved_after_strong_around_a_bare_link_makes_it_fall_back() {
     document.detach(moved).unwrap();
     document.attach(paragraphs[0], moved, None).unwrap();
     document.detach(paragraphs[1]).unwrap();
-    assert_serializes(&document, "**bold [www.x.y](http://www.x.y)**-x\n");
+    assert_serializes(&document, "**bold [www.x.y](https://www.x.y)**-x\n");
 }
 
 #[test]
@@ -510,23 +510,24 @@ fn bare_links_with_edited_text_fall_back() {
     let text = document.children(link).next().unwrap();
     *document.text_mut(text).unwrap() = "click here".to_owned();
     assert_eq!(document.syntax(link), bare());
-    assert_serializes(&document, "see [click here](http://www.a.b) now\n");
+    assert_serializes(&document, "see [click here](https://www.a.b) now\n");
     // Text that is a literal to another destination is not written bare either.
     *document.text_mut(text).unwrap() = "https://evil.example".to_owned();
     assert_serializes(
         &document,
-        "see [https://evil.example](http://www.a.b) now\n",
+        "see [https://evil.example](https://www.a.b) now\n",
     );
 }
 
 #[test]
 fn bare_links_are_bare_only_when_their_text_reads_back_as_the_same_literal() {
     for (text, destination, expected) in [
-        ("www.a.b", "http://www.a.b", "www.a.b\n"),
+        ("www.a.b", "https://www.a.b", "www.a.b\n"),
         ("a@b.co", "mailto:a@b.co", "a@b.co\n"),
         ("https://a.b", "https://a.b", "https://a.b\n"),
-        // A changed destination.
-        ("www.a.b", "https://www.a.b", "[www.a.b](https://www.a.b)\n"),
+        // A changed destination. A `www.` literal links to `https://`, so one to `http://` is
+        // written explicitly.
+        ("www.a.b", "http://www.a.b", "[www.a.b](http://www.a.b)\n"),
         ("www.a.b", "www.a.b", "[www.a.b](www.a.b)\n"),
         ("a@b.co", "a@b.co", "[a@b.co](a@b.co)\n"),
         ("https://a.b", "https://c.d", "[https://a.b](https://c.d)\n"),
@@ -544,8 +545,8 @@ fn bare_links_are_bare_only_when_their_text_reads_back_as_the_same_literal() {
         ),
         (
             "www.a.b c",
-            "http://www.a.b c",
-            "[www.a.b c](<http://www.a.b c>)\n",
+            "https://www.a.b c",
+            "[www.a.b c](<https://www.a.b c>)\n",
         ),
     ] {
         let document = constructed("", None, text, destination, "");

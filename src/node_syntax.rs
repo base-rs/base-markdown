@@ -250,7 +250,7 @@ fn link_form(source: &str, raw: &str, tag: &Tag<'_>) -> Option<NodeSyntax<'stati
         .expect("document text ranges are validated");
     let derives = |text: &str| {
         destination == text
-            || ["mailto:", "http://"]
+            || ["mailto:", "https://"]
                 .iter()
                 .any(|prefix| destination.strip_prefix(prefix) == Some(text))
     };

@@ -17,19 +17,24 @@ use support::fixture::{Link, Node, Paragraph, Root, Text};
 #[test]
 fn autolink_literal() -> Result<(), message::Message> {
     assert_eq!(
-        to_html("https://example.com"),
+        to_html_with_options("https://example.com", &Options::commonmark()),
         "<p>https://example.com</p>",
-        "should ignore protocol urls by default"
+        "should ignore protocol urls in CommonMark"
     );
     assert_eq!(
-        to_html("www.example.com"),
+        to_html_with_options("www.example.com", &Options::commonmark()),
         "<p>www.example.com</p>",
-        "should ignore www urls by default"
+        "should ignore www urls in CommonMark"
     );
     assert_eq!(
-        to_html("user@example.com"),
+        to_html_with_options("user@example.com", &Options::commonmark()),
         "<p>user@example.com</p>",
-        "should ignore email urls by default"
+        "should ignore email urls in CommonMark"
+    );
+    assert_eq!(
+        to_html("https://example.com www.example.com user@example.com"),
+        "<p><a href=\"https://example.com\">https://example.com</a> <a href=\"https://www.example.com\">www.example.com</a> <a href=\"mailto:user@example.com\">user@example.com</a></p>",
+        "should support literal urls by default"
     );
 
     assert_eq!(
@@ -44,12 +49,12 @@ fn autolink_literal() -> Result<(), message::Message> {
     );
     assert_eq!(
         to_html_with_options("www.example.com", &Options::gfm()),
-        "<p><a href=\"http://www.example.com\">www.example.com</a></p>",
+        "<p><a href=\"https://www.example.com\">www.example.com</a></p>",
         "should support www urls if enabled"
     );
     assert_eq!(
         to_html_with_options("WWW.EXAMPLE.COM", &Options::gfm()),
-        "<p><a href=\"http://WWW.EXAMPLE.COM\">WWW.EXAMPLE.COM</a></p>",
+        "<p><a href=\"https://WWW.EXAMPLE.COM\">WWW.EXAMPLE.COM</a></p>",
         "should recognize uppercase www prefixes"
     );
     assert_eq!(
@@ -82,19 +87,19 @@ fn autolink_literal() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("www.a.)", &Options::gfm()),
-        "<p><a href=\"http://www.a\">www.a</a>.)</p>",
+        "<p><a href=\"https://www.a\">www.a</a>.)</p>",
         "should support a closing paren at TLD (www)"
     );
 
     assert_eq!(
         to_html_with_options("www.a b", &Options::gfm()),
-        "<p><a href=\"http://www.a\">www.a</a> b</p>",
+        "<p><a href=\"https://www.a\">www.a</a> b</p>",
         "should support no TLD"
     );
 
     assert_eq!(
         to_html_with_options("www.a/b c", &Options::gfm()),
-        "<p><a href=\"http://www.a/b\">www.a/b</a> c</p>",
+        "<p><a href=\"https://www.a/b\">www.a/b</a> c</p>",
         "should support a path instead of TLD"
     );
 
@@ -112,7 +117,7 @@ fn autolink_literal() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("www.點看.com", &Options::gfm()),
-        "<p><a href=\"http://www.%E9%BB%9E%E7%9C%8B.com\">www.點看.com</a></p>",
+        "<p><a href=\"https://www.%E9%BB%9E%E7%9C%8B.com\">www.點看.com</a></p>",
         "should support non-ascii characters in a domain (www)"
     );
 
@@ -130,7 +135,7 @@ fn autolink_literal() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("www.a.com/點看", &Options::gfm()),
-        "<p><a href=\"http://www.a.com/%E9%BB%9E%E7%9C%8B\">www.a.com/點看</a></p>",
+        "<p><a href=\"https://www.a.com/%E9%BB%9E%E7%9C%8B\">www.a.com/點看</a></p>",
         "should support non-ascii characters in a path"
     );
 
@@ -154,7 +159,7 @@ fn autolink_literal() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("www.a&a;", &Options::gfm()),
-        "<p><a href=\"http://www.a\">www.a</a>&amp;a;</p>",
+        "<p><a href=\"https://www.a\">www.a</a>&amp;a;</p>",
         "should support named character references in domains"
     );
 
@@ -211,7 +216,7 @@ fn autolink_literal() -> Result<(), message::Message> {
     // Source: <https://github.com/github/cmark-gfm/blob/ef1cfcb/extensions/autolink.c#L156>.
     // assert_eq!(
     //     to_html_with_options("，www.example.com", &Options::gfm())?,
-    //     "<p>，<a href=\"http://www.example.com\">www.example.com</a></p>",
+    //     "<p>，<a href=\"https://www.example.com\">www.example.com</a></p>",
     //     "should support www links after Unicode punctuation",
     // );
 
@@ -316,19 +321,19 @@ a www.example.com& b
 "###,
             &Options::gfm()
         ),
-        r###"<p>a <a href="http://www.example.com&amp;xxx;b">www.example.com&amp;xxx;b</a> c</p>
-<p>a <a href="http://www.example.com">www.example.com</a>&amp;xxx;. b</p>
-<p>a <a href="http://www.example.com">www.example.com</a>&amp;xxxxxxxxx;. b</p>
-<p>a <a href="http://www.example.com">www.example.com</a>&amp;xxxxxxxxxx;. b</p>
-<p>a <a href="http://www.example.com">www.example.com</a>&amp;xxxxxxxxxxx;. b</p>
-<p>a <a href="http://www.example.com&amp;xxx">www.example.com&amp;xxx</a>. b</p>
-<p>a <a href="http://www.example.com&amp;#123">www.example.com&amp;#123</a>. b</p>
-<p>a <a href="http://www.example.com&amp;123">www.example.com&amp;123</a>. b</p>
-<p>a <a href="http://www.example.com&amp;x">www.example.com&amp;x</a>. b</p>
-<p>a <a href="http://www.example.com&amp;#1">www.example.com&amp;#1</a>. b</p>
-<p>a <a href="http://www.example.com&amp;1">www.example.com&amp;1</a>. b</p>
-<p>a <a href="http://www.example.com&amp;">www.example.com&amp;</a>. b</p>
-<p>a <a href="http://www.example.com&amp;">www.example.com&amp;</a> b</p>
+        r###"<p>a <a href="https://www.example.com&amp;xxx;b">www.example.com&amp;xxx;b</a> c</p>
+<p>a <a href="https://www.example.com">www.example.com</a>&amp;xxx;. b</p>
+<p>a <a href="https://www.example.com">www.example.com</a>&amp;xxxxxxxxx;. b</p>
+<p>a <a href="https://www.example.com">www.example.com</a>&amp;xxxxxxxxxx;. b</p>
+<p>a <a href="https://www.example.com">www.example.com</a>&amp;xxxxxxxxxxx;. b</p>
+<p>a <a href="https://www.example.com&amp;xxx">www.example.com&amp;xxx</a>. b</p>
+<p>a <a href="https://www.example.com&amp;#123">www.example.com&amp;#123</a>. b</p>
+<p>a <a href="https://www.example.com&amp;123">www.example.com&amp;123</a>. b</p>
+<p>a <a href="https://www.example.com&amp;x">www.example.com&amp;x</a>. b</p>
+<p>a <a href="https://www.example.com&amp;#1">www.example.com&amp;#1</a>. b</p>
+<p>a <a href="https://www.example.com&amp;1">www.example.com&amp;1</a>. b</p>
+<p>a <a href="https://www.example.com&amp;">www.example.com&amp;</a>. b</p>
+<p>a <a href="https://www.example.com&amp;">www.example.com&amp;</a> b</p>
 "###,
         "should match “character references” like GitHub does"
     );
@@ -363,10 +368,10 @@ a www.example.com& b
 "###,
             &Options::gfm()
         ),
-        r###"<p>[ <a href="http://www.example.com">www.example.com</a></p>
+        r###"<p>[ <a href="https://www.example.com">www.example.com</a></p>
 <p>[ <a href="https://example.com">https://example.com</a></p>
 <p>[ <a href="mailto:contact@example.com">contact@example.com</a></p>
-<p>[ <a href="http://www.example.com">www.example.com</a> ]</p>
+<p>[ <a href="https://www.example.com">www.example.com</a> ]</p>
 <p>[ <a href="https://example.com">https://example.com</a> ]</p>
 <p>[ <a href="mailto:contact@example.com">contact@example.com</a> ]</p>
 <p><a href="#"> www.example.com </a></p>
@@ -410,19 +415,19 @@ www.example.com/?q=a(business)))
 "###,
             &Options::gfm()
         ),
-        r###"<p><a href="http://www.example.com/?=a(b)cccccc">www.example.com/?=a(b)cccccc</a></p>
-<p><a href="http://www.example.com/?=a(b(c)ccccc">www.example.com/?=a(b(c)ccccc</a></p>
-<p><a href="http://www.example.com/?=a(b(c)c)cccc">www.example.com/?=a(b(c)c)cccc</a></p>
-<p><a href="http://www.example.com/?=a(b(c)c)c)ccc">www.example.com/?=a(b(c)c)c)ccc</a></p>
-<p><a href="http://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a></p>
-<p><a href="http://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>))</p>
-<p>(<a href="http://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>)</p>
-<p>(<a href="http://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a></p>
-<p><a href="http://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>&quot;.</p>
-<p><a href="http://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>))</p>
-<p>(<a href="http://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>)&quot;.</p>
-<p>(<a href="http://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>&quot;.)</p>
-<p>(<a href="http://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>&quot;.</p>
+        r###"<p><a href="https://www.example.com/?=a(b)cccccc">www.example.com/?=a(b)cccccc</a></p>
+<p><a href="https://www.example.com/?=a(b(c)ccccc">www.example.com/?=a(b(c)ccccc</a></p>
+<p><a href="https://www.example.com/?=a(b(c)c)cccc">www.example.com/?=a(b(c)c)cccc</a></p>
+<p><a href="https://www.example.com/?=a(b(c)c)c)ccc">www.example.com/?=a(b(c)c)c)ccc</a></p>
+<p><a href="https://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a></p>
+<p><a href="https://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>))</p>
+<p>(<a href="https://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>)</p>
+<p>(<a href="https://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a></p>
+<p><a href="https://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>&quot;.</p>
+<p><a href="https://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>))</p>
+<p>(<a href="https://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>)&quot;.</p>
+<p>(<a href="https://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>&quot;.)</p>
+<p>(<a href="https://www.example.com/?q=a(business)">www.example.com/?q=a(business)</a>&quot;.</p>
 "###,
         "should match parens like GitHub does"
     );
@@ -559,31 +564,31 @@ Can contain an underscore followed by a period: aaa@a.b_.c
 <h2>WWW autolinks</h2>
 <p>w.commonmark.org</p>
 <p>ww.commonmark.org</p>
-<p><a href="http://www.commonmark.org">www.commonmark.org</a></p>
-<p><a href="http://Www.commonmark.org">Www.commonmark.org</a></p>
-<p><a href="http://wWw.commonmark.org">wWw.commonmark.org</a></p>
-<p><a href="http://wwW.commonmark.org">wwW.commonmark.org</a></p>
-<p><a href="http://WWW.COMMONMARK.ORG">WWW.COMMONMARK.ORG</a></p>
-<p>Visit <a href="http://www.commonmark.org/help">www.commonmark.org/help</a> for more information.</p>
-<p>Visit <a href="http://www.commonmark.org">www.commonmark.org</a>.</p>
-<p>Visit <a href="http://www.commonmark.org/a.b">www.commonmark.org/a.b</a>.</p>
+<p><a href="https://www.commonmark.org">www.commonmark.org</a></p>
+<p><a href="https://Www.commonmark.org">Www.commonmark.org</a></p>
+<p><a href="https://wWw.commonmark.org">wWw.commonmark.org</a></p>
+<p><a href="https://wwW.commonmark.org">wwW.commonmark.org</a></p>
+<p><a href="https://WWW.COMMONMARK.ORG">WWW.COMMONMARK.ORG</a></p>
+<p>Visit <a href="https://www.commonmark.org/help">www.commonmark.org/help</a> for more information.</p>
+<p>Visit <a href="https://www.commonmark.org">www.commonmark.org</a>.</p>
+<p>Visit <a href="https://www.commonmark.org/a.b">www.commonmark.org/a.b</a>.</p>
 <p>www.aaa.bbb.ccc_ccc</p>
 <p>www.aaa_bbb.ccc</p>
 <p>www.aaa.bbb.ccc.ddd_ddd</p>
 <p>www.aaa.bbb.ccc_ccc.ddd</p>
 <p>www.aaa.bbb_bbb.ccc.ddd</p>
 <p>www.aaa_aaa.bbb.ccc.ddd</p>
-<p>Visit <a href="http://www.commonmark.org">www.commonmark.org</a>.</p>
-<p>Visit <a href="http://www.commonmark.org/a.b">www.commonmark.org/a.b</a>.</p>
-<p><a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a></p>
-<p><a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a>))</p>
-<p>(<a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a>)</p>
-<p>(<a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a></p>
-<p><a href="http://www.google.com/search?q=(business))+ok">www.google.com/search?q=(business))+ok</a></p>
-<p><a href="http://www.google.com/search?q=commonmark&amp;hl=en">www.google.com/search?q=commonmark&amp;hl=en</a></p>
-<p><a href="http://www.google.com/search?q=commonmark&amp;hl;en">www.google.com/search?q=commonmark&amp;hl;en</a></p>
-<p><a href="http://www.google.com/search?q=commonmark">www.google.com/search?q=commonmark</a>&amp;hl;</p>
-<p><a href="http://www.commonmark.org/he">www.commonmark.org/he</a>&lt;lp</p>
+<p>Visit <a href="https://www.commonmark.org">www.commonmark.org</a>.</p>
+<p>Visit <a href="https://www.commonmark.org/a.b">www.commonmark.org/a.b</a>.</p>
+<p><a href="https://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a></p>
+<p><a href="https://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a>))</p>
+<p>(<a href="https://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a>)</p>
+<p>(<a href="https://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a></p>
+<p><a href="https://www.google.com/search?q=(business))+ok">www.google.com/search?q=(business))+ok</a></p>
+<p><a href="https://www.google.com/search?q=commonmark&amp;hl=en">www.google.com/search?q=commonmark&amp;hl=en</a></p>
+<p><a href="https://www.google.com/search?q=commonmark&amp;hl;en">www.google.com/search?q=commonmark&amp;hl;en</a></p>
+<p><a href="https://www.google.com/search?q=commonmark">www.google.com/search?q=commonmark</a>&amp;hl;</p>
+<p><a href="https://www.commonmark.org/he">www.commonmark.org/he</a>&lt;lp</p>
 <h2>HTTP autolinks</h2>
 <p>hexample.com</p>
 <p>htexample.com</p>
@@ -661,22 +666,22 @@ H5.
         ),
         r###"<p>H0.</p>
 <p>[<a href="https://a.com&amp;copy;b">https://a.com&amp;copy;b</a></p>
-<p>[<a href="http://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
+<p>[<a href="https://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
 <p>H1.</p>
 <p>[]<a href="https://a.com&amp;copy;b">https://a.com&amp;copy;b</a></p>
-<p>[]<a href="http://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
+<p>[]<a href="https://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
 <p>H2.</p>
 <p>[] <a href="https://a.com&amp;copy;b">https://a.com&amp;copy;b</a></p>
-<p>[] <a href="http://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
+<p>[] <a href="https://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
 <p>H3.</p>
 <p>[[<a href="https://a.com&amp;copy;b">https://a.com&amp;copy;b</a></p>
-<p>[[<a href="http://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
+<p>[[<a href="https://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
 <p>H4.</p>
 <p>[[]<a href="https://a.com&amp;copy;b">https://a.com&amp;copy;b</a></p>
-<p>[[]<a href="http://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
+<p>[[]<a href="https://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
 <p>H5.</p>
 <p>[[]]<a href="https://a.com&amp;copy;b">https://a.com&amp;copy;b</a></p>
-<p>[[]]<a href="http://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
+<p>[[]]<a href="https://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
 "###,
         "should match brackets like GitHub does (except for the bracket bug)"
     );
@@ -737,12 +742,12 @@ Autolink literal after image.
         r###"<p>Image start.</p>
 <p>![<a href="https://a.com">https://a.com</a></p>
 <p>![<a href="http://a.com">http://a.com</a></p>
-<p>![<a href="http://www.a.com">www.a.com</a></p>
+<p>![<a href="https://www.a.com">www.a.com</a></p>
 <p>![<a href="mailto:a@b.c">a@b.c</a></p>
 <p>Image start and label end.</p>
 <p>![<a href="https://a.com">https://a.com</a>]</p>
 <p>![<a href="http://a.com">http://a.com</a>]</p>
-<p>![<a href="http://www.a.com">www.a.com</a>]</p>
+<p>![<a href="https://www.a.com">www.a.com</a>]</p>
 <p>![<a href="mailto:a@b.c">a@b.c</a>]</p>
 <p>Image label with reference (note: GH cleans hashes here, but we keep them in).</p>
 <p><img src="#" alt="https://a.com" /></p>
@@ -757,7 +762,7 @@ Autolink literal after image.
 <p>Autolink literal after image.</p>
 <p><img src="" alt="a" /> <a href="https://a.com">https://a.com</a></p>
 <p><img src="" alt="a" /> <a href="http://a.com">http://a.com</a></p>
-<p><img src="" alt="a" /> <a href="http://www.a.com">www.a.com</a></p>
+<p><img src="" alt="a" /> <a href="https://www.a.com">www.a.com</a></p>
 <p><img src="" alt="a" /> <a href="mailto:a@b.c">a@b.c</a></p>
 "###,
         "should match autolink literals combined w/ images like GitHub does (except for the bracket bug)"
@@ -879,37 +884,37 @@ Autolink literal after link.
         r###"<p>Link start.</p>
 <p>[<a href="https://a.com">https://a.com</a></p>
 <p>[<a href="http://a.com">http://a.com</a></p>
-<p>[<a href="http://www.a.com">www.a.com</a></p>
+<p>[<a href="https://www.a.com">www.a.com</a></p>
 <p>[<a href="mailto:a@b.c">a@b.c</a></p>
 <p>Label end.</p>
 <p><a href="https://a.com">https://a.com</a>]</p>
 <p><a href="http://a.com">http://a.com</a>]</p>
-<p><a href="http://www.a.com">www.a.com</a>]</p>
+<p><a href="https://www.a.com">www.a.com</a>]</p>
 <p><a href="mailto:a@b.c">a@b.c</a>]</p>
 <p>Link start and label end.</p>
 <p>[<a href="https://a.com">https://a.com</a>]</p>
 <p>[<a href="http://a.com">http://a.com</a>]</p>
-<p>[<a href="http://www.a.com">www.a.com</a>]</p>
+<p>[<a href="https://www.a.com">www.a.com</a>]</p>
 <p>[<a href="mailto:a@b.c">a@b.c</a>]</p>
 <p>What naïvely seems like a label end (A).</p>
 <p><a href="https://a.com%60%5D%60">https://a.com`]`</a></p>
 <p><a href="http://a.com%60%5D%60">http://a.com`]`</a></p>
-<p><a href="http://www.a.com%60%5D%60">www.a.com`]`</a></p>
+<p><a href="https://www.a.com%60%5D%60">www.a.com`]`</a></p>
 <p><a href="mailto:a@b.c">a@b.c</a><code>]</code></p>
 <p>Link start and what naïvely seems like a balanced brace (B).</p>
 <p>[<a href="https://a.com%60%5D%60">https://a.com`]`</a></p>
 <p>[<a href="http://a.com%60%5D%60">http://a.com`]`</a></p>
-<p>[<a href="http://www.a.com%60%5D%60">www.a.com`]`</a></p>
+<p>[<a href="https://www.a.com%60%5D%60">www.a.com`]`</a></p>
 <p>[<a href="mailto:a@b.c">a@b.c</a><code>]</code></p>
 <p>What naïvely seems like a label end (C).</p>
 <p><a href="https://a.com">https://a.com</a> <code>]</code></p>
 <p><a href="http://a.com">http://a.com</a> <code>]</code></p>
-<p><a href="http://www.a.com">www.a.com</a> <code>]</code></p>
+<p><a href="https://www.a.com">www.a.com</a> <code>]</code></p>
 <p><a href="mailto:a@b.c">a@b.c</a> <code>]</code></p>
 <p>Link start and what naïvely seems like a balanced brace (D).</p>
 <p>[<a href="https://a.com">https://a.com</a> <code>]</code></p>
 <p>[<a href="http://a.com">http://a.com</a> <code>]</code></p>
-<p>[<a href="http://www.a.com">www.a.com</a> <code>]</code></p>
+<p>[<a href="https://www.a.com">www.a.com</a> <code>]</code></p>
 <p>[<a href="mailto:a@b.c">a@b.c</a> <code>]</code></p>
 <p>Link label with reference.</p>
 <p><a href="#">https://a.com</a></p>
@@ -929,14 +934,14 @@ Autolink literal after link.
 <p>Autolink literal after link.</p>
 <p><a href="">a</a> <a href="https://a.com">https://a.com</a></p>
 <p><a href="">a</a> <a href="http://a.com">http://a.com</a></p>
-<p><a href="">a</a> <a href="http://www.a.com">www.a.com</a></p>
+<p><a href="">a</a> <a href="https://www.a.com">www.a.com</a></p>
 <p><a href="">a</a> <a href="mailto:a@b.c">a@b.c</a></p>
 "###,
         "should match autolink literals combined w/ links like GitHub does (except for the bracket bug)"
     );
 
     // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
-    // GitHub expects `<p><a href="http://www.a&amp;b%5C">www.a&amp;b\</a></p>`.
+    // GitHub expects `<p><a href="https://www.a&amp;b%5C">www.a&amp;b\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# “character reference”
@@ -1012,46 +1017,46 @@ www.a&b~
             &Options::gfm()
         ),
         r###"<h1>“character reference”</h1>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a> (space)</p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>!</p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>&quot;</p>
-<p><a href="http://www.a&amp;b#">www.a&amp;b#</a></p>
-<p><a href="http://www.a&amp;b$">www.a&amp;b$</a></p>
-<p><a href="http://www.a&amp;b%25">www.a&amp;b%</a></p>
-<p><a href="http://www.a&amp;b&amp;">www.a&amp;b&amp;</a></p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>'</p>
-<p><a href="http://www.a&amp;b(">www.a&amp;b(</a></p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>)</p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>*</p>
-<p><a href="http://www.a&amp;b+">www.a&amp;b+</a></p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>,</p>
-<p><a href="http://www.a&amp;b-">www.a&amp;b-</a></p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a></p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>.</p>
-<p><a href="http://www.a&amp;b/">www.a&amp;b/</a></p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>:</p>
-<p><a href="http://www.a">www.a</a>&amp;b;</p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>&lt;</p>
-<p><a href="http://www.a&amp;b=">www.a&amp;b=</a></p>
-<p><a href="http://www.a&amp;b%3E">www.a&amp;b&gt;</a></p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>?</p>
-<p><a href="http://www.a&amp;b@">www.a&amp;b@</a></p>
-<p><a href="http://www.a&amp;b%5B">www.a&amp;b[</a></p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>\</p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>]</p>
-<p><a href="http://www.a&amp;b%5E">www.a&amp;b^</a></p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>_</p>
-<p><a href="http://www.a&amp;b%60">www.a&amp;b`</a></p>
-<p><a href="http://www.a&amp;b%7B">www.a&amp;b{</a></p>
-<p><a href="http://www.a&amp;b%7C">www.a&amp;b|</a></p>
-<p><a href="http://www.a&amp;b%7D">www.a&amp;b}</a></p>
-<p><a href="http://www.a&amp;b">www.a&amp;b</a>~</p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a> (space)</p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>!</p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>&quot;</p>
+<p><a href="https://www.a&amp;b#">www.a&amp;b#</a></p>
+<p><a href="https://www.a&amp;b$">www.a&amp;b$</a></p>
+<p><a href="https://www.a&amp;b%25">www.a&amp;b%</a></p>
+<p><a href="https://www.a&amp;b&amp;">www.a&amp;b&amp;</a></p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>'</p>
+<p><a href="https://www.a&amp;b(">www.a&amp;b(</a></p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>)</p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>*</p>
+<p><a href="https://www.a&amp;b+">www.a&amp;b+</a></p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>,</p>
+<p><a href="https://www.a&amp;b-">www.a&amp;b-</a></p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a></p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>.</p>
+<p><a href="https://www.a&amp;b/">www.a&amp;b/</a></p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>:</p>
+<p><a href="https://www.a">www.a</a>&amp;b;</p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>&lt;</p>
+<p><a href="https://www.a&amp;b=">www.a&amp;b=</a></p>
+<p><a href="https://www.a&amp;b%3E">www.a&amp;b&gt;</a></p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>?</p>
+<p><a href="https://www.a&amp;b@">www.a&amp;b@</a></p>
+<p><a href="https://www.a&amp;b%5B">www.a&amp;b[</a></p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>\</p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>]</p>
+<p><a href="https://www.a&amp;b%5E">www.a&amp;b^</a></p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>_</p>
+<p><a href="https://www.a&amp;b%60">www.a&amp;b`</a></p>
+<p><a href="https://www.a&amp;b%7B">www.a&amp;b{</a></p>
+<p><a href="https://www.a&amp;b%7C">www.a&amp;b|</a></p>
+<p><a href="https://www.a&amp;b%7D">www.a&amp;b}</a></p>
+<p><a href="https://www.a&amp;b">www.a&amp;b</a>~</p>
 "###,
         "should match “character references (named)” like GitHub does (except for the bracket bug)"
     );
 
     // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
-    // GitHub expects `<p><a href="http://www.a&amp;#35%5C">www.a&amp;#35\</a></p>`.
+    // GitHub expects `<p><a href="https://www.a&amp;#35%5C">www.a&amp;#35\</a></p>`.
     assert_eq!(
         to_html_with_options(r###"# “character reference”
 
@@ -1124,40 +1129,40 @@ www.a&#35}
 www.a&#35~
 "###, &Options::gfm()),
         r###"<h1>“character reference”</h1>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a> (space)</p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>!</p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>&quot;</p>
-<p><a href="http://www.a&amp;#35#">www.a&amp;#35#</a></p>
-<p><a href="http://www.a&amp;#35$">www.a&amp;#35$</a></p>
-<p><a href="http://www.a&amp;#35%25">www.a&amp;#35%</a></p>
-<p><a href="http://www.a&amp;#35&amp;">www.a&amp;#35&amp;</a></p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>'</p>
-<p><a href="http://www.a&amp;#35(">www.a&amp;#35(</a></p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>)</p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>*</p>
-<p><a href="http://www.a&amp;#35+">www.a&amp;#35+</a></p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>,</p>
-<p><a href="http://www.a&amp;#35-">www.a&amp;#35-</a></p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a></p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>.</p>
-<p><a href="http://www.a&amp;#35/">www.a&amp;#35/</a></p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>:</p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>;</p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>&lt;</p>
-<p><a href="http://www.a&amp;#35=">www.a&amp;#35=</a></p>
-<p><a href="http://www.a&amp;#35%3E">www.a&amp;#35&gt;</a></p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>?</p>
-<p><a href="http://www.a&amp;#35@">www.a&amp;#35@</a></p>
-<p><a href="http://www.a&amp;#35%5B">www.a&amp;#35[</a></p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>\</p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>]</p>
-<p><a href="http://www.a&amp;#35%5E">www.a&amp;#35^</a></p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>_</p>
-<p><a href="http://www.a&amp;#35%60">www.a&amp;#35`</a></p>
-<p><a href="http://www.a&amp;#35%7B">www.a&amp;#35{</a></p>
-<p><a href="http://www.a&amp;#35%7C">www.a&amp;#35|</a></p>
-<p><a href="http://www.a&amp;#35%7D">www.a&amp;#35}</a></p>
-<p><a href="http://www.a&amp;#35">www.a&amp;#35</a>~</p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a> (space)</p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>!</p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>&quot;</p>
+<p><a href="https://www.a&amp;#35#">www.a&amp;#35#</a></p>
+<p><a href="https://www.a&amp;#35$">www.a&amp;#35$</a></p>
+<p><a href="https://www.a&amp;#35%25">www.a&amp;#35%</a></p>
+<p><a href="https://www.a&amp;#35&amp;">www.a&amp;#35&amp;</a></p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>'</p>
+<p><a href="https://www.a&amp;#35(">www.a&amp;#35(</a></p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>)</p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>*</p>
+<p><a href="https://www.a&amp;#35+">www.a&amp;#35+</a></p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>,</p>
+<p><a href="https://www.a&amp;#35-">www.a&amp;#35-</a></p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a></p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>.</p>
+<p><a href="https://www.a&amp;#35/">www.a&amp;#35/</a></p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>:</p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>;</p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>&lt;</p>
+<p><a href="https://www.a&amp;#35=">www.a&amp;#35=</a></p>
+<p><a href="https://www.a&amp;#35%3E">www.a&amp;#35&gt;</a></p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>?</p>
+<p><a href="https://www.a&amp;#35@">www.a&amp;#35@</a></p>
+<p><a href="https://www.a&amp;#35%5B">www.a&amp;#35[</a></p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>\</p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>]</p>
+<p><a href="https://www.a&amp;#35%5E">www.a&amp;#35^</a></p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>_</p>
+<p><a href="https://www.a&amp;#35%60">www.a&amp;#35`</a></p>
+<p><a href="https://www.a&amp;#35%7B">www.a&amp;#35{</a></p>
+<p><a href="https://www.a&amp;#35%7C">www.a&amp;#35|</a></p>
+<p><a href="https://www.a&amp;#35%7D">www.a&amp;#35}</a></p>
+<p><a href="https://www.a&amp;#35">www.a&amp;#35</a>~</p>
 "###,
         "should match “character references (numeric)” like GitHub does (except for the bracket bug)"
     );
@@ -1674,7 +1679,7 @@ http://a/~
     );
 
     // Deliberate divergence from GitHub: a backslash ends a literal autolink, so `www.example.com/a\.` links `www.example.com/a` and `\.` is an escape, also inside the link label.
-    // GitHub expects `<p><a href="#">www.example.com/a\.</a></p>` and `<p><a href="http://www.example.com/a%5C">www.example.com/a\</a>.</p>`.
+    // GitHub expects `<p><a href="#">www.example.com/a\.</a></p>` and `<p><a href="https://www.example.com/a%5C">www.example.com/a\</a>.</p>`.
     assert_eq!(
         to_html_with_options(
             r###"[www.example.com/a&copy;](#)
@@ -1692,17 +1697,17 @@ www.example.com/a\.
             &Options::gfm()
         ),
         r###"<p><a href="#">www.example.com/a©</a></p>
-<p><a href="http://www.example.com/a">www.example.com/a</a>©</p>
+<p><a href="https://www.example.com/a">www.example.com/a</a>©</p>
 <p><a href="#">www.example.com/a&amp;bogus;</a></p>
-<p><a href="http://www.example.com/a">www.example.com/a</a>&amp;bogus;</p>
+<p><a href="https://www.example.com/a">www.example.com/a</a>&amp;bogus;</p>
 <p><a href="#">www.example.com/a.</a></p>
-<p><a href="http://www.example.com/a">www.example.com/a</a>.</p>
+<p><a href="https://www.example.com/a">www.example.com/a</a>.</p>
 "###,
         "should match links, autolink literals, and characters like GitHub does"
     );
 
     // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
-    // GitHub expects `<p><a href="http://www.a/b&amp;c%5C">www.a/b&amp;c\</a></p>`.
+    // GitHub expects `<p><a href="https://www.a/b&amp;c%5C">www.a/b&amp;c\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# “character reference”
@@ -1778,46 +1783,46 @@ www.a/b&c~
             &Options::gfm()
         ),
         r###"<h1>“character reference”</h1>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a> (space)</p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>!</p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>&quot;</p>
-<p><a href="http://www.a/b&amp;c#">www.a/b&amp;c#</a></p>
-<p><a href="http://www.a/b&amp;c$">www.a/b&amp;c$</a></p>
-<p><a href="http://www.a/b&amp;c%25">www.a/b&amp;c%</a></p>
-<p><a href="http://www.a/b&amp;c&amp;">www.a/b&amp;c&amp;</a></p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>'</p>
-<p><a href="http://www.a/b&amp;c(">www.a/b&amp;c(</a></p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>)</p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>*</p>
-<p><a href="http://www.a/b&amp;c+">www.a/b&amp;c+</a></p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>,</p>
-<p><a href="http://www.a/b&amp;c-">www.a/b&amp;c-</a></p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a></p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>.</p>
-<p><a href="http://www.a/b&amp;c/">www.a/b&amp;c/</a></p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>:</p>
-<p><a href="http://www.a/b">www.a/b</a>&amp;c;</p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>&lt;</p>
-<p><a href="http://www.a/b&amp;c=">www.a/b&amp;c=</a></p>
-<p><a href="http://www.a/b&amp;c%3E">www.a/b&amp;c&gt;</a></p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>?</p>
-<p><a href="http://www.a/b&amp;c@">www.a/b&amp;c@</a></p>
-<p><a href="http://www.a/b&amp;c%5B">www.a/b&amp;c[</a></p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>\</p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>]</p>
-<p><a href="http://www.a/b&amp;c%5E">www.a/b&amp;c^</a></p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>_</p>
-<p><a href="http://www.a/b&amp;c%60">www.a/b&amp;c`</a></p>
-<p><a href="http://www.a/b&amp;c%7B">www.a/b&amp;c{</a></p>
-<p><a href="http://www.a/b&amp;c%7C">www.a/b&amp;c|</a></p>
-<p><a href="http://www.a/b&amp;c%7D">www.a/b&amp;c}</a></p>
-<p><a href="http://www.a/b&amp;c">www.a/b&amp;c</a>~</p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a> (space)</p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>!</p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>&quot;</p>
+<p><a href="https://www.a/b&amp;c#">www.a/b&amp;c#</a></p>
+<p><a href="https://www.a/b&amp;c$">www.a/b&amp;c$</a></p>
+<p><a href="https://www.a/b&amp;c%25">www.a/b&amp;c%</a></p>
+<p><a href="https://www.a/b&amp;c&amp;">www.a/b&amp;c&amp;</a></p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>'</p>
+<p><a href="https://www.a/b&amp;c(">www.a/b&amp;c(</a></p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>)</p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>*</p>
+<p><a href="https://www.a/b&amp;c+">www.a/b&amp;c+</a></p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>,</p>
+<p><a href="https://www.a/b&amp;c-">www.a/b&amp;c-</a></p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a></p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>.</p>
+<p><a href="https://www.a/b&amp;c/">www.a/b&amp;c/</a></p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>:</p>
+<p><a href="https://www.a/b">www.a/b</a>&amp;c;</p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>&lt;</p>
+<p><a href="https://www.a/b&amp;c=">www.a/b&amp;c=</a></p>
+<p><a href="https://www.a/b&amp;c%3E">www.a/b&amp;c&gt;</a></p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>?</p>
+<p><a href="https://www.a/b&amp;c@">www.a/b&amp;c@</a></p>
+<p><a href="https://www.a/b&amp;c%5B">www.a/b&amp;c[</a></p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>\</p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>]</p>
+<p><a href="https://www.a/b&amp;c%5E">www.a/b&amp;c^</a></p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>_</p>
+<p><a href="https://www.a/b&amp;c%60">www.a/b&amp;c`</a></p>
+<p><a href="https://www.a/b&amp;c%7B">www.a/b&amp;c{</a></p>
+<p><a href="https://www.a/b&amp;c%7C">www.a/b&amp;c|</a></p>
+<p><a href="https://www.a/b&amp;c%7D">www.a/b&amp;c}</a></p>
+<p><a href="https://www.a/b&amp;c">www.a/b&amp;c</a>~</p>
 "###,
         "should match character reference-like (named) things in paths like GitHub does"
     );
 
     // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
-    // GitHub expects `<p><a href="http://www.a/b&amp;#35%5C">www.a/b&amp;#35\</a></p>`.
+    // GitHub expects `<p><a href="https://www.a/b&amp;#35%5C">www.a/b&amp;#35\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# “character reference”
@@ -1893,40 +1898,40 @@ www.a/b&#35~
             &Options::gfm()
         ),
         r###"<h1>“character reference”</h1>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a> (space)</p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>!</p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>&quot;</p>
-<p><a href="http://www.a/b&amp;#35#">www.a/b&amp;#35#</a></p>
-<p><a href="http://www.a/b&amp;#35$">www.a/b&amp;#35$</a></p>
-<p><a href="http://www.a/b&amp;#35%25">www.a/b&amp;#35%</a></p>
-<p><a href="http://www.a/b&amp;#35&amp;">www.a/b&amp;#35&amp;</a></p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>'</p>
-<p><a href="http://www.a/b&amp;#35(">www.a/b&amp;#35(</a></p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>)</p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>*</p>
-<p><a href="http://www.a/b&amp;#35+">www.a/b&amp;#35+</a></p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>,</p>
-<p><a href="http://www.a/b&amp;#35-">www.a/b&amp;#35-</a></p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a></p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>.</p>
-<p><a href="http://www.a/b&amp;#35/">www.a/b&amp;#35/</a></p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>:</p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>;</p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>&lt;</p>
-<p><a href="http://www.a/b&amp;#35=">www.a/b&amp;#35=</a></p>
-<p><a href="http://www.a/b&amp;#35%3E">www.a/b&amp;#35&gt;</a></p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>?</p>
-<p><a href="http://www.a/b&amp;#35@">www.a/b&amp;#35@</a></p>
-<p><a href="http://www.a/b&amp;#35%5B">www.a/b&amp;#35[</a></p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>\</p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>]</p>
-<p><a href="http://www.a/b&amp;#35%5E">www.a/b&amp;#35^</a></p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>_</p>
-<p><a href="http://www.a/b&amp;#35%60">www.a/b&amp;#35`</a></p>
-<p><a href="http://www.a/b&amp;#35%7B">www.a/b&amp;#35{</a></p>
-<p><a href="http://www.a/b&amp;#35%7C">www.a/b&amp;#35|</a></p>
-<p><a href="http://www.a/b&amp;#35%7D">www.a/b&amp;#35}</a></p>
-<p><a href="http://www.a/b&amp;#35">www.a/b&amp;#35</a>~</p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a> (space)</p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>!</p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>&quot;</p>
+<p><a href="https://www.a/b&amp;#35#">www.a/b&amp;#35#</a></p>
+<p><a href="https://www.a/b&amp;#35$">www.a/b&amp;#35$</a></p>
+<p><a href="https://www.a/b&amp;#35%25">www.a/b&amp;#35%</a></p>
+<p><a href="https://www.a/b&amp;#35&amp;">www.a/b&amp;#35&amp;</a></p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>'</p>
+<p><a href="https://www.a/b&amp;#35(">www.a/b&amp;#35(</a></p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>)</p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>*</p>
+<p><a href="https://www.a/b&amp;#35+">www.a/b&amp;#35+</a></p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>,</p>
+<p><a href="https://www.a/b&amp;#35-">www.a/b&amp;#35-</a></p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a></p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>.</p>
+<p><a href="https://www.a/b&amp;#35/">www.a/b&amp;#35/</a></p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>:</p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>;</p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>&lt;</p>
+<p><a href="https://www.a/b&amp;#35=">www.a/b&amp;#35=</a></p>
+<p><a href="https://www.a/b&amp;#35%3E">www.a/b&amp;#35&gt;</a></p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>?</p>
+<p><a href="https://www.a/b&amp;#35@">www.a/b&amp;#35@</a></p>
+<p><a href="https://www.a/b&amp;#35%5B">www.a/b&amp;#35[</a></p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>\</p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>]</p>
+<p><a href="https://www.a/b&amp;#35%5E">www.a/b&amp;#35^</a></p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>_</p>
+<p><a href="https://www.a/b&amp;#35%60">www.a/b&amp;#35`</a></p>
+<p><a href="https://www.a/b&amp;#35%7B">www.a/b&amp;#35{</a></p>
+<p><a href="https://www.a/b&amp;#35%7C">www.a/b&amp;#35|</a></p>
+<p><a href="https://www.a/b&amp;#35%7D">www.a/b&amp;#35}</a></p>
+<p><a href="https://www.a/b&amp;#35">www.a/b&amp;#35</a>~</p>
 "###,
         "should match character reference-like (numeric) things in paths like GitHub does"
     );
@@ -1983,21 +1988,21 @@ www.a.com#d]()
 <p><a href="">www.a.com/d</a></p>
 <p><a href="https://a.com/d">https://a.com/d</a>]()</p>
 <p><a href="http://a.com/d">http://a.com/d</a>]()</p>
-<p><a href="http://www.a.com/d">www.a.com/d</a>]()</p>
+<p><a href="https://www.a.com/d">www.a.com/d</a>]()</p>
 <p>In autolink literal search or link end?</p>
 <p><a href="">https://a.com?d</a></p>
 <p><a href="">http://a.com?d</a></p>
 <p><a href="">www.a.com?d</a></p>
 <p><a href="https://a.com?d">https://a.com?d</a>]()</p>
 <p><a href="http://a.com?d">http://a.com?d</a>]()</p>
-<p><a href="http://www.a.com?d">www.a.com?d</a>]()</p>
+<p><a href="https://www.a.com?d">www.a.com?d</a>]()</p>
 <p>In autolink literal hash or link end?</p>
 <p><a href="">https://a.com#d</a></p>
 <p><a href="">http://a.com#d</a></p>
 <p><a href="">www.a.com#d</a></p>
 <p><a href="https://a.com#d">https://a.com#d</a>]()</p>
 <p><a href="http://a.com#d">http://a.com#d</a>]()</p>
-<p><a href="http://www.a.com#d">www.a.com#d</a>]()</p>
+<p><a href="https://www.a.com#d">www.a.com#d</a>]()</p>
 "###,
         "should match path or link end like GitHub does (except for the bracket bug)"
     );
@@ -2067,7 +2072,7 @@ Some more non-ascii: 🤷‍noreply@example.com, 🤷‍http://example.com, 🤷
 <p>(4) `www.example.com; (broken up to prevent code from forming)</p>
 <p>First lowercase: <a href="mailto:anoreply@example.com">anoreply@example.com</a>, ahttp://example.com, ahttps://example.com, awww.example.com</p>
 <p>First punctuation after lowercase: {<a href="mailto:noreply@example.com">noreply@example.com</a>, {<a href="http://example.com">http://example.com</a>, {<a href="https://example.com">https://example.com</a>, {www.example.com</p>
-<p>Last punctuation: ~<a href="mailto:noreply@example.com">noreply@example.com</a>, ~<a href="http://example.com">http://example.com</a>, ~<a href="https://example.com">https://example.com</a>, ~<a href="http://www.example.com">www.example.com</a></p>
+<p>Last punctuation: ~<a href="mailto:noreply@example.com">noreply@example.com</a>, ~<a href="http://example.com">http://example.com</a>, ~<a href="https://example.com">https://example.com</a>, ~<a href="https://www.example.com">www.example.com</a></p>
 <p>First non-ASCII unicode whitespace (0x80): <a href="mailto:noreply@example.com">noreply@example.com</a>, <a href="http://example.com">http://example.com</a>, <a href="https://example.com">https://example.com</a>, www.example.com</p>
 <p>Last non-ASCII unicode whitespace (0x3000): 　<a href="mailto:noreply@example.com">noreply@example.com</a>, 　<a href="http://example.com">http://example.com</a>, 　<a href="https://example.com">https://example.com</a>, 　www.example.com</p>
 <p>First non-ASCII punctuation: ¡<a href="mailto:noreply@example.com">noreply@example.com</a>, ¡<a href="http://example.com">http://example.com</a>, ¡<a href="https://example.com">https://example.com</a>, ¡www.example.com</p>
@@ -2172,15 +2177,15 @@ See `https://github.com/remarkjs/remark/discussions/678`.
 <p>Can start after underscore *_<a href="https://a.b">https://a.b</a>.</p>
 <p>Can start after tilde ~<a href="https://a.b">https://a.b</a>.</p>
 <h1>www</h1>
-<p><a href="http://www.a.b">www.a.b</a> can start after EOF</p>
+<p><a href="https://www.a.b">www.a.b</a> can start after EOF</p>
 <p>Can start after EOL:
-<a href="http://www.a.b">www.a.b</a></p>
-<p>Can start after tab:	<a href="http://www.a.b">www.a.b</a>.</p>
-<p>Can start after space: <a href="http://www.a.b">www.a.b</a>.</p>
-<p>Can start after left paren (<a href="http://www.a.b">www.a.b</a>.</p>
-<p>Can start after asterisk *<a href="http://www.a.b">www.a.b</a>.</p>
-<p>Can start after underscore *_<a href="http://www.a.b">www.a.b</a>.</p>
-<p>Can start after tilde ~<a href="http://www.a.b">www.a.b</a>.</p>
+<a href="https://www.a.b">www.a.b</a></p>
+<p>Can start after tab:	<a href="https://www.a.b">www.a.b</a>.</p>
+<p>Can start after space: <a href="https://www.a.b">www.a.b</a>.</p>
+<p>Can start after left paren (<a href="https://www.a.b">www.a.b</a>.</p>
+<p>Can start after asterisk *<a href="https://www.a.b">www.a.b</a>.</p>
+<p>Can start after underscore *_<a href="https://www.a.b">www.a.b</a>.</p>
+<p>Can start after tilde ~<a href="https://www.a.b">www.a.b</a>.</p>
 <h1>Email</h1>
 <h2>Correct character before</h2>
 <p><a href="mailto:a@b.c">a@b.c</a> can start after EOF</p>
@@ -2208,7 +2213,7 @@ github.com: !<a href="mailto:a@b.c">a@b.c</a>, &quot;<a href="mailto:a@b.c">a@b.
     );
 
     // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
-    // GitHub expects `<p><a href="http://www.a%5C">www.a\</a></p>`.
+    // GitHub expects `<p><a href="https://www.a%5C">www.a\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# wwwtf 2?
@@ -2284,46 +2289,46 @@ www.a~
             &Options::gfm()
         ),
         r###"<h1>wwwtf 2?</h1>
-<p><a href="http://www.a">www.a</a> (space)</p>
-<p><a href="http://www.a">www.a</a>!</p>
-<p><a href="http://www.a">www.a</a>&quot;</p>
-<p><a href="http://www.a#">www.a#</a></p>
-<p><a href="http://www.a$">www.a$</a></p>
-<p><a href="http://www.a%25">www.a%</a></p>
-<p><a href="http://www.a&amp;">www.a&amp;</a></p>
-<p><a href="http://www.a">www.a</a>'</p>
-<p><a href="http://www.a(">www.a(</a></p>
-<p><a href="http://www.a">www.a</a>)</p>
-<p><a href="http://www.a">www.a</a>*</p>
-<p><a href="http://www.a+">www.a+</a></p>
-<p><a href="http://www.a">www.a</a>,</p>
+<p><a href="https://www.a">www.a</a> (space)</p>
+<p><a href="https://www.a">www.a</a>!</p>
+<p><a href="https://www.a">www.a</a>&quot;</p>
+<p><a href="https://www.a#">www.a#</a></p>
+<p><a href="https://www.a$">www.a$</a></p>
+<p><a href="https://www.a%25">www.a%</a></p>
+<p><a href="https://www.a&amp;">www.a&amp;</a></p>
+<p><a href="https://www.a">www.a</a>'</p>
+<p><a href="https://www.a(">www.a(</a></p>
+<p><a href="https://www.a">www.a</a>)</p>
+<p><a href="https://www.a">www.a</a>*</p>
+<p><a href="https://www.a+">www.a+</a></p>
+<p><a href="https://www.a">www.a</a>,</p>
 <p>www.a-</p>
-<p><a href="http://www.a">www.a</a></p>
-<p><a href="http://www.a">www.a</a>.</p>
-<p><a href="http://www.a/">www.a/</a></p>
-<p><a href="http://www.a">www.a</a>:</p>
-<p><a href="http://www.a">www.a</a>;</p>
-<p><a href="http://www.a">www.a</a>&lt;</p>
-<p><a href="http://www.a=">www.a=</a></p>
-<p><a href="http://www.a%3E">www.a&gt;</a></p>
-<p><a href="http://www.a">www.a</a>?</p>
-<p><a href="http://www.a@">www.a@</a></p>
-<p><a href="http://www.a%5B">www.a[</a></p>
-<p><a href="http://www.a">www.a</a>\</p>
-<p><a href="http://www.a">www.a</a>]</p>
-<p><a href="http://www.a%5E">www.a^</a></p>
-<p><a href="http://www.a">www.a</a>_</p>
-<p><a href="http://www.a%60">www.a`</a></p>
-<p><a href="http://www.a%7B">www.a{</a></p>
-<p><a href="http://www.a%7C">www.a|</a></p>
-<p><a href="http://www.a%7D">www.a}</a></p>
-<p><a href="http://www.a">www.a</a>~</p>
+<p><a href="https://www.a">www.a</a></p>
+<p><a href="https://www.a">www.a</a>.</p>
+<p><a href="https://www.a/">www.a/</a></p>
+<p><a href="https://www.a">www.a</a>:</p>
+<p><a href="https://www.a">www.a</a>;</p>
+<p><a href="https://www.a">www.a</a>&lt;</p>
+<p><a href="https://www.a=">www.a=</a></p>
+<p><a href="https://www.a%3E">www.a&gt;</a></p>
+<p><a href="https://www.a">www.a</a>?</p>
+<p><a href="https://www.a@">www.a@</a></p>
+<p><a href="https://www.a%5B">www.a[</a></p>
+<p><a href="https://www.a">www.a</a>\</p>
+<p><a href="https://www.a">www.a</a>]</p>
+<p><a href="https://www.a%5E">www.a^</a></p>
+<p><a href="https://www.a">www.a</a>_</p>
+<p><a href="https://www.a%60">www.a`</a></p>
+<p><a href="https://www.a%7B">www.a{</a></p>
+<p><a href="https://www.a%7C">www.a|</a></p>
+<p><a href="https://www.a%7D">www.a}</a></p>
+<p><a href="https://www.a">www.a</a>~</p>
 "###,
         "should match www (domain continue) like GitHub does (except for the bracket bug and a domain that ends in `-`)"
     );
 
     // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
-    // GitHub expects `<p><a href="http://www.a.%5C">www.a.\</a></p>`.
+    // GitHub expects `<p><a href="https://www.a.%5C">www.a.\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# wwwtf 5?
@@ -2399,40 +2404,40 @@ www.a.~
             &Options::gfm()
         ),
         r###"<h1>wwwtf 5?</h1>
-<p><a href="http://www.a">www.a</a>. (space)</p>
-<p><a href="http://www.a">www.a</a>.!</p>
-<p><a href="http://www.a">www.a</a>.&quot;</p>
+<p><a href="https://www.a">www.a</a>. (space)</p>
+<p><a href="https://www.a">www.a</a>.!</p>
+<p><a href="https://www.a">www.a</a>.&quot;</p>
 <p>www.a.#</p>
 <p>www.a.$</p>
 <p>www.a.%</p>
 <p>www.a.&amp;</p>
-<p><a href="http://www.a">www.a</a>.'</p>
+<p><a href="https://www.a">www.a</a>.'</p>
 <p>www.a.(</p>
-<p><a href="http://www.a">www.a</a>.)</p>
-<p><a href="http://www.a">www.a</a>.*</p>
+<p><a href="https://www.a">www.a</a>.)</p>
+<p><a href="https://www.a">www.a</a>.*</p>
 <p>www.a.+</p>
-<p><a href="http://www.a">www.a</a>.,</p>
+<p><a href="https://www.a">www.a</a>.,</p>
 <p>www.a.-</p>
-<p><a href="http://www.a">www.a</a>.</p>
-<p><a href="http://www.a">www.a</a>..</p>
+<p><a href="https://www.a">www.a</a>.</p>
+<p><a href="https://www.a">www.a</a>..</p>
 <p>www.a./</p>
-<p><a href="http://www.a">www.a</a>.:</p>
-<p><a href="http://www.a">www.a</a>.;</p>
-<p><a href="http://www.a">www.a</a>.&lt;</p>
+<p><a href="https://www.a">www.a</a>.:</p>
+<p><a href="https://www.a">www.a</a>.;</p>
+<p><a href="https://www.a">www.a</a>.&lt;</p>
 <p>www.a.=</p>
 <p>www.a.&gt;</p>
-<p><a href="http://www.a">www.a</a>.?</p>
+<p><a href="https://www.a">www.a</a>.?</p>
 <p>www.a.@</p>
 <p>www.a.[</p>
-<p><a href="http://www.a">www.a</a>.\</p>
-<p><a href="http://www.a">www.a</a>.]</p>
+<p><a href="https://www.a">www.a</a>.\</p>
+<p><a href="https://www.a">www.a</a>.]</p>
 <p>www.a.^</p>
-<p><a href="http://www.a">www.a</a>._</p>
+<p><a href="https://www.a">www.a</a>._</p>
 <p>www.a.`</p>
 <p>www.a.{</p>
 <p>www.a.|</p>
 <p>www.a.}</p>
-<p><a href="http://www.a">www.a</a>.~</p>
+<p><a href="https://www.a">www.a</a>.~</p>
 "###,
         "should match www (domain dot) like GitHub does (except for the bracket bug and a domain that ends in an empty label)"
     );
@@ -2554,7 +2559,7 @@ www.~
     );
 
     // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
-    // GitHub expects `<p><a href="http://www.a/b%5C">www.a/b\</a></p>`.
+    // GitHub expects `<p><a href="https://www.a/b%5C">www.a/b\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# wwwtf? (4)
@@ -2630,46 +2635,46 @@ www.a/b~
             &Options::gfm()
         ),
         r###"<h1>wwwtf? (4)</h1>
-<p><a href="http://www.a/b">www.a/b</a> (space)</p>
-<p><a href="http://www.a/b">www.a/b</a>!</p>
-<p><a href="http://www.a/b">www.a/b</a>&quot;</p>
-<p><a href="http://www.a/b#">www.a/b#</a></p>
-<p><a href="http://www.a/b$">www.a/b$</a></p>
-<p><a href="http://www.a/b%25">www.a/b%</a></p>
-<p><a href="http://www.a/b&amp;">www.a/b&amp;</a></p>
-<p><a href="http://www.a/b">www.a/b</a>'</p>
-<p><a href="http://www.a/b(">www.a/b(</a></p>
-<p><a href="http://www.a/b">www.a/b</a>)</p>
-<p><a href="http://www.a/b">www.a/b</a>*</p>
-<p><a href="http://www.a/b+">www.a/b+</a></p>
-<p><a href="http://www.a/b">www.a/b</a>,</p>
-<p><a href="http://www.a/b-">www.a/b-</a></p>
-<p><a href="http://www.a/b">www.a/b</a></p>
-<p><a href="http://www.a/b">www.a/b</a>.</p>
-<p><a href="http://www.a/b/">www.a/b/</a></p>
-<p><a href="http://www.a/b">www.a/b</a>:</p>
-<p><a href="http://www.a/b">www.a/b</a>;</p>
-<p><a href="http://www.a/b">www.a/b</a>&lt;</p>
-<p><a href="http://www.a/b=">www.a/b=</a></p>
-<p><a href="http://www.a/b%3E">www.a/b&gt;</a></p>
-<p><a href="http://www.a/b">www.a/b</a>?</p>
-<p><a href="http://www.a/b@">www.a/b@</a></p>
-<p><a href="http://www.a/b%5B">www.a/b[</a></p>
-<p><a href="http://www.a/b">www.a/b</a>\</p>
-<p><a href="http://www.a/b">www.a/b</a>]</p>
-<p><a href="http://www.a/b%5E">www.a/b^</a></p>
-<p><a href="http://www.a/b">www.a/b</a>_</p>
-<p><a href="http://www.a/b%60">www.a/b`</a></p>
-<p><a href="http://www.a/b%7B">www.a/b{</a></p>
-<p><a href="http://www.a/b%7C">www.a/b|</a></p>
-<p><a href="http://www.a/b%7D">www.a/b}</a></p>
-<p><a href="http://www.a/b">www.a/b</a>~</p>
+<p><a href="https://www.a/b">www.a/b</a> (space)</p>
+<p><a href="https://www.a/b">www.a/b</a>!</p>
+<p><a href="https://www.a/b">www.a/b</a>&quot;</p>
+<p><a href="https://www.a/b#">www.a/b#</a></p>
+<p><a href="https://www.a/b$">www.a/b$</a></p>
+<p><a href="https://www.a/b%25">www.a/b%</a></p>
+<p><a href="https://www.a/b&amp;">www.a/b&amp;</a></p>
+<p><a href="https://www.a/b">www.a/b</a>'</p>
+<p><a href="https://www.a/b(">www.a/b(</a></p>
+<p><a href="https://www.a/b">www.a/b</a>)</p>
+<p><a href="https://www.a/b">www.a/b</a>*</p>
+<p><a href="https://www.a/b+">www.a/b+</a></p>
+<p><a href="https://www.a/b">www.a/b</a>,</p>
+<p><a href="https://www.a/b-">www.a/b-</a></p>
+<p><a href="https://www.a/b">www.a/b</a></p>
+<p><a href="https://www.a/b">www.a/b</a>.</p>
+<p><a href="https://www.a/b/">www.a/b/</a></p>
+<p><a href="https://www.a/b">www.a/b</a>:</p>
+<p><a href="https://www.a/b">www.a/b</a>;</p>
+<p><a href="https://www.a/b">www.a/b</a>&lt;</p>
+<p><a href="https://www.a/b=">www.a/b=</a></p>
+<p><a href="https://www.a/b%3E">www.a/b&gt;</a></p>
+<p><a href="https://www.a/b">www.a/b</a>?</p>
+<p><a href="https://www.a/b@">www.a/b@</a></p>
+<p><a href="https://www.a/b%5B">www.a/b[</a></p>
+<p><a href="https://www.a/b">www.a/b</a>\</p>
+<p><a href="https://www.a/b">www.a/b</a>]</p>
+<p><a href="https://www.a/b%5E">www.a/b^</a></p>
+<p><a href="https://www.a/b">www.a/b</a>_</p>
+<p><a href="https://www.a/b%60">www.a/b`</a></p>
+<p><a href="https://www.a/b%7B">www.a/b{</a></p>
+<p><a href="https://www.a/b%7C">www.a/b|</a></p>
+<p><a href="https://www.a/b%7D">www.a/b}</a></p>
+<p><a href="https://www.a/b">www.a/b</a>~</p>
 "###,
         "should match www (path continue) like GitHub does (except for the bracket bug)"
     );
 
     // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
-    // GitHub expects `<p><a href="http://www.a/%5C">www.a/\</a></p>`.
+    // GitHub expects `<p><a href="https://www.a/%5C">www.a/\</a></p>`.
     assert_eq!(
         to_html_with_options(
             r###"# wwwtf? (3)
@@ -2745,40 +2750,40 @@ www.a/~
             &Options::gfm()
         ),
         r###"<h1>wwwtf? (3)</h1>
-<p><a href="http://www.a/">www.a/</a> (space)</p>
-<p><a href="http://www.a/">www.a/</a>!</p>
-<p><a href="http://www.a/">www.a/</a>&quot;</p>
-<p><a href="http://www.a/#">www.a/#</a></p>
-<p><a href="http://www.a/$">www.a/$</a></p>
-<p><a href="http://www.a/%25">www.a/%</a></p>
-<p><a href="http://www.a/&amp;">www.a/&amp;</a></p>
-<p><a href="http://www.a/">www.a/</a>'</p>
-<p><a href="http://www.a/(">www.a/(</a></p>
-<p><a href="http://www.a/">www.a/</a>)</p>
-<p><a href="http://www.a/">www.a/</a>*</p>
-<p><a href="http://www.a/+">www.a/+</a></p>
-<p><a href="http://www.a/">www.a/</a>,</p>
-<p><a href="http://www.a/-">www.a/-</a></p>
-<p><a href="http://www.a/">www.a/</a></p>
-<p><a href="http://www.a/">www.a/</a>.</p>
-<p><a href="http://www.a//">www.a//</a></p>
-<p><a href="http://www.a/">www.a/</a>:</p>
-<p><a href="http://www.a/">www.a/</a>;</p>
-<p><a href="http://www.a/">www.a/</a>&lt;</p>
-<p><a href="http://www.a/=">www.a/=</a></p>
-<p><a href="http://www.a/%3E">www.a/&gt;</a></p>
-<p><a href="http://www.a/">www.a/</a>?</p>
-<p><a href="http://www.a/@">www.a/@</a></p>
-<p><a href="http://www.a/%5B">www.a/[</a></p>
-<p><a href="http://www.a/">www.a/</a>\</p>
-<p><a href="http://www.a/">www.a/</a>]</p>
-<p><a href="http://www.a/%5E">www.a/^</a></p>
-<p><a href="http://www.a/">www.a/</a>_</p>
-<p><a href="http://www.a/%60">www.a/`</a></p>
-<p><a href="http://www.a/%7B">www.a/{</a></p>
-<p><a href="http://www.a/%7C">www.a/|</a></p>
-<p><a href="http://www.a/%7D">www.a/}</a></p>
-<p><a href="http://www.a/">www.a/</a>~</p>
+<p><a href="https://www.a/">www.a/</a> (space)</p>
+<p><a href="https://www.a/">www.a/</a>!</p>
+<p><a href="https://www.a/">www.a/</a>&quot;</p>
+<p><a href="https://www.a/#">www.a/#</a></p>
+<p><a href="https://www.a/$">www.a/$</a></p>
+<p><a href="https://www.a/%25">www.a/%</a></p>
+<p><a href="https://www.a/&amp;">www.a/&amp;</a></p>
+<p><a href="https://www.a/">www.a/</a>'</p>
+<p><a href="https://www.a/(">www.a/(</a></p>
+<p><a href="https://www.a/">www.a/</a>)</p>
+<p><a href="https://www.a/">www.a/</a>*</p>
+<p><a href="https://www.a/+">www.a/+</a></p>
+<p><a href="https://www.a/">www.a/</a>,</p>
+<p><a href="https://www.a/-">www.a/-</a></p>
+<p><a href="https://www.a/">www.a/</a></p>
+<p><a href="https://www.a/">www.a/</a>.</p>
+<p><a href="https://www.a//">www.a//</a></p>
+<p><a href="https://www.a/">www.a/</a>:</p>
+<p><a href="https://www.a/">www.a/</a>;</p>
+<p><a href="https://www.a/">www.a/</a>&lt;</p>
+<p><a href="https://www.a/=">www.a/=</a></p>
+<p><a href="https://www.a/%3E">www.a/&gt;</a></p>
+<p><a href="https://www.a/">www.a/</a>?</p>
+<p><a href="https://www.a/@">www.a/@</a></p>
+<p><a href="https://www.a/%5B">www.a/[</a></p>
+<p><a href="https://www.a/">www.a/</a>\</p>
+<p><a href="https://www.a/">www.a/</a>]</p>
+<p><a href="https://www.a/%5E">www.a/^</a></p>
+<p><a href="https://www.a/">www.a/</a>_</p>
+<p><a href="https://www.a/%60">www.a/`</a></p>
+<p><a href="https://www.a/%7B">www.a/{</a></p>
+<p><a href="https://www.a/%7C">www.a/|</a></p>
+<p><a href="https://www.a/%7D">www.a/}</a></p>
+<p><a href="https://www.a/">www.a/</a>~</p>
 "###,
         "should match www (path start) like GitHub does (except for the bracket bug)"
     );
@@ -2822,7 +2827,7 @@ www.a/~
                         position: Some(Position::new(1, 40, 39, 1, 43, 42))
                     }),
                     Node::Link(Link {
-                        url: "http://www.delta.com".into(),
+                        url: "https://www.delta.com".into(),
                         title: None,
                         children: vec![Node::Text(Text {
                             value: "www.delta.com".into(),
@@ -2994,13 +2999,13 @@ fn backslashes_end_literal_autolinks() {
     for (input, html, markdown) in [
         (
             "www.com\\_\n",
-            "<p><a href=\"http://www.com\">www.com</a>_</p>\n",
-            "[www.com](http://www.com)\\_\n",
+            "<p><a href=\"https://www.com\">www.com</a>_</p>\n",
+            "[www.com](https://www.com)\\_\n",
         ),
         (
             "www.a\\_b.com\n",
-            "<p><a href=\"http://www.a\">www.a</a>_b.com</p>\n",
-            "[www.a](http://www.a)\\_b.com\n",
+            "<p><a href=\"https://www.a\">www.a</a>_b.com</p>\n",
+            "[www.a](https://www.a)\\_b.com\n",
         ),
         (
             "https://a.b/c\\\nb\n",
@@ -3009,8 +3014,8 @@ fn backslashes_end_literal_autolinks() {
         ),
         (
             "www.x.org\\\nb\n",
-            "<p><a href=\"http://www.x.org\">www.x.org</a><br />\nb</p>\n",
-            "[www.x.org](http://www.x.org)\\\nb\n",
+            "<p><a href=\"https://www.x.org\">www.x.org</a><br />\nb</p>\n",
+            "[www.x.org](https://www.x.org)\\\nb\n",
         ),
         (
             "http://a.b/x\\y\n",
@@ -3056,7 +3061,7 @@ fn backslashes_end_literal_autolinks() {
     // In a table cell, `\|` is an escaped pipe after the link rather than part of it.
     assert_eq!(
         to_html_with_options("| a |\n| - |\n| www.a\\|b |\n", &Options::gfm()),
-        "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"http://www.a\">www.a</a>|b</td>\n</tr>\n</tbody>\n</table>\n"
+        "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://www.a\">www.a</a>|b</td>\n</tr>\n</tbody>\n</table>\n"
     );
     // An escaped `@` splits the text, so it is no email link. Text is literal, so the serializer
     // escapes the `@` again, though the address is split across text nodes.
@@ -3098,11 +3103,11 @@ fn www_needs_a_domain_after_it() {
             "<p>(www.<em><img src=\"http://a.b\" alt=\"a\" /></em></p>\n",
         ),
         // A domain after `www.` still links.
-        ("www.a\n", "<p><a href=\"http://www.a\">www.a</a></p>\n"),
-        ("WWW.a\n", "<p><a href=\"http://WWW.a\">WWW.a</a></p>\n"),
+        ("www.a\n", "<p><a href=\"https://www.a\">www.a</a></p>\n"),
+        ("WWW.a\n", "<p><a href=\"https://WWW.a\">WWW.a</a></p>\n"),
         (
             "www.a-b.c\n",
-            "<p><a href=\"http://www.a-b.c\">www.a-b.c</a></p>\n",
+            "<p><a href=\"https://www.a-b.c\">www.a-b.c</a></p>\n",
         ),
     ] {
         assert_eq!(to_html_with_options(input, &options), html, "{:?}", input);
@@ -3143,19 +3148,19 @@ fn literal_domains_are_host_names() {
         // Valid host names, internationalized ones too, and the local part may have `_`.
         (
             "www.例.jp\n",
-            "<p><a href=\"http://www.%E4%BE%8B.jp\">www.例.jp</a></p>\n",
+            "<p><a href=\"https://www.%E4%BE%8B.jp\">www.例.jp</a></p>\n",
         ),
         (
             "www.a-b.c\n",
-            "<p><a href=\"http://www.a-b.c\">www.a-b.c</a></p>\n",
+            "<p><a href=\"https://www.a-b.c\">www.a-b.c</a></p>\n",
         ),
         (
             "www.a.b_\n",
-            "<p><a href=\"http://www.a.b\">www.a.b</a>_</p>\n",
+            "<p><a href=\"https://www.a.b\">www.a.b</a>_</p>\n",
         ),
         (
             "www.a.b.\n",
-            "<p><a href=\"http://www.a.b\">www.a.b</a>.</p>\n",
+            "<p><a href=\"https://www.a.b\">www.a.b</a>.</p>\n",
         ),
         (
             "https://a-b.c/d_e\n",
@@ -3171,7 +3176,7 @@ fn literal_domains_are_host_names() {
         ),
         (
             "_www.a.b_\n",
-            "<p><em><a href=\"http://www.a.b\">www.a.b</a></em></p>\n",
+            "<p><em><a href=\"https://www.a.b\">www.a.b</a></em></p>\n",
         ),
     ] {
         assert_eq!(to_html_with_options(input, &options), html, "{:?}", input);

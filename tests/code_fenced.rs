@@ -4,7 +4,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use base_markdown::{message, to_html, to_html_with_options, Constructs, Options, ParseOptions};
+use base_markdown::{message, to_html_with_options, Constructs, Options, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
 use support::fixture::Position;
@@ -13,260 +13,266 @@ use support::fixture::{Code, CodeFence, Node, Root};
 #[test]
 fn code_fenced() -> Result<(), message::Message> {
     assert_eq!(
-        to_html("```\n<\n >\n```"),
+        to_html_with_options("```\n<\n >\n```", &Options::commonmark()),
         "<pre><code>&lt;\n &gt;\n</code></pre>",
         "should support fenced code w/ grave accents"
     );
 
     assert_eq!(
-        to_html("~~~\n<\n >\n~~~"),
+        to_html_with_options("~~~\n<\n >\n~~~", &Options::commonmark()),
         "<pre><code>&lt;\n &gt;\n</code></pre>",
         "should support fenced code w/ tildes"
     );
 
     assert_eq!(
-        to_html("``\nfoo\n``"),
+        to_html_with_options("``\nfoo\n``", &Options::commonmark()),
         "<p><code>foo</code></p>",
         "should not support fenced code w/ less than three markers"
     );
 
     assert_eq!(
-        to_html("```\naaa\n~~~\n```"),
+        to_html_with_options("```\naaa\n~~~\n```", &Options::commonmark()),
         "<pre><code>aaa\n~~~\n</code></pre>",
         "should not support a tilde closing sequence for a grave accent opening sequence"
     );
 
     assert_eq!(
-        to_html("~~~\naaa\n```\n~~~"),
+        to_html_with_options("~~~\naaa\n```\n~~~", &Options::commonmark()),
         "<pre><code>aaa\n```\n</code></pre>",
         "should not support a grave accent closing sequence for a tilde opening sequence"
     );
 
     assert_eq!(
-        to_html("````\naaa\n```\n``````"),
+        to_html_with_options("````\naaa\n```\n``````", &Options::commonmark()),
         "<pre><code>aaa\n```\n</code></pre>",
         "should support a closing sequence longer, but not shorter than, the opening"
     );
 
     assert_eq!(
-        to_html("~~~~\naaa\n~~~\n~~~~"),
+        to_html_with_options("~~~~\naaa\n~~~\n~~~~", &Options::commonmark()),
         "<pre><code>aaa\n~~~\n</code></pre>",
         "should support a closing sequence equal to, but not shorter than, the opening"
     );
 
     assert_eq!(
-        to_html("```"),
+        to_html_with_options("```", &Options::commonmark()),
         "<pre><code></code></pre>\n",
         "should support an eof right after an opening sequence"
     );
 
     assert_eq!(
-        to_html("`````\n\n```\naaa\n"),
+        to_html_with_options("`````\n\n```\naaa\n", &Options::commonmark()),
         "<pre><code>\n```\naaa\n</code></pre>\n",
         "should support an eof somewhere in content"
     );
 
     assert_eq!(
-        to_html("> ```\n> aaa\n\nbbb"),
+        to_html_with_options("> ```\n> aaa\n\nbbb", &Options::commonmark()),
         "<blockquote>\n<pre><code>aaa\n</code></pre>\n</blockquote>\n<p>bbb</p>",
         "should support no closing sequence in a block quote"
     );
 
     assert_eq!(
-        to_html("```\n\n  \n```"),
+        to_html_with_options("```\n\n  \n```", &Options::commonmark()),
         "<pre><code>\n  \n</code></pre>",
         "should support blank lines in fenced code"
     );
 
     assert_eq!(
-        to_html("```\n```"),
+        to_html_with_options("```\n```", &Options::commonmark()),
         "<pre><code></code></pre>",
         "should support empty fenced code"
     );
 
     assert_eq!(
-      to_html(" ```\n aaa\naaa\n```"),
+      to_html_with_options(" ```\n aaa\naaa\n```", &Options::commonmark()),
       "<pre><code>aaa\naaa\n</code></pre>",
       "should remove up to one space from the content if the opening sequence is indented w/ 1 space"
     );
 
     assert_eq!(
-      to_html("  ```\naaa\n  aaa\naaa\n  ```"),
+      to_html_with_options("  ```\naaa\n  aaa\naaa\n  ```", &Options::commonmark()),
       "<pre><code>aaa\naaa\naaa\n</code></pre>",
       "should remove up to two space from the content if the opening sequence is indented w/ 2 spaces"
     );
 
     assert_eq!(
-      to_html("   ```\n   aaa\n    aaa\n  aaa\n   ```"),
+      to_html_with_options("   ```\n   aaa\n    aaa\n  aaa\n   ```", &Options::commonmark()),
       "<pre><code>aaa\n aaa\naaa\n</code></pre>",
       "should remove up to three space from the content if the opening sequence is indented w/ 3 spaces"
     );
 
     assert_eq!(
-        to_html("    ```\n    aaa\n    ```"),
+        to_html_with_options("    ```\n    aaa\n    ```", &Options::commonmark()),
         "<pre><code>```\naaa\n```\n</code></pre>",
         "should not support indenteding the opening sequence w/ 4 spaces"
     );
 
     assert_eq!(
-        to_html("```\naaa\n  ```"),
+        to_html_with_options("```\naaa\n  ```", &Options::commonmark()),
         "<pre><code>aaa\n</code></pre>",
         "should support an indented closing sequence"
     );
 
     assert_eq!(
-        to_html("   ```\naaa\n  ```"),
+        to_html_with_options("   ```\naaa\n  ```", &Options::commonmark()),
         "<pre><code>aaa\n</code></pre>",
         "should support a differently indented closing sequence than the opening sequence"
     );
 
     assert_eq!(
-        to_html("```\naaa\n    ```\n"),
+        to_html_with_options("```\naaa\n    ```\n", &Options::commonmark()),
         "<pre><code>aaa\n    ```\n</code></pre>\n",
         "should not support an indented closing sequence w/ 4 spaces"
     );
 
     assert_eq!(
-        to_html("``` ```\naaa"),
+        to_html_with_options("``` ```\naaa", &Options::commonmark()),
         "<p><code> </code>\naaa</p>",
         "should not support grave accents in the opening fence after the opening sequence"
     );
 
     assert_eq!(
-        to_html("~~~~~~\naaa\n~~~ ~~\n"),
+        to_html_with_options("~~~~~~\naaa\n~~~ ~~\n", &Options::commonmark()),
         "<pre><code>aaa\n~~~ ~~\n</code></pre>\n",
         "should not support spaces in the closing sequence"
     );
 
     assert_eq!(
-        to_html("foo\n```\nbar\n```\nbaz"),
+        to_html_with_options("foo\n```\nbar\n```\nbaz", &Options::commonmark()),
         "<p>foo</p>\n<pre><code>bar\n</code></pre>\n<p>baz</p>",
         "should support interrupting paragraphs"
     );
 
     assert_eq!(
-        to_html("foo\n---\n~~~\nbar\n~~~\n# baz"),
+        to_html_with_options("foo\n---\n~~~\nbar\n~~~\n# baz", &Options::commonmark()),
         "<h2>foo</h2>\n<pre><code>bar\n</code></pre>\n<h1>baz</h1>",
         "should support interrupting other content"
     );
 
     assert_eq!(
-        to_html("```ruby\ndef foo(x)\n  return 3\nend\n```"),
+        to_html_with_options(
+            "```ruby\ndef foo(x)\n  return 3\nend\n```",
+            &Options::commonmark()
+        ),
         "<pre><code class=\"language-ruby\">def foo(x)\n  return 3\nend\n</code></pre>",
         "should support the info string as a `language-` class (1)"
     );
 
     assert_eq!(
-        to_html("````;\n````"),
+        to_html_with_options("````;\n````", &Options::commonmark()),
         "<pre><code class=\"language-;\"></code></pre>",
         "should support the info string as a `language-` class (2)"
     );
 
     assert_eq!(
-        to_html("~~~~    ruby startline=3 $%@#$\ndef foo(x)\n  return 3\nend\n~~~~~~~"),
+        to_html_with_options(
+            "~~~~    ruby startline=3 $%@#$\ndef foo(x)\n  return 3\nend\n~~~~~~~",
+            &Options::commonmark()
+        ),
         "<pre><code class=\"language-ruby\">def foo(x)\n  return 3\nend\n</code></pre>",
         "should support the info string as a `language-` class, but not the meta string"
     );
 
     assert_eq!(
-        to_html("``` aa ```\nfoo"),
+        to_html_with_options("``` aa ```\nfoo", &Options::commonmark()),
         "<p><code>aa</code>\nfoo</p>",
         "should not support grave accents in the meta string"
     );
 
     assert_eq!(
-        to_html("~~~ aa ``` ~~~\nfoo\n~~~"),
+        to_html_with_options("~~~ aa ``` ~~~\nfoo\n~~~", &Options::commonmark()),
         "<pre><code class=\"language-aa\">foo\n</code></pre>",
         "should support grave accents and tildes in the meta string of tilde fenced code"
     );
 
     assert_eq!(
-        to_html("~~~lang~suffix\ncode\n~~~"),
+        to_html_with_options("~~~lang~suffix\ncode\n~~~", &Options::commonmark()),
         "<pre><code class=\"language-lang~suffix\">code\n</code></pre>",
         "should allow tildes inside a tilde fence info string"
     );
 
     assert_eq!(
-        to_html("```\n``` aaa\n```"),
+        to_html_with_options("```\n``` aaa\n```", &Options::commonmark()),
         "<pre><code>``` aaa\n</code></pre>",
         "should not support info string on closing sequences"
     );
 
     // Our own:
     assert_eq!(
-        to_html("```  "),
+        to_html_with_options("```  ", &Options::commonmark()),
         "<pre><code></code></pre>\n",
         "should support an eof after whitespace, after the start fence sequence"
     );
 
     assert_eq!(
-        to_html("```  js\nalert(1)\n```"),
+        to_html_with_options("```  js\nalert(1)\n```", &Options::commonmark()),
         "<pre><code class=\"language-js\">alert(1)\n</code></pre>",
         "should support whitespace between the sequence and the info string"
     );
 
     assert_eq!(
-        to_html("```js"),
+        to_html_with_options("```js", &Options::commonmark()),
         "<pre><code class=\"language-js\"></code></pre>\n",
         "should support an eof after the info string"
     );
 
     assert_eq!(
-        to_html("```  js \nalert(1)\n```"),
+        to_html_with_options("```  js \nalert(1)\n```", &Options::commonmark()),
         "<pre><code class=\"language-js\">alert(1)\n</code></pre>",
         "should support whitespace after the info string"
     );
 
     assert_eq!(
-        to_html("```\n  "),
+        to_html_with_options("```\n  ", &Options::commonmark()),
         "<pre><code>  \n</code></pre>\n",
         "should support an eof after whitespace in content"
     );
 
     assert_eq!(
-        to_html("  ```\n "),
+        to_html_with_options("  ```\n ", &Options::commonmark()),
         "<pre><code></code></pre>\n",
         "should support an eof in the prefix, in content"
     );
 
     assert_eq!(
-        to_html("```j\\+s&copy;"),
+        to_html_with_options("```j\\+s&copy;", &Options::commonmark()),
         "<pre><code class=\"language-j+s©\"></code></pre>\n",
         "should support character escapes and character references in info strings"
     );
 
     assert_eq!(
-        to_html("```a\\&b\0c"),
+        to_html_with_options("```a\\&b\0c", &Options::commonmark()),
         "<pre><code class=\"language-a&amp;b�c\"></code></pre>\n",
         "should encode dangerous characters in languages"
     );
 
     assert_eq!(
-      to_html("   ```\naaa\n    ```"),
+      to_html_with_options("   ```\naaa\n    ```", &Options::commonmark()),
       "<pre><code>aaa\n ```\n</code></pre>\n",
       "should not support a closing sequence w/ too much indent, regardless of opening sequence (1)"
     );
 
     assert_eq!(
-        to_html("> ```\n>\n>\n>\n\na"),
+        to_html_with_options("> ```\n>\n>\n>\n\na", &Options::commonmark()),
         "<blockquote>\n<pre><code>\n\n\n</code></pre>\n</blockquote>\n<p>a</p>",
         "should not support a closing sequence w/ too much indent, regardless of opening sequence (2)"
     );
 
     assert_eq!(
-        to_html("> ```a\nb"),
+        to_html_with_options("> ```a\nb", &Options::commonmark()),
         "<blockquote>\n<pre><code class=\"language-a\"></code></pre>\n</blockquote>\n<p>b</p>",
         "should not support lazyness (1)"
     );
 
     assert_eq!(
-        to_html("> a\n```b"),
+        to_html_with_options("> a\n```b", &Options::commonmark()),
         "<blockquote>\n<p>a</p>\n</blockquote>\n<pre><code class=\"language-b\"></code></pre>\n",
         "should not support lazyness (2)"
     );
 
     assert_eq!(
-        to_html("> ```a\n```"),
+        to_html_with_options("> ```a\n```", &Options::commonmark()),
         "<blockquote>\n<pre><code class=\"language-a\"></code></pre>\n</blockquote>\n<pre><code></code></pre>\n",
         "should not support lazyness (3)"
     );
@@ -278,11 +284,11 @@ fn code_fenced() -> Result<(), message::Message> {
                 parse: ParseOptions {
                     constructs: Constructs {
                         code_fenced: false,
-                        ..Default::default()
+                        ..Constructs::commonmark()
                     },
-                    ..Default::default()
+                    ..ParseOptions::commonmark()
                 },
-                ..Default::default()
+                ..Options::commonmark()
             }
         ),
         "<p>```</p>",
@@ -292,7 +298,7 @@ fn code_fenced() -> Result<(), message::Message> {
     assert_eq!(
         parse_fixture(
             "```js extra\nconsole.log(1)\nconsole.log(2)\n```",
-            &Default::default()
+            &ParseOptions::commonmark()
         )?,
         Node::Root(Root {
             children: vec![Node::Code(Code {
@@ -312,7 +318,7 @@ fn code_fenced() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        parse_fixture("```\nasd", &Default::default())?,
+        parse_fixture("```\nasd", &ParseOptions::commonmark())?,
         Node::Root(Root {
             children: vec![Node::Code(Code {
                 fence: Some(CodeFence {
@@ -331,7 +337,7 @@ fn code_fenced() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        parse_fixture("```\rasd\r```", &Default::default())?,
+        parse_fixture("```\rasd\r```", &ParseOptions::commonmark())?,
         Node::Root(Root {
             children: vec![Node::Code(Code {
                 fence: Some(CodeFence {
@@ -350,7 +356,7 @@ fn code_fenced() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        parse_fixture("```\r\nasd\r\n```", &Default::default())?,
+        parse_fixture("```\r\nasd\r\n```", &ParseOptions::commonmark())?,
         Node::Root(Root {
             children: vec![Node::Code(Code {
                 fence: Some(CodeFence {

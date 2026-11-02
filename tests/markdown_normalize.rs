@@ -177,16 +177,24 @@ fn task_item_content_aligns_with_the_list_marker() {
 }
 
 #[test]
-fn normalize_parse_options_enable_gfm_frontmatter_and_math() {
-    let options = ParseOptions::normalize();
+fn normalize_markdown_parses_the_default_options() {
+    let options = ParseOptions::default();
 
     assert!(options.constructs.table);
     assert!(options.constructs.frontmatter);
-    assert!(options.constructs.math_flow);
-    assert!(options.constructs.math_text);
+    assert!(!options.constructs.math_flow);
+    assert!(!options.constructs.math_text);
     assert_eq!(
-        normalize_markdown_with_options("$$\nx\n$$\n", &options).unwrap(),
-        normalize_markdown("$$\nx\n$$\n").unwrap()
+        normalize_markdown_with_options("~a~ $x$\n", &options).unwrap(),
+        normalize_markdown("~a~ $x$\n").unwrap()
+    );
+
+    let mut math = ParseOptions::default();
+    math.constructs.math_flow = true;
+    math.constructs.math_text = true;
+    assert_eq!(
+        normalize_markdown_with_options("$$\nx\n$$\n", &math).unwrap(),
+        "$$\nx\n$$\n"
     );
 }
 

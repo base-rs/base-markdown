@@ -262,7 +262,7 @@ fn source_syntax_is_lazy_and_explicit_edits_can_disconnect_it() {
         )
         .is_err());
     let mut document =
-        Document::parse("```rust key=&amp;\\!\nx\n```", &ParseOptions::default()).unwrap();
+        Document::parse("```rust key=&amp;\\!\nx\n```", &ParseOptions::commonmark()).unwrap();
     let id = document.children(document.root()).next().unwrap();
     let Some(NodeSyntax::Code { info }) = document.syntax(id) else {
         panic!()
@@ -700,7 +700,7 @@ fn escaped_footnote_labels_and_nul_code_info_roundtrip() {
         base_markdown::to_html_with_options(&markdown, &options)
     );
     let source = "```r\0ust extra &amp;\nx\n```\n";
-    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    let document = Document::parse(source, &ParseOptions::commonmark()).unwrap();
     let id = document.children(document.root()).next().unwrap();
     let Some(NodeSyntax::Code { info }) = document.syntax(id) else {
         panic!()
@@ -713,7 +713,10 @@ fn escaped_footnote_labels_and_nul_code_info_roundtrip() {
         markdown,
         document.node(id).unwrap().kind
     );
-    assert_eq!(html(&document), base_markdown::to_html(&markdown));
+    assert_eq!(
+        html(&document),
+        base_markdown::to_html_with_options(&markdown, &Options::commonmark())
+    );
 }
 
 #[test]

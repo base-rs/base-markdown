@@ -241,7 +241,7 @@ fn fallible_rendering_reports_invalid_markers() {
     ];
 
     for (source, options) in cases {
-        let node = parse(source, &ParseOptions::default()).unwrap();
+        let node = parse(source, &ParseOptions::commonmark()).unwrap();
         assert!(
             to_markdown_with_options(&node, &options).is_err(),
             "{}",

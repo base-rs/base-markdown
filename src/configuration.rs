@@ -19,8 +19,11 @@ use alloc::string::String;
 /// use base_markdown::Constructs;
 /// # fn main() {
 ///
-/// // Use the default trait to get `CommonMark` constructs:
-/// let commonmark = Constructs::default();
+/// // Use the default trait to get `CommonMark` and the common extensions:
+/// let default = Constructs::default();
+///
+/// // Use the `commonmark` method for strict `CommonMark`:
+/// let commonmark = Constructs::commonmark();
 ///
 /// // To turn on all of GFM, use the `gfm` method:
 /// let gfm = Constructs::gfm();
@@ -124,12 +127,9 @@ pub struct Constructs {
     /// Markdown serialization retains the stored info string and body while normalizing spacing around the info string. It can lengthen fences or change their marker when edited content would close them prematurely, writing an implied language explicitly when replacing an untagged dash/plus delimiter, and adds a line ending before the closing fence when an edited body needs one. Round trips preserve the body and effective language.
     ///
     /// ````
-    /// use base_markdown::{Constructs, Document, NodeSyntax, ParseOptions};
+    /// use base_markdown::{Document, NodeSyntax, ParseOptions};
     ///
-    /// let options = ParseOptions {
-    ///     constructs: Constructs { frontmatter: true, ..Constructs::default() },
-    ///     ..ParseOptions::default()
-    /// };
+    /// let options = ParseOptions::default();
     /// let document = Document::parse("```json title=example\n{\"draft\": true}\n```\n\n# Hello", &options).unwrap();
     /// let node = document.children(document.root()).next().unwrap();
     /// let Some(NodeSyntax::Frontmatter { info, .. }) = document.syntax(node) else { panic!() };
@@ -153,7 +153,9 @@ pub struct Constructs {
     ///     ^^^^^^^^^^^^^^^^^^^
     /// ```
     ///
-    /// `http`, `https`, `ftp`, `sftp`, `ssh`, `irc` and `ircs` followed by `://` and a domain, `mailto:` and `xmpp:` followed by an email address (`xmpp:` also with an optional `/resource`), `www.` domains and email addresses form links, with schemes in any case. `tel:` and `sms:` link only in angle brackets.
+    /// `http`, `https`, `ftp`, `sftp`, `ssh`, `irc` and `ircs` followed by `://` and a domain, `mailto:` and `xmpp:` followed by an email address (`xmpp:` also with an optional `/resource`), `www.` domains and email addresses form links, with schemes in any case. `tel:` and `sms:` link only in angle brackets. A `www.` literal links to `https://`, so `www.example.com` links to `https://www.example.com`, and an email address to `mailto:`.
+    ///
+    /// Domains must be RFC 952 and RFC 1123 host names, which is stricter than GitHub: see [`Options::gfm`](crate::Options::gfm).
     pub autolink_literal: bool,
     /// Footnote definition.
     ///
@@ -172,9 +174,11 @@ pub struct Constructs {
     /// Strikethrough.
     ///
     /// ```markdown
-    /// > | a ~b~ c.
-    ///       ^^^
+    /// > | a ~~b~~ c.
+    ///       ^^^^^
     /// ```
+    ///
+    /// Two tildes form strikethrough; [`ParseOptions::strikethrough_single_tilde`] also lets one tilde form it, as on GitHub.
     pub strikethrough: bool,
     /// Table.
     ///
@@ -297,7 +301,21 @@ pub struct Constructs {
 }
 
 impl Default for Constructs {
-    /// `CommonMark`.
+    /// `CommonMark` with the extensions most documents expect: tables, task
+    /// list items, footnotes, strikethrough, literal autolinks and
+    /// frontmatter. Math is off.
+    ///
+    /// [`Options`] lists what each preset enables.
+    fn default() -> Self {
+        Self {
+            frontmatter: true,
+            ..Self::gfm()
+        }
+    }
+}
+
+impl Constructs {
+    /// `CommonMark`, with no extensions.
     ///
     /// `CommonMark` is a relatively strong specification of how markdown
     /// works.
@@ -305,7 +323,10 @@ impl Default for Constructs {
     ///
     /// For more information, see the `CommonMark` specification:
     /// <https://spec.commonmark.org>.
-    fn default() -> Self {
+    ///
+    /// Parsing differs from `CommonMark` in one deliberate way, which
+    /// [`Options::commonmark`](crate::Options::commonmark) describes.
+    pub fn commonmark() -> Self {
         Self {
             attention: true,
             autolink: true,
@@ -339,9 +360,7 @@ impl Default for Constructs {
             thematic_break: true,
         }
     }
-}
 
-impl Constructs {
     /// GFM.
     ///
     /// GFM stands for **GitHub flavored markdown**.
@@ -361,7 +380,7 @@ impl Constructs {
             strikethrough: true,
             table: true,
             task_list_item: true,
-            ..Self::default()
+            ..Self::commonmark()
         }
     }
 }
@@ -899,6 +918,14 @@ pub struct CompileOptions {
 }
 
 impl CompileOptions {
+    /// `CommonMark`.
+    ///
+    /// This is the same as the default, and exists for parity with parse
+    /// options.
+    pub fn commonmark() -> Self {
+        Self::default()
+    }
+
     /// GFM.
     ///
     /// GFM stands for **GitHub flavored markdown**.
@@ -927,7 +954,8 @@ impl CompileOptions {
 /// * To control what markdown constructs are turned on and off
 /// * To control some of those constructs
 ///
-/// In most cases, you will want to use the default trait or `gfm` method.
+/// In most cases, you will want to use the default trait, or the `gfm` or
+/// `commonmark` method. [`Options`] lists what each preset enables.
 ///
 /// ## Examples
 ///
@@ -935,8 +963,11 @@ impl CompileOptions {
 /// use base_markdown::ParseOptions;
 /// # fn main() {
 ///
-/// // Use the default trait to parse markdown according to `CommonMark`:
-/// let commonmark = ParseOptions::default();
+/// // Use the default trait to parse `CommonMark` with the common extensions:
+/// let default = ParseOptions::default();
+///
+/// // Use the `commonmark` method to parse markdown according to `CommonMark`:
+/// let commonmark = ParseOptions::commonmark();
 ///
 /// // Use the `gfm` method to parse markdown according to GFM:
 /// let gfm = ParseOptions::gfm();
@@ -952,14 +983,15 @@ impl CompileOptions {
 pub struct ParseOptions {
     /// Which constructs to enable and disable.
     ///
-    /// The default is to follow `CommonMark`.
+    /// The default is [`Constructs::default`]: `CommonMark` with the common
+    /// extensions.
     ///
     /// ## Examples
     ///
     /// ```
     /// use base_markdown::{to_html, to_html_with_options, Constructs, Options, ParseOptions};
     ///
-    /// // `markdown-rs` follows CommonMark by default:
+    /// // Indented code is part of CommonMark:
     /// assert_eq!(
     ///     to_html("    indented code?"),
     ///     "<pre><code>indented code?\n</code></pre>"
@@ -1023,45 +1055,32 @@ pub struct ParseOptions {
     /// `constructs`.
     /// This option does not affect strikethrough with double tildes.
     ///
-    /// The default is `true`, which follows how markdown on `github.com`
-    /// works, as strikethrough with single tildes is supported.
-    /// Pass `false`, to follow the GFM spec more strictly, by not allowing
-    /// strikethrough with single tildes.
+    /// The default is `false`, which follows the GFM spec, so a single tilde
+    /// stays text, as it does in prose such as `~5 min`.
+    /// [`ParseOptions::gfm`] sets it to `true`, which follows how markdown on
+    /// `github.com` works, as strikethrough with single tildes is supported.
     ///
     /// ## Examples
     ///
     /// ```
-    /// use base_markdown::{to_html_with_options, Constructs, Options, ParseOptions};
+    /// use base_markdown::{to_html, to_html_with_options, Options, ParseOptions};
     ///
-    /// // `markdown-rs` supports single tildes by default:
+    /// // A single tilde is text by default:
+    /// assert_eq!(to_html("~a~ ~~b~~"), "<p>~a~ <del>b</del></p>");
+    ///
+    /// // Pass `strikethrough_single_tilde: true`, as GFM does, to turn it on:
     /// assert_eq!(
     ///     to_html_with_options(
     ///         "~a~",
     ///         &Options {
     ///             parse: ParseOptions {
-    ///               constructs: Constructs::gfm(),
+    ///               strikethrough_single_tilde: true,
     ///               ..ParseOptions::default()
     ///             },
     ///             ..Options::default()
     ///         }
     ///     ),
     ///     "<p><del>a</del></p>"
-    /// );
-    ///
-    /// // Pass `strikethrough_single_tilde: false` to turn that off:
-    /// assert_eq!(
-    ///     to_html_with_options(
-    ///         "~a~",
-    ///         &Options {
-    ///             parse: ParseOptions {
-    ///               constructs: Constructs::gfm(),
-    ///               strikethrough_single_tilde: false,
-    ///               ..ParseOptions::default()
-    ///             },
-    ///             ..Options::default()
-    ///         }
-    ///     ),
-    ///     "<p>~a~</p>"
     /// );
     /// ```
     #[cfg_attr(feature = "serde", serde(default))]
@@ -1128,25 +1147,46 @@ pub struct ParseOptions {
 }
 
 impl Default for ParseOptions {
-    /// `CommonMark` defaults.
+    /// `CommonMark` with the extensions most documents expect: tables, task
+    /// list items, footnotes, strikethrough with two tildes, literal
+    /// autolinks and frontmatter. Math and single-tilde strikethrough are off.
+    ///
+    /// [`Options`] lists what each preset enables.
     fn default() -> Self {
         Self {
             constructs: Constructs::default(),
             inline_code_info: false,
             html_block_blank_lines: false,
             html_tag_namespaces: false,
-            strikethrough_single_tilde: true,
+            strikethrough_single_tilde: false,
             math_text_single_dollar: true,
         }
     }
 }
 
 impl ParseOptions {
+    /// `CommonMark`, with no extensions.
+    ///
+    /// This is the default of earlier releases. Its `strikethrough_single_tilde`
+    /// is `true`, as it was then, which matters only when `strikethrough` is
+    /// turned on afterward.
+    ///
+    /// Parsing differs from `CommonMark` in one deliberate way, which
+    /// [`Options::commonmark`](crate::Options::commonmark) describes.
+    pub fn commonmark() -> Self {
+        Self {
+            constructs: Constructs::commonmark(),
+            strikethrough_single_tilde: true,
+            ..Self::default()
+        }
+    }
+
     /// GFM.
     ///
     /// GFM stands for GitHub flavored markdown.
     /// GFM extends `CommonMark` and adds support for autolink literals,
-    /// footnotes, strikethrough, tables, and tasklists.
+    /// footnotes, strikethrough, tables, and tasklists. Strikethrough also
+    /// forms with a single tilde, as on GitHub.
     ///
     /// For more information, see the GFM specification:
     /// <https://github.github.com/gfm/>
@@ -1156,40 +1196,64 @@ impl ParseOptions {
     pub fn gfm() -> Self {
         Self {
             constructs: Constructs::gfm(),
+            strikethrough_single_tilde: true,
             ..Self::default()
         }
-    }
-
-    /// The syntax [`normalize_markdown`][crate::normalize_markdown] parses.
-    ///
-    /// This is GFM with frontmatter and math. Tools that inspect a document
-    /// before normalizing it can parse with these options to see the same
-    /// structure the normalizer does.
-    pub fn normalize() -> Self {
-        let mut options = Self::gfm();
-        options.constructs.frontmatter = true;
-        options.constructs.math_flow = true;
-        options.constructs.math_text = true;
-        options
     }
 }
 
 /// Configuration that describes how to parse from markdown and compile to
 /// HTML.
 ///
-/// In most cases, you will want to use the default trait or `gfm` method.
+/// `CommonMark` is the core syntax. Each extension is a field of
+/// [`Constructs`], which describes what it recognizes, and some have a
+/// [`ParseOptions`] field that adjusts it. Three presets combine them:
+///
+/// | Syntax | `default()` | `gfm()` | `commonmark()` |
+/// | --- | --- | --- | --- |
+/// | `CommonMark` | yes | yes | yes |
+/// | `table`, `task_list_item`, footnotes, `autolink_literal` | yes | yes | no |
+/// | `strikethrough` with `~~` | yes | yes | no |
+/// | `strikethrough_single_tilde` | no | yes | no |
+/// | `frontmatter` | yes | no | no |
+/// | `math_flow`, `math_text` | no | no | no |
+/// | `CompileOptions::tagfilter` | no | yes | no |
+///
+/// * [`Options::default`] is what most documents expect: `CommonMark` and
+///   GFM's tables, task list items, footnotes, strikethrough and literal
+///   autolinks, with frontmatter. Single-tilde strikethrough is off, so
+///   prose such as `~5 min` stays text, and math is off, so `$` is text.
+/// * [`Options::gfm`] is GitHub-flavored Markdown, which differs from GitHub
+///   in the ways it lists.
+/// * [`Options::commonmark`] is strict `CommonMark`, which differs from the
+///   specification only in which angle-bracket autolinks form.
+///
+/// Every preset links a `www.` literal, where literals are on, to
+/// `https://`, and every field can be adjusted afterward.
 ///
 /// ## Examples
 ///
 /// ```
-/// use base_markdown::Options;
+/// use base_markdown::{Constructs, Options, ParseOptions};
 /// # fn main() {
 ///
-/// // Use the default trait to compile markdown to HTML according to `CommonMark`:
-/// let commonmark = Options::default();
+/// // Use the default trait for `CommonMark` with the common extensions:
+/// let default = Options::default();
+///
+/// // Use the `commonmark` method to compile markdown to HTML according to `CommonMark`:
+/// let commonmark = Options::commonmark();
 ///
 /// // Use the `gfm` method to compile markdown to HTML according to GFM:
 /// let gfm = Options::gfm();
+///
+/// // Or adjust a preset, here to add math:
+/// let math = Options {
+///     parse: ParseOptions {
+///         constructs: Constructs { math_flow: true, math_text: true, ..Constructs::default() },
+///         ..ParseOptions::default()
+///     },
+///     ..Options::default()
+/// };
 /// # }
 /// ```
 #[allow(clippy::struct_excessive_bools)]
@@ -1207,6 +1271,25 @@ pub struct Options {
 }
 
 impl Options {
+    /// `CommonMark`, with no extensions.
+    ///
+    /// For more information, see the `CommonMark` specification:
+    /// <https://spec.commonmark.org>.
+    ///
+    /// # Differences from `CommonMark`
+    ///
+    /// This is deliberate:
+    ///
+    /// * Angle-bracket autolinks need a scheme from the link-scheme table, followed by what its
+    ///   kind requires, or an email address: `<gopher://a>`, `<http:>` and
+    ///   `Option<std::io::Error>` are not links. See [`Constructs::autolink`].
+    pub fn commonmark() -> Self {
+        Self {
+            parse: ParseOptions::commonmark(),
+            compile: CompileOptions::commonmark(),
+        }
+    }
+
     /// GFM.
     ///
     /// GFM stands for GitHub flavored markdown.
@@ -1222,6 +1305,8 @@ impl Options {
     ///
     /// These are deliberate:
     ///
+    /// * A `www.` literal links to `https://`, not `http://`: `www.a.com` links to
+    ///   `https://www.a.com`.
     /// * A `www.` literal needs a domain after the dot: `www. a` and `www.#a` are text.
     /// * Literal domains must be RFC 952 and RFC 1123 host names, with no `_`, no empty label and
     ///   no `-` at either end of a label, though letters of internationalized names are allowed:

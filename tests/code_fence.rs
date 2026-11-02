@@ -42,7 +42,7 @@ fn opening_fences_match_markly_character_length_and_indent() {
         ("before\n\n  ```\ncode\n```", '`', 3, 2),
         ("\u{feff}```\ncode\n```", '`', 3, 0),
     ] {
-        let node = code(source, &ParseOptions::default());
+        let node = code(source, &ParseOptions::commonmark());
         let expected = CodeFence {
             character,
             length,
@@ -54,7 +54,7 @@ fn opening_fences_match_markly_character_length_and_indent() {
     let opening = "~".repeat(300);
     let source = format!("{opening}\ncode\n{opening}");
     assert_eq!(
-        fence(&code(&source, &ParseOptions::default()))
+        fence(&code(&source, &ParseOptions::commonmark()))
             .unwrap()
             .length,
         300
@@ -75,7 +75,7 @@ fn indentation_excludes_container_prefixes_and_expands_tabs() {
         ("> -   ~~~\n>     code\n>     ~~~", 0),
     ] {
         assert_eq!(
-            fence(&code(source, &ParseOptions::default()))
+            fence(&code(source, &ParseOptions::commonmark()))
                 .unwrap()
                 .indent,
             indent,
@@ -86,9 +86,9 @@ fn indentation_excludes_container_prefixes_and_expands_tabs() {
     let options = ParseOptions {
         constructs: Constructs {
             code_indented: false,
-            ..Constructs::default()
+            ..Constructs::commonmark()
         },
-        ..ParseOptions::default()
+        ..ParseOptions::commonmark()
     };
     for (source, indent) in [
         ("\t```\n```", 4),
@@ -106,9 +106,9 @@ fn indentation_excludes_container_prefixes_and_expands_tabs() {
 
 #[test]
 fn unfenced_nodes_have_no_code_fence() {
-    let node = code("    puts 'wow'", &ParseOptions::default());
+    let node = code("    puts 'wow'", &ParseOptions::commonmark());
     assert_eq!(fence(&node), None);
-    let document = Document::parse("# Heading\n\n`code`", &ParseOptions::default()).unwrap();
+    let document = Document::parse("# Heading\n\n`code`", &ParseOptions::commonmark()).unwrap();
     for id in document.descendants(document.root()) {
         assert_eq!(document_fence(&document, id), None);
     }
@@ -127,9 +127,9 @@ fn frontmatter_exposes_its_existing_opening_fence() {
     let options = ParseOptions {
         constructs: Constructs {
             frontmatter: true,
-            ..Constructs::default()
+            ..Constructs::commonmark()
         },
-        ..ParseOptions::default()
+        ..ParseOptions::commonmark()
     };
     for (source, character, length) in [
         ("---\nyaml: body\n---", '-', 3),
@@ -157,7 +157,7 @@ fn frontmatter_exposes_its_existing_opening_fence() {
 #[test]
 fn detached_and_edited_nodes_keep_fence_metadata() {
     let source = "  ~~~~ruby\n  puts 'wow'\n  ~~~~";
-    let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+    let mut document = Document::parse(source, &ParseOptions::commonmark()).unwrap();
     let children = document.extract_children(document.root()).unwrap();
     let node = children[0];
     let expected = Some(CodeFence {
@@ -194,7 +194,7 @@ fn detached_and_edited_nodes_keep_fence_metadata() {
 fn serde_preserves_fence_metadata() {
     let document = Document::parse(
         "  ~~~~ruby\n  puts 'wow'\n  ~~~~".to_string(),
-        &ParseOptions::default(),
+        &ParseOptions::commonmark(),
     )
     .unwrap();
     let json = serde_json::to_string(&document).unwrap();

@@ -15,9 +15,15 @@ use support::fixture::{FootnoteDefinition, FootnoteReference, Node, Paragraph, R
 #[test]
 fn footnote() -> Result<(), message::Message> {
     assert_eq!(
-        to_html("A call.[^a]\n\n[^a]: whatevs"),
+        to_html_with_options("A call.[^a]\n\n[^a]: whatevs", &Options::commonmark()),
         "<p>A call.<a href=\"whatevs\">^a</a></p>\n",
-        "should ignore footnotes by default"
+        "should ignore footnotes in CommonMark"
+    );
+
+    assert_eq!(
+        to_html("A call.[^a]\n\n[^a]: whatevs"),
+        to_html_with_options("A call.[^a]\n\n[^a]: whatevs", &Options::gfm()),
+        "should support footnotes by default"
     );
 
     assert_eq!(

@@ -10,9 +10,9 @@ let options = Options {
         constructs: Constructs {
             table: true,
             strikethrough: true,
-            ..Constructs::default()
+            ..Constructs::commonmark()
         },
-        ..ParseOptions::default()
+        ..ParseOptions::commonmark()
     },
     ..Options::default()
 };
@@ -21,11 +21,11 @@ let html = to_html_with_options("~~removed~~", &options);
 assert_eq!(html, "<p><del>removed</del></p>");
 ```
 
-The extension constructs are `autolink_literal`, `table`, `strikethrough`, `task_list_item`, `footnote_definition`, and `label_start_footnote`. Enable both footnote constructs to recognize definitions and references. Other optional constructs, including `frontmatter`, `math_flow`, and `math_text`, use the same configuration pattern. Individual extensions retain their existing defaults and parsing behavior.
+The extension constructs are `autolink_literal`, `table`, `strikethrough`, `task_list_item`, `footnote_definition`, and `label_start_footnote`. Enable both footnote constructs to recognize definitions and references. Other optional constructs, including `frontmatter`, `math_flow`, and `math_text`, use the same configuration pattern. The default presets enable the GFM extensions and frontmatter, and the `commonmark()` presets enable none; start from `commonmark()` to enable extensions one by one.
 
 `ParseOptions::strikethrough_single_tilde` adjusts whether one tilde can delimit strikethrough. HTML options use the same feature names: `CompileOptions::footnote_label`, `footnote_back_label`, `footnote_clobber_prefix`, `footnote_label_attributes`, `footnote_label_tag_name`, `task_list_item_checkable`, and `tagfilter`.
 
-`Constructs::gfm()`, `ParseOptions::gfm()`, `CompileOptions::gfm()`, and `Options::gfm()` remain presets for the GitHub-flavored Markdown combination. Their individual features can still be adjusted afterward. References to GFM in specifications and corpus names identify the dialect being compared.
+`Constructs::gfm()`, `ParseOptions::gfm()`, `CompileOptions::gfm()`, and `Options::gfm()` remain presets for the GitHub-flavored Markdown combination, and the `commonmark()` presets of the same types enable no extensions. Their individual features can still be adjusted afterward. References to GFM in specifications and corpus names identify the dialect being compared.
 
 ## Migrating configuration names
 

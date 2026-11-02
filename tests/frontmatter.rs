@@ -27,9 +27,15 @@ fn frontmatter() -> Result<(), message::Message> {
     };
 
     assert_eq!(
-        to_html("---\ntitle: Jupyter\n---"),
+        to_html_with_options("---\ntitle: Jupyter\n---", &Options::commonmark()),
         "<hr />\n<h2>title: Jupyter</h2>",
-        "should not support frontmatter by default"
+        "should not support frontmatter in CommonMark"
+    );
+
+    assert_eq!(
+        to_html("---\ntitle: Jupyter\n---"),
+        "",
+        "should support frontmatter by default"
     );
 
     assert_eq!(
@@ -386,7 +392,7 @@ fn only_closed_tagged_fences_at_document_start_are_frontmatter() {
         "~~~toml\na = 1\n~~~",
         "---json\n{}\n---",
     ] {
-        let document = parse_document(source, &ParseOptions::default());
+        let document = parse_document(source, &ParseOptions::commonmark());
         assert!(!document
             .children(document.root())
             .any(|id| document.frontmatter_value(id).is_some()));
@@ -459,7 +465,7 @@ fn frontmatter_preserves_source_spans_and_body_after_detaching() {
 #[test]
 fn an_edited_lf_body_equal_to_the_whole_block_stays_an_edit_after_rebuilding() {
     let source = "---\na: 1\n---\n\n# x\n";
-    let mut document = Document::parse(source.to_string(), &ParseOptions::normalize()).unwrap();
+    let mut document = Document::parse(source.to_string(), &ParseOptions::default()).unwrap();
     let node = document.children(document.root()).next().unwrap();
     *document.text_mut(node).unwrap() = "---\na: 1\n---".into();
     // Rebuilding from events keeps the values but not the record of edits.

@@ -4,8 +4,7 @@
 //! Every link scheme in the table, in `<…>`, bare GFM literal, safe `href` and serializer forms.
 mod support;
 use base_markdown::{
-    markdown::to_markdown, to_html, to_html_with_options, CompileOptions, Document, Options,
-    ParseOptions,
+    markdown::to_markdown, to_html_with_options, CompileOptions, Document, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
 use support::fixture::canonical;
@@ -21,7 +20,7 @@ fn danger() -> Options {
             allow_dangerous_protocol: true,
             ..Default::default()
         },
-        ..Default::default()
+        ..Options::commonmark()
     }
 }
 
@@ -53,18 +52,18 @@ fn angle_links() -> Vec<String> {
 fn angle_autolinks_accept_every_scheme() {
     for destination in angle_links() {
         assert_eq!(
-            to_html(&format!("<{destination}>")),
+            to_html_with_options(&format!("<{destination}>"), &Options::commonmark()),
             link(&destination),
             "{destination:?}"
         );
     }
     assert_eq!(
-        to_html("<HTTPS://a.b>"),
+        to_html_with_options("<HTTPS://a.b>", &Options::commonmark()),
         link("HTTPS://a.b"),
         "should match schemes case-insensitively"
     );
     assert_eq!(
-        to_html("<Tel:+1555>"),
+        to_html_with_options("<Tel:+1555>", &Options::commonmark()),
         link("Tel:+1555"),
         "should match phone schemes case-insensitively"
     );
@@ -118,7 +117,11 @@ fn angle_autolinks_reject_what_the_kind_does_not_allow() {
             "<p>&lt;{}&gt;</p>",
             input[1..input.len() - 1].replace('&', "&amp;")
         );
-        assert_eq!(to_html(&input), expected, "{input:?}");
+        assert_eq!(
+            to_html_with_options(&input, &Options::commonmark()),
+            expected,
+            "{input:?}"
+        );
         assert_eq!(
             to_html_with_options(&input, &danger()),
             expected,
@@ -130,7 +133,7 @@ fn angle_autolinks_reject_what_the_kind_does_not_allow() {
 #[test]
 fn angle_autolinks_with_letters_only_fall_back_to_email() {
     assert_eq!(
-        to_html("<ssh@a.b> <telephone@a.b> <mailto@a.b>"),
+        to_html_with_options("<ssh@a.b> <telephone@a.b> <mailto@a.b>", &Options::commonmark()),
         "<p><a href=\"mailto:ssh@a.b\">ssh@a.b</a> <a href=\"mailto:telephone@a.b\">telephone@a.b</a> <a href=\"mailto:mailto@a.b\">mailto@a.b</a></p>",
         "should read a scheme-like local part as an email"
     );
@@ -216,7 +219,11 @@ fn safe_href_keeps_every_scheme() {
         ("[x](data:text/html,x)", "<p><a href=\"\">x</a></p>"),
         ("[x](file:///etc/passwd)", "<p><a href=\"\">x</a></p>"),
     ] {
-        assert_eq!(to_html(input), expected, "{input:?}");
+        assert_eq!(
+            to_html_with_options(input, &Options::commonmark()),
+            expected,
+            "{input:?}"
+        );
     }
     for scheme in HOST_SCHEMES
         .iter()
@@ -224,13 +231,13 @@ fn safe_href_keeps_every_scheme() {
         .chain(&PHONE_SCHEMES)
     {
         assert_eq!(
-            to_html(&format!("[x]({scheme}:y)")),
+            to_html_with_options(&format!("[x]({scheme}:y)"), &Options::commonmark()),
             format!("<p><a href=\"{scheme}:y\">x</a></p>"),
             "{scheme:?}"
         );
     }
     assert_eq!(
-        to_html("![x](ssh://a)"),
+        to_html_with_options("![x](ssh://a)", &Options::commonmark()),
         "<p><img src=\"\" alt=\"x\" /></p>",
         "should keep images to `http` and `https`"
     );
@@ -240,7 +247,7 @@ fn safe_href_keeps_every_scheme() {
 fn angle_autolinks_roundtrip_for_every_scheme() {
     for destination in angle_links() {
         let input = format!("<{destination}>\n");
-        for options in [ParseOptions::default(), ParseOptions::gfm()] {
+        for options in [ParseOptions::commonmark(), ParseOptions::gfm()] {
             let tree = Document::parse(&input, &options).unwrap();
             let first = to_markdown(&tree).unwrap();
             assert_eq!(first, input, "{input:?}");
@@ -273,7 +280,7 @@ fn address_schemes_take_one_address_and_a_query() {
         "xmpp:a@b.c?join",
     ] {
         assert_eq!(
-            to_html(&format!("<{destination}>")),
+            to_html_with_options(&format!("<{destination}>"), &Options::commonmark()),
             link(destination),
             "{destination:?}"
         );
@@ -284,7 +291,7 @@ fn address_schemes_take_one_address_and_a_query() {
         );
     }
     assert_eq!(
-        to_html("<mailto:a@b.c?subject=a&body=b>"),
+        to_html_with_options("<mailto:a@b.c?subject=a&body=b>", &Options::commonmark()),
         "<p><a href=\"mailto:a@b.c?subject=a&amp;body=b\">mailto:a@b.c?subject=a&amp;body=b</a></p>",
         "should support a query with several fields"
     );
@@ -302,13 +309,13 @@ fn address_schemes_take_one_address_and_a_query() {
         "<a@b.c/resource>",
     ] {
         assert_eq!(
-            to_html(input),
+            to_html_with_options(input, &Options::commonmark()),
             format!("<p>&lt;{}&gt;</p>", &input[1..input.len() - 1]),
             "{input:?}"
         );
     }
     assert_eq!(
-        to_html("<mailto:a@b.c?x<y>"),
+        to_html_with_options("<mailto:a@b.c?x<y>", &Options::commonmark()),
         "<p>&lt;mailto:a@b.c?x&lt;y&gt;</p>",
         "should not allow `<` in a query"
     );
@@ -333,7 +340,7 @@ fn phone_autolinks_precede_namespaced_tags() {
     let options = Options {
         parse: ParseOptions {
             html_tag_namespaces: true,
-            ..Default::default()
+            ..ParseOptions::commonmark()
         },
         ..danger()
     };

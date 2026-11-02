@@ -26,7 +26,7 @@ mod util;
 
 /// Normalize a Markdown document.
 ///
-/// Parses `CommonMark`, GFM, frontmatter, and math ([`ParseOptions::normalize`]), then serializes the result with default formatting and soft source line breaks unwrapped. Explicit hard breaks, code content, and block boundaries are preserved. The output uses LF line endings and ends with one when non-empty. Tools that generate Markdown can pass their output through this function to produce exactly what `bake-markdown`'s `markdown:normalize` task writes.
+/// Parses with the default options ([`ParseOptions::default`]: `CommonMark`, tables, task list items, footnotes, strikethrough, literal autolinks and frontmatter), then serializes the result with default formatting and soft source line breaks unwrapped. Explicit hard breaks, code content, and block boundaries are preserved. The output uses LF line endings and ends with one when non-empty. Tools that generate Markdown can pass their output through this function to produce exactly what `bake-markdown`'s `markdown:normalize` task writes.
 ///
 /// ```
 /// use base_markdown::normalize_markdown;
@@ -37,12 +37,12 @@ mod util;
 /// # Errors
 /// Returns unsupported content shapes from serialization.
 pub fn normalize_markdown(source: &str) -> Result<String, Message> {
-    normalize_markdown_with_options(source, &ParseOptions::normalize())
+    normalize_markdown_with_options(source, &ParseOptions::default())
 }
 
 /// Normalize a Markdown document using explicit parser options.
 ///
-/// Use this for syntax beyond the GFM, frontmatter, and math support of [`normalize_markdown`], or to disable individual constructs. The output is serialized as by [`normalize_markdown`].
+/// Use this for syntax beyond the default options of [`normalize_markdown`], such as math, or to disable individual constructs. The output is serialized as by [`normalize_markdown`].
 ///
 /// # Errors
 /// Returns unsupported content shapes from serialization.
@@ -109,6 +109,14 @@ pub fn to_markdown_node<S: AsRef<str>>(
         || matches!(kind, crate::stream::EventKind::Opaque { block: false, .. });
     let mut state = State::new(options);
     state.serialization_root = Some(node);
+    // Any math in the arena, attached or not, counts: the output may be read beside it.
+    state.math = document.nodes().iter().any(|node| {
+        matches!(
+            node.kind,
+            crate::stream::EventKind::Math(_)
+                | crate::stream::EventKind::CodeBlock { math: true, .. }
+        )
+    });
     let mut result = state.handle(document, node, &Info::new("\n", "\n"))?;
     // Only block output is line-terminated, matching cmark's renderer.
     if !inline && !result.is_empty() && !result.ends_with('\n') {

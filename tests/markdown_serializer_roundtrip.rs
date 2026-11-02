@@ -502,7 +502,7 @@ fn angle_bracket_autolinks_roundtrip() {
         ("<http:>\n", "\\<http:>\n"),
         ("<mailto:>\n", "\\<mailto:>\n"),
     ] {
-        for options in [ParseOptions::default(), ParseOptions::gfm()] {
+        for options in [ParseOptions::commonmark(), ParseOptions::gfm()] {
             let tree = Document::parse(input, &options).unwrap();
             let first = to(&tree).unwrap();
             assert_eq!(first, expected, "{:?}", input);
@@ -541,7 +541,11 @@ fn text_angle_brackets_escape_only_before_email_autolinks() {
         ("# <#\\:\n", Some("# <#:\n")),
         ("\\<1@b.c\n", Some("<1\\@b.c\n")),
     ] {
-        for options in [ParseOptions::default(), ParseOptions::gfm(), namespaces()] {
+        for options in [
+            ParseOptions::commonmark(),
+            ParseOptions::gfm(),
+            namespaces(),
+        ] {
             let tree = Document::parse(input, &options).unwrap();
             let first = to(&tree).unwrap();
             if let (Some(expected), false) = (expected, options.constructs.autolink_literal) {
@@ -615,7 +619,7 @@ fn text_angle_brackets_ignore_following_nodes() {
         ),
     ] {
         for (options, gfm) in [
-            (ParseOptions::default(), false),
+            (ParseOptions::commonmark(), false),
             (ParseOptions::gfm(), true),
         ] {
             let tree = Document::parse(input, &options).unwrap();

@@ -24,7 +24,7 @@ fn assert_round_trip(mut document: Document<String>, expected: &str, label: &str
     document.normalize();
     let output = to_markdown(&document).unwrap();
     assert_eq!(output, expected, "{label}");
-    let mut reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+    let mut reparsed = Document::parse(output.clone(), &ParseOptions::default()).unwrap();
     reparsed.normalize();
     assert!(reparsed.is_normalized(), "{}", label);
     assert_eq!(canonical(&reparsed), canonical(&document), "{label}");
@@ -32,7 +32,7 @@ fn assert_round_trip(mut document: Document<String>, expected: &str, label: &str
 }
 
 fn assert_source(source: &str, expected: &str) {
-    let document = Document::parse(source.to_string(), &ParseOptions::normalize()).unwrap();
+    let document = Document::parse(source.to_string(), &ParseOptions::default()).unwrap();
     assert_round_trip(document, expected, source);
 }
 
@@ -94,7 +94,7 @@ fn issue_repros_round_trip() {
         // Normalizing moves the whitespace out of the strikethrough, and the serializer encodes it
         // at the end of the paragraph.
         (
-            "x ~a ~&#xA;&#xA;~&#x20;&#xA;~",
+            "x ~~a ~~&#xA;&#xA;~~&#x20;&#xA;~~",
             "x ~~a~~&#x20;\n&#xA;&#x20;&#xA;\n",
         ),
         ("a&#xA;", "a&#xA;\n"),
@@ -289,7 +289,7 @@ fn whitespace_after_an_encoded_soft_break_is_encoded() {
         normalized.normalize();
         let output = to_markdown(&normalized).unwrap();
         assert_eq!(output, expected, "{children:?}");
-        let mut reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+        let mut reparsed = Document::parse(output.clone(), &ParseOptions::default()).unwrap();
         reparsed.normalize();
         let render = |document: &Document<String>| {
             let mut html = String::new();
@@ -322,7 +322,7 @@ fn whitespace_after_an_encoded_soft_break_is_encoded() {
         document.normalize();
         let output = to_markdown(&document).unwrap();
         assert_eq!(output, format!("{expected}\n| --- |\n"), "{children:?}");
-        let mut reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+        let mut reparsed = Document::parse(output.clone(), &ParseOptions::default()).unwrap();
         reparsed.normalize();
         assert_eq!(to_markdown(&reparsed).unwrap(), output, "{children:?}");
     }
@@ -424,7 +424,7 @@ const RICH: &[&str] = &[
 #[test]
 fn source_line_endings_are_stored_as_line_feeds() {
     let source = RICH;
-    let options = ParseOptions::normalize();
+    let options = ParseOptions::default();
     let parse = |ending: &str| {
         let mut document = Document::parse(source.join(ending), &options).unwrap();
         document.normalize();
@@ -500,7 +500,7 @@ fn assert_linear(label: &str, mut time: impl FnMut(usize) -> Duration) {
 
 #[test]
 fn encoding_line_endings_is_linear() {
-    let options = ParseOptions::normalize();
+    let options = ParseOptions::default();
     type Build = fn(usize) -> String;
     let cases: [(&str, Build); 5] = [
         ("consecutive line endings", |count| {
@@ -540,7 +540,7 @@ fn carriage_returns_in_constructed_labels_are_written_as_line_feeds() {
     use base_markdown::{NodeSyntax, ReferenceKind};
     // A label of only whitespace, such as ` \r`, or with a blank line cannot be written with any line ending.
     for label in ["l\rm", "l\r\nm", "\\\r", "\rl\r"] {
-        let mut document = Document::parse(String::new(), &ParseOptions::normalize()).unwrap();
+        let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
         let root = document.root();
         let paragraph = document
             .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
@@ -578,7 +578,7 @@ fn carriage_returns_in_constructed_labels_are_written_as_line_feeds() {
             .unwrap();
         let output = to_markdown(&document).unwrap();
         assert!(!output.contains('\r'), "{:?}: {:?}", label, output);
-        let reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+        let reparsed = Document::parse(output.clone(), &ParseOptions::default()).unwrap();
         assert_eq!(to_markdown(&reparsed).unwrap(), output, "{label:?}");
         let mut html = String::new();
         reparsed
@@ -597,7 +597,7 @@ fn carriage_returns_in_constructed_labels_are_written_as_line_feeds() {
 #[test]
 fn html_line_endings_are_line_feeds_whichever_the_source_used() {
     let mut options = base_markdown::Options::gfm();
-    options.parse = ParseOptions::normalize();
+    options.parse = ParseOptions::default();
     options.compile.allow_dangerous_html = true;
     // Also end without a final line ending, after indented code and after a paragraph.
     for lines in [
