@@ -8,8 +8,9 @@
 // To do: clippy introduced this in 1.72 but breaks when it fixes it.
 // Remove when solved.
 mod support;
-use base_markdown::{message, to_html, to_html_with_options, Options, ParseOptions};
+use base_markdown::{message, to_html, to_html_with_options, to_markdown, Options, ParseOptions};
 use pretty_assertions::assert_eq;
+use std::time::{Duration, Instant};
 use support::fixture::parse_fixture;
 use support::fixture::Position;
 use support::fixture::{Link, Node, Paragraph, Root, Text};
@@ -3178,6 +3179,20 @@ fn literal_domains_are_host_names() {
             "_www.a.b_\n",
             "<p><em><a href=\"https://www.a.b\">www.a.b</a></em></p>\n",
         ),
+        // A `www` after `_` in an invalid domain starts a domain of its own, which is decided
+        // alone.
+        (
+            "www.a_www.b.c\n",
+            "<p>www.a_<a href=\"https://www.b.c\">www.b.c</a></p>\n",
+        ),
+        (
+            "http://a_www.b_www.例.jp\n",
+            "<p>http://a_www.b_<a href=\"https://www.%E4%BE%8B.jp\">www.例.jp</a></p>\n",
+        ),
+        ("www.a_www.-b.c\n", "<p>www.a_www.-b.c</p>\n"),
+        ("www.a_www.b..c\n", "<p>www.a_www.b..c</p>\n"),
+        ("www.a_www.b-.c\n", "<p>www.a_www.b-.c</p>\n"),
+        ("www.a-_www.b_c\n", "<p>www.a-_www.b_c</p>\n"),
     ] {
         assert_eq!(to_html_with_options(input, &options), html, "{:?}", input);
         let document = base_markdown::Document::parse(input, &options.parse).unwrap();
@@ -3193,5 +3208,68 @@ fn literal_domains_are_host_names() {
             })
             .count();
         assert_eq!(links, usize::from(html.contains("<a ")), "{:?}", input);
+    }
+}
+
+/// Assert that sixteen times the input takes less than forty-eight times as long, after a
+/// warm-up.
+///
+/// Quadratic time would take 256 times as long, so the bound leaves room on both sides. The ratio
+/// of two sizes is compared, rather than a time, so that a slower machine or build slows both
+/// alike. Each size takes the fastest of seven runs, alternating between the sizes, so that a
+/// pause does not count, and a ratio over the bound is measured again up to twice, since noise
+/// makes linear work look slower only now and then, while quadratic work fails every time.
+fn assert_linear(unit: &str, mut run: impl FnMut(usize)) {
+    let mut time = |size| {
+        let started = Instant::now();
+        run(size);
+        started.elapsed()
+    };
+    time(1 << 7);
+    let mut ratios = Vec::new();
+    for _ in 0..3 {
+        let mut small = Duration::MAX;
+        let mut large = Duration::MAX;
+        for _ in 0..7 {
+            small = small.min(time(1 << 9));
+            large = large.min(time(1 << 13));
+        }
+        let ratio = large.as_secs_f64() / small.as_secs_f64();
+        if ratio < 48.0 {
+            return;
+        }
+        ratios.push(ratio);
+    }
+    panic!("{:?}: 16x input took {:?} times as long", unit, ratios);
+}
+
+#[test]
+fn literal_autolinks_are_linear() {
+    for unit in [
+        // A `www` after `_` within a domain, which an `_` makes invalid, starts another domain
+        // inside it (#123).
+        "www.a_",
+        "_www.a",
+        "www.例_",
+        "www.a_www.",
+        "http://a_www.a_",
+        "www.a-_",
+        // Other literals: emails and their chains, protocols, resources, paths and suffixes.
+        "a.b@",
+        "a@b.c.d@",
+        "a_b@c_",
+        "mailto:a@b.",
+        "xmpp:a@b/c_",
+        "http://a_b.c/",
+        "https://a.b/(",
+        "www.a.b&c;.",
+        "www.a..@b.c",
+    ] {
+        assert_linear(unit, |size| {
+            let source = unit.repeat(size) + "\n";
+            let document =
+                base_markdown::Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+            to_markdown(&document).unwrap();
+        });
     }
 }

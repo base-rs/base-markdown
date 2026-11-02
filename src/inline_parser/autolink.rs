@@ -16,12 +16,16 @@ pub(super) struct Match {
 }
 
 /// Terminal punctuation depends on the rest of the word, not its URL prefix. Reuse that lookahead when an invalid domain leaves later prefixes to be scanned in the same fragment.
+///
+/// The last domain scanned is reused the same way: a `www` after `_` starts a domain inside the
+/// one before it, which ends at the same byte, so each byte is scanned a constant number of times.
 #[derive(Default)]
 pub(super) struct Trail {
     start: usize,
     tail: usize,
     boundary: usize,
     limit: usize,
+    host: Host,
 }
 
 impl Trail {
@@ -35,8 +39,96 @@ impl Trail {
             tail,
             boundary,
             limit,
+            host: Host::default(),
         };
         (tail, boundary)
+    }
+
+    /// [`domain`] from `start`, with the `tail` and `boundary` of the last [`Trail::suffix`].
+    ///
+    /// A domain that starts inside the last one scanned with this suffix ends where it does: the
+    /// bytes that end a domain do so wherever it starts, and the trailing `.` or `_` that end it
+    /// are at or after its tail, which is the same or later for the later start but before the
+    /// end of the last domain. So only its validity is decided again, from what was recorded.
+    fn domain(
+        &mut self,
+        source: &str,
+        start: usize,
+        tail: usize,
+        boundary: usize,
+    ) -> (usize, bool) {
+        if start < self.host.start || start >= self.host.end {
+            self.host = Host::scan(source, start, tail, boundary);
+        }
+        (self.host.end, self.host.valid(source.as_bytes(), start))
+    }
+}
+
+/// A scanned domain, which decides whether any domain that starts within it is valid.
+#[derive(Default)]
+struct Host {
+    start: usize,
+    end: usize,
+    /// A domain that starts within this one before this offset has an `_`, or two separators in
+    /// a row that make an empty label or a label that starts or ends with `-`.
+    clean: usize,
+}
+
+impl Host {
+    /// Where the domain that starts at `at` ends, and what makes the domains that start within it
+    /// invalid. The domain runs up to the first byte that cannot be in one or the trailing
+    /// punctuation before the end of the literal, and an `_` in it makes it invalid rather than
+    /// ending it, so `www.a_b.c` is no link at all rather than a link to `www.a`.
+    fn scan(source: &str, start: usize, tail: usize, boundary: usize) -> Self {
+        let bytes = source.as_bytes();
+        let mut at = start;
+        let mut clean = start;
+        while at < boundary {
+            match bytes[at] {
+                b'.' | b'_' if at >= tail => break,
+                b'_' => {
+                    clean = at + 1;
+                    at += 1;
+                }
+                // Two separators in a row, except `--`, make an empty label or one that starts
+                // or ends with `-`.
+                byte @ (b'.' | b'-') => {
+                    if at > start && matches!((bytes[at - 1], byte), (b'.', _) | (b'-', b'.')) {
+                        clean = at;
+                    }
+                    at += 1;
+                }
+                byte if byte.is_ascii() => {
+                    if ascii_whitespace(byte) || byte.is_ascii_punctuation() {
+                        break;
+                    }
+                    at += 1;
+                }
+                _ => {
+                    let character = source[at..boundary].chars().next().unwrap();
+                    if classify(character) != Kind::Other {
+                        break;
+                    }
+                    at += character.len_utf8();
+                }
+            }
+        }
+        Self {
+            start,
+            end: at,
+            clean,
+        }
+    }
+
+    /// Whether the domain from `start` within this one is a host name: not empty, with no `_`
+    /// and no two separators in a row other than `--`, and neither starting nor ending with `.` or
+    /// `-`.
+    fn valid(&self, bytes: &[u8], start: usize) -> bool {
+        let separator = |byte: u8| matches!(byte, b'.' | b'-');
+        start >= self.clean
+            && start < self.end
+            && !separator(bytes[start])
+            && !separator(bytes[self.end - 1])
     }
 }
 
@@ -168,7 +260,7 @@ pub(super) fn web(
     let bytes = source.as_bytes();
     let (start, domain_start, prefix) = web_prefix(bytes, min, marker, limit)?;
     let (tail, boundary) = suffix_cache.suffix(source, domain_start, limit);
-    let (mut at, valid) = domain(source, domain_start, tail, boundary);
+    let (mut at, valid) = suffix_cache.domain(source, domain_start, tail, boundary);
     if !valid {
         return None;
     }
@@ -249,53 +341,10 @@ pub(crate) fn www_previous(byte: u8) -> bool {
 /// Where the domain that starts at `at` ends, and whether it is a host name as RFC 952 and RFC
 /// 1123 define it, with non-ASCII alphanumerics allowed for internationalized names (RFC 5890):
 /// labels of letters, digits and `-`, separated by `.`, none empty and none starting or ending
-/// with `-`. The domain runs up to the first byte that cannot be in one or the trailing
-/// punctuation before the end of the literal, and an `_` in it makes it invalid rather than
-/// ending it, so `www.a_b.c` is no link at all rather than a link to `www.a`.
-fn domain(source: &str, mut at: usize, tail: usize, boundary: usize) -> (usize, bool) {
-    let bytes = source.as_bytes();
-    let mut valid = true;
-    // Whether the current label is empty, and whether its last byte is `-`.
-    let mut empty = true;
-    let mut hyphen = false;
-    while at < boundary {
-        match bytes[at] {
-            b'.' | b'_' if at >= tail => break,
-            b'.' => {
-                valid &= !empty && !hyphen;
-                empty = true;
-                at += 1;
-            }
-            b'_' => {
-                valid = false;
-                at += 1;
-            }
-            b'-' => {
-                valid &= !empty;
-                empty = false;
-                hyphen = true;
-                at += 1;
-            }
-            byte if byte.is_ascii() => {
-                if ascii_whitespace(byte) || byte.is_ascii_punctuation() {
-                    break;
-                }
-                empty = false;
-                hyphen = false;
-                at += 1;
-            }
-            _ => {
-                let character = source[at..boundary].chars().next().unwrap();
-                if classify(character) != Kind::Other {
-                    break;
-                }
-                empty = false;
-                hyphen = false;
-                at += character.len_utf8();
-            }
-        }
-    }
-    (at, valid && !empty && !hyphen)
+/// with `-`. See [`Host::scan`] for where it ends.
+fn domain(source: &str, at: usize, tail: usize, boundary: usize) -> (usize, bool) {
+    let host = Host::scan(source, at, tail, boundary);
+    (host.end, host.valid(source.as_bytes(), at))
 }
 
 /// Find the terminal punctuation run once, so each URL needs linear work even with long punctuation or entity-like suffixes.
@@ -563,6 +612,29 @@ mod tests {
         let found = web(&source, 0, repeated.len() + 4, source.len(), &mut trail).unwrap();
         assert_eq!(&source[found.start..found.end], "http://good.org/a(b)");
         assert_eq!(trail.start, 7);
+    }
+
+    #[test]
+    fn domains_within_an_invalid_domain_share_its_scan() {
+        let source = "www.a_".repeat(4096) + "www.a.b-c";
+        let mut trail = Trail::default();
+        for marker in (3..source.len() - 9).step_by("www.a_".len()) {
+            assert!(web(&source, 0, marker, source.len(), &mut trail).is_none());
+            // Later domains reuse the first domain's scan, which ran to the end.
+            assert_eq!((trail.host.start, trail.host.end), (4, source.len()));
+        }
+        let found = web(&source, 0, source.len() - 6, source.len(), &mut trail).unwrap();
+        assert_eq!(&source[found.start..], "www.a.b-c");
+        assert_eq!(trail.host.start, 4);
+        // Each domain is decided alone, from the defects recorded after its start.
+        let source = "www.a_www.b-.c_www.-d..e_www.f--g";
+        for (marker, valid) in [(3, false), (9, false), (18, false), (28, true)] {
+            assert_eq!(
+                web(source, 0, marker, source.len(), &mut trail).is_some(),
+                valid,
+                "{marker}"
+            );
+        }
     }
 
     #[test]
