@@ -449,8 +449,9 @@ impl Classifier {
         {
             return "#112 encoded line ending written raw";
         }
-        if differs("<br />") || before.ends_with("<br />") || before.contains("<br /></") {
-            return "hard break at the end of a block or attention";
+        // Normalizing removes breaks at the end of a block or attention, but a link keeps one at the end of its text, so only a change in the breaks counts.
+        if differs("<br />") {
+            return "hard break added or lost";
         }
         if differs("<a href")
             && ["www.", "@", "://"]
