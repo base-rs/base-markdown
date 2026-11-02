@@ -250,7 +250,7 @@ fn literal_autolinks_between_boundaries_are_written_as_authored() {
         "ssh://a.b\n",
         "\\\\<1@a.b>\n",
         "\\x@y.z\n",
-        "[www.a.b](http://www.a.b) <https://a.b> <a@b.c>\n",
+        "[www.a.b](https://www.a.b) <https://a.b> <a@b.c>\n",
     ] {
         let (first, second) = two_passes(source);
         assert_eq!(first, source, "{source:?}");
@@ -263,21 +263,21 @@ fn literal_autolinks_next_to_anything_else_are_written_as_autolinks_or_explicitl
     // No punctuation counts as a boundary. An address or a URL with a scheme is written between
     // angle brackets, and a `www.` link explicitly.
     for (source, expected) in [
-        ("www.x.org.\n", "[www.x.org](http://www.x.org).\n"),
+        ("www.x.org.\n", "[www.x.org](https://www.x.org).\n"),
         ("a https://a.b/c, b\n", "a <https://a.b/c>, b\n"),
         ("(https://a.b/c)\n", "(<https://a.b/c>)\n"),
         (
             "(www.a.b) - https://c.d\n",
-            "([www.a.b](http://www.a.b)) - https://c.d\n",
+            "([www.a.b](https://www.a.b)) - https://c.d\n",
         ),
         ("https://a.b/c. x\n", "<https://a.b/c>. x\n"),
-        ("www.a.b. x\n", "[www.a.b](http://www.a.b). x\n"),
-        ("www.a.b* x\n", "[www.a.b](http://www.a.b)\\* x\n"),
-        ("www.com_\n", "[www.com](http://www.com)\\_\n"),
+        ("www.a.b. x\n", "[www.a.b](https://www.a.b). x\n"),
+        ("www.a.b* x\n", "[www.a.b](https://www.a.b)\\* x\n"),
+        ("www.com_\n", "[www.com](https://www.com)\\_\n"),
         ("http://a.b/c_(d)_ x\n", "<http://a.b/c_(d)>\\_ x\n"),
         ("https://a.b/?x=1&amp;\n", "<https://a.b/?x=1>&\n"),
-        ("www.a.b&amp;. c\n", "[www.a.b](http://www.a.b)&. c\n"),
-        ("WWW.www&amp;\n", "[WWW.www](http://WWW.www)&\n"),
+        ("www.a.b&amp;. c\n", "[www.a.b](https://www.a.b)&. c\n"),
+        ("WWW.www&amp;\n", "[WWW.www](https://WWW.www)&\n"),
         ("xx@y.z\\-\n", "<xx@y.z>-\n"),
         ("a@b.c&#x2D;d\n", "<a@b.c>-d\n"),
         ("a@b.c&#46;d\n", "<a@b.c>.d\n"),
@@ -292,7 +292,7 @@ fn literal_autolinks_next_to_anything_else_are_written_as_autolinks_or_explicitl
         ("\\.x@y.z\n", ".<x@y.z>\n"),
         ("\\\\x@y.z\n", "\\\\<x@y.z>\n"),
         ("\\<a@b.c>\n", "<<a@b.c>>\n"),
-        ("x@y.z~www.c.d\n", "<x@y.z>\\~[www.c.d](http://www.c.d)\n"),
+        ("x@y.z~www.c.d\n", "<x@y.z>\\~[www.c.d](https://www.c.d)\n"),
         ("x@y.co1-www.\n", "<x@y.co1-www>.\n"),
         ("https://a.b/c  \nb\n", "<https://a.b/c>\\\nb\n"),
         (
@@ -301,13 +301,16 @@ fn literal_autolinks_next_to_anything_else_are_written_as_autolinks_or_explicitl
         ),
         // Inside attention, the marker is next to the link.
         ("*https://a.b/c*\n", "*<https://a.b/c>*\n"),
-        ("**www.a.b**.\n", "**[www.a.b](http://www.a.b)**.\n"),
+        ("**www.a.b**.\n", "**[www.a.b](https://www.a.b)**.\n"),
         ("~~e@f.gh~~\n", "~~<e@f.gh>~~\n"),
         (
             "**bold www.x.y**\\-\n",
-            "**bold [www.x.y](http://www.x.y)**-\n",
+            "**bold [www.x.y](https://www.x.y)**-\n",
         ),
-        ("~~*www.a.b*~~&amp;\n", "~~*[www.a.b](http://www.a.b)*~~&\n"),
+        (
+            "~~*www.a.b*~~&amp;\n",
+            "~~*[www.a.b](https://www.a.b)*~~&\n",
+        ),
         ("*a@b.c*.d\n", "*<a@b.c>*.d\n"),
         // In a table cell, the cell's pipe is not next to the link, but punctuation is.
         (
@@ -316,12 +319,12 @@ fn literal_autolinks_next_to_anything_else_are_written_as_autolinks_or_explicitl
         ),
         (
             "| a |\n| - |\n| www.a\\|b |\n",
-            "| a |\n| --- |\n| [www.a](http://www.a)\\|b |\n",
+            "| a |\n| --- |\n| [www.a](https://www.a)\\|b |\n",
         ),
         // The node after the one next to the link is looked at without the link beside it.
         (
             "#/[$@--~_|;[a]/_|x@y.z(1~+\n",
-            "\\#/\\[\\$@--~~*|;\\[a]/*|<x@y.z>(1~~+\n",
+            "\\#/\\[$@--~~*|;\\[a]/*|<x@y.z>(1~~+\n",
         ),
         ("http://b<!/ @\n", "<http://b>\\<!/ @\n"),
     ] {
@@ -430,7 +433,7 @@ fn underscores_after_attention_markers_do_not_depend_on_text_splits() {
     // The parser splits this text at `$` but not at `_`, so the first underscore follows the
     // opening marker's neighbour in one pass and the text node's start in the next.
     // A `~` at the edge of attention is escaped so it cannot pair.
-    for (source, expected) in [("*b_1=a$1.:]@\na~*\n", "*b_1=a\\$1.:]@\na\\~*\n")] {
+    for (source, expected) in [("*b_1=a$1.:]@\na~*\n", "*b_1=a$1.:]@\na\\~*\n")] {
         let (first, second) = two_passes(source);
         assert_eq!(first, expected, "{source:?}");
         assert_eq!(second, first, "{source:?}");
@@ -636,7 +639,7 @@ fn text_that_gfm_would_link_is_escaped() {
             "x\\@a-b.com and http\\://y.z/w_v\n",
         ),
     ] {
-        let document = Document::parse(source, &base_markdown::ParseOptions::default()).unwrap();
+        let document = Document::parse(source, &base_markdown::ParseOptions::commonmark()).unwrap();
         let written = base_markdown::to_markdown(&document).unwrap();
         assert_eq!(written, expected);
         let mut reparsed =

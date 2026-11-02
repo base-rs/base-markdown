@@ -20,10 +20,7 @@ use crate::{
     util::line_ending::line_endings,
     CodeFence, Document, NodeId, NodeSyntax, ReferenceKind,
 };
-use alloc::{
-    borrow::Cow,
-    string::{String, ToString},
-};
+use alloc::{borrow::Cow, string::String};
 use core::{fmt::Write, mem};
 
 impl State<'_> {
@@ -636,66 +633,64 @@ impl State<'_> {
         )
     }
 
+    /// Writes frontmatter with `---` or `+++`, the only fences that read back as frontmatter. A
+    /// fence of another character, from a hand-built node or syntax recorded before code-fence
+    /// frontmatter was removed, is written with `---`, keeping its info as the format hint. A body
+    /// with a line that would close the fence switches to the other one, naming the format the
+    /// fence implied when there is no hint, and a body that would close both cannot be written.
     pub(super) fn frontmatter(
         &mut self,
         body: &str,
         authored_info: &str,
         fence: CodeFence,
-        closing_fence_length: usize,
     ) -> Result<(), Message> {
-        let mut info = authored_info.trim_matches([' ', '\t']);
-        if !fence.valid_frontmatter_info(authored_info.as_bytes()) {
+        if authored_info.contains(['\r', '\n']) {
             return Err(Message {
                 span: None,
-                reason: "Frontmatter requires a valid fence and a single-line info string; code fences require a language hint".into(),
+                reason: "Frontmatter info must be a single line".into(),
                 rule_id: "invalid-frontmatter",
                 source: "mdast-util-to-markdown",
             });
         }
-        let mut marker = fence.character;
-        if matches!(marker, '-' | '+') {
-            let delimiter = marker.to_string().repeat(3);
-            if body
-                .split('\n')
-                .any(|line| line.trim_end_matches([' ', '\t']) == delimiter)
-            {
-                marker = '~';
-            }
-        }
-        let (opening_length, closing_length) = if matches!(marker, '-' | '+') {
-            (3, 3)
-        } else {
-            let minimum = (longest_run(body, marker as u8) + 1).max(3);
-            let opening = fence.length.max(minimum);
-            (opening, closing_fence_length.max(opening))
+        let mut info = authored_info.trim_matches([' ', '\t']);
+        let closes = |marker: char| {
+            body.split('\n').any(|line| {
+                let line = line.trim_end_matches([' ', '\t']);
+                line.len() == 3 && line.chars().all(|character| character == marker)
+            })
         };
-        if marker != fence.character && authored_info.split_ascii_whitespace().next().is_none() {
-            info = if fence.character == '-' {
-                "yaml"
-            } else {
-                "toml"
-            };
+        let preferred = if fence.character == '+' { '+' } else { '-' };
+        let other = if preferred == '+' { '-' } else { '+' };
+        let marker = if !closes(preferred) {
+            preferred
+        } else if !closes(other) {
+            if info.split_ascii_whitespace().next().is_none() {
+                info = if preferred == '-' { "yaml" } else { "toml" };
+            }
+            other
+        } else {
+            return Err(Message {
+                span: None,
+                reason: "Frontmatter cannot be written when its body has both a `---` line and a `+++` line".into(),
+                rule_id: "invalid-frontmatter",
+                source: "mdast-util-to-markdown",
+            });
+        };
+        let fence = if marker == '+' { "+++" } else { "---" };
+        self.output.push_str(fence);
+        if !info.is_empty() {
+            self.output.push(' ');
+            self.output.push_str(info);
         }
-        let separator =
-            if !info.is_empty() && (matches!(marker, '-' | '+') || info.starts_with(marker)) {
-                " "
-            } else {
-                ""
-            };
-        self.output
-            .extend(core::iter::repeat(marker).take(opening_length));
-        self.output.push_str(separator);
-        self.output.push_str(info);
         self.output.push('\n');
         let needs_line_ending = !body.is_empty() && !body.ends_with('\n');
         self.output
-            .reserve(body.len() + closing_length + usize::from(needs_line_ending) + 1);
+            .reserve(body.len() + fence.len() + usize::from(needs_line_ending) + 1);
         self.output.push_str(body);
         if needs_line_ending {
             self.output.push('\n');
         }
-        self.output
-            .extend(core::iter::repeat(marker).take(closing_length));
+        self.output.push_str(fence);
         Ok(())
     }
 }

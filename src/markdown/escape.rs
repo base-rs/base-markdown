@@ -408,12 +408,15 @@ impl Rule {
 /// Collect the escapes `input` needs between `before`, the text before it, and `after`. Positions
 /// count from the start of `before`, which is the text a construct written before the output
 /// starts with, such as the line ending before a paragraph, and then the output before `input`.
+///
+/// `$` is escaped only when `math` is set, because the tree has math: only then is the output
+/// read with math on, where a text `$` could form math.
 pub(super) fn collect(
     [lead, before]: [&str; 2],
     input: &str,
     after: &str,
     stack: &[ConstructName],
-    single_math: bool,
+    math: Option<bool>,
     output: &mut Vec<(usize, EscapeInfos)>,
 ) {
     let value = Context([
@@ -426,7 +429,11 @@ pub(super) fn collect(
     let start = before.saturating_sub(1);
     let end = before + input.len();
     let scopes = scopes(stack);
-    for rule in RULES.iter().filter(|rule| rule.active(scopes)) {
+    let single_math = math.unwrap_or_default();
+    for rule in RULES
+        .iter()
+        .filter(|rule| rule.active(scopes) && (math.is_some() || rule.byte != b'$'))
+    {
         // Only input escapes and the immediately preceding escape can affect output.
         // Find the first match from there, then walk on from a point where the matches
         // before it no longer change which neighbours later matches consume.
@@ -627,7 +634,7 @@ mod tests {
                                 &value[start..end],
                                 &value[end..],
                                 &[scope],
-                                single,
+                                Some(single),
                                 &mut actual,
                             );
                             let mut expected = Vec::new();

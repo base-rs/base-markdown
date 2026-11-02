@@ -48,7 +48,7 @@ impl<'a> EventParser<'a> {
             options,
             definitions,
             inline: InlineParser::default(),
-            extensions: options.constructs != crate::Constructs::default(),
+            extensions: options.constructs != crate::Constructs::commonmark(),
             cursor: 0,
             closing: false,
             phase: Phase::Start,

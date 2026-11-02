@@ -15,9 +15,15 @@ use support::fixture::{AlignKind, InlineCode, Node, Root, Table, TableCell, Tabl
 #[test]
 fn table() -> Result<(), message::Message> {
     assert_eq!(
-        to_html("| a |\n| - |\n| b |"),
+        to_html_with_options("| a |\n| - |\n| b |", &Options::commonmark()),
         "<p>| a |\n| - |\n| b |</p>",
-        "should ignore tables by default"
+        "should ignore tables in CommonMark"
+    );
+
+    assert_eq!(
+        to_html("| a |\n| - |\n| b |"),
+        to_html_with_options("| a |\n| - |\n| b |", &Options::gfm()),
+        "should support tables by default"
     );
 
     assert_eq!(
@@ -202,7 +208,7 @@ fn table() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("   - d\n    - e", &Options::gfm()),
-        to_html("   - d\n    - e"),
+        to_html_with_options("   - d\n    - e", &Options::commonmark()),
         "should not change how lists and lazyness work"
     );
 

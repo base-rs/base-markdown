@@ -3,7 +3,7 @@
 
 //! Round-trip fuzz harness for normalizing and serializing Markdown, with fixed seeds and a checked-in baseline.
 //!
-//! Each input is parsed with [`ParseOptions::normalize`], the syntax `normalize_markdown` reads, or built by hand as a tree. It is then normalized, serialized with the default Markdown options, parsed again with the same options and normalized again. An input fails when either document is not normalized after normalizing (`normalized`), when the HTML of the two documents differs (`html`), when the HTML is the same but the canonical trees of `support::fixture::canonical` differ (`tree`), when serializing the second document gives different Markdown (`unstable`), or when serializing a parsed document returns an error (`error`). A panic is a hard failure whatever the baseline. A hand-built tree that the serializer rejects with an error is skipped and counted as rejected.
+//! Each input is parsed with [`ParseOptions::default`], the syntax `normalize_markdown` reads, or built by hand as a tree. It is then normalized, serialized with the default Markdown options, parsed again with the same options and normalized again. An input fails when either document is not normalized after normalizing (`normalized`), when the HTML of the two documents differs (`html`), when the HTML is the same but the canonical trees of `support::fixture::canonical` differ (`tree`), when serializing the second document gives different Markdown (`unstable`), or when serializing a parsed document returns an error (`error`). A panic is a hard failure whatever the baseline. A hand-built tree that the serializer rejects with an error is skipped and counted as rejected.
 //!
 //! Every corpus is generated from its own fixed seed by a small xorshift generator, so the inputs, and the counts, are the same on every platform, and the first inputs of a larger run are the inputs of a smaller one. At the default size, each corpus's failure count, rejected count and a digest of its sorted failing inputs must equal its line in `tests/roundtrip_fuzz_baseline.txt`, so a fix that hides a new failure in the same corpus still changes the digest. Any difference, up or down, fails the test.
 //!
@@ -391,7 +391,7 @@ fn round_trip<S: AsRef<str>>(
         Err(_) if built => return Outcome::Rejected,
         Err(error) => return fail("error", error.to_string(), before, String::new()),
     };
-    let mut reparsed = Document::parse(output.as_str(), &ParseOptions::normalize()).unwrap();
+    let mut reparsed = Document::parse(output.as_str(), &ParseOptions::default()).unwrap();
     reparsed.normalize();
     let after = html(&reparsed, false);
     if !reparsed.is_normalized() {
@@ -420,7 +420,7 @@ fn round_trip<S: AsRef<str>>(
 fn check(input: &Input, options: &MarkdownOptions) -> Outcome {
     match input {
         Input::Source(source) => round_trip(
-            Document::parse(source.as_str(), &ParseOptions::normalize()).unwrap(),
+            Document::parse(source.as_str(), &ParseOptions::default()).unwrap(),
             options,
             false,
         ),
@@ -459,9 +459,6 @@ impl Classifier {
         }
         if differs("<table>") {
             return "#108 lazy table line becomes a table";
-        }
-        if differs("<pre>") && (output.starts_with("```") || output.starts_with("~~~")) {
-            return "#107 fence at document start reads as frontmatter";
         }
         if self.cell_edge.replace_all(before, "$1$2") == self.cell_edge.replace_all(after, "$1$2") {
             return "#109 whitespace at a table cell edge";
@@ -883,7 +880,7 @@ fn incremental_parsing_is_linear() {
     // Each push completes a line, so each prepares the source again from the last clean block. With LF, CRLF and CR endings.
     for unit in ["word\n\n", "word\r\n\r\n", "word\r\r"] {
         assert_linear(unit, |size| {
-            let options = ParseOptions::normalize();
+            let options = ParseOptions::default();
             let started = Instant::now();
             let mut parser = IncrementalParser::new(&options);
             let mut events = 0;
@@ -912,8 +909,7 @@ fn parsing_normalizing_and_serializing_is_linear() {
         assert_linear(unit, |size| {
             let source = unit.repeat(size) + "\n";
             let started = Instant::now();
-            let mut document =
-                Document::parse(source.as_str(), &ParseOptions::normalize()).unwrap();
+            let mut document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
             document.normalize();
             to_markdown_with_options(&document, &MarkdownOptions::default()).unwrap();
             started.elapsed()

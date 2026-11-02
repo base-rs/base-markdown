@@ -33,14 +33,14 @@ static EXTENSION_MARKERS: crate::byte_scan::AsciiSet =
 #[derive(Clone, Copy)]
 enum AutolinkPrefix {
     None,
-    Http,
+    Https,
     Mailto,
 }
 impl AutolinkPrefix {
     fn as_str(self) -> &'static str {
         match self {
             Self::None => "",
-            Self::Http => "http://",
+            Self::Https => "https://",
             Self::Mailto => "mailto:",
         }
     }

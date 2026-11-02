@@ -23,12 +23,13 @@ let html = base_markdown::to_html("## Hello, *world*!");
 assert_eq!(html, "<h2>Hello, <em>world</em>!</h2>");
 ```
 
-Enable GFM constructs with `Options::gfm()`:
+The default options are `CommonMark` with GFM tables, task list items, footnotes, `~~` strikethrough and literal autolinks, plus frontmatter. `Options::gfm()` follows GitHub more closely, with single-tilde strikethrough and the tag filter, and `Options::commonmark()` enables no extensions. The [`Options`](https://docs.rs/base-markdown/latest/base_markdown/struct.Options.html) documentation lists each preset and how it differs from its namesake:
 
 ```rust
-use base_markdown::{to_html_with_options, Options};
+use base_markdown::{to_html, to_html_with_options, Options};
 
-let html = to_html_with_options("* [x] done", &Options::gfm());
+assert_eq!(to_html("~~done~~"), "<p><del>done</del></p>");
+assert_eq!(to_html_with_options("~~done~~", &Options::commonmark()), "<p>~~done~~</p>");
 ```
 
 See the [API documentation](https://docs.rs/base-markdown/latest/base_markdown/) for pull events, document editing, parser options, and frontmatter, the [architecture guide](context/pull-parser.md) for the parser design, and the [performance comparison](benches/comparison/readme.md) for benchmarks against other Markdown engines.

@@ -68,6 +68,9 @@ pub struct State<'a> {
     pub options: &'a Options,
     pub stack: Vec<ConstructName>,
     pub serialization_root: Option<NodeId>,
+    /// Whether the document has math, so the output is read with math on and text `$` needs
+    /// escapes. Without math, the output is read with the default options, where `$` is text.
+    pub(super) math: bool,
     definitions: Option<BTreeMap<String, NodeId>>,
     reference_key: String,
     /// Where the phrasing of the paragraph, heading or table cell being written starts. A prefix
@@ -620,19 +623,13 @@ impl<'a> State<'a> {
                 title.as_ref().map(|value| value.resolve(source).unwrap()),
             ),
             EventKind::Opaque { value, .. } => {
-                if let Some(NodeSyntax::Frontmatter {
-                    info,
-                    fence,
-                    closing_fence_length,
-                }) = document.syntax(id)
-                {
+                if let Some(NodeSyntax::Frontmatter { info, fence, .. }) = document.syntax(id) {
                     self.frontmatter(
                         document
                             .frontmatter_value(id)
                             .expect("frontmatter syntax identifies a frontmatter body"),
                         info.resolve(source).unwrap(),
                         fence,
-                        closing_fence_length,
                     )
                 } else {
                     {
@@ -861,6 +858,7 @@ impl<'a> State<'a> {
             options,
             stack: Vec::new(),
             serialization_root: None,
+            math: true,
             definitions: None,
             reference_key: String::new(),
             line_start: 0,
@@ -967,7 +965,7 @@ impl<'a> State<'a> {
             input,
             info.after,
             &self.stack,
-            self.options.single_dollar_text_math,
+            self.math.then_some(self.options.single_dollar_text_math),
             &mut self.escapes,
         );
         self.escapes.sort_unstable_by_key(|entry| entry.0);
@@ -1219,7 +1217,7 @@ impl<'a> State<'a> {
             label,
             info.after,
             &self.stack,
-            self.options.single_dollar_text_math,
+            self.math.then_some(self.options.single_dollar_text_math),
             &mut self.escapes,
         );
         self.escapes.sort_unstable_by_key(|entry| entry.0);

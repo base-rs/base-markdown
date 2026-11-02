@@ -7,7 +7,7 @@ fn assert_configured_html(source: &str, expected: &str, gfm: bool) {
     let mut options = if gfm {
         Options::gfm()
     } else {
-        Options::default()
+        Options::commonmark()
     };
     // Exercise optional HTML names and inline code metadata through the same parser.
     options.parse.html_tag_namespaces = true;
@@ -121,7 +121,7 @@ fn mixed_inline_regions_preserve_one_document_lifecycle() {
     let source =
         "first <i\n title='x'> [a]\n\ncompact [a]\n\nlast <b\n title='x'> [a]\n\n[a]: /a\n";
     for extended_options in [false, true] {
-        let mut options = Options::default();
+        let mut options = Options::commonmark();
         options.parse.html_tag_namespaces = extended_options;
         options.parse.inline_code_info = extended_options;
         let mut parser = EventParser::new(source, &options.parse);

@@ -106,7 +106,7 @@ fn commonmark() {{
             allow_dangerous_protocol: true,
             ..CompileOptions::default()
         }},
-        ..Options::default()
+        ..Options::commonmark()
     }};
 
 {}

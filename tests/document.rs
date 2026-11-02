@@ -297,8 +297,8 @@ fn frontmatter_edits_detach_the_body_and_keep_fence_metadata() {
     for source in [
         "--- yaml meta\na: b\n---",
         "+++\nx = 1\n+++",
-        "````json\n{}\n`````\n",
-        "~~~json\n{}\n~~~\n",
+        "--- json\n{}\n---\n",
+        "+++toml\n{}\n+++ \n",
     ] {
         let mut document = Document::parse(source, &options).unwrap();
         let id = document.children(document.root()).next().unwrap();

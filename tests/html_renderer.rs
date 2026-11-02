@@ -23,7 +23,7 @@ fn renders_ast_nodes_and_heading_ids() -> Result<(), message::Message> {
     assert_eq!(
         render(
             "# Intro\n\nHello, *world* & `code`.",
-            &ParseOptions::default(),
+            &ParseOptions::commonmark(),
             CompileOptions {
                 heading_ids: true,
                 ..CompileOptions::default()
@@ -35,7 +35,7 @@ fn renders_ast_nodes_and_heading_ids() -> Result<(), message::Message> {
     assert_eq!(
         render(
             "```rust\nlet value = \"<tag>\";\n```",
-            &ParseOptions::default(),
+            &ParseOptions::commonmark(),
             CompileOptions::default(),
         )?,
         "<pre><code class=\"language-rust\">let value = &quot;&lt;tag&gt;&quot;;\n</code></pre>"
@@ -49,14 +49,18 @@ fn applies_html_and_url_safety_options() -> Result<(), message::Message> {
     let source = "<b>safe text</b>\n\n[link](javascript:alert(1))";
 
     assert_eq!(
-        render(source, &ParseOptions::default(), CompileOptions::default())?,
+        render(
+            source,
+            &ParseOptions::commonmark(),
+            CompileOptions::default()
+        )?,
         "<p>&lt;b&gt;safe text&lt;/b&gt;</p>\n<p><a href=\"\">link</a></p>"
     );
 
     assert_eq!(
         render(
             source,
-            &ParseOptions::default(),
+            &ParseOptions::commonmark(),
             CompileOptions {
                 allow_dangerous_html: true,
                 allow_dangerous_protocol: true,
@@ -74,7 +78,7 @@ fn renders_references_and_rich_inline_code() -> Result<(), message::Message> {
     assert_eq!(
         render(
             "[hello][id]\n\n[id]: /guide \"Guide\"",
-            &ParseOptions::default(),
+            &ParseOptions::commonmark(),
             CompileOptions::default(),
         )?,
         "<p><a href=\"/guide\" title=\"Guide\">hello</a></p>\n"
@@ -85,7 +89,7 @@ fn renders_references_and_rich_inline_code() -> Result<(), message::Message> {
             "Use ruby:`puts 1`.",
             &ParseOptions {
                 inline_code_info: true,
-                ..ParseOptions::default()
+                ..ParseOptions::commonmark()
             },
             CompileOptions::default(),
         )?,
@@ -125,7 +129,7 @@ fn renders_footnotes() -> Result<(), message::Message> {
 
 #[test]
 fn renders_constructed_nodes_and_subtrees() {
-    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+    let mut document = Document::parse(String::new(), &ParseOptions::commonmark()).unwrap();
     let root = document.root();
     let heading = document
         .append_child(root, EventKind::Start(Tag::Heading(2)))
@@ -214,7 +218,7 @@ fn renders_unchecked_items_and_header_only_tables() {
 #[test]
 fn suppresses_inline_markup_inside_image_alt_text() {
     assert_eq!(
-        to_html_with_options("![`code`](image)", &Options::default()),
+        to_html_with_options("![`code`](image)", &Options::commonmark()),
         "<p><img src=\"image\" alt=\"code\" /></p>"
     );
 }

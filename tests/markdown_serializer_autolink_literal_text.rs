@@ -11,7 +11,7 @@ mod support;
 use support::fixture::canonical;
 
 fn parse(source: &str) -> Document<String> {
-    Document::parse(source.to_owned(), &ParseOptions::normalize()).unwrap()
+    Document::parse(source.to_owned(), &ParseOptions::default()).unwrap()
 }
 
 /// The text nodes of `document`, in order.

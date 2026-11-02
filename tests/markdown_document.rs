@@ -480,7 +480,7 @@ fn nul_language_normalization_preserves_code_metadata_for_both_producers() {
     for configured in [false, true] {
         let options = ParseOptions {
             html_tag_namespaces: configured,
-            ..ParseOptions::default()
+            ..ParseOptions::commonmark()
         };
         let document = Document::parse(source, &options).unwrap();
         assert_eq!(

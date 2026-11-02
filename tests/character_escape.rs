@@ -5,7 +5,7 @@
 
 mod support;
 use base_markdown::{
-    message, to_html, to_html_with_options, CompileOptions, Constructs, Options, ParseOptions,
+    message, to_html_with_options, CompileOptions, Constructs, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
@@ -20,49 +20,49 @@ fn character_escape() -> Result<(), message::Message> {
             allow_dangerous_protocol: true,
             ..Default::default()
         },
-        ..Default::default()
+        ..Options::commonmark()
     };
 
     assert_eq!(
-        to_html(
-            "\\!\\\"\\#\\$\\%\\&\\'\\(\\)\\*\\+\\,\\-\\.\\/\\:\\;\\<\\=\\>\\?\\@\\[\\\\\\]\\^\\_\\`\\{\\|\\}\\~"),
+        to_html_with_options(
+            "\\!\\\"\\#\\$\\%\\&\\'\\(\\)\\*\\+\\,\\-\\.\\/\\:\\;\\<\\=\\>\\?\\@\\[\\\\\\]\\^\\_\\`\\{\\|\\}\\~", &Options::commonmark()),
         "<p>!&quot;#$%&amp;'()*+,-./:;&lt;=&gt;?@[\\]^_`{|}~</p>",
         "should support escaped ascii punctuation"
     );
 
     assert_eq!(
-        to_html("\\→\\A\\a\\ \\3\\φ\\«"),
+        to_html_with_options("\\→\\A\\a\\ \\3\\φ\\«", &Options::commonmark()),
         "<p>\\→\\A\\a\\ \\3\\φ\\«</p>",
         "should not support other characters after a backslash"
     );
 
     assert_eq!(
-        to_html(
-            "\\*not emphasized*\n\\<br/> not a tag\n\\[not a link](/foo)\n\\`not code`\n1\\. not a list\n\\* not a list\n\\# not a heading\n\\[foo]: /url \"not a reference\"\n\\&ouml; not a character entity"),
+        to_html_with_options(
+            "\\*not emphasized*\n\\<br/> not a tag\n\\[not a link](/foo)\n\\`not code`\n1\\. not a list\n\\* not a list\n\\# not a heading\n\\[foo]: /url \"not a reference\"\n\\&ouml; not a character entity", &Options::commonmark()),
         "<p>*not emphasized*\n&lt;br/&gt; not a tag\n[not a link](/foo)\n`not code`\n1. not a list\n* not a list\n# not a heading\n[foo]: /url &quot;not a reference&quot;\n&amp;ouml; not a character entity</p>",
         "should escape other constructs"
     );
 
     assert_eq!(
-        to_html("foo\\\nbar"),
+        to_html_with_options("foo\\\nbar", &Options::commonmark()),
         "<p>foo<br />\nbar</p>",
         "should escape a line break"
     );
 
     assert_eq!(
-        to_html("`` \\[\\` ``"),
+        to_html_with_options("`` \\[\\` ``", &Options::commonmark()),
         "<p><code>\\[\\`</code></p>",
         "should not escape in text code"
     );
 
     assert_eq!(
-        to_html("    \\[\\]"),
+        to_html_with_options("    \\[\\]", &Options::commonmark()),
         "<pre><code>\\[\\]\n</code></pre>",
         "should not escape in indented code"
     );
 
     assert_eq!(
-        to_html("<http://example.com?find=\\*>"),
+        to_html_with_options("<http://example.com?find=\\*>", &Options::commonmark()),
         "<p><a href=\"http://example.com?find=%5C*\">http://example.com?find=\\*</a></p>",
         "should not escape in autolink"
     );
@@ -74,19 +74,22 @@ fn character_escape() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html("[foo](/bar\\* \"ti\\*tle\")"),
+        to_html_with_options("[foo](/bar\\* \"ti\\*tle\")", &Options::commonmark()),
         "<p><a href=\"/bar*\" title=\"ti*tle\">foo</a></p>",
         "should escape in resource and title"
     );
 
     assert_eq!(
-        to_html("[foo]: /bar\\* \"ti\\*tle\"\n\n[foo]"),
+        to_html_with_options(
+            "[foo]: /bar\\* \"ti\\*tle\"\n\n[foo]",
+            &Options::commonmark()
+        ),
         "<p><a href=\"/bar*\" title=\"ti*tle\">foo</a></p>",
         "should escape in definition resource and title"
     );
 
     assert_eq!(
-        to_html("``` foo\\+bar\nfoo\n```"),
+        to_html_with_options("``` foo\\+bar\nfoo\n```", &Options::commonmark()),
         "<pre><code class=\"language-foo+bar\">foo\n</code></pre>",
         "should escape in fenced code info"
     );
@@ -98,11 +101,11 @@ fn character_escape() -> Result<(), message::Message> {
                 parse: ParseOptions {
                     constructs: Constructs {
                         character_escape: false,
-                        ..Default::default()
+                        ..Constructs::commonmark()
                     },
-                    ..Default::default()
+                    ..ParseOptions::commonmark()
                 },
-                ..Default::default()
+                ..Options::commonmark()
             }
         ),
         "<p>\\&gt; a</p>",

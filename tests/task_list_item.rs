@@ -16,9 +16,15 @@ use support::fixture::{Emphasis, List, ListItem, Node, Paragraph, Root, Text};
 #[test]
 fn task_list_item() -> Result<(), message::Message> {
     assert_eq!(
-        to_html("* [x] y."),
+        to_html_with_options("* [x] y.", &Options::commonmark()),
         "<ul>\n<li>[x] y.</li>\n</ul>",
-        "should ignore task list item checks by default"
+        "should ignore task list item checks in CommonMark"
+    );
+
+    assert_eq!(
+        to_html("* [x] y."),
+        "<ul>\n<li><input type=\"checkbox\" disabled=\"\" checked=\"\" /> y.</li>\n</ul>",
+        "should support task list item checks by default"
     );
 
     assert_eq!(

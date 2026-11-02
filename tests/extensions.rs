@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use base_markdown::{to_html, to_html_with_options, Constructs, Document, Options, ParseOptions};
+use base_markdown::{to_html_with_options, Constructs, Document, Options, ParseOptions};
 
 #[test]
 fn syntax_extensions_can_be_enabled_without_a_preset() {
@@ -10,15 +10,15 @@ fn syntax_extensions_can_be_enabled_without_a_preset() {
             "www.example.com",
             Constructs {
                 autolink_literal: true,
-                ..Constructs::default()
+                ..Constructs::commonmark()
             },
-            "<a href=\"http://www.example.com\">",
+            "<a href=\"https://www.example.com\">",
         ),
         (
             "~~removed~~",
             Constructs {
                 strikethrough: true,
-                ..Constructs::default()
+                ..Constructs::commonmark()
             },
             "<del>removed</del>",
         ),
@@ -26,7 +26,7 @@ fn syntax_extensions_can_be_enabled_without_a_preset() {
             "| a |\n| - |\n| b |",
             Constructs {
                 table: true,
-                ..Constructs::default()
+                ..Constructs::commonmark()
             },
             "<table>",
         ),
@@ -34,7 +34,7 @@ fn syntax_extensions_can_be_enabled_without_a_preset() {
             "- [x] done",
             Constructs {
                 task_list_item: true,
-                ..Constructs::default()
+                ..Constructs::commonmark()
             },
             "<input type=\"checkbox\"",
         ),
@@ -43,7 +43,7 @@ fn syntax_extensions_can_be_enabled_without_a_preset() {
             Constructs {
                 footnote_definition: true,
                 label_start_footnote: true,
-                ..Constructs::default()
+                ..Constructs::commonmark()
             },
             "data-footnote-ref",
         ),
@@ -51,14 +51,14 @@ fn syntax_extensions_can_be_enabled_without_a_preset() {
         let options = Options {
             parse: ParseOptions {
                 constructs,
-                ..ParseOptions::default()
+                ..ParseOptions::commonmark()
             },
-            ..Options::default()
+            ..Options::commonmark()
         };
         let actual = to_html_with_options(source, &options);
         assert!(actual.contains(expected), "{}: {}", source, actual);
         assert_eq!(actual, to_html_with_options(source, &Options::gfm()));
-        assert_ne!(actual, to_html(source));
+        assert_ne!(actual, to_html_with_options(source, &Options::commonmark()));
 
         let document = Document::parse(source, &options.parse).unwrap();
         let mut rendered = String::new();

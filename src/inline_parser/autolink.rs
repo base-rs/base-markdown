@@ -232,7 +232,7 @@ fn web_prefix(
                 return None;
             }
             // The domain is what follows `www.`, so `www.` needs one: `www. a` is no link.
-            Some((start, marker + 1, AutolinkPrefix::Http))
+            Some((start, marker + 1, AutolinkPrefix::Https))
         }
         _ => None,
     }
@@ -450,29 +450,37 @@ mod tests {
                 "HTTPS://example.com/a(b)",
                 "",
             ),
-            ("www.example.com&xxx;. ", "www.example.com", "http://"),
-            ("www.example.com&xxx;b ", "www.example.com&xxx;b", "http://"),
-            ("www.example.com&. ", "www.example.com&", "http://"),
+            ("www.example.com&xxx;. ", "www.example.com", "https://"),
+            (
+                "www.example.com&xxx;b ",
+                "www.example.com&xxx;b",
+                "https://",
+            ),
+            ("www.example.com&. ", "www.example.com&", "https://"),
             (
                 "www.example.com/?q=a(business)\".",
                 "www.example.com/?q=a(business)",
-                "http://",
+                "https://",
             ),
             (
                 "www.example.com/?q=(business))+ok",
                 "www.example.com/?q=(business))+ok",
-                "http://",
+                "https://",
             ),
-            ("www.example.com](target)", "www.example.com", "http://"),
-            ("www.example.com]x", "www.example.com]x", "http://"),
-            ("www.example.com<after", "www.example.com", "http://"),
-            ("www.點看.com/界\u{2003}after", "www.點看.com/界", "http://"),
-            ("www.例.jp", "www.例.jp", "http://"),
-            ("www.a-b.c-d", "www.a-b.c-d", "http://"),
-            ("www.a.b._", "www.a.b", "http://"),
+            ("www.example.com](target)", "www.example.com", "https://"),
+            ("www.example.com]x", "www.example.com]x", "https://"),
+            ("www.example.com<after", "www.example.com", "https://"),
+            (
+                "www.點看.com/界\u{2003}after",
+                "www.點看.com/界",
+                "https://",
+            ),
+            ("www.例.jp", "www.例.jp", "https://"),
+            ("www.a-b.c-d", "www.a-b.c-d", "https://"),
+            ("www.a.b._", "www.a.b", "https://"),
             ("http://x.org\0", "http://x.org\0", ""),
             // A backslash ends the literal like the end of the text, so trailing punctuation before it is excluded.
-            ("www.a\\_b.com", "www.a", "http://"),
+            ("www.a\\_b.com", "www.a", "https://"),
             ("http://a.b/x\\y", "http://a.b/x", ""),
             ("https://a.b/c.\\", "https://a.b/c", ""),
         ] {

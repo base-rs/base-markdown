@@ -4,13 +4,13 @@
 // Copyright, 2023, by Mick van Gelderen.
 // Copyright, 2026, by Samuel Williams.
 
-use base_markdown::{to_html, to_html_with_options, Document, Options};
+use base_markdown::{to_html_with_options, Document, Options};
 use pretty_assertions::assert_eq;
 
 #[test]
 fn fuzz() {
     assert_eq!(
-        to_html("[\n~\na\n-\n\n"),
+        to_html_with_options("[\n~\na\n-\n\n", &Options::commonmark()),
         "<h2>[\n~\na</h2>\n",
         "1: label, blank lines, and code"
     );
@@ -24,25 +24,25 @@ fn fuzz() {
     );
 
     assert_eq!(
-        to_html("    x\n*    "),
+        to_html_with_options("    x\n*    ", &Options::commonmark()),
         "<pre><code>x\n</code></pre>\n<ul>\n<li></li>\n</ul>",
         "3-a: containers should not pierce into indented code"
     );
 
     assert_eq!(
-        to_html("    a\n*     b"),
+        to_html_with_options("    a\n*     b", &Options::commonmark()),
         "<pre><code>a\n</code></pre>\n<ul>\n<li>\n<pre><code>b\n</code></pre>\n</li>\n</ul>",
         "3-b: containers should not pierce into indented code"
     );
 
     assert_eq!(
-        to_html("a * "),
+        to_html_with_options("a * ", &Options::commonmark()),
         "<p>a *</p>",
         "4-a: trailing whitespace and broken data"
     );
 
     assert_eq!(
-        to_html("_  "),
+        to_html_with_options("_  ", &Options::commonmark()),
         "<p>_</p>",
         "4-b: trailing whitespace and broken data (GH-13)"
     );
@@ -59,13 +59,13 @@ fn fuzz() {
     );
 
     assert_eq!(
-        to_html("> ```\n"),
+        to_html_with_options("> ```\n", &Options::commonmark()),
         "<blockquote>\n<pre><code></code></pre>\n</blockquote>\n",
         "6-a: container close after unclosed fenced code, with eol (block quote, GH-16)"
     );
 
     assert_eq!(
-        to_html("- ```\n"),
+        to_html_with_options("- ```\n", &Options::commonmark()),
         "<ul>\n<li>\n<pre><code></code></pre>\n</li>\n</ul>\n",
         "6-b: container close after unclosed fenced code, with eol (list, GH-16)"
     );
@@ -104,7 +104,7 @@ fn fuzz() {
 
     assert_eq!(
         to_html_with_options("| a |\n| - |\n| www.a|", &Options::gfm()),
-        "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"http://www.a\">www.a</a></td>\n</tr>\n</tbody>\n</table>",
+        "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://www.a\">www.a</a></td>\n</tr>\n</tbody>\n</table>",
         "9: autolink literals that end in table cell delimiter (GH-20)"
     );
 
@@ -123,8 +123,8 @@ fn fuzz() {
         base_markdown::to_html_with_options(
             "<",
             &base_markdown::Options {
-                parse: base_markdown::ParseOptions::default(),
-                ..Default::default()
+                parse: base_markdown::ParseOptions::commonmark(),
+                ..Options::commonmark()
             }
         ),
         "<p>&lt;</p>".to_string(),

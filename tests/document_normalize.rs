@@ -1400,12 +1400,12 @@ fn keeps_whitespace_at_the_edges_of_blocks() {
         ("- <b>&#x20;", "- <b>&#x20;\n"),
         ("&#xA;<div>", "&#xA;<div>\n"),
     ] {
-        let mut document = Document::parse(source.to_owned(), &ParseOptions::normalize()).unwrap();
+        let mut document = Document::parse(source.to_owned(), &ParseOptions::default()).unwrap();
         document.normalize();
         assert!(document.is_normalized(), "{}", source);
         let output = to_markdown(&document).unwrap();
         assert_eq!(output, expected, "{source}");
-        let mut reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+        let mut reparsed = Document::parse(output.clone(), &ParseOptions::default()).unwrap();
         reparsed.normalize();
         assert!(reparsed.is_normalized(), "{}", source);
         let html = |document: &Document<String>| {
@@ -1653,7 +1653,7 @@ fn serializes_stably(mut document: Document<String>, expected: &str) {
     document.normalize();
     let output = to_markdown(&document).unwrap();
     assert_eq!(output, expected);
-    let mut reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+    let mut reparsed = Document::parse(output.clone(), &ParseOptions::default()).unwrap();
     reparsed.normalize();
     let html = |document: &Document<String>| {
         let mut html = String::new();

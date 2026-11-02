@@ -423,7 +423,7 @@ fn task_checkbox_attributes_preserve_checkability_and_state() {
 fn inline_workspace_reuses_storage_across_mixed_regions() {
     let source = "before `a\nb` &amp; *first*.\n\n[compact][ref] **second**.\n\nraw <span>third</span>.\n\n| a | b |\n| - | - |\n| | |\n\n`x\ny` [last][ref].\n\n[ref]: /target \"title\"\n";
     for (mut options, table) in [
-        (Options::default(), "<p>| a | b |\n| - | - |\n| | |</p>\n"),
+        (Options::commonmark(), "<p>| a | b |\n| - | - |\n| | |</p>\n"),
         (Options::gfm(), "<table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td></td>\n<td></td>\n</tr>\n</tbody>\n</table>\n"),
     ] {
         options.compile.allow_dangerous_html = true;

@@ -17,9 +17,15 @@ use support::fixture::{Delete, Node, Paragraph, Root, Text};
 #[test]
 fn strikethrough() -> Result<(), message::Message> {
     assert_eq!(
-        to_html("a ~b~ c"),
-        "<p>a ~b~ c</p>",
-        "should ignore strikethrough by default"
+        to_html_with_options("a ~~b~~ c", &Options::commonmark()),
+        "<p>a ~~b~~ c</p>",
+        "should ignore strikethrough in CommonMark"
+    );
+
+    assert_eq!(
+        to_html("a ~~b~~ ~c~ d"),
+        "<p>a <del>b</del> ~c~ d</p>",
+        "should support double but not single tildes by default"
     );
 
     assert_eq!(
