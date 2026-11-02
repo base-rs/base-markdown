@@ -100,8 +100,8 @@ fn autolink_literal() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("www.�a", &Options::gfm()),
-        "<p><a href=\"http://www.%EF%BF%BDa\">www.�a</a></p>",
-        "should support a replacement character in a domain"
+        "<p>www.�a</p>",
+        "should not support a replacement character as a domain (GitHub links it as a path after an empty domain)"
     );
 
     assert_eq!(
@@ -136,20 +136,20 @@ fn autolink_literal() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("www.-a.b", &Options::gfm()),
-        "<p><a href=\"http://www.-a.b\">www.-a.b</a></p>",
-        "should support a dash to start a domain"
+        "<p>www.-a.b</p>",
+        "should not support a dash to start a domain label (GitHub does)"
     );
 
     assert_eq!(
         to_html_with_options("www.$", &Options::gfm()),
-        "<p><a href=\"http://www.$\">www.$</a></p>",
-        "should support a dollar as a domain name"
+        "<p>www.$</p>",
+        "should not support a dollar as a domain name (GitHub links it as a path after an empty domain)"
     );
 
     assert_eq!(
         to_html_with_options("www.a..b.c", &Options::gfm()),
-        "<p><a href=\"http://www.a..b.c\">www.a..b.c</a></p>",
-        "should support adjacent dots in a domain name"
+        "<p>www.a..b.c</p>",
+        "should not support an empty label in a domain name (GitHub does)"
     );
 
     assert_eq!(
@@ -190,8 +190,8 @@ fn autolink_literal() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("https://a.bc.)d", &Options::gfm()),
-        "<p><a href=\"https://a.bc.)d\">https://a.bc.)d</a></p>",
-        "should support a period and closing paren in a path"
+        "<p>https://a.bc.)d</p>",
+        "should not support a domain that ends in a period before more of the literal (GitHub does)"
     );
 
     assert_eq!(
@@ -571,8 +571,8 @@ Can contain an underscore followed by a period: aaa@a.b_.c
 <p>www.aaa_bbb.ccc</p>
 <p>www.aaa.bbb.ccc.ddd_ddd</p>
 <p>www.aaa.bbb.ccc_ccc.ddd</p>
-<p><a href="http://www.aaa.bbb_bbb.ccc.ddd">www.aaa.bbb_bbb.ccc.ddd</a></p>
-<p><a href="http://www.aaa_aaa.bbb.ccc.ddd">www.aaa_aaa.bbb.ccc.ddd</a></p>
+<p>www.aaa.bbb_bbb.ccc.ddd</p>
+<p>www.aaa_aaa.bbb.ccc.ddd</p>
 <p>Visit <a href="http://www.commonmark.org">www.commonmark.org</a>.</p>
 <p>Visit <a href="http://www.commonmark.org/a.b">www.commonmark.org/a.b</a>.</p>
 <p><a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a></p>
@@ -606,17 +606,17 @@ Can contain an underscore followed by a period: aaa@a.b_.c
 <p><a href="mailto:a.b-c_d@a.b">a.b-c_d@a.b</a>.</p>
 <p>a.b-c_d@a.b-</p>
 <p>a.b-c_d@a.b_</p>
-<p><a href="mailto:a@a_b.c">a@a_b.c</a></p>
+<p>a@a_b.c</p>
 <p><a href="mailto:a@a-b.c">a@a-b.c</a></p>
 <p>Can’t end in an underscore followed by a period: aaa@a.b_.</p>
-<p>Can contain an underscore followed by a period: <a href="mailto:aaa@a.b_.c">aaa@a.b_.c</a></p>
+<p>Can contain an underscore followed by a period: aaa@a.b_.c</p>
 <h2>Link text should not be expanded</h2>
 <p><a href="http://www.example.com">Visit www.example.com</a> please.</p>
 <p><a href="http://www.example.com">Visit http://www.example.com</a> please.</p>
 <p><a href="mailto:example@example.com">Mail example@example.com</a> please.</p>
 <p><a href="">link</a> <a href="http://autolink">http://autolink</a> should still be expanded.</p>
 "###,
-        "should match base like GitHub does"
+        "should match base like GitHub does (except for `_` in a domain, which is not a host name)"
     );
 
     assert_eq!(
@@ -1305,7 +1305,7 @@ http://a~
 <p><a href="http://a">http://a</a>*</p>
 <p><a href="http://a+">http://a+</a></p>
 <p><a href="http://a">http://a</a>,</p>
-<p><a href="http://a-">http://a-</a></p>
+<p>http://a-</p>
 <p><a href="http://a">http://a</a></p>
 <p><a href="http://a">http://a</a>.</p>
 <p><a href="http://a/">http://a/</a></p>
@@ -1327,7 +1327,7 @@ http://a~
 <p><a href="http://a%7D">http://a}</a></p>
 <p><a href="http://a">http://a</a>~</p>
 "###,
-        "should match protocol domain continue like GitHub does"
+        "should match protocol domain continue like GitHub does (except for a domain that ends in `-`)"
     );
 
     assert_eq!(
@@ -2297,7 +2297,7 @@ www.a~
 <p><a href="http://www.a">www.a</a>*</p>
 <p><a href="http://www.a+">www.a+</a></p>
 <p><a href="http://www.a">www.a</a>,</p>
-<p><a href="http://www.a-">www.a-</a></p>
+<p>www.a-</p>
 <p><a href="http://www.a">www.a</a></p>
 <p><a href="http://www.a">www.a</a>.</p>
 <p><a href="http://www.a/">www.a/</a></p>
@@ -2319,7 +2319,7 @@ www.a~
 <p><a href="http://www.a%7D">www.a}</a></p>
 <p><a href="http://www.a">www.a</a>~</p>
 "###,
-        "should match www (domain continue) like GitHub does (except for the bracket bug)"
+        "should match www (domain continue) like GitHub does (except for the bracket bug and a domain that ends in `-`)"
     );
 
     // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
@@ -2402,43 +2402,44 @@ www.a.~
 <p><a href="http://www.a">www.a</a>. (space)</p>
 <p><a href="http://www.a">www.a</a>.!</p>
 <p><a href="http://www.a">www.a</a>.&quot;</p>
-<p><a href="http://www.a.#">www.a.#</a></p>
-<p><a href="http://www.a.$">www.a.$</a></p>
-<p><a href="http://www.a.%25">www.a.%</a></p>
-<p><a href="http://www.a.&amp;">www.a.&amp;</a></p>
+<p>www.a.#</p>
+<p>www.a.$</p>
+<p>www.a.%</p>
+<p>www.a.&amp;</p>
 <p><a href="http://www.a">www.a</a>.'</p>
-<p><a href="http://www.a.(">www.a.(</a></p>
+<p>www.a.(</p>
 <p><a href="http://www.a">www.a</a>.)</p>
 <p><a href="http://www.a">www.a</a>.*</p>
-<p><a href="http://www.a.+">www.a.+</a></p>
+<p>www.a.+</p>
 <p><a href="http://www.a">www.a</a>.,</p>
-<p><a href="http://www.a.-">www.a.-</a></p>
+<p>www.a.-</p>
 <p><a href="http://www.a">www.a</a>.</p>
 <p><a href="http://www.a">www.a</a>..</p>
-<p><a href="http://www.a./">www.a./</a></p>
+<p>www.a./</p>
 <p><a href="http://www.a">www.a</a>.:</p>
 <p><a href="http://www.a">www.a</a>.;</p>
 <p><a href="http://www.a">www.a</a>.&lt;</p>
-<p><a href="http://www.a.=">www.a.=</a></p>
-<p><a href="http://www.a.%3E">www.a.&gt;</a></p>
+<p>www.a.=</p>
+<p>www.a.&gt;</p>
 <p><a href="http://www.a">www.a</a>.?</p>
-<p><a href="http://www.a.@">www.a.@</a></p>
-<p><a href="http://www.a.%5B">www.a.[</a></p>
+<p>www.a.@</p>
+<p>www.a.[</p>
 <p><a href="http://www.a">www.a</a>.\</p>
 <p><a href="http://www.a">www.a</a>.]</p>
-<p><a href="http://www.a.%5E">www.a.^</a></p>
+<p>www.a.^</p>
 <p><a href="http://www.a">www.a</a>._</p>
-<p><a href="http://www.a.%60">www.a.`</a></p>
-<p><a href="http://www.a.%7B">www.a.{</a></p>
-<p><a href="http://www.a.%7C">www.a.|</a></p>
-<p><a href="http://www.a.%7D">www.a.}</a></p>
+<p>www.a.`</p>
+<p>www.a.{</p>
+<p>www.a.|</p>
+<p>www.a.}</p>
 <p><a href="http://www.a">www.a</a>.~</p>
 "###,
-        "should match www (domain dot) like GitHub does (except for the bracket bug)"
+        "should match www (domain dot) like GitHub does (except for the bracket bug and a domain that ends in an empty label)"
     );
 
-    // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
-    // GitHub expects `<p><a href="http://www.%5C">www.\</a></p>`.
+    // Deliberate divergence from GitHub: `www.` needs a domain after it, so none of these link.
+    // GitHub links `www` before trailing punctuation, such as `www. (space)` and `www.)`, and
+    // `www.` with what follows as a path, such as `www.#`, `www./` and `www.\`.
     assert_eq!(
         to_html_with_options(
             r###"# wwwtf?
@@ -2514,42 +2515,42 @@ www.~
             &Options::gfm()
         ),
         r###"<h1>wwwtf?</h1>
-<p><a href="http://www">www</a>. (space)</p>
-<p><a href="http://www">www</a>.!</p>
-<p><a href="http://www">www</a>.&quot;</p>
-<p><a href="http://www.#">www.#</a></p>
-<p><a href="http://www.$">www.$</a></p>
-<p><a href="http://www.%25">www.%</a></p>
-<p><a href="http://www.&amp;">www.&amp;</a></p>
-<p><a href="http://www">www</a>.'</p>
-<p><a href="http://www.(">www.(</a></p>
-<p><a href="http://www">www</a>.)</p>
-<p><a href="http://www">www</a>.*</p>
-<p><a href="http://www.+">www.+</a></p>
-<p><a href="http://www">www</a>.,</p>
-<p><a href="http://www.-">www.-</a></p>
+<p>www. (space)</p>
+<p>www.!</p>
+<p>www.&quot;</p>
+<p>www.#</p>
+<p>www.$</p>
+<p>www.%</p>
+<p>www.&amp;</p>
+<p>www.'</p>
+<p>www.(</p>
+<p>www.)</p>
+<p>www.*</p>
+<p>www.+</p>
+<p>www.,</p>
+<p>www.-</p>
 <p>www.</p>
-<p><a href="http://www">www</a>..</p>
-<p><a href="http://www./">www./</a></p>
-<p><a href="http://www">www</a>.:</p>
-<p><a href="http://www">www</a>.;</p>
-<p><a href="http://www">www</a>.&lt;</p>
-<p><a href="http://www.=">www.=</a></p>
-<p><a href="http://www.%3E">www.&gt;</a></p>
-<p><a href="http://www">www</a>.?</p>
-<p><a href="http://www.@">www.@</a></p>
-<p><a href="http://www.%5B">www.[</a></p>
+<p>www..</p>
+<p>www./</p>
+<p>www.:</p>
+<p>www.;</p>
+<p>www.&lt;</p>
+<p>www.=</p>
+<p>www.&gt;</p>
+<p>www.?</p>
+<p>www.@</p>
+<p>www.[</p>
 <p>www.\</p>
-<p><a href="http://www">www</a>.]</p>
-<p><a href="http://www.%5E">www.^</a></p>
-<p><a href="http://www">www</a>._</p>
-<p><a href="http://www.%60">www.`</a></p>
-<p><a href="http://www.%7B">www.{</a></p>
-<p><a href="http://www.%7C">www.|</a></p>
-<p><a href="http://www.%7D">www.}</a></p>
-<p><a href="http://www">www</a>.~</p>
+<p>www.]</p>
+<p>www.^</p>
+<p>www._</p>
+<p>www.`</p>
+<p>www.{</p>
+<p>www.|</p>
+<p>www.}</p>
+<p>www.~</p>
 "###,
-        "should match www (domain start) like GitHub does"
+        "should not match www with an empty domain, unlike GitHub, which links `www` or `www.` and a path"
     );
 
     // Deliberate divergence from GitHub: a backslash is never part of a host or URI, so it ends a literal autolink.
@@ -3057,7 +3058,8 @@ fn backslashes_end_literal_autolinks() {
         to_html_with_options("| a |\n| - |\n| www.a\\|b |\n", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"http://www.a\">www.a</a>|b</td>\n</tr>\n</tbody>\n</table>\n"
     );
-    // An escaped `@` splits the text, so it is no email link. The serializer writes text as-is rather than escaping it against literal autolinks, so the next parse links it, and the bare link it reads back is written as its text.
+    // An escaped `@` splits the text, so it is no email link. Text is literal, so the serializer
+    // escapes the `@` again, though the address is split across text nodes.
     let options = Options::gfm();
     assert_eq!(
         to_html_with_options("a\\@b.c\n", &options),
@@ -3065,11 +3067,126 @@ fn backslashes_end_literal_autolinks() {
     );
     let tree = Document::parse("a\\@b.c\n", &options.parse).unwrap();
     let first = to_markdown(&tree).unwrap();
-    assert_eq!(first, "a@b.c\n");
+    assert_eq!(first, "a\\@b.c\n");
     let reparsed = Document::parse(first.as_str(), &options.parse).unwrap();
-    let second = to_markdown(&reparsed).unwrap();
-    assert_eq!(second, "a@b.c\n");
-    let again = Document::parse(second.as_str(), &options.parse).unwrap();
-    assert_eq!(canonical(&again), canonical(&reparsed));
-    assert_eq!(to_markdown(&again).unwrap(), second);
+    assert_eq!(canonical(&reparsed), canonical(&tree));
+    assert_eq!(to_markdown(&reparsed).unwrap(), first);
+}
+
+#[test]
+fn www_needs_a_domain_after_it() {
+    // A deliberate divergence from GitHub, which links `www` before trailing punctuation and
+    // `www.` before a path: `www.` with nothing that is a domain after it is text.
+    let options = Options::gfm();
+    for (input, html) in [
+        ("www. a\n", "<p>www. a</p>\n"),
+        ("x www.\nb\n", "<p>x www.\nb</p>\n"),
+        ("www.  \nb\n", "<p>www.<br />\nb</p>\n"),
+        ("www.)\n", "<p>www.)</p>\n"),
+        ("www.-\n", "<p>www.-</p>\n"),
+        ("www.-a.b\n", "<p>www.-a.b</p>\n"),
+        ("www..a\n", "<p>www..a</p>\n"),
+        ("www.#a\n", "<p>www.#a</p>\n"),
+        ("www./a\n", "<p>www./a</p>\n"),
+        ("**www.**\n", "<p><strong>www.</strong></p>\n"),
+        ("~~www.~~\n", "<p><del>www.</del></p>\n"),
+        ("www.*a*\n", "<p>www.<em>a</em></p>\n"),
+        ("www.`x`\n", "<p>www.<code>x</code></p>\n"),
+        ("a www.<b>\n", "<p>a www.&lt;b&gt;</p>\n"),
+        (
+            "(www.*![a](http://a.b)*\n",
+            "<p>(www.<em><img src=\"http://a.b\" alt=\"a\" /></em></p>\n",
+        ),
+        // A domain after `www.` still links.
+        ("www.a\n", "<p><a href=\"http://www.a\">www.a</a></p>\n"),
+        ("WWW.a\n", "<p><a href=\"http://WWW.a\">WWW.a</a></p>\n"),
+        (
+            "www.a-b.c\n",
+            "<p><a href=\"http://www.a-b.c\">www.a-b.c</a></p>\n",
+        ),
+    ] {
+        assert_eq!(to_html_with_options(input, &options), html, "{:?}", input);
+        let document = base_markdown::Document::parse(input, &options.parse).unwrap();
+        let links = document
+            .events()
+            .filter(|event| {
+                matches!(
+                    event.as_ref().unwrap().kind,
+                    base_markdown::stream::EventKind::Start(
+                        base_markdown::stream::Tag::Link { .. }
+                    )
+                )
+            })
+            .count();
+        assert_eq!(links, usize::from(html.contains("<a ")), "{:?}", input);
+    }
+}
+
+#[test]
+fn literal_domains_are_host_names() {
+    let options = Options::gfm();
+    for (input, html) in [
+        ("www._a.b.c\n", "<p>www._a.b.c</p>\n"),
+        ("www.a_b.c.d\n", "<p>www.a_b.c.d</p>\n"),
+        ("www.a_b.com\n", "<p>www.a_b.com</p>\n"),
+        ("www.-a.b\n", "<p>www.-a.b</p>\n"),
+        ("www.a-.b\n", "<p>www.a-.b</p>\n"),
+        ("www.a..b\n", "<p>www.a..b</p>\n"),
+        ("www.a./b\n", "<p>www.a./b</p>\n"),
+        ("http://_a.b.c\n", "<p>http://_a.b.c</p>\n"),
+        ("https://a_b.com\n", "<p>https://a_b.com</p>\n"),
+        ("https://a-.b/c\n", "<p>https://a-.b/c</p>\n"),
+        ("a@b_c.com\n", "<p>a@b_c.com</p>\n"),
+        ("a@-b.com\n", "<p>a@-b.com</p>\n"),
+        ("a@b-.com\n", "<p>a@b-.com</p>\n"),
+        ("x www._a.b.c_\n", "<p>x www.<em>a.b.c</em></p>\n"),
+        // Valid host names, internationalized ones too, and the local part may have `_`.
+        (
+            "www.例.jp\n",
+            "<p><a href=\"http://www.%E4%BE%8B.jp\">www.例.jp</a></p>\n",
+        ),
+        (
+            "www.a-b.c\n",
+            "<p><a href=\"http://www.a-b.c\">www.a-b.c</a></p>\n",
+        ),
+        (
+            "www.a.b_\n",
+            "<p><a href=\"http://www.a.b\">www.a.b</a>_</p>\n",
+        ),
+        (
+            "www.a.b.\n",
+            "<p><a href=\"http://www.a.b\">www.a.b</a>.</p>\n",
+        ),
+        (
+            "https://a-b.c/d_e\n",
+            "<p><a href=\"https://a-b.c/d_e\">https://a-b.c/d_e</a></p>\n",
+        ),
+        (
+            "http://localhost\n",
+            "<p><a href=\"http://localhost\">http://localhost</a></p>\n",
+        ),
+        (
+            "a_b@c-d.ef\n",
+            "<p><a href=\"mailto:a_b@c-d.ef\">a_b@c-d.ef</a></p>\n",
+        ),
+        (
+            "_www.a.b_\n",
+            "<p><em><a href=\"http://www.a.b\">www.a.b</a></em></p>\n",
+        ),
+    ] {
+        assert_eq!(to_html_with_options(input, &options), html, "{:?}", input);
+        let document = base_markdown::Document::parse(input, &options.parse).unwrap();
+        let links = document
+            .events()
+            .filter(|event| {
+                matches!(
+                    event.as_ref().unwrap().kind,
+                    base_markdown::stream::EventKind::Start(
+                        base_markdown::stream::Tag::Link { .. }
+                    )
+                )
+            })
+            .count();
+        assert_eq!(links, usize::from(html.contains("<a ")), "{:?}", input);
+    }
 }

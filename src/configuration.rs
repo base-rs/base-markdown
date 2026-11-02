@@ -350,6 +350,9 @@ impl Constructs {
     ///
     /// For more information, see the GFM specification:
     /// <https://github.github.com/gfm/>.
+    ///
+    /// Parsing differs from GitHub in a few deliberate ways, which
+    /// [`Options::gfm`](crate::Options::gfm) lists.
     pub fn gfm() -> Self {
         Self {
             autolink_literal: true,
@@ -905,6 +908,10 @@ impl CompileOptions {
     ///
     /// For more information, see the GFM specification:
     /// <https://github.github.com/gfm/>.
+    ///
+    /// HTML output differs from GitHub in a few deliberate ways, such as using
+    /// LF line endings, which
+    /// [`Options::gfm`](crate::Options::gfm) lists.
     pub fn gfm() -> Self {
         Self {
             tagfilter: true,
@@ -1143,6 +1150,9 @@ impl ParseOptions {
     ///
     /// For more information, see the GFM specification:
     /// <https://github.github.com/gfm/>
+    ///
+    /// Parsing differs from GitHub in a few deliberate ways, which
+    /// [`Options::gfm`](crate::Options::gfm) lists.
     pub fn gfm() -> Self {
         Self {
             constructs: Constructs::gfm(),
@@ -1207,6 +1217,21 @@ impl Options {
     ///
     /// For more information, see the GFM specification:
     /// <https://github.github.com/gfm/>
+    ///
+    /// # Differences from GitHub
+    ///
+    /// These are deliberate:
+    ///
+    /// * A `www.` literal needs a domain after the dot: `www. a` and `www.#a` are text.
+    /// * Literal domains must be RFC 952 and RFC 1123 host names, with no `_`, no empty label and
+    ///   no `-` at either end of a label, though letters of internationalized names are allowed:
+    ///   `www.a_b.com` and `a@-b.com` are text, with no shorter link, and `www.例.jp` links.
+    /// * A backslash ends a literal: `www.a.b\x` links `www.a.b`, not `http://www.a.b%5C`.
+    /// * Literals also link `ftp://`, `sftp://`, `ssh://`, `irc://` and `ircs://`: `ssh://a.b`.
+    /// * Angle-bracket autolinks need a scheme from the link-scheme table, or an email address:
+    ///   `<gopher://a>` and `Option<std::io::Error>` are not links.
+    /// * A `*` or `_` run next to `~` is not flanking on that side: `a*~b~*c` has no emphasis.
+    /// * HTML output uses LF line endings, whatever the source used: `a\r\nb` renders `a\nb`.
     pub fn gfm() -> Self {
         Self {
             parse: ParseOptions::gfm(),
