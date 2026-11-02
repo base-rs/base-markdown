@@ -316,15 +316,11 @@ impl State<'_> {
     pub(super) fn math(&mut self, value: &str, metadata: Option<&str>) -> Result<(), Message> {
         let content = trim_terminal_ending(value);
         let size = (longest_run(content, b'$') + 1).max(2);
-        let start = self.output.len();
         self.output.extend(core::iter::repeat('$').take(size));
         if let Some(metadata) = metadata {
             self.enter(ConstructName::MathFlowMeta);
-            self.write_safe(
-                metadata,
-                &Info::at(start, self.output.len(), "\n"),
-                Some('$'),
-            );
+            // The metadata is trimmed when parsed, so it is its own context, where spaces and tabs at its edges are encoded.
+            self.write_safe(metadata, &Info::new("", ""), Some('$'));
             self.exit();
         }
         self.output.push('\n');

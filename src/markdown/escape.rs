@@ -20,12 +20,12 @@ const FULL_SPANS: u32 = bit(Autolink)
     | bit(TitleQuote);
 const TITLES: u32 = bit(TitleApostrophe) | bit(TitleQuote);
 const LANGUAGE: u32 = bit(CodeFencedLangGraveAccent) | bit(CodeFencedLangTilde);
-const NEWLINES: u32 = LANGUAGE
-    | bit(CodeFencedMetaGraveAccent)
-    | bit(CodeFencedMetaTilde)
-    | bit(DestinationLiteral)
-    | bit(HeadingAtx)
-    | bit(MathFlowMeta);
+/// The info string of a code or math fence, where the parser decodes escapes and references.
+const FENCE_INFO: u32 =
+    LANGUAGE | bit(CodeFencedMetaGraveAccent) | bit(CodeFencedMetaTilde) | bit(MathFlowMeta);
+/// Contexts the parser trims spaces and tabs from at both edges.
+const TRIMMED: u32 = bit(TableCell) | bit(MathFlowMeta);
+const NEWLINES: u32 = FENCE_INFO | bit(DestinationLiteral) | bit(HeadingAtx);
 
 #[derive(Clone, Copy)]
 enum Before {
@@ -90,9 +90,9 @@ static RULES: &[Rule] = &[
     rule!(b'\t', Previous(b'\n'), A, PHRASING, bit(TableCell)),
     rule!(b'\t', Encoded, A, PHRASING, bit(TableCell)),
     rule!(b'\t', B, A, LANGUAGE, 0),
-    // The parser trims spaces and tabs at the edges of a table cell.
-    rule!(b'\t', Before::Start, A, bit(TableCell), 0),
-    rule!(b'\t', B, After::End, bit(TableCell), 0),
+    // The parser trims spaces and tabs at the edges of a table cell and of math fence metadata.
+    rule!(b'\t', Before::Start, A, TRIMMED, 0),
+    rule!(b'\t', B, After::End, TRIMMED, 0),
     // Line endings are LF, so a CR in a value is a character reference, and is written as one
     // wherever references are decoded.
     rule!(b'\r', B, A, NEWLINES | PHRASING | TITLES, 0),
@@ -107,8 +107,8 @@ static RULES: &[Rule] = &[
     rule!(b' ', Previous(b'\n'), A, PHRASING, bit(TableCell)),
     rule!(b' ', Encoded, A, PHRASING, bit(TableCell)),
     rule!(b' ', B, A, LANGUAGE, 0),
-    rule!(b' ', Before::Start, A, bit(TableCell), 0),
-    rule!(b' ', B, After::End, bit(TableCell), 0),
+    rule!(b' ', Before::Start, A, TRIMMED, 0),
+    rule!(b' ', B, After::End, TRIMMED, 0),
     rule!(b'!', B, Set(b"["), PHRASING, FULL_SPANS),
     rule!(b'"', B, A, bit(TitleQuote), 0),
     // Rules that judge the start of a line apply nowhere in a table cell, where a line ending in
@@ -116,7 +116,7 @@ static RULES: &[Rule] = &[
     rule!(b'#', Line, A, 0, bit(TableCell)),
     rule!(b'#', EncodedLine, A, 0, bit(TableCell)),
     rule!(b'#', B, After::LineEnd, bit(HeadingAtx), 0),
-    rule!(b'&', B, After::Entity, PHRASING, 0),
+    rule!(b'&', B, After::Entity, PHRASING | FENCE_INFO, 0),
     rule!(b'\'', B, A, bit(TitleApostrophe), 0),
     rule!(b'(', B, A, bit(DestinationRaw), 0),
     rule!(b'(', Previous(b']'), A, PHRASING, FULL_SPANS),
