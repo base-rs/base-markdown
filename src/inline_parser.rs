@@ -446,21 +446,16 @@ impl InlineParser {
                         if let Some(found) =
                             autolink::web(source, inline_start, at, range.end, &mut autolink_trail)
                         {
-                            // The prefix is ordinary source text immediately before this marker.
-                            // Escapes and character references form separate runs and cannot be reinterpreted.
-                            let previous = self.nodes[self.last];
-                            if matches!(previous.kind, Kind::Text | Kind::EscapedText)
-                                && found.start
-                                    >= previous.start
-                                        + usize::from(matches!(previous.kind, Kind::EscapedText))
-                            {
-                                self.nodes[self.last].end = found.start;
-                                self.append(found.start, found.end, Kind::Autolink(found.prefix));
-                                self.append(found.start, found.end, Kind::Text);
-                                self.append(found.end, found.end, Kind::End(TagKind::Link));
-                                at = found.end;
-                                continue;
-                            }
+                            // The prefix is letters, which only a text run holds, so it is in the last
+                            // run, after the escaped byte of an escaped one. A literal ends before
+                            // trailing punctuation or a boundary, and this marker is followed by a
+                            // domain, so no earlier literal ends inside the prefix.
+                            self.nodes[self.last].end = found.start;
+                            self.append(found.start, found.end, Kind::Autolink(found.prefix));
+                            self.append(found.start, found.end, Kind::Text);
+                            self.append(found.end, found.end, Kind::End(TagKind::Link));
+                            at = found.end;
+                            continue;
                         }
                         at += 1;
                         at += markers.find(&bytes[at..range.end]);
