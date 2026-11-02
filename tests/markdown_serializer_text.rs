@@ -140,8 +140,8 @@ fn intraword_underscores() {
         ("a__b", "a__b\n", "should not escape `__` between letters"),
         (
             "x@a_b.com",
-            "x\\@a_b.com\n",
-            "should not escape `_` in email domains",
+            "x@a_b.com\n",
+            "should not escape `_` in email domains, which keeps the email from linking",
         ),
         (
             "a__.b",
@@ -230,7 +230,7 @@ fn literal_autolinks_between_boundaries_are_written_as_authored() {
         "www.example.com\n",
         "https://a.b/c\n",
         "a@b.co\n",
-        "x@a_b.com www.a.b_c\n",
+        "x@a-b.com www.a-b.c\n",
         "see www.a.b now\n",
         "https://a.b/c\nnext\n",
         "a\nhttps://a.b/c\n",
@@ -293,7 +293,7 @@ fn literal_autolinks_next_to_anything_else_are_written_as_autolinks_or_explicitl
         ("\\\\x@y.z\n", "\\\\<x@y.z>\n"),
         ("\\<a@b.c>\n", "<<a@b.c>>\n"),
         ("x@y.z~www.c.d\n", "<x@y.z>\\~[www.c.d](http://www.c.d)\n"),
-        ("x@y.co1_www.\n", "[x@y.co1_www](mailto:x@y.co1_www).\n"),
+        ("x@y.co1-www.\n", "<x@y.co1-www>.\n"),
         ("https://a.b/c  \nb\n", "<https://a.b/c>\\\nb\n"),
         (
             "https://api.example.com/**\n",
@@ -346,9 +346,9 @@ fn escapes_that_keep_text_from_linking_are_kept() {
         ("x\\@example.com\n", "x\\@example.com\n"),
         // After a backslash, the email has no local part.
         ("\\\\x&#64;y.z\n", "\\x@y.z\n"),
-        // Underscores in an email domain are not escaped.
-        ("x\\@a_b.com\n", "x\\@a_b.com\n"),
-        ("x&#64;a_b.com\n", "x\\@a_b.com\n"),
+        // An email domain with `_` is no host name, so it does not link and needs no escape.
+        ("x\\@a_b.com\n", "x@a_b.com\n"),
+        ("x&#64;a_b.com\n", "x@a_b.com\n"),
         // Adjacent escaped backslashes each keep their escape.
         ("\\\\\\\\.\n", "\\\\\\\\.\n"),
         ("a\\\\\\\\*b*\n", "a\\\\\\\\*b*\n"),
@@ -366,10 +366,11 @@ fn text_that_would_become_a_literal_autolink_stays_text() {
         ("x\\\\x\\@y.z\n", "x\\x@y.z\n"),
         (
             "mailto:<a@b.c>\\\\www&#64;\\.0\\_a.b\n",
-            "mailto:<a@b.c>\\www\\@.0_a.b\n",
+            "mailto:<a@b.c>\\www@.0_a.b\n",
         ),
-        ("x\\@y.co1\\_www.\n", "x\\@y.co1_www.\n"),
-        ("> - //&amp;x@y.z9\\_www\n", "> - //\\&x\\@y.z9_www\n"),
+        ("x\\@y.co1\\_www.\n", "x@y.co1_www.\n"),
+        ("x\\@y.co1\\-www.\n", "x\\@y.co1-www.\n"),
+        ("> - //&amp;x@y.z9\\_www\n", "> - //\\&x@y.z9_www\n"),
         ("&x&#64;y.z\n", "\\&x\\@y.z\n"),
         ("&amp;http\\://a.b\n", "\\&http\\://a.b\n"),
         ("\\\\http\\://a.b\n", "\\http\\://a.b\n"),
@@ -631,8 +632,8 @@ fn text_that_gfm_would_link_is_escaped() {
         ("https://a.b/c\n", "https\\://a.b/c\n"),
         ("a@b.co\n", "a\\@b.co\n"),
         (
-            "x@a_b.com and http://y.z/w_v\n",
-            "x\\@a_b.com and http\\://y.z/w_v\n",
+            "x@a-b.com and http://y.z/w_v\n",
+            "x\\@a-b.com and http\\://y.z/w_v\n",
         ),
     ] {
         let document = Document::parse(source, &base_markdown::ParseOptions::default()).unwrap();

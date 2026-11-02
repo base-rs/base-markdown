@@ -223,33 +223,42 @@ pub(crate) fn www_previous(byte: u8) -> bool {
     )
 }
 
-/// Where the domain that starts at `at` ends, and whether it is one: it has a character other
-/// than `.`, `_` and `-`, and its last two labels have no `_`.
+/// Where the domain that starts at `at` ends, and whether it is a host name as RFC 952 and RFC
+/// 1123 define it, with non-ASCII alphanumerics allowed for internationalized names (RFC 5890):
+/// labels of letters, digits and `-`, separated by `.`, none empty and none starting or ending
+/// with `-`. The domain runs up to the first byte that cannot be in one or the trailing
+/// punctuation before the end of the literal, and an `_` in it makes it invalid rather than
+/// ending it, so `www.a_b.c` is no link at all rather than a link to `www.a`.
 fn domain(source: &str, mut at: usize, tail: usize, boundary: usize) -> (usize, bool) {
     let bytes = source.as_bytes();
-    let mut seen = false;
-    let mut underscore = false;
-    let mut previous_underscore = false;
+    let mut valid = true;
+    // Whether the current label is empty, and whether its last byte is `-`.
+    let mut empty = true;
+    let mut hyphen = false;
     while at < boundary {
         match bytes[at] {
-            b'.' | b'_' => {
-                if at >= tail {
-                    break;
-                }
-                if bytes[at] == b'_' {
-                    underscore = true;
-                } else {
-                    previous_underscore = underscore;
-                    underscore = false;
-                }
+            b'.' | b'_' if at >= tail => break,
+            b'.' => {
+                valid &= !empty && !hyphen;
+                empty = true;
                 at += 1;
             }
-            b'-' => at += 1,
+            b'_' => {
+                valid = false;
+                at += 1;
+            }
+            b'-' => {
+                valid &= !empty;
+                empty = false;
+                hyphen = true;
+                at += 1;
+            }
             byte if byte.is_ascii() => {
                 if ascii_whitespace(byte) || byte.is_ascii_punctuation() {
                     break;
                 }
-                seen = true;
+                empty = false;
+                hyphen = false;
                 at += 1;
             }
             _ => {
@@ -257,12 +266,13 @@ fn domain(source: &str, mut at: usize, tail: usize, boundary: usize) -> (usize, 
                 if classify(character) != Kind::Other {
                     break;
                 }
-                seen = true;
+                empty = false;
+                hyphen = false;
                 at += character.len_utf8();
             }
         }
     }
-    (at, seen && !underscore && !previous_underscore)
+    (at, valid && !empty && !hyphen)
 }
 
 /// Find the terminal punctuation run once, so each URL needs linear work even with long punctuation or entity-like suffixes.
@@ -388,6 +398,18 @@ pub(super) fn email(source: &str, min: usize, at: usize, limit: usize) -> Option
     if end == at + 1 || !dot || !matches!(bytes[end - 1], b'.' | b'A'..=b'Z' | b'a'..=b'z') {
         return None;
     }
+    // The domain must be a host name, as for `www.` and URLs, though the local part and an `xmpp`
+    // resource may have `_`.
+    let host = &bytes[at + 1..end];
+    let host = host.split(|&byte| byte == b'/').next().unwrap();
+    if host.split(|&byte| byte == b'.').any(|label| {
+        label.is_empty()
+            || label.contains(&b'_')
+            || label[0] == b'-'
+            || label[label.len() - 1] == b'-'
+    }) {
+        return None;
+    }
     Some(Match { start, end, prefix })
 }
 
@@ -422,8 +444,9 @@ mod tests {
             ("www.example.com]x", "www.example.com]x", "http://"),
             ("www.example.com<after", "www.example.com", "http://"),
             ("www.點看.com/界\u{2003}after", "www.點看.com/界", "http://"),
-            ("www.-a..b.c", "www.-a..b.c", "http://"),
-            ("www.aaa_bbb.ccc.ddd", "www.aaa_bbb.ccc.ddd", "http://"),
+            ("www.例.jp", "www.例.jp", "http://"),
+            ("www.a-b.c-d", "www.a-b.c-d", "http://"),
+            ("www.a.b._", "www.a.b", "http://"),
             ("http://x.org\0", "http://x.org\0", ""),
             // A backslash ends the literal like the end of the text, so trailing punctuation before it is excluded.
             ("www.a\\_b.com", "www.a", "http://"),
@@ -458,6 +481,17 @@ mod tests {
             "http://",
             "http://---/x",
             "www.aaa_bbb.ccc",
+            // Domains are host names: no `_`, no empty label, and no label that starts or ends
+            // with `-`. An invalid domain is no link, rather than a shorter one.
+            "www.-a..b.c",
+            "www.aaa_bbb.ccc.ddd",
+            "www._a.b.c",
+            "www.-a.b",
+            "www.a-.b",
+            "www.a..b",
+            "www.a./b",
+            "http://_a.b.c",
+            "https://a_b.com",
             "www.aaa.bbb_ccc",
             "http://a_b.c/d",
             "www.\\x",
@@ -542,9 +576,9 @@ mod tests {
             ("mailto:a@example.org/path", "mailto:a@example.org", ""),
             ("XMPP:a@example.org/path.", "XMPP:a@example.org/path", ""),
             ("mmmmailto:a@example.org", "a@example.org", "mailto:"),
-            ("a@a_b.c", "a@a_b.c", "mailto:"),
-            ("aaa@a.b_.c", "aaa@a.b_.c", "mailto:"),
             ("a@b.c\\d", "a@b.c", "mailto:"),
+            ("a_b@c-d.e", "a_b@c-d.e", "mailto:"),
+            ("xmpp:a@b.c/x_y", "xmpp:a@b.c/x_y", ""),
         ] {
             let at = source.find('@').unwrap();
             let found = email(source, 0, at, source.len())
@@ -562,6 +596,12 @@ mod tests {
             "/a@a.b",
             "\\a@a.b",
             "a@界.com",
+            "a@a_b.c",
+            "aaa@a.b_.c",
+            "a@b_c.com",
+            "a@-b.com",
+            "a@b-.com",
+            "a@.b.com",
         ] {
             let at = source.find('@').unwrap();
             assert!(email(source, 0, at, source.len()).is_none(), "{:?}", source);
