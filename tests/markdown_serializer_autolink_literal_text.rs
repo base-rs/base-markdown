@@ -63,8 +63,6 @@ fn www_literals_escape_the_dot_after_www() {
         ("WWW.a.b", "WWW\\.a.b"),
         ("Www.a.b/c?d=e", "Www\\.a.b/c?d=e"),
         ("www.a", "www\\.a"),
-        // The `www` is a domain itself.
-        ("www. a", "www\\. a"),
         ("www.a.b.", "www\\.a.b."),
         ("www.點看.com", "www\\.點看.com"),
     ]);
@@ -108,6 +106,12 @@ fn text_that_forms_no_literal_is_unchanged() {
         "a.www.b.c",
         "!www.a.b",
         "www.",
+        // `www.` needs a domain after it.
+        "www. a",
+        "www.\na",
+        "www.)",
+        "www.#a",
+        "www.-",
         "www.a_b.c_d",
         "ahttp://x.org",
         "gopher://x.org",

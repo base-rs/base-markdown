@@ -206,7 +206,8 @@ fn web_prefix(
             if start > min && !www_previous(bytes[start - 1]) {
                 return None;
             }
-            Some((start, start, AutolinkPrefix::Http))
+            // The domain is what follows `www.`, so `www.` needs one: `www. a` is no link.
+            Some((start, marker + 1, AutolinkPrefix::Http))
         }
         _ => None,
     }
@@ -419,10 +420,8 @@ mod tests {
             ("www.example.com]x", "www.example.com]x", "http://"),
             ("www.example.com<after", "www.example.com", "http://"),
             ("www.點看.com/界\u{2003}after", "www.點看.com/界", "http://"),
-            ("www.$", "www.$", "http://"),
             ("www.-a..b.c", "www.-a..b.c", "http://"),
             ("www.aaa_bbb.ccc.ddd", "www.aaa_bbb.ccc.ddd", "http://"),
-            ("www. ", "www", "http://"),
             ("http://x.org\0", "http://x.org\0", ""),
             // A backslash ends the literal like the end of the text, so trailing punctuation before it is excluded.
             ("www.a\\_b.com", "www.a", "http://"),
@@ -443,6 +442,10 @@ mod tests {
     fn web_prefixes_and_domain_rejections() {
         for source in [
             "www.",
+            // `www.` needs a domain after it.
+            "www. ",
+            "www.$",
+            "www._a",
             "awww.example.com",
             ":www.example.com",
             "ahttp://example.com",
