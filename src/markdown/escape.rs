@@ -31,6 +31,10 @@ const NEWLINES: u32 = LANGUAGE
 enum Before {
     Any,
     Previous(u8),
+    /// A line ending written as `&#xA;` before this text. A soft break after another is written as
+    /// `&#xA;`, which reads back as text `\n`, where whitespace after it is judged by the rules
+    /// for after a raw line ending, so it is judged by them on the first write too.
+    Encoded,
     /// Nothing, at the start of the context, such as a table cell.
     Start,
     Line,
@@ -72,10 +76,13 @@ macro_rules! rule {
     };
 }
 use After::{Any as A, Set};
-use Before::{Any as B, Digits, Line, Previous};
+use Before::{Any as B, Digits, Encoded, Line, Previous};
 static RULES: &[Rule] = &[
-    rule!(b'\t', B, Set(b"\n"), PHRASING, 0),
-    rule!(b'\t', Previous(b'\n'), A, PHRASING, 0),
+    // A space or tab next to a line ending is trimmed. In a table cell every line ending is a
+    // reference, which reads back as one, so none of these applies there.
+    rule!(b'\t', B, Set(b"\n"), PHRASING, bit(TableCell)),
+    rule!(b'\t', Previous(b'\n'), A, PHRASING, bit(TableCell)),
+    rule!(b'\t', Encoded, A, PHRASING, bit(TableCell)),
     rule!(b'\t', B, A, LANGUAGE, 0),
     // The parser trims spaces and tabs at the edges of a table cell.
     rule!(b'\t', Before::Start, A, bit(TableCell), 0),
@@ -90,42 +97,45 @@ static RULES: &[Rule] = &[
     rule!(b'\n', B, After::Closing, PHRASING, 0),
     // A table row is one line.
     rule!(b'\n', B, A, bit(TableCell), 0),
-    rule!(b' ', B, Set(b"\n"), PHRASING, 0),
-    rule!(b' ', Previous(b'\n'), A, PHRASING, 0),
+    rule!(b' ', B, Set(b"\n"), PHRASING, bit(TableCell)),
+    rule!(b' ', Previous(b'\n'), A, PHRASING, bit(TableCell)),
+    rule!(b' ', Encoded, A, PHRASING, bit(TableCell)),
     rule!(b' ', B, A, LANGUAGE, 0),
     rule!(b' ', Before::Start, A, bit(TableCell), 0),
     rule!(b' ', B, After::End, bit(TableCell), 0),
     rule!(b'!', B, Set(b"["), PHRASING, FULL_SPANS),
     rule!(b'"', B, A, bit(TitleQuote), 0),
-    rule!(b'#', Line, A, 0, 0),
+    // Rules that judge the start of a line apply nowhere in a table cell, where a line ending in
+    // a value is a reference, so `~` after one is written as it is.
+    rule!(b'#', Line, A, 0, bit(TableCell)),
     rule!(b'#', B, After::LineEnd, bit(HeadingAtx), 0),
     rule!(b'&', B, After::Entity, PHRASING, 0),
     rule!(b'\'', B, A, bit(TitleApostrophe), 0),
     rule!(b'(', B, A, bit(DestinationRaw), 0),
     rule!(b'(', Previous(b']'), A, PHRASING, FULL_SPANS),
-    rule!(b')', Digits, A, 0, 0),
+    rule!(b')', Digits, A, 0, bit(TableCell)),
     rule!(b')', B, A, bit(DestinationRaw), 0),
-    rule!(b'*', Line, Set(b" \t\r\n*"), 0, 0),
+    rule!(b'*', Line, Set(b" \t\r\n*"), 0, bit(TableCell)),
     rule!(b'*', B, A, PHRASING, FULL_SPANS),
-    rule!(b'+', Line, Set(b" \t\r\n"), 0, 0),
-    rule!(b'-', Line, Set(b" \t\r\n-"), 0, 0),
-    rule!(b'.', Digits, After::SpaceOrEnd, 0, 0),
-    rule!(b'<', Line, After::Html, 0, 0),
+    rule!(b'+', Line, Set(b" \t\r\n"), 0, bit(TableCell)),
+    rule!(b'-', Line, Set(b" \t\r\n-"), 0, bit(TableCell)),
+    rule!(b'.', Digits, After::SpaceOrEnd, 0, bit(TableCell)),
+    rule!(b'<', Line, After::Html, 0, bit(TableCell)),
     rule!(b'<', B, After::Html, PHRASING, FULL_SPANS),
     rule!(b'<', B, After::Email, PHRASING, FULL_SPANS),
     rule!(b'<', B, A, bit(DestinationLiteral), 0),
-    rule!(b'=', Line, A, 0, 0),
-    rule!(b'>', Line, A, 0, 0),
+    rule!(b'=', Line, A, 0, bit(TableCell)),
+    rule!(b'>', Line, A, 0, bit(TableCell)),
     rule!(b'>', B, A, bit(DestinationLiteral), 0),
-    rule!(b'[', Line, A, 0, 0),
+    rule!(b'[', Line, A, 0, bit(TableCell)),
     rule!(b'[', B, A, PHRASING, FULL_SPANS),
     rule!(b'[', B, A, bit(Label) | bit(Reference), 0),
     rule!(b'\\', B, Set(b"\n"), PHRASING, 0),
     rule!(b']', B, A, bit(Label) | bit(Reference), 0),
     rule!(b'|', B, A, bit(TableCell), 0),
-    rule!(b'_', Line, A, 0, 0),
+    rule!(b'_', Line, A, 0, bit(TableCell)),
     rule!(b'_', B, A, PHRASING, FULL_SPANS),
-    rule!(b'`', Line, A, 0, 0),
+    rule!(b'`', Line, A, 0, bit(TableCell)),
     rule!(
         b'`',
         B,
@@ -134,10 +144,10 @@ static RULES: &[Rule] = &[
         0,
     ),
     rule!(b'`', B, A, PHRASING, FULL_SPANS),
-    rule!(b'~', Line, A, 0, 0),
+    rule!(b'~', Line, A, 0, bit(TableCell)),
     rule!(b'$', B, After::Math, PHRASING, 0),
     rule!(b'$', B, A, bit(MathFlowMeta), 0),
-    rule!(b'$', Line, Set(b"$"), 0, 0),
+    rule!(b'$', Line, Set(b"$"), 0, bit(TableCell)),
 ];
 
 // A first character outside every escape rule stays literal in any formatting scope.
@@ -209,6 +219,16 @@ impl Rule {
                     return None;
                 }
                 position - 1
+            }
+            Before::Encoded => {
+                const ENCODED: &[u8] = b"&#xA;";
+                if position < ENCODED.len()
+                    || !(0..ENCODED.len())
+                        .all(|at| value.get(position - ENCODED.len() + at) == Some(ENCODED[at]))
+                {
+                    return None;
+                }
+                position - ENCODED.len()
             }
             Before::Start => {
                 if position > 0 {
@@ -547,6 +567,7 @@ mod tests {
             "`**__~~$",
             "a$$$$$ $$$$\n$$$",
             "\n1)\n22)\n -\n-\n-",
+            "a&#xA; \t&#xA;\t\n \t#xA; ",
         ] {
             let boundaries: Vec<_> = (0..=value.len())
                 .filter(|&at| value.is_char_boundary(at))
@@ -614,6 +635,7 @@ mod tests {
     fn fixed_matchers_preserve_non_overlapping_regex_rules() {
         let contexts = [
             "", "\n", "\r\n  ", "\n\t123", "x]", "\n12", "\n123 ", "é", "\n\n", "\r", "\r\n",
+            "&#xA;", "#xA;", "x&#xA;",
         ];
         // A regular expression consumes what follows, so `After::Closing` is checked at each byte.
         let closing = regex::Regex::new("\\A(?:\n|\r\n?)\\z").unwrap();
@@ -622,6 +644,7 @@ mod tests {
                 let before = match rule.before {
                     Before::Any => "",
                     Before::Previous(b'\n') => "(\\n)",
+                    Before::Encoded => "(&#xA;)",
                     Before::Previous(_) => "(\\])",
                     Before::Line => "([\\r\\n][\\t ]*)",
                     Before::Digits => "([\\r\\n][\\t ]*[0-9]+)",

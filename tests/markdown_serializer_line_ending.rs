@@ -217,6 +217,121 @@ fn constructed_trees_round_trip() {
     );
 }
 
+/// A paragraph built from `children`, where `None` is a soft break, which the fixture cannot build.
+fn with_soft_breaks(children: &[Option<&str>]) -> Document<String> {
+    let mut document = Node::Root(Root {
+        children: vec![paragraph(vec![])],
+        position: None,
+    })
+    .document();
+    let paragraph = document.children(document.root()).next().unwrap();
+    for child in children {
+        let kind = match child {
+            Some(value) => EventKind::Text(Value::from(value.to_string())),
+            None => EventKind::SoftBreak(Value::Literal("\n")),
+        };
+        document.append_child(paragraph, kind).unwrap();
+    }
+    document
+}
+
+/// The phrasing of the paragraph of `document` moved into the one cell of a table that replaces it.
+fn in_cell(mut document: Document<String>) -> Document<String> {
+    let paragraph = document.children(document.root()).next().unwrap();
+    let children: Vec<_> = document.children(paragraph).collect();
+    let table = document
+        .append_child(document.root(), EventKind::Start(Tag::Table))
+        .unwrap();
+    let head = document
+        .append_child(table, EventKind::Start(Tag::TableHead))
+        .unwrap();
+    let row = document
+        .append_child(head, EventKind::Start(Tag::TableRow))
+        .unwrap();
+    let cell = document
+        .append_child(
+            row,
+            EventKind::Start(Tag::TableCell {
+                alignment: base_markdown::AlignKind::None,
+                header: true,
+            }),
+        )
+        .unwrap();
+    for child in children {
+        document.attach(cell, child, None).unwrap();
+    }
+    document.detach(paragraph).unwrap();
+    document
+}
+
+#[test]
+fn whitespace_after_an_encoded_soft_break_is_encoded() {
+    // A soft break after another is written as `&#xA;`, which reads back as text `\n`, after which
+    // whitespace is judged as after a raw line ending, so it is encoded on the first write too.
+    for (children, expected) in [
+        (
+            &[Some("a"), None, None, Some(" b")][..],
+            "a\n&#xA;&#x20;b\n",
+        ),
+        (&[Some("a"), None, None, Some("\tb")], "a\n&#xA;&#x9;b\n"),
+        (
+            &[Some("a"), None, None, None, Some(" b")],
+            "a\n&#xA;\n&#x20;b\n",
+        ),
+        (
+            &[Some("a"), None, None, Some("\n b")],
+            "a\n&#xA;\n&#x20;b\n",
+        ),
+    ] {
+        let document = with_soft_breaks(children);
+        // The second soft break reads back as text, so compare the HTML rather than the trees.
+        let mut normalized = document;
+        normalized.normalize();
+        let output = to_markdown(&normalized).unwrap();
+        assert_eq!(output, expected, "{children:?}");
+        let mut reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+        reparsed.normalize();
+        let render = |document: &Document<String>| {
+            let mut html = String::new();
+            document
+                .render_html(&base_markdown::CompileOptions::default(), &mut html)
+                .unwrap();
+            html.trim_end().to_owned()
+        };
+        assert_eq!(render(&reparsed), render(&normalized), "{children:?}");
+        assert_eq!(to_markdown(&reparsed).unwrap(), output, "{children:?}");
+    }
+    // In a table cell every line ending is a reference, which reads back as one, so whitespace
+    // next to it stays as it is.
+    for (children, expected) in [
+        (&[Some("a"), None, Some(" b")][..], "| a&#xA; b |"),
+        (&[Some("a"), None, Some("\tb")], "| a&#xA;\tb |"),
+        (&[Some("a"), None, None, Some(" b")], "| a&#xA;&#xA; b |"),
+        (&[Some("a\n b")], "| a&#xA; b |"),
+        (&[Some("a "), None, Some("b")], "| a &#xA;b |"),
+        (
+            &[Some("a"), None, Some(" "), None, Some("b")],
+            "| a&#xA; &#xA;b |",
+        ),
+        (&[Some("a\n \nb")], "| a&#xA; &#xA;b |"),
+        (&[Some("a\t\n\tb")], "| a\t&#xA;\tb |"),
+        (&[Some("a"), None, Some("~~~ b")], "| a&#xA;~~~ b |"),
+        (&[Some("a\n# b")], "| a&#xA;# b |"),
+    ] {
+        let mut document = in_cell(with_soft_breaks(children));
+        document.normalize();
+        let output = to_markdown(&document).unwrap();
+        assert_eq!(output, format!("{expected}\n| --- |\n"), "{children:?}");
+        let mut reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+        reparsed.normalize();
+        assert_eq!(to_markdown(&reparsed).unwrap(), output, "{children:?}");
+    }
+    // A soft break moved out of emphasis is written the same.
+    assert_source("a\n&#xA;&#x20;*b*", "a\n&#xA;&#x20;*b*\n");
+    // Literal text that reads `&#xA;` is judged the same, which only adds a reference.
+    assert_source("\\&#xA; b", "\\&#xA;&#x20;b\n");
+}
+
 /// The values of `kind` that hold content, which excludes a separator, the line ending the HTML
 /// renderer writes between blocks.
 fn values<'a>(kind: &'a EventKind<'a>) -> Vec<&'a Value<'a>> {
