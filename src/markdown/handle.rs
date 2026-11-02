@@ -306,8 +306,7 @@ impl State<'_> {
         // Flatten a physical line ending only when a block-opening rule would become active.
         if line_endings(content).next().is_some() {
             self.rewrite(start, |value, output| {
-                super::escape::normalize_inline(value);
-                output.push_str(value);
+                super::escape::normalize_inline(value, output);
             });
         }
         self.output.extend(core::iter::repeat(marker).take(size));

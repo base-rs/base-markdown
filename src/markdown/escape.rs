@@ -4,6 +4,7 @@
 //! Fixed Markdown escaping rules. Scopes and neighbor predicates are static;
 //! matching allocates nothing and retains regex-style non-overlapping matches.
 use super::{construct_name::ConstructName, util::safe::EscapeInfos};
+use crate::util::line_ending::line_endings;
 use alloc::{string::String, vec::Vec};
 use core::ops::Range;
 
@@ -347,6 +348,7 @@ impl Rule {
         };
         Some(start..position + 1 + width)
     }
+    #[cfg(test)]
     fn matches<'a>(
         &'a self,
         value: Context<'a>,
@@ -556,27 +558,49 @@ pub(super) fn unsafe_newline(stack: &[ConstructName]) -> bool {
     scopes(stack) & NEWLINES != 0
 }
 
-pub(super) fn normalize_inline(value: &mut String) {
-    // Only a raw line ending can start a line in code, which does not decode `&#xA;`.
-    for rule in RULES
-        .iter()
-        .filter(|rule| matches!(rule.before, Before::Line | Before::Digits))
-    {
-        loop {
-            let first = rule
-                .matches(Context([b"", b"", value.as_bytes(), b""]), false)
-                .next();
-            let Some((range, _)) = first else {
-                break;
-            };
-            let at = range.start;
-            let from = at
-                - usize::from(
-                    at > 0 && value.as_bytes()[at - 1] == b'\r' && value.as_bytes()[at] == b'\n',
-                );
-            value.replace_range(from..at + 1, " ");
+/// Write `value`, the content of inline code or math, to `output` with each line ending that
+/// would start a line before a block marker written as a space.
+///
+/// Only a raw line ending can start a line in code, which does not decode `&#xA;`. A marker sees
+/// a line ending through spaces and tabs, and an ordered-list marker through its digits first,
+/// so once the nearest line ending is flattened it sees the one before, and every line ending in
+/// the run of whitespace before it is flattened. Its rules treat a space and a line ending after
+/// it alike, so flattening never changes whether another marker applies, and each run is judged
+/// once, by the marker after it, in time linear in `value` (#115).
+pub(super) fn normalize_inline(value: &str, output: &mut String) {
+    let bytes = value.as_bytes();
+    let context = Context([b"", b"", bytes, b""]);
+    let mut written = 0;
+    let mut search = 0;
+    while let Some(offset) = memchr::memchr2(b'\r', b'\n', &bytes[search..]) {
+        let run = search + offset;
+        let mut marker = run;
+        while matches!(bytes.get(marker), Some(b' ' | b'\t' | b'\r' | b'\n')) {
+            marker += 1;
+        }
+        search = marker;
+        while bytes.get(marker).is_some_and(u8::is_ascii_digit) {
+            marker += 1;
+        }
+        let flatten = bytes.get(marker).is_some_and(|&byte| {
+            RULES.iter().any(|rule| {
+                rule.byte == byte
+                    && matches!(rule.before, Before::Line | Before::Digits)
+                    && rule.at(context, marker, false).is_some()
+            })
+        });
+        if !flatten {
+            continue;
+        }
+        output.push_str(&value[written..run]);
+        written = run;
+        for ending in line_endings(&value[run..search]) {
+            output.push_str(&value[written..run + ending.start]);
+            output.push(' ');
+            written = run + ending.end;
         }
     }
+    output.push_str(&value[written..]);
 }
 
 #[cfg(test)]
@@ -742,6 +766,78 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    /// The previous `normalize_inline`, which flattened the first line ending that starts a line
+    /// before a marker and scanned again from the start, in quadratic time.
+    fn normalize_inline_by_rescanning(value: &mut String) {
+        for rule in RULES
+            .iter()
+            .filter(|rule| matches!(rule.before, Before::Line | Before::Digits))
+        {
+            loop {
+                let first = rule
+                    .matches(Context([b"", b"", value.as_bytes(), b""]), false)
+                    .next();
+                let Some((range, _)) = first else {
+                    break;
+                };
+                let at = range.start;
+                let from = at
+                    - usize::from(
+                        at > 0
+                            && value.as_bytes()[at - 1] == b'\r'
+                            && value.as_bytes()[at] == b'\n',
+                    );
+                value.replace_range(from..at + 1, " ");
+            }
+        }
+    }
+
+    #[test]
+    fn normalize_inline_matches_rescanning() {
+        let check = |value: &str| {
+            let mut expected = value.to_string();
+            normalize_inline_by_rescanning(&mut expected);
+            let mut actual = "x".to_string();
+            normalize_inline(value, &mut actual);
+            assert_eq!(actual[1..], expected, "{value:?}");
+        };
+        // Every string of up to five of these bytes, then longer random ones.
+        let alphabet = b" \t\r\n1#.)<a*$";
+        let mut value = Vec::new();
+        let mut counters = Vec::new();
+        loop {
+            value.clear();
+            value.extend(counters.iter().map(|&index: &usize| alphabet[index]));
+            check(core::str::from_utf8(&value).unwrap());
+            let Some(position) = counters
+                .iter()
+                .rposition(|&index| index + 1 < alphabet.len())
+            else {
+                if counters.len() == 5 {
+                    break;
+                }
+                counters = alloc::vec![0; counters.len() + 1];
+                continue;
+            };
+            counters[position] += 1;
+            counters[position + 1..].fill(0);
+        }
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        for _ in 0..20_000 {
+            value.clear();
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            for _ in 0..state % 40 {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                value.push(alphabet[(state % alphabet.len() as u64) as usize]);
+            }
+            check(core::str::from_utf8(&value).unwrap());
         }
     }
 }
