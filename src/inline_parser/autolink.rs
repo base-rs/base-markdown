@@ -69,8 +69,9 @@ pub(crate) fn literal_autolink_prefix(text: &str) -> Option<&'static str> {
 /// says whether what comes before `text` lets `www` start a literal.
 ///
 /// Whether a literal forms is decided within `text`. In phrasing, what follows it is another
-/// node, which is written starting with punctuation that ends a domain, so `www.` at the end of
-/// `text` has no domain and needs no escape. A literal that would run on into a following text
+/// node, which is written starting with punctuation. That ends a domain, except `_` from `_`
+/// attention, which a host name cannot have, so a domain that runs on into the next node is never
+/// valid, and `www.` or `https://` at the end of `text` needs no escape. A literal that would run on into a following text
 /// sibling, which only a tree that is not normalized has, is not found, nor in image alt one that
 /// would run on into the text of a link, which is written as it is. The scan
 /// is linear: domains are scanned once, except that a `www` after `_` within a scanned domain is
@@ -79,6 +80,8 @@ pub(crate) fn literal_markers(text: &str, from: usize, www_start: bool, markers:
     let bytes = text.as_bytes();
     let mut suffixes = Trail::default();
     let mut scanned = 0;
+    // Literals whose domains are invalid, which an escape before a later `@` can make valid.
+    let mut invalid = Vec::new();
     for marker in memchr::memchr2_iter(b':', b'.', &bytes[from..]).map(|at| from + at) {
         let Some((start, domain_start, _)) = web_prefix(bytes, 0, marker, bytes.len()) else {
             continue;
@@ -93,11 +96,10 @@ pub(crate) fn literal_markers(text: &str, from: usize, www_start: bool, markers:
         let (tail, boundary) = suffixes.suffix(text, domain_start, bytes.len());
         let (end, valid) = domain(text, domain_start, tail, boundary);
         scanned = end;
-        // An escape that a later email gets ends the literal at its `@`, which leaves out the
-        // trailing punctuation before it. Leaving out dots never makes a domain valid, and an
-        // `_` there is next to punctuation, so it is already escaped.
         if valid {
             markers.push(marker);
+        } else {
+            invalid.push((marker, domain_start, end));
         }
     }
     let web = markers.len();
@@ -129,7 +131,28 @@ pub(crate) fn literal_markers(text: &str, from: usize, www_start: bool, markers:
             markers.push(at);
         }
     }
-    if markers.len() > web && web > 0 {
+    // An escape that a later email gets ends a literal at its `@`, which leaves out the trailing
+    // punctuation before it, so `www.a..@b.cd` links `www.a` once its `@` is escaped. Such a domain
+    // ends at the `@`: what is between is in the local part, and the only byte there that ends a
+    // domain before it is `+`, which is not trailing. Each domain is scanned once more at most.
+    let emails = markers.len();
+    let mut next = web;
+    for (marker, domain_start, end) in invalid {
+        while next < emails && markers[next] < end {
+            next += 1;
+        }
+        let Some(&at) = markers[web..emails].get(next - web) else {
+            break;
+        };
+        if end == at {
+            let (tail, boundary) = terminal_suffix(text, domain_start, at);
+            if domain(text, domain_start, tail, boundary).1 {
+                markers.push(marker);
+            }
+        }
+    }
+    // The web markers found first and the emails are each in order, and so are those found last.
+    if markers.len() > emails || (emails > web && web > 0) {
         markers.sort_unstable();
     }
 }

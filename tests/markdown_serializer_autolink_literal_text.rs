@@ -153,6 +153,14 @@ fn literals_that_form_once_another_is_escaped_are_escaped() {
         ("www.a._@b.cd", "www\\.a.\\_@b.cd"),
         // The second `www` is in the domain of the first, which an escape would end.
         ("www.x_www.y", "www.x_www\\.y"),
+        // The escaped `@` ends the `www` literal before the empty labels, which leaves a domain.
+        ("www.a..@b.cd", "www\\.a..\\@b.cd"),
+        (
+            "www.a..@b.cd www.c-.@d.ef",
+            "www\\.a..\\@b.cd www.c-.\\@d.ef",
+        ),
+        // A `+` in the local part ends the domain, and is not trailing punctuation.
+        ("www.a..+x@b.cd", "www.a..+x\\@b.cd"),
         (
             "several www.a.b, c@d.ef and http://g.h",
             "several www\\.a.b, c\\@d.ef and http\\://g.h",
@@ -290,6 +298,8 @@ fn literal_scans_stay_linear() {
         ("www\\.a ", false),
         ("x\\@y.z", false),
         ("a&#97;", false),
+        ("www.a..@b.cd ", true),
+        ("www.a)www.a..@b.cd", true),
     ] {
         time(unit, 1 << 9, normalize);
         let small = time(unit, 1 << 11, normalize);
@@ -402,5 +412,56 @@ fn literals_are_judged_after_attention_encodes_the_first_character() {
         // Without normalizing, the reference splits the text, which is written the same.
         let reparsed = parse(&markdown);
         assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{:?}", source);
+    }
+}
+
+#[test]
+fn a_prefix_before_underscore_attention_needs_no_escape() {
+    // The domain that `_` attention would continue starts with `_`, which no host name has.
+    use support::fixture::{Emphasis, Node, Paragraph, Strong, Text};
+    let text = |value: &str| {
+        Node::Text(Text {
+            value: value.into(),
+            position: None,
+        })
+    };
+    let options = base_markdown::MarkdownOptions {
+        emphasis: '_',
+        strong: '_',
+        ..Default::default()
+    };
+    for prefix in ["x www.", "x www.-", "x www..", "x http://", "x https://"] {
+        for strong in [false, true] {
+            let inner = vec![text("a.b.c")];
+            let attention = if strong {
+                Node::Strong(Strong {
+                    children: inner,
+                    position: None,
+                })
+            } else {
+                Node::Emphasis(Emphasis {
+                    children: inner,
+                    position: None,
+                })
+            };
+            let tree = Node::Paragraph(Paragraph {
+                children: vec![text(prefix), attention],
+                position: None,
+            });
+            let first = support::fixture::to_markdown_with_options(&tree, &options).unwrap();
+            let marker = if strong { "__" } else { "_" };
+            assert_eq!(first, format!("{prefix}{marker}a.b.c{marker}\n"));
+            let mut reparsed = parse(&first);
+            reparsed.normalize();
+            assert!(
+                !canonical(&reparsed)
+                    .iter()
+                    .any(|line| line.starts_with("Link")),
+                "{:?}",
+                first
+            );
+            let again = base_markdown::to_markdown_with_options(&reparsed, &options).unwrap();
+            assert_eq!(again, first);
+        }
     }
 }
