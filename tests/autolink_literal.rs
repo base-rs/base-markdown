@@ -10,8 +10,7 @@
 mod support;
 use base_markdown::{message, to_html, to_html_with_options, to_markdown, Options, ParseOptions};
 use pretty_assertions::assert_eq;
-use std::convert::TryFrom;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use support::fixture::parse_fixture;
 use support::fixture::Position;
 use support::fixture::{Link, Node, Paragraph, Root, Text};
@@ -3212,46 +3211,19 @@ fn literal_domains_are_host_names() {
     }
 }
 
-/// The CPU time this thread has used. Unlike the time on the clock, it stops while other work
-/// on the machine runs instead, so load makes it vary much less.
-#[cfg(unix)]
-fn thread_time() -> Duration {
-    let mut time = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    // SAFETY: `time` is a `timespec` that the call may write to.
-    assert_eq!(
-        unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut time) },
-        0
-    );
-    Duration::new(
-        u64::try_from(time.tv_sec).unwrap(),
-        u32::try_from(time.tv_nsec).unwrap(),
-    )
-}
-
-/// The time on the clock, where the CPU time of a thread is not at hand.
-#[cfg(not(unix))]
-fn thread_time() -> Duration {
-    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    START.get_or_init(std::time::Instant::now).elapsed()
-}
-
 /// Assert that sixteen times the input takes less than forty-eight times as long, after a
 /// warm-up.
 ///
 /// Quadratic time would take 256 times as long, so the bound leaves room on both sides. The ratio
 /// of two sizes is compared, rather than a time, so that a slower machine or build slows both
-/// alike, and it is measured in CPU time, which load barely changes. Each size takes the fastest
-/// of seven runs, alternating between the sizes, so that a pause does not count, and a ratio over
-/// the bound is measured again up to twice, since noise makes linear work look slower only now
-/// and then, while quadratic work fails every time.
+/// alike. Each size takes the fastest of seven runs, alternating between the sizes, so that a
+/// pause does not count, and a ratio over the bound is measured again up to twice, since noise
+/// makes linear work look slower only now and then, while quadratic work fails every time.
 fn assert_linear(unit: &str, mut run: impl FnMut(usize)) {
     let mut time = |size| {
-        let started = thread_time();
+        let started = Instant::now();
         run(size);
-        thread_time() - started
+        started.elapsed()
     };
     time(1 << 7);
     let mut ratios = Vec::new();
