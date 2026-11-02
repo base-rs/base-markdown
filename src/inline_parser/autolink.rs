@@ -68,9 +68,11 @@ pub(crate) fn literal_autolink_prefix(text: &str) -> Option<&'static str> {
 /// keeps the others from forming. The text before `from` is written already, and `www_start`
 /// says whether what comes before `text` lets `www` start a literal.
 ///
-/// What follows `text` is another node, which is written starting with punctuation that ends a
-/// domain, so whether a literal forms is decided within `text`. A literal that would run on into
-/// a following text sibling, which only a tree that is not normalized has, is not found. The scan
+/// Whether a literal forms is decided within `text`. In phrasing, what follows it is another
+/// node, which is written starting with punctuation that ends a domain, so `www.` at the end of
+/// `text` has no domain and needs no escape. A literal that would run on into a following text
+/// sibling, which only a tree that is not normalized has, is not found, nor in image alt one that
+/// would run on into the text of a link, which is written as it is. The scan
 /// is linear: domains are scanned once, except that a `www` after `_` within a scanned domain is
 /// taken to form, and an email's local part is scanned back to the byte before it.
 pub(crate) fn literal_markers(text: &str, from: usize, www_start: bool, markers: &mut Vec<usize>) {

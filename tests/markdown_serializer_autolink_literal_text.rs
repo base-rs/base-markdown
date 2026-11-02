@@ -292,3 +292,104 @@ fn literal_scans_stay_linear() {
         );
     }
 }
+
+#[test]
+fn www_at_the_end_of_text_needs_no_escape() {
+    // `www.` needs a domain after it, and what follows text is another node, so `www.` at the end
+    // of a text node never links, whatever follows it.
+    for source in [
+        "x www\\.\nb\n",
+        "**www\\.**\n",
+        "~~www\\.~~\n",
+        "www\\.*a*\n",
+        "www\\.`x`\n",
+        "(www\\.*![a](http://a.b)*\n",
+        "a www\\.<b>\n",
+        "a www\\.[^1]\n\n[^1]: c\n",
+    ] {
+        let mut document = parse(source);
+        document.normalize();
+        let markdown = to_markdown(&document).unwrap();
+        assert_eq!(markdown, source.replace("www\\.", "www."), "{:?}", source);
+        assert_round_trip(&document, &markdown);
+    }
+    // Built by hand, and in attention that `_` is chosen for.
+    use support::fixture::{Emphasis, Node, Paragraph, Strong, Text};
+    let text = |value: &str| {
+        Node::Text(Text {
+            value: value.into(),
+            position: None,
+        })
+    };
+    for tree in [
+        Node::Paragraph(Paragraph {
+            children: vec![text("x www.\nb")],
+            position: None,
+        }),
+        Node::Paragraph(Paragraph {
+            children: vec![
+                Node::Strong(Strong {
+                    children: vec![text("a")],
+                    position: None,
+                }),
+                Node::Emphasis(Emphasis {
+                    children: vec![text("wWw.")],
+                    position: None,
+                }),
+            ],
+            position: None,
+        }),
+    ] {
+        let first = support::fixture::to_markdown(&tree).unwrap();
+        let mut reparsed = parse(&first);
+        reparsed.normalize();
+        assert!(
+            !canonical(&reparsed)
+                .iter()
+                .any(|line| line.starts_with("Link")),
+            "{:?}",
+            first
+        );
+        assert_eq!(to_markdown(&reparsed).unwrap(), first);
+    }
+}
+
+#[test]
+fn literals_in_image_text() {
+    // Literals form in image text, so its text is escaped, but links in it, which parsing
+    // makes, are written as they are.
+    assert_round_trip(&edit("![x](u)\n", "x", "www.a.b"), "![www\\.a.b](u)\n");
+    assert_round_trip(
+        &edit("![x](u)\n", "x", "see https://a.b"),
+        "![see https\\://a.b](u)\n",
+    );
+    assert_round_trip(&edit("![a\\@b.c](u)\n", "a", "a"), "![a\\@b.c](u)\n");
+    assert_round_trip(
+        &edit("![x www.a.b y](u)\n", "x ", "c@d.ef "),
+        "![c\\@d.ef www.a.b y](u)\n",
+    );
+    assert_round_trip(
+        &edit("![www.a.b x](u)\n", " x", " http://c.d"),
+        "![www.a.b http\\://c.d](u)\n",
+    );
+    // Not in link text, where no literal forms.
+    assert_round_trip(
+        &edit("[![x](i)](u)\n", "x", "www.a.b"),
+        "[![www.a.b](i)](u)\n",
+    );
+}
+
+#[test]
+fn literals_are_judged_after_attention_encodes_the_first_character() {
+    // The `w` next to the closing sequence is written as a reference, which leaves no `www`.
+    for source in ["***.***&#x77;ww.a.b\n", "**.**&#x77;ww.a.b\n"] {
+        let mut document = parse(source);
+        document.normalize();
+        let markdown = to_markdown(&document).unwrap();
+        assert_eq!(markdown, source, "{:?}", source);
+        assert_round_trip(&document, &markdown);
+        // Without normalizing, the reference splits the text, which is written the same.
+        let reparsed = parse(&markdown);
+        assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{:?}", source);
+    }
+}

@@ -444,13 +444,15 @@ impl State<'_> {
         image: bool,
         after: &str,
     ) -> Result<core::ops::Range<usize>, Message> {
+        // Literals form in image text, unless the image is in link text.
+        let literals = image && super::escape::autolink_literals(&self.stack);
         self.enter(ConstructName::Label);
         let start = self.output.len();
         self.output.push_str(if image { "![" } else { "[" });
         let text_start = self.output.len();
         let info = Info::at(start, text_start, after);
         if image {
-            self.write_safe(&image_alt(document, node), &info, None);
+            self.image_text(document, node, start, after, literals);
         } else {
             self.container_phrasing(document, node, &info)?;
         }
@@ -713,18 +715,6 @@ fn item_task<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> Option<(Nod
         EventKind::TaskMarker(checked) => Some((marker, checked)),
         _ => None,
     }
-}
-
-fn image_alt<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> Cow<'_, str> {
-    let mut children = document.children(node);
-    if let Some(child) = children.next() {
-        if children.next().is_none() {
-            if let EventKind::Text(value) = &document.node(child).unwrap().kind {
-                return Cow::Borrowed(value.resolve(document.source()).unwrap());
-            }
-        }
-    }
-    Cow::Owned(document.text_content(node))
 }
 
 // Line endings in values are LF, and a CR is a character reference, so it is kept.

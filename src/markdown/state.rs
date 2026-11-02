@@ -19,7 +19,7 @@ use crate::markdown::{
 };
 use crate::{
     message::Message,
-    stream::{EventKind, Tag},
+    stream::{EventKind, Tag, TagKind},
     util::{
         line_ending::{line_endings, trim_terminal_ending},
         normalize_identifier::{normalize_identifier, normalize_identifier_into},
@@ -53,6 +53,11 @@ pub struct State<'a> {
     email_escapes: Vec<usize>,
     /// Output offsets that make GFM literal autolinks of the text being written.
     literal_markers: Vec<usize>,
+    /// Whether the image text being written can form GFM literal autolinks.
+    alt_literals: bool,
+    /// Whether the text being written leaves literal autolinks to its caller, which edits its
+    /// start first.
+    defer_literals: bool,
     /// How many attention nodes are open, by marker (`*`, `_`) and sequence size (1, 2).
     attention_open: [[usize; 2]; 2],
     /// The attention whose children are being written.
@@ -403,9 +408,16 @@ impl<'a> State<'a> {
                     self.attention(document, child, sequences, &info, &previous, next.is_none())?;
                 previous = Previous::Attention;
             } else {
+                // Attention can encode the first character of text, which ends a literal
+                // there, so literals are escaped once it has.
+                self.defer_literals = text;
                 self.write_node(document, child, &info)?;
-                if matches!(kind, EventKind::Text(_)) {
+                self.defer_literals = false;
+                if text {
                     self.edit_start(length, &pending);
+                    if super::escape::autolink_literals(&self.stack) {
+                        self.escape_literals(length, &info);
+                    }
                     pending = Edge::default();
                     previous = Previous::Text(length);
                 } else if self.output.len() != length {
@@ -839,6 +851,8 @@ impl<'a> State<'a> {
             applied: Vec::new(),
             email_escapes: Vec::new(),
             literal_markers: Vec::new(),
+            alt_literals: false,
+            defer_literals: false,
             attention_open: [[0; 2]; 2],
             parent: Parent::NONE,
             bullet_current: None,
@@ -1064,9 +1078,61 @@ impl<'a> State<'a> {
             info.after,
             &mut self.output,
         );
-        if super::escape::autolink_literals(&self.stack) {
+        if !self.defer_literals
+            && (self.alt_literals || super::escape::autolink_literals(&self.stack))
+        {
             self.escape_literals(written, info);
         }
+    }
+
+    /// Write the text of the image `node`, which the output holds from `start` up to the text,
+    /// before `after`. Literals form in image text unless the image is in link text, so the text
+    /// of its text nodes is escaped where they would, while the text of links in it, which only
+    /// parsing makes, is written as it is and reads back as those links.
+    pub(super) fn image_text<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        node: NodeId,
+        start: usize,
+        after: &str,
+        literals: bool,
+    ) {
+        let text_start = self.output.len();
+        // Runs of the text, each from text nodes or from links.
+        let mut runs: Vec<(String, bool)> = Vec::new();
+        let mut links = 0usize;
+        for event in document.subtree_events(node) {
+            let kind = event.expect("document events are valid").kind;
+            match kind {
+                EventKind::Start(Tag::Link { .. }) => links += 1,
+                EventKind::End(TagKind::Link) => links -= 1,
+                _ => {}
+            }
+            let Some(value) = crate::headings::semantic_text::<false>(&kind, document.source())
+            else {
+                continue;
+            };
+            let link = links > 0;
+            match runs.last_mut() {
+                Some((text, last)) if *last == link => text.push_str(value),
+                _ => runs.push((value.into(), link)),
+            }
+        }
+        let mut buffer = [0u8; 4];
+        for (index, (value, link)) in runs.iter().enumerate() {
+            let after = runs
+                .get(index + 1)
+                .and_then(|(next, _)| next.chars().next())
+                .map_or(after, |next| &*next.encode_utf8(&mut buffer));
+            let info = Info {
+                before: Before::Output("", start..self.output.len()),
+                after,
+                text_run: (index > 0).then_some(text_start),
+            };
+            self.alt_literals = literals && !link;
+            self.write_safe(value, &info, None);
+        }
+        self.alt_literals = false;
     }
 
     /// Escape what makes literal autolinks of the text written from `start`. Text is literal, so
