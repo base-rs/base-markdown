@@ -3057,7 +3057,8 @@ fn backslashes_end_literal_autolinks() {
         to_html_with_options("| a |\n| - |\n| www.a\\|b |\n", &Options::gfm()),
         "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"http://www.a\">www.a</a>|b</td>\n</tr>\n</tbody>\n</table>\n"
     );
-    // An escaped `@` splits the text, so it is no email link. The serializer writes text as-is rather than escaping it against literal autolinks, so the next parse links it, and the bare link it reads back is written as its text.
+    // An escaped `@` splits the text, so it is no email link. Text is literal, so the serializer
+    // escapes the `@` again, though the address is split across text nodes.
     let options = Options::gfm();
     assert_eq!(
         to_html_with_options("a\\@b.c\n", &options),
@@ -3065,11 +3066,8 @@ fn backslashes_end_literal_autolinks() {
     );
     let tree = Document::parse("a\\@b.c\n", &options.parse).unwrap();
     let first = to_markdown(&tree).unwrap();
-    assert_eq!(first, "a@b.c\n");
+    assert_eq!(first, "a\\@b.c\n");
     let reparsed = Document::parse(first.as_str(), &options.parse).unwrap();
-    let second = to_markdown(&reparsed).unwrap();
-    assert_eq!(second, "a@b.c\n");
-    let again = Document::parse(second.as_str(), &options.parse).unwrap();
-    assert_eq!(canonical(&again), canonical(&reparsed));
-    assert_eq!(to_markdown(&again).unwrap(), second);
+    assert_eq!(canonical(&reparsed), canonical(&tree));
+    assert_eq!(to_markdown(&reparsed).unwrap(), first);
 }

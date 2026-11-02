@@ -140,7 +140,7 @@ fn intraword_underscores() {
         ("a__b", "a__b\n", "should not escape `__` between letters"),
         (
             "x@a_b.com",
-            "x@a_b.com\n",
+            "x\\@a_b.com\n",
             "should not escape `_` in email domains",
         ),
         (
@@ -337,16 +337,18 @@ fn literal_autolinks_next_to_anything_else_are_written_as_autolinks_or_explicitl
     }
 }
 #[test]
-fn escapes_that_only_kept_text_from_linking_are_dropped() {
-    // Text is not escaped to keep GFM from linking it, so it may link once it is written.
+fn escapes_that_keep_text_from_linking_are_kept() {
+    // Text is literal, so it is escaped where GFM would link it, with a backslash before the
+    // colon, the dot after `www` or the `@`.
     for (source, expected) in [
-        ("www\\.example.com\n", "www.example.com\n"),
-        ("http\\://example.com\n", "http://example.com\n"),
-        ("x\\@example.com\n", "x@example.com\n"),
+        ("www\\.example.com\n", "www\\.example.com\n"),
+        ("http\\://example.com\n", "http\\://example.com\n"),
+        ("x\\@example.com\n", "x\\@example.com\n"),
+        // After a backslash, the email has no local part.
         ("\\\\x&#64;y.z\n", "\\x@y.z\n"),
-        // Underscores in an email domain are not escaped either.
-        ("x\\@a_b.com\n", "x@a_b.com\n"),
-        ("x&#64;a_b.com\n", "x@a_b.com\n"),
+        // Underscores in an email domain are not escaped.
+        ("x\\@a_b.com\n", "x\\@a_b.com\n"),
+        ("x&#64;a_b.com\n", "x\\@a_b.com\n"),
         // Adjacent escaped backslashes each keep their escape.
         ("\\\\\\\\.\n", "\\\\\\\\.\n"),
         ("a\\\\\\\\*b*\n", "a\\\\\\\\*b*\n"),
@@ -358,31 +360,23 @@ fn escapes_that_only_kept_text_from_linking_are_dropped() {
     }
 }
 #[test]
-fn text_that_becomes_a_literal_autolink_settles_after_two_passes() {
-    // Text that links once written is a bare link on the next pass, which falls back when
-    // something other than whitespace is next to it, and then stays.
-    for (source, second) in [
+fn text_that_would_become_a_literal_autolink_stays_text() {
+    // Text that GFM would link is escaped, so it reads back as text on the first pass.
+    for (source, expected) in [
         ("x\\\\x\\@y.z\n", "x\\x@y.z\n"),
         (
             "mailto:<a@b.c>\\\\www&#64;\\.0\\_a.b\n",
-            "mailto:<a@b.c>\\www@.0_a.b\n",
+            "mailto:<a@b.c>\\www\\@.0_a.b\n",
         ),
-        ("x\\@y.co1\\_www.\n", "[x@y.co1_www](mailto:x@y.co1_www).\n"),
-        (
-            "> - //&amp;x@y.z9\\_www\n",
-            "> - //&[x@y.z9_www](mailto:x@y.z9_www)\n",
-        ),
-        ("&x&#64;y.z\n", "&<x@y.z>\n"),
-        ("&amp;http\\://a.b\n", "&<http://a.b>\n"),
-        ("\\\\http\\://a.b\n", "\\\\<http://a.b>\n"),
+        ("x\\@y.co1\\_www.\n", "x\\@y.co1_www.\n"),
+        ("> - //&amp;x@y.z9\\_www\n", "> - //\\&x\\@y.z9_www\n"),
+        ("&x&#64;y.z\n", "\\&x\\@y.z\n"),
+        ("&amp;http\\://a.b\n", "\\&http\\://a.b\n"),
+        ("\\\\http\\://a.b\n", "\\http\\://a.b\n"),
     ] {
-        let (_, written) = two_passes(source);
-        assert_eq!(written, second, "{source:?}");
-        assert_eq!(
-            two_passes(&written),
-            (written.clone(), written.clone()),
-            "{source:?}"
-        );
+        let (first, second) = two_passes(source);
+        assert_eq!(first, expected, "{source:?}");
+        assert_eq!(second, first, "{source:?}");
     }
 }
 #[test]
@@ -630,15 +624,26 @@ fn whitespace_inside_attention_keeps_the_text_before_it() {
 }
 
 #[test]
-fn text_that_gfm_would_link_is_written_verbatim() {
-    for source in [
-        "www.example.com\n",
-        "https://a.b/c\n",
-        "a@b.co\n",
-        "x@a_b.com and http://y.z/w_v\n",
+fn text_that_gfm_would_link_is_escaped() {
+    // Without GFM, these are text, which the serializer writes so GFM reads it as text too.
+    for (source, expected) in [
+        ("www.example.com\n", "www\\.example.com\n"),
+        ("https://a.b/c\n", "https\\://a.b/c\n"),
+        ("a@b.co\n", "a\\@b.co\n"),
+        (
+            "x@a_b.com and http://y.z/w_v\n",
+            "x\\@a_b.com and http\\://y.z/w_v\n",
+        ),
     ] {
         let document = Document::parse(source, &base_markdown::ParseOptions::default()).unwrap();
-        assert_eq!(base_markdown::to_markdown(&document).unwrap(), source);
+        let written = base_markdown::to_markdown(&document).unwrap();
+        assert_eq!(written, expected);
+        let mut reparsed =
+            Document::parse(written.as_str(), &base_markdown::ParseOptions::gfm()).unwrap();
+        reparsed.normalize();
+        let mut document = document;
+        document.normalize();
+        assert_eq!(canonical(&reparsed), canonical(&document), "{source:?}");
     }
 }
 

@@ -1,5 +1,5 @@
 # Round-trip fuzz results per corpus at 10000 inputs, checked exactly by tests/roundtrip_fuzz.rs: <corpus> <failures> <rejected> <digest of the sorted failing inputs>. Rewrite with FUZZ_BLESS=1 cargo test --test roundtrip_fuzz round_trip_fuzz.
-realistic 254 0 dc1c8f8b824b2afb
+realistic 209 0 e63b0273898703b7
 soup 8 0 9879882d953184a0
 edge 199 0 6b28bdb1ebf96bb2
 strike 745 0 25ae48371a45b4cb

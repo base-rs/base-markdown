@@ -523,7 +523,9 @@ fn text_angle_brackets_escape_only_before_email_autolinks() {
     // Only the rest of the same text node is scanned, so an email the parser splits across text
     // nodes, such as `<#\@b.c>`, `\<&@a.b>` or, with GFM, `\<#@a.b>`, is written unescaped, as on main.
     for (input, expected) in [
-        ("\\<1@a.b>\n", Some("\\<1@a.b>\n")),
+        // The `@` is escaped, since the email is a literal autolink with GFM, and that keeps the
+        // email autolink from forming too.
+        ("\\<1@a.b>\n", Some("<1\\@a.b>\n")),
         // Escaping `*` already breaks the email autolink, so `<` stays unescaped.
         ("\\<*@a.b>\n", Some("<\\*@a.b>\n")),
         ("a <= b\n", Some("a <= b\n")),
@@ -537,7 +539,7 @@ fn text_angle_brackets_escape_only_before_email_autolinks() {
         ("a <&#1 b\n", Some("a <\\&#1 b\n")),
         ("<&amp;#|\\@b-c.d>\n", Some("<\\&#|@b-c.d>\n")),
         ("# <#\\:\n", Some("# <#:\n")),
-        ("\\<1@b.c\n", Some("<1@b.c\n")),
+        ("\\<1@b.c\n", Some("<1\\@b.c\n")),
     ] {
         for options in [ParseOptions::default(), ParseOptions::gfm(), namespaces()] {
             let tree = Document::parse(input, &options).unwrap();
@@ -609,7 +611,7 @@ fn text_angle_brackets_ignore_following_nodes() {
         // Accepted escapes keep the applied list sorted for later scans.
         (
             "\\<1@b.c> \\* \\* \\* \\* \\* \\* \\* \\<2\\*@d.e>\n",
-            "\\<1@b.c> \\* \\* \\* \\* \\* \\* \\* <2\\*@d.e>\n",
+            "<1\\@b.c> \\* \\* \\* \\* \\* \\* \\* <2\\*@d.e>\n",
         ),
     ] {
         for (options, gfm) in [
@@ -649,14 +651,18 @@ fn text_angle_brackets_before_inline_code_stay_stable_with_gfm() {
         }))
         .unwrap();
         assert!(!first.contains("\\<"), "{:?}", first);
-        let options = ParseOptions::gfm();
-        let reparsed = Document::parse(&first, &options).unwrap();
-        // GFM reads the text as a literal autolink, so compare from the reparsed tree on.
+        // The text is literal, so it is escaped where GFM would read a literal autolink, and
+        // reads back as the same text once normalized.
+        let mut reparsed = Document::parse(&first, &ParseOptions::gfm()).unwrap();
+        reparsed.normalize();
         let second = to(&reparsed).unwrap();
-        assert!(!second.contains("\\<"), "{:?}", second);
-        let again = Document::parse(&second, &options).unwrap();
-        assert_eq!(canonical(&again), canonical(&reparsed), "{:?}", value);
-        assert_eq!(to(&again).unwrap(), second, "{:?}", value);
+        assert_eq!(second, first, "{:?}", value);
+        assert_eq!(
+            canonical(&reparsed)[2],
+            format!("text:{:?}", value),
+            "{:?}",
+            value
+        );
     }
 }
 
@@ -665,10 +671,10 @@ fn text_angle_brackets_scan_only_their_own_text() {
     use support::fixture::{to_markdown, Node, Paragraph, Text};
     // Parsed text usually ends at an unescaped `<`, so these shapes come from hand-built trees.
     for (value, expected) in [
-        ("<1@b.c>", "\\<1@b.c>\n"),
+        ("<1@b.c>", "<1\\@b.c>\n"),
         ("<1 x", "<1 x\n"),
         ("<*@a.b>", "<\\*@a.b>\n"),
-        ("<1@b.c", "<1@b.c\n"),
+        ("<1@b.c", "<1\\@b.c\n"),
     ] {
         let first = to_markdown(&Node::Paragraph(Paragraph {
             children: vec![Node::Text(Text {

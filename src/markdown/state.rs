@@ -31,6 +31,8 @@ use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
 pub struct Info<'a> {
     pub after: &'a str,
     before: Before<'a>,
+    /// Where the text siblings written directly before this text start in the output.
+    text_run: Option<usize>,
 }
 
 enum Before<'a> {
@@ -47,6 +49,10 @@ pub struct State<'a> {
     email_candidates: Vec<usize>,
     /// Positions that receive an escape, in order.
     applied: Vec<usize>,
+    /// Output offsets of the escapes written before `<` that would start an email autolink.
+    email_escapes: Vec<usize>,
+    /// Output offsets that make GFM literal autolinks of the text being written.
+    literal_markers: Vec<usize>,
     /// How many attention nodes are open, by marker (`*`, `_`) and sequence size (1, 2).
     attention_open: [[usize; 2]; 2],
     /// The attention whose children are being written.
@@ -69,12 +75,14 @@ impl<'a> Info<'a> {
         Self {
             before: Before::Literal(before),
             after,
+            text_run: None,
         }
     }
     pub fn at(start: usize, end: usize, after: &'a str) -> Self {
         Self {
             before: Before::Output("", start..end),
             after,
+            text_run: None,
         }
     }
     /// The text before, in two parts that are read as one.
@@ -320,6 +328,8 @@ impl<'a> State<'a> {
             tilde: edge.tilde,
         };
         let mut previous = Previous::Start;
+        // Where the text children written directly before the current child start.
+        let mut run = None;
         for (position, &child) in children.iter().enumerate() {
             let kind = &document.node(child).unwrap().kind;
             if !is_phrasing(kind) {
@@ -382,7 +392,12 @@ impl<'a> State<'a> {
                 Before::Output(lead, start..self.output.len())
             };
             let length = self.output.len();
-            let info = Info { before, after };
+            let text = matches!(kind, EventKind::Text(_));
+            let info = Info {
+                before,
+                after,
+                text_run: run.filter(|_| text),
+            };
             if let Some(sequences) = sequences {
                 pending =
                     self.attention(document, child, sequences, &info, &previous, next.is_none())?;
@@ -397,6 +412,11 @@ impl<'a> State<'a> {
                     pending = Edge::default();
                     previous = Previous::Other;
                 }
+            }
+            if text {
+                run = run.or(Some(length));
+            } else if self.output.len() != length {
+                run = None;
             }
             if self.output.len() != length {
                 hard_break_line = after_hard_break;
@@ -817,6 +837,8 @@ impl<'a> State<'a> {
             escapes: Vec::new(),
             email_candidates: Vec::new(),
             applied: Vec::new(),
+            email_escapes: Vec::new(),
+            literal_markers: Vec::new(),
             attention_open: [[0; 2]; 2],
             parent: Parent::NONE,
             bullet_current: None,
@@ -1011,6 +1033,8 @@ impl<'a> State<'a> {
         if self.applied.len() > applied {
             self.applied.sort_unstable();
         }
+        let written = self.output.len();
+        self.email_escapes.clear();
         let mut cursor = start;
         for &position in &self.applied {
             super::util::safe::write_backslashes(
@@ -1024,6 +1048,9 @@ impl<'a> State<'a> {
                 .next()
                 .expect("escape positions are character boundaries");
             if character.is_ascii_punctuation() && encode != Some(character) {
+                if self.email_candidates.binary_search(&position).is_ok() {
+                    self.email_escapes.push(self.output.len() - written);
+                }
                 self.output.push('\\');
             } else {
                 use core::fmt::Write as _;
@@ -1037,6 +1064,70 @@ impl<'a> State<'a> {
             info.after,
             &mut self.output,
         );
+        if super::escape::autolink_literals(&self.stack) {
+            self.escape_literals(written, info);
+        }
+    }
+
+    /// Escape what makes literal autolinks of the text written from `start`. Text is literal, so
+    /// it never reads back as a link. A literal can start in text siblings written before it,
+    /// which a parsed tree that is not normalized has at escapes, such as `www\\.a`.
+    ///
+    /// An escape in an email autolink keeps it from forming, so the escape before its `<` is
+    /// dropped when one of these is in it.
+    fn escape_literals(&mut self, start: usize, info: &Info) {
+        let run = info.text_run.unwrap_or(start);
+        let before = match &info.before {
+            Before::Literal(value) if run == start => value.chars().next_back(),
+            Before::Output(lead, range) if run == range.start => lead.chars().next_back(),
+            _ => self.output[..run].chars().next_back(),
+        };
+        let mut markers = core::mem::take(&mut self.literal_markers);
+        markers.clear();
+        crate::inline_parser::literal_markers(
+            &self.output[run..],
+            start - run,
+            before.map_or(true, |character| {
+                character.is_ascii() && crate::inline_parser::www_previous(character as u8)
+            }),
+            &mut markers,
+        );
+        if !markers.is_empty() {
+            let shift = start - run;
+            for marker in &mut markers {
+                *marker -= shift;
+            }
+            let output = &self.output[start..];
+            let mut dropped = core::mem::take(&mut self.email_escapes);
+            // Drop the escapes before autolinks that a marker is in. The autolink holds no other
+            // escapes, so it runs to the next `>`.
+            let mut next = 0;
+            dropped.retain(|&escape| {
+                let end = output[escape..]
+                    .find('>')
+                    .map_or(output.len(), |end| escape + end);
+                while markers.get(next).is_some_and(|&marker| marker < escape) {
+                    next += 1;
+                }
+                markers.get(next).is_some_and(|&marker| marker < end)
+            });
+            self.rewrite(start, |value, output| {
+                let mut dropped = dropped.iter().peekable();
+                let mut cursor = 0;
+                for &marker in &markers {
+                    while let Some(&escape) = dropped.next_if(|&&escape| escape < marker) {
+                        output.push_str(&value[cursor..escape]);
+                        cursor = escape + 1;
+                    }
+                    output.push_str(&value[cursor..marker]);
+                    output.push('\\');
+                    cursor = marker;
+                }
+                output.push_str(&value[cursor..]);
+            });
+            self.email_escapes = dropped;
+        }
+        self.literal_markers = markers;
     }
 
     /// Write a definition or reference label. Labels match by their raw text, so backslashes are
