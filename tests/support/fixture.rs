@@ -315,6 +315,16 @@ fn normalize(value: &str) -> String {
         .join(" ")
         .to_uppercase()
 }
+
+/// The stored value of a code or math block whose `mdast` value is `value`: each line ends in a line ending, so an empty body is `""` and a body of one blank line is `"\n"`.
+fn block_value(value: &str) -> EventText<'static> {
+    if value.is_empty() {
+        self::value("")
+    } else {
+        format!("{value}\n").into()
+    }
+}
+
 fn value(value: &str) -> EventText<'static> {
     value.to_string().into()
 }
@@ -404,7 +414,7 @@ fn append(
                 .unwrap_or_default();
             syntax = Some(NodeSyntax::Code { info: value(&info) });
             EventKind::CodeBlock {
-                value: format!("{}\n", n.value).into(),
+                value: block_value(&n.value),
                 language: title(&n.lang),
                 fence: n.fence,
                 math: false,
@@ -416,7 +426,7 @@ fn append(
                 info: value(n.meta.as_deref().unwrap_or("")),
             });
             EventKind::CodeBlock {
-                value: format!("{}\n", n.value).into(),
+                value: block_value(&n.value),
                 language: None,
                 fence: None,
                 math: true,

@@ -4,10 +4,12 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use base_markdown::markdown::Options;
+use base_markdown::markdown::{to_markdown, Options};
+use base_markdown::stream::EventKind;
+use base_markdown::{Document, ParseOptions};
 use pretty_assertions::assert_eq;
+use support::fixture::{canonical, Code, Node};
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
-use support::fixture::{Code, Node};
 
 #[test]
 fn text() {
@@ -352,4 +354,75 @@ fn text() {
         "      a\n\n     b\n",
         "should use an indent if the value is indented"
     );
+}
+
+/// The stored value of each code and math block in `document`, with its terminal line ending.
+fn block_values(document: &Document<String>) -> Vec<String> {
+    document
+        .events()
+        .filter_map(|event| match event.unwrap().kind {
+            EventKind::CodeBlock { value, .. } => {
+                Some(value.resolve(document.source()).unwrap().to_string())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Parses `source`, normalizes and serializes it as `expected`, which reads back as the same tree and serializes the same.
+fn assert_round_trip(source: &str, options: &ParseOptions, expected: &str) {
+    let mut document = Document::parse(source.to_string(), options).unwrap();
+    document.normalize();
+    let markdown = to_markdown(&document).unwrap();
+    assert_eq!(markdown, expected, "{source:?}");
+    let mut reparsed = Document::parse(markdown.clone(), options).unwrap();
+    reparsed.normalize();
+    assert_eq!(
+        block_values(&reparsed),
+        block_values(&document),
+        "{source:?}"
+    );
+    assert_eq!(canonical(&reparsed), canonical(&document), "{source:?}");
+    assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{source:?}");
+}
+
+#[test]
+fn fenced_blank_lines_round_trip() {
+    let options = ParseOptions::default();
+    for ending in ["\n", "\r\n", "\r"] {
+        for (source, expected) in [
+            ("~~~x{n}{n}~~~", "```x\n\n```\n"),
+            ("~~~{n}{n}~~~", "```\n\n```\n"),
+            ("~~~{n}{n}", "```\n\n```\n"),
+            ("p{n}~~~x{n}{n}~~~", "p\n\n```x\n\n```\n"),
+            ("- ~~~{n}{n}  ~~~", "- ```\n\n  ```\n"),
+            ("- ~~~{n}  {n}  ~~~", "- ```\n\n  ```\n"),
+            ("> ~~~{n}>{n}> ~~~", "> ```\n>\n> ```\n"),
+            ("~~~{n}~~~", "```\n```\n"),
+            ("~~~{n}{n}{n}~~~", "```\n\n\n```\n"),
+            ("~~~{n}  {n}~~~", "```\n  \n```\n"),
+            ("~~~{n}a{n}{n}~~~", "```\na\n\n```\n"),
+        ] {
+            assert_round_trip(&source.replace("{n}", ending), &options, expected);
+        }
+    }
+}
+
+#[test]
+fn math_blank_lines_round_trip() {
+    let mut options = ParseOptions::default();
+    options.constructs.math_flow = true;
+    options.constructs.math_text = true;
+    for ending in ["\n", "\r\n", "\r"] {
+        for (source, expected) in [
+            ("$${n}{n}$$", "$$\n\n$$\n"),
+            ("p{n}$${n}{n}$$", "p\n\n$$\n\n$$\n"),
+            ("- $${n}{n}  $$", "- $$\n\n  $$\n"),
+            ("> $${n}>{n}> $$", "> $$\n>\n> $$\n"),
+            ("$${n}$$", "$$\n$$\n"),
+            ("$${n}{n}{n}$$", "$$\n\n\n$$\n"),
+        ] {
+            assert_round_trip(&source.replace("{n}", ending), &options, expected);
+        }
+    }
 }
