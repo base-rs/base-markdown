@@ -331,13 +331,18 @@ enum Outcome {
     Fail(Failure),
 }
 
-/// The HTML of `document`, without what depends only on where line endings were in the source: the line ending at the end of the document, which a hand-built tree has no source for, and the one after a hard break, which is part of the break when parsed.
-fn html<S: AsRef<str>>(document: &Document<S>) -> String {
+/// The HTML of `document`, without what depends only on where line endings were in the source: the line ending at the end of the document, which a hand-built tree has no source for, and, in a parsed document, the one after a hard break, which is part of the break when parsed. A hand-built tree has no line ending there, so a line ending after its hard break is text and stays.
+fn html<S: AsRef<str>>(document: &Document<S>, built: bool) -> String {
     let mut output = String::new();
     document
         .render_html(&CompileOptions::default(), &mut output)
         .unwrap();
-    output.trim_end().replace("<br />\n", "<br />")
+    let output = output.trim_end();
+    if built {
+        output.into()
+    } else {
+        output.replace("<br />\n", "<br />")
+    }
 }
 
 fn fail(kind: &'static str, output: String, before: String, after: String) -> Outcome {
@@ -349,25 +354,25 @@ fn fail(kind: &'static str, output: String, before: String, after: String) -> Ou
     })
 }
 
-/// Normalize, serialize, parse and normalize `document`, and compare. A serializer error is a failure unless `may_reject`.
+/// Normalize, serialize, parse and normalize `document`, and compare. A hand-built tree, which a serializer error rejects rather than fails, is `built`.
 fn round_trip<S: AsRef<str>>(
     mut document: Document<S>,
     options: &MarkdownOptions,
-    may_reject: bool,
+    built: bool,
 ) -> Outcome {
     document.normalize();
-    let before = html(&document);
+    let before = html(&document, built);
     if !document.is_normalized() {
         return fail("normalized", String::new(), before, String::new());
     }
     let output = match to_markdown_with_options(&document, options) {
         Ok(output) => output,
-        Err(_) if may_reject => return Outcome::Rejected,
+        Err(_) if built => return Outcome::Rejected,
         Err(error) => return fail("error", error.to_string(), before, String::new()),
     };
     let mut reparsed = Document::parse(output.as_str(), &ParseOptions::normalize()).unwrap();
     reparsed.normalize();
-    let after = html(&reparsed);
+    let after = html(&reparsed, false);
     if !reparsed.is_normalized() {
         return fail("normalized", output, before, after);
     }

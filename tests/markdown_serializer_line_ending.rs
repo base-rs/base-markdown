@@ -91,9 +91,11 @@ fn issue_repros_round_trip() {
         ("a&#xA;&#xA;b", "a\n&#xA;b\n"),
         ("a &#xA;&#xA; b", "a&#x20;\n&#xA;&#x20;b\n"),
         ("x ~~a &#xA;&#xA; b~~", "x ~~a&#x20;\n&#xA;&#x20;b~~\n"),
+        // Normalizing moves the whitespace out of the strikethrough, and the serializer encodes it
+        // at the end of the paragraph.
         (
             "x ~a ~&#xA;&#xA;~&#x20;&#xA;~",
-            "x ~~a&#x20;\n&#xA;&#x20;&#xA;~~\n",
+            "x ~~a~~&#x20;\n&#xA;&#x20;&#xA;\n",
         ),
         ("a&#xA;", "a&#xA;\n"),
         ("&#xA;a", "&#xA;a\n"),
@@ -160,6 +162,10 @@ fn line_endings_in_containers_and_phrasing() {
             "| a | b&#xA;&#xA; |\n| - | - |",
             "| a | b&#xA;&#xA; |\n| --- | --- |\n",
         ),
+        (
+            "| a | b&#xA;&#xA;c |\n| - | - |",
+            "| a | b&#xA;&#xA;c |\n| --- | --- |\n",
+        ),
         ("| a\\\\&#xA;b |\n| - |", "| a\\\\&#xA;b |\n| --- |\n"),
     ] {
         assert_source(source, expected);
@@ -179,6 +185,7 @@ fn carriage_returns_are_encoded() {
         ("a&#xD;&#xA;&#xA;b", "a&#xD;\n&#xA;b\n"),
         ("a&#xD;", "a&#xD;\n"),
         ("a&#xD;&#xA;", "a&#xD;&#xA;\n"),
+        ("&#xD;a&#xD;", "&#xD;a&#xD;\n"),
         ("a\\\n&#xD;b", "a\\\n&#xD;b\n"),
         ("a\\\n&#xD;&#xA;b", "a\\\n&#xD;\nb\n"),
         ("| a&#xD;&#xA;b |\n| - |", "| a&#xD;&#xA;b |\n| --- |\n"),

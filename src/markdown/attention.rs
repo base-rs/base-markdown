@@ -290,14 +290,12 @@ fn encoding(sequence: &'static str, marker: char, surroundings: &Surroundings) -
 
 /// Whether to encode the characters inside and outside an attention sequence.
 ///
-/// JS equivalent: `encodeInfo` in `lib/util/encode-info.js`. Punctuation is never encoded, and neither is whitespace outside, which JS encodes next to whitespace inside: once the inside is a reference, the sequence flanks without it.
+/// JS equivalent: `encodeInfo` in `lib/util/encode-info.js`, without its cases for whitespace inside, which a normalized tree does not have: [`crate::Document::normalize`] moves it out. Punctuation and whitespace are never encoded.
 fn encode_info(outside: Kind, inside: Kind, marker: char) -> (bool, bool) {
     match (outside, inside) {
         // Underscores do not form between letters; asterisks and tildes do.
         (Kind::Other, Kind::Other) => (marker == '_', marker == '_'),
-        (Kind::Other, Kind::Whitespace) => (true, true),
         (Kind::Other, Kind::Punctuation) => (false, true),
-        (Kind::Punctuation | Kind::Whitespace, Kind::Whitespace) => (true, false),
         _ => (false, false),
     }
 }

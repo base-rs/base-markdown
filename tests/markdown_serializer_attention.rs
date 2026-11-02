@@ -287,15 +287,14 @@ fn join_opening() {
         "should count a hard break starting attention as punctuation"
     );
 
-    // Attention cannot end with a line ending, so this does not round-trip.
     assert_eq!(
         to(&paragraph(vec![emphasis(vec![
             text("a"),
             Node::Break(Break { position: None })
         ])]))
         .unwrap(),
-        "*a\\\n*\n",
-        "should count a hard break ending attention as whitespace"
+        "*a*\n",
+        "should move a hard break ending attention out, where it ends the paragraph and is removed"
     );
 }
 
@@ -509,8 +508,8 @@ fn encode() {
             vec![text("a"), emphasis(vec![text(" b ")]), text("c")],
             &markers('_', '*')
         ),
-        "&#x61;_&#x20;b&#x20;_&#x63;\n",
-        "should encode around emphasis if neither marker forms otherwise"
+        "a _b_ c\n",
+        "should move whitespace out of emphasis rather than encode it"
     );
 
     assert_eq!(
@@ -562,8 +561,8 @@ fn encode() {
             ],
             &markers('_', '*')
         ),
-        "\\\n_&#x20;x_\n",
-        "should encode after the opening of emphasis, not a line ending before it"
+        "\\\n&#x20;_x_\n",
+        "should move whitespace out of emphasis after a hard break, where it starts a line"
     );
 
     assert_eq!(
@@ -571,20 +570,23 @@ fn encode() {
             vec![text("a"), text(""), strong(vec![text(" b")])],
             &Options::default()
         ),
-        "&#x61;**&#x20;b**\n",
-        "should encode the character before strong ignoring empty text"
+        "a **b**\n",
+        "should move whitespace out of strong, joining it to text before empty text"
     );
 
     assert_eq!(
         serialize(vec![strong(vec![text(" a ")])], &Options::default()),
-        "**&#x20;a&#x20;**\n",
-        "should encode whitespace inside strong"
+        "&#x20;**a**&#x20;\n",
+        "should move whitespace out of strong, and encode it at the edges of the paragraph"
     );
 
     assert_eq!(
-        serialize(vec![emphasis(vec![text(" ")])], &Options::default()),
-        "*&#x20;*\n",
-        "should encode a character that starts and ends attention once"
+        serialize(
+            vec![text("a"), emphasis(vec![text(" ")]), text("b")],
+            &Options::default()
+        ),
+        "a b\n",
+        "should remove attention that holds only whitespace"
     );
 
     assert_eq!(
@@ -698,27 +700,25 @@ fn encode_after_empty_text() {
         })
     }
     type Wrap = fn(Vec<Node>) -> Node;
+    // A closing sequence after punctuation does not flank before a letter, so the letter is encoded.
     let kinds: [(Wrap, &str); 3] = [(emphasis, "*"), (strong, "**"), (delete, "~~")];
     for (wrap, marker) in kinds {
         for (after, expected) in [
             (
                 vec![text(""), text("b")],
-                format!("{marker}a&#x20;{marker}&#x62;\n"),
+                format!("{marker}a.{marker}&#x62;\n"),
             ),
             (
                 vec![text(""), text(""), text(""), text("b")],
-                format!("{marker}a&#x20;{marker}&#x62;\n"),
+                format!("{marker}a.{marker}&#x62;\n"),
             ),
             (
                 vec![text(""), inline_code("b")],
-                format!("{marker}a&#x20;{marker}`b`\n"),
+                format!("{marker}a.{marker}`b`\n"),
             ),
-            (
-                vec![text(""), text("")],
-                format!("{marker}a&#x20;{marker}\n"),
-            ),
+            (vec![text(""), text("")], format!("{marker}a.{marker}\n")),
         ] {
-            let mut children = vec![wrap(vec![text("a ")])];
+            let mut children = vec![wrap(vec![text("a.")])];
             children.extend(after);
             let markdown = to_md_with_opts(&paragraph(children), &Options::default()).unwrap();
             assert_eq!(markdown, expected, "{marker:?}");
@@ -765,7 +765,7 @@ fn empty_text_around_attention_stays_linear() {
         document.normalize();
         let markdown = to_markdown(&document, &Options::default());
         let elapsed = started.elapsed();
-        assert_eq!(markdown, "*a&#x20;*&#x62;\n");
+        assert_eq!(markdown, "*a* b\n");
         elapsed
     };
     time(1 << 10);
@@ -786,11 +786,8 @@ fn empty_text_around_attention_stays_linear() {
 #[test]
 fn encode_after_cleared_text() {
     // Clearing the text a reference was split off keeps the reference for the text after it.
-    let mut document = Document::parse(
-        "see *old&#x20;*&#x6E;ew text\n".to_owned(),
-        &ParseOptions::gfm(),
-    )
-    .unwrap();
+    let mut document =
+        Document::parse("see *old.*&#x6E;ew text\n".to_owned(), &ParseOptions::gfm()).unwrap();
     let cleared = document
         .descendants(document.root())
         .find(|&id| {
@@ -804,7 +801,7 @@ fn encode_after_cleared_text() {
     document.text_mut(cleared).unwrap().clear();
     document.normalize();
     let markdown = to_markdown(&document, &Options::default());
-    assert_eq!(markdown, "see *old&#x20;*&#x65;w text\n");
+    assert_eq!(markdown, "see *old.*&#x65;w text\n");
     assert_stable(&markdown, &Options::default());
 }
 
@@ -952,8 +949,8 @@ fn roundtrip_underscores() {
 #[test]
 fn roundtrip_documents() {
     assert_eq!(
-        roundtrip("&#x1F4A1;**&#x20;a&#x20;**&#x1F4A1;\n", &Options::default()),
-        "💡**&#x20;a&#x20;**💡\n",
+        roundtrip("&#x1F4A1;**a**&#x1F4A1;\n", &Options::default()),
+        "💡**a**💡\n",
         "should roundtrip astral characters around attention"
     );
 
@@ -1019,7 +1016,10 @@ fn exact(children: Vec<Node>, options: &Options) -> (String, bool) {
     let tree = paragraph(children);
     let markdown = to_md_with_opts(&tree, options).unwrap();
     let mut parsed = Document::parse(&markdown, &ParseOptions::gfm()).unwrap();
-    let same = merged(&parsed) == merged(&tree.document());
+    // The serializer writes the normalized tree, so that is what the output must parse back to.
+    let mut expected = tree.document();
+    expected.normalize();
+    let same = merged(&parsed) == merged(&expected);
     parsed.normalize();
     let stable = to_markdown(&parsed, options) == markdown;
     (markdown, same && stable)
@@ -1109,13 +1109,13 @@ fn nested_attention_sharing_an_edge() {
         emphasis(vec![strong(vec![
             emphasis(vec![text("c")]),
             text(" "),
-            strong(vec![text(" ")]),
+            strong(vec![text(".")]),
         ])]),
         text("a"),
     ];
     assert_eq!(
         exact(children, &markers('*', '*')),
-        ("****c* __&#x20;__***&#x61;\n".to_string(), true)
+        ("****c* __.__***&#x61;\n".to_string(), true)
     );
 }
 

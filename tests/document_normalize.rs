@@ -3,8 +3,9 @@
 
 use base_markdown::{
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
-    to_markdown, AstBuilder, Document, NodeId, ParseOptions,
+    to_markdown, AstBuilder, CompileOptions, Document, NodeId, ParseOptions,
 };
+use std::borrow::Cow;
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -106,6 +107,19 @@ fn describe<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> String {
         EventKind::Start(Tag::Paragraph { .. }) => format!("paragraph({})", children()),
         EventKind::Start(Tag::Item { block_end }) => format!("item {block_end}({})", children()),
         EventKind::Start(Tag::Document(_)) => children(),
+        EventKind::Start(Tag::Heading(_)) => format!("heading({})", children()),
+        EventKind::Start(Tag::TableCell { .. }) => format!("cell({})", children()),
+        EventKind::SoftBreak(_) => "soft".into(),
+        EventKind::Code { value, language } => format!(
+            "code {:?}{}",
+            value.resolve(document.source()).unwrap(),
+            language.as_ref().map_or(String::new(), |language| format!(
+                " {:?}",
+                language.resolve(document.source()).unwrap()
+            ))
+        ),
+        EventKind::Math(value) => format!("math {:?}", value.resolve(document.source()).unwrap()),
+        EventKind::TaskMarker(_) => "task".into(),
         EventKind::Start(Tag::Link { destination, .. }) => format!(
             "link {:?}({})",
             destination.resolve(document.source()).unwrap(),
@@ -133,7 +147,7 @@ fn removes_empty_text() {
     );
     assert_eq!(
         normalized(build(concat([emphasis(vec![text("")]), vec![text("")]]))),
-        "paragraph()"
+        ""
     );
 }
 
@@ -220,10 +234,16 @@ fn removes_nested_empty_attention() {
     // Attention that holds other content stays.
     assert_eq!(
         normalized(build(concat([
-            emphasis(vec![event(EventKind::HardBreak, 0..0)]),
+            emphasis(vec![event(
+                EventKind::Code {
+                    value: Text::Literal("c"),
+                    language: None,
+                },
+                0..0
+            )]),
             strong(emphasis(vec![text("a")])),
         ]))),
-        r#"paragraph(emphasis(break) strong(emphasis("a")))"#
+        r#"paragraph(emphasis(code "c") strong(emphasis("a")))"#
     );
 }
 
@@ -237,7 +257,7 @@ fn keeps_the_root_of_a_detached_subtree() {
     document.normalize();
     assert!(document.is_normalized());
     assert_eq!(describe(&document, attention), "emphasis()");
-    assert_eq!(describe(&document, document.root()), "paragraph()");
+    assert_eq!(describe(&document, document.root()), "");
 }
 
 #[test]
@@ -646,34 +666,77 @@ impl Random {
 fn random_phrasing(random: &mut Random, depth: u32) -> Vec<Result<Event<'static>, StreamError>> {
     let mut events = Vec::new();
     for _ in 0..random.below(6) {
-        let choice = random.below(if depth == 0 { 3 } else { 8 });
+        let choice = random.below(if depth == 0 { 7 } else { 11 });
         match choice {
             0 => events.push(text("")),
-            1 => events.push(text(["a", "*", " ", "_"][random.below(4) as usize])),
+            1 => events.push(text(
+                ["a", "*", " ", "_", "\u{a0}", "\t", "\n", " a\t", "b\n "]
+                    [random.below(9) as usize],
+            )),
             2 => events.push(separator()),
-            3 => events.push(event(EventKind::HardBreak, 0..0)),
-            4 => events.extend(emphasis(random_phrasing(random, depth - 1))),
-            5 => events.extend(strong(random_phrasing(random, depth - 1))),
-            6 => events.extend(link(random_phrasing(random, depth - 1))),
+            3 => events.push(hard()),
+            4 => events.push(soft()),
+            5 => events.push(code(
+                ["a", " "][random.below(2) as usize],
+                [None, Some("x")][random.below(2) as usize],
+            )),
+            6 => events.push(math("m")),
+            7 => events.extend(emphasis(random_phrasing(random, depth - 1))),
+            8 => events.extend(strong(random_phrasing(random, depth - 1))),
+            9 => events.extend(link(random_phrasing(random, depth - 1))),
             _ => events.extend(delete(random_phrasing(random, depth - 1))),
         }
     }
     events
 }
 
+/// A document of random blocks, each holding random phrasing: paragraphs, headings, table cells, task items and block quotes, with separators between some of them.
+fn random_document(random: &mut Random) -> Document<String> {
+    let mut events = Vec::new();
+    for _ in 0..1 + random.below(3) {
+        let phrasing = random_phrasing(random, 4);
+        let block = match random.below(6) {
+            0 => heading(phrasing),
+            1 => table(phrasing),
+            2 => attention(
+                Tag::List {
+                    start: None,
+                    tight: true,
+                },
+                TagKind::List,
+                attention(
+                    Tag::Item { block_end: false },
+                    TagKind::Item,
+                    paragraph(concat([
+                        vec![event(EventKind::TaskMarker(false), 0..0)],
+                        phrasing,
+                    ])),
+                ),
+            ),
+            3 => attention(Tag::BlockQuote, TagKind::BlockQuote, paragraph(phrasing)),
+            _ => paragraph(phrasing),
+        };
+        events.extend(block);
+        if random.below(2) == 0 {
+            events.push(separator());
+        }
+    }
+    build_blocks(events)
+}
+
 #[test]
 fn normalize_makes_any_tree_normalized_and_is_idempotent() {
     let mut random = Random(0x9E37_79B9_7F4A_7C15);
     let mut unnormalized = 0;
-    for _ in 0..5_000 {
-        let mut document = build(random_phrasing(&mut random, 4));
+    for _ in 0..20_000 {
+        let mut document = random_document(&mut random);
         let normal = document.is_normalized();
         unnormalized += usize::from(!normal);
         // Serializing a tree that is not normalized may be wrong, but it must not panic.
         to_markdown(&document).unwrap();
         let before = describe(&document, document.root());
         document.normalize();
-        assert!(document.is_normalized());
+        assert!(document.is_normalized(), "{}", before);
         let once = describe(&document, document.root());
         // A tree is reported as normalized exactly when normalizing changes nothing.
         assert_eq!(normal, once == before, "{before}");
@@ -682,7 +745,36 @@ fn normalize_makes_any_tree_normalized_and_is_idempotent() {
         assert_eq!(describe(&document, document.root()), once);
         assert_eq!(to_markdown(&document).unwrap(), markdown);
     }
-    assert!(unnormalized > 1_000, "{}", unnormalized);
+    assert!(unnormalized > 10_000, "{}", unnormalized);
+}
+
+// The serializer does nothing for trees that are not normalized beyond not panicking: write deeper random trees, unnormalized, across options.
+#[test]
+fn serializing_unnormalized_trees_does_not_panic() {
+    let mut random = Random(0x2545_F491_4F6C_DD1D);
+    let options = [
+        base_markdown::MarkdownOptions::default(),
+        base_markdown::MarkdownOptions {
+            emphasis: '_',
+            strong: '_',
+            ..base_markdown::MarkdownOptions::default()
+        },
+    ];
+    for _ in 0..20_000 {
+        let mut events = Vec::new();
+        for _ in 0..1 + random.below(3) {
+            let phrasing = random_phrasing(&mut random, 6);
+            events.extend(match random.below(3) {
+                0 => heading(phrasing),
+                1 => table(phrasing),
+                _ => paragraph(phrasing),
+            });
+        }
+        let document = build_blocks(events);
+        for options in &options {
+            base_markdown::to_markdown_with_options(&document, options).unwrap();
+        }
+    }
 }
 
 /// Assert that four times the input takes less than twelve times as long, after a warm-up.
@@ -1048,4 +1140,669 @@ fn normalizing_replaces_serializer_coping() {
             "{markdown:?}"
         );
     }
+}
+
+fn code(
+    value: &'static str,
+    language: Option<&'static str>,
+) -> Result<Event<'static>, StreamError> {
+    event(
+        EventKind::Code {
+            value: Text::Literal(value),
+            language: language.map(Text::Literal),
+        },
+        0..0,
+    )
+}
+
+fn math(value: &'static str) -> Result<Event<'static>, StreamError> {
+    event(EventKind::Math(Text::Literal(value)), 0..0)
+}
+
+fn soft() -> Result<Event<'static>, StreamError> {
+    event(EventKind::SoftBreak(Text::Literal("\n")), 0..0)
+}
+
+fn hard() -> Result<Event<'static>, StreamError> {
+    event(EventKind::HardBreak, 0..0)
+}
+
+/// Build a document of block events.
+fn build_blocks(blocks: Vec<Result<Event<'static>, StreamError>>) -> Document<String> {
+    let mut events = vec![start(Tag::Document(None))];
+    events.extend(blocks);
+    events.push(end(TagKind::Document));
+    let mut builder = AstBuilder::new();
+    builder
+        .consume(&mut events.into_iter(), usize::MAX)
+        .unwrap();
+    builder.finish(String::new()).unwrap()
+}
+
+fn paragraph(
+    children: Vec<Result<Event<'static>, StreamError>>,
+) -> Vec<Result<Event<'static>, StreamError>> {
+    attention(
+        Tag::Paragraph { tight: false },
+        TagKind::Paragraph,
+        children,
+    )
+}
+
+fn heading(
+    children: Vec<Result<Event<'static>, StreamError>>,
+) -> Vec<Result<Event<'static>, StreamError>> {
+    attention(Tag::Heading(1), TagKind::Heading, children)
+}
+
+/// A table with a head row of one cell holding `children`.
+fn table(
+    children: Vec<Result<Event<'static>, StreamError>>,
+) -> Vec<Result<Event<'static>, StreamError>> {
+    attention(
+        Tag::Table,
+        TagKind::Table,
+        attention(
+            Tag::TableHead,
+            TagKind::TableHead,
+            attention(
+                Tag::TableRow,
+                TagKind::TableRow,
+                attention(
+                    Tag::TableCell {
+                        alignment: base_markdown::AlignKind::None,
+                        header: true,
+                    },
+                    TagKind::TableCell,
+                    children,
+                ),
+            ),
+        ),
+    )
+}
+
+/// Normalize, check the result is normalized and that normalizing again changes nothing, and describe it.
+fn settled(mut document: Document<String>) -> String {
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert!(document.is_normalized());
+    let once = describe(&document, document.root());
+    document.normalize();
+    assert_eq!(describe(&document, document.root()), once);
+    once
+}
+
+#[test]
+fn joins_adjacent_code_and_math() {
+    assert_eq!(
+        settled(build(vec![
+            code("a", None),
+            code("b", None),
+            code("c", Some("rust")),
+            math("x"),
+            math("y"),
+            text("z"),
+            code("d", Some("rust")),
+            code("e", None),
+        ])),
+        r#"paragraph(code "ab" code "c" "rust" math "xy" "z" code "de" "rust")"#
+    );
+    // Code joins across what is removed between it, and once a merge brings it together.
+    assert_eq!(
+        settled(build(concat([
+            vec![code("a", None), text("")],
+            emphasis(vec![]),
+            vec![code("b", None)],
+            emphasis(vec![code("c", None)]),
+            emphasis(vec![code("d", None)]),
+        ]))),
+        r#"paragraph(code "ab" emphasis(code "cd"))"#
+    );
+}
+
+#[test]
+fn moves_whitespace_out_of_attention() {
+    assert_eq!(
+        settled(build(concat([
+            vec![text("a")],
+            emphasis(vec![text(" b ")]),
+            vec![text("c")],
+        ]))),
+        r#"paragraph("a " emphasis("b") " c")"#
+    );
+    // Through nested attention, joining what moved to the text beside it.
+    assert_eq!(
+        settled(build(concat([
+            vec![text("a")],
+            strong(concat([
+                emphasis(vec![text("\u{a0}\u{3000}b")]),
+                vec![text("c")],
+                delete(vec![text("d\t"), soft()]),
+            ])),
+            vec![text("e")],
+        ]))),
+        r#"paragraph("a\u{a0}\u{3000}" strong(emphasis("b") "c" delete("d")) "\t" soft "e")"#
+    );
+    // Attention of whitespace alone is removed, and the whitespace takes its place.
+    assert_eq!(
+        settled(build(concat([
+            vec![text("a")],
+            emphasis(strong(vec![text(" "), soft()])),
+            vec![text("b")],
+        ]))),
+        r#"paragraph("a " soft "b")"#
+    );
+    // A hard break at the start stays; one at the end moves out.
+    assert_eq!(
+        settled(build(concat([
+            vec![text("a")],
+            emphasis(vec![hard(), text("b"), hard()]),
+            vec![text("c")],
+        ]))),
+        r#"paragraph("a" emphasis(break "b") break "c")"#
+    );
+    // Links and images keep whitespace at their edges.
+    assert_eq!(
+        normalized(build(concat([
+            vec![text("a")],
+            link(vec![text(" b ")]),
+            vec![text("c")],
+        ]))),
+        r#"paragraph("a" link "http://a.b"(" b ") "c")"#
+    );
+    // Whitespace inside a link at the edge of attention stays in the link.
+    assert_eq!(
+        settled(build(concat([
+            vec![text("a")],
+            emphasis(concat([link(vec![text(" b")]), vec![text(" ")]])),
+        ]))),
+        r#"paragraph("a" emphasis(link "http://a.b"(" b")) " ")"#
+    );
+}
+
+#[test]
+fn whitespace_moved_out_merges_what_it_separated() {
+    // Once the whitespace moves out, the strong it left empty is removed and the emphasis on either side meets.
+    assert_eq!(
+        settled(build(concat([
+            emphasis(vec![text("a")]),
+            strong(vec![text(" ")]),
+            emphasis(vec![text("b")]),
+        ]))),
+        r#"paragraph(emphasis("a") " " emphasis("b"))"#
+    );
+    // Attention that meets once empty attention is removed merges first, so whitespace between the two stays inside.
+    assert_eq!(
+        settled(build(concat([
+            emphasis(vec![text("a")]),
+            strong(vec![text("")]),
+            emphasis(vec![text(" b")]),
+        ]))),
+        r#"paragraph(emphasis("a b"))"#
+    );
+}
+
+fn html(value: &'static str) -> Result<Event<'static>, StreamError> {
+    event(
+        EventKind::Html {
+            value: Text::Literal(value),
+            block: false,
+        },
+        0..0,
+    )
+}
+
+#[test]
+fn keeps_whitespace_at_the_edges_of_blocks() {
+    // Whitespace is text, which normalizing never changes, so it stays at the edges of a paragraph, heading or table cell, where the serializer encodes it. Only soft breaks at either edge are removed.
+    assert_eq!(
+        settled(build(vec![soft(), text(" \t\na b\n "), soft()])),
+        r#"paragraph(" \t\na b\n ")"#
+    );
+    for document in [
+        build(vec![text("\r a\r\n")]),
+        build(vec![text(" "), html("<b>"), text(" ")]),
+        build(vec![hard(), text(" a")]),
+        build_blocks(heading(vec![text(" \u{a0}a\u{a0} ")])),
+        build_blocks(table(vec![text("\ta ")])),
+    ] {
+        assert!(
+            document.is_normalized(),
+            "{}",
+            describe(&document, document.root())
+        );
+    }
+    // Whitespace that moved out of attention stays too.
+    assert_eq!(
+        settled(build_blocks(table(concat([
+            emphasis(vec![text(" a")]),
+            strong(vec![text("b ")]),
+        ])))),
+        r#"Start(Table)(Start(TableHead)(Start(TableRow)(cell(" " emphasis("a") strong("b") " "))))"#
+    );
+    assert_eq!(
+        settled(build(concat([
+            emphasis(vec![text(" ")]),
+            vec![html("<b>")]
+        ]))),
+        r#"paragraph(" " Html { value: Literal("<b>"), block: false }())"#
+    );
+    // The serializer writes the whitespace so that it reads back, including before inline HTML, which would otherwise start a line, where it can start an HTML block.
+    for (source, expected) in [
+        ("&#x20;hi&#x20;", "&#x20;hi&#x20;\n"),
+        ("&#x9;", "&#x9;\n"),
+        ("# &#x20;a&#x20;", "# &#x20;a&#x20;\n"),
+        ("| &#x20;a&#x20; |\n| - |", "| &#x20;a&#x20; |\n| --- |\n"),
+        ("*&#x20;a&#x20;*", "&#x20;*a*&#x20;\n"),
+        ("&#x20;<b>", "&#x20;<b>\n"),
+        ("<b>&#x20;", "<b>&#x20;\n"),
+        ("&#x20;&#x20;<b>\n- a", "&#x20; <b>\n\n- a\n"),
+        ("- <b>&#x20;", "- <b>&#x20;\n"),
+        ("&#xA;<div>", "&#xA;<div>\n"),
+    ] {
+        let mut document = Document::parse(source.to_owned(), &ParseOptions::normalize()).unwrap();
+        document.normalize();
+        assert!(document.is_normalized(), "{}", source);
+        let output = to_markdown(&document).unwrap();
+        assert_eq!(output, expected, "{source}");
+        let mut reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+        reparsed.normalize();
+        assert!(reparsed.is_normalized(), "{}", source);
+        let html = |document: &Document<String>| {
+            let mut html = String::new();
+            document
+                .render_html(&CompileOptions::default(), &mut html)
+                .unwrap();
+            // The final line ending follows the output's, and the source has none.
+            html.trim_end().to_owned()
+        };
+        assert_eq!(html(&reparsed), html(&document), "{source}");
+        assert_eq!(to_markdown(&reparsed).unwrap(), output, "{source}");
+    }
+}
+
+#[test]
+fn removes_hard_breaks_at_the_end_of_a_block() {
+    assert_eq!(
+        settled(build(concat([
+            vec![text("a"), hard(), text(" "), hard()],
+            emphasis(vec![text("b"), hard(), soft()]),
+            vec![hard()],
+        ]))),
+        r#"paragraph("a" break " " break emphasis("b"))"#
+    );
+    // A line ending in text is not a break, so the breaks before it stay.
+    assert!(build(vec![text("a"), hard(), soft(), text("\n")]).is_normalized());
+    // Breaks alone are trimmed away, and the paragraph left empty with them.
+    assert_eq!(
+        settled(build_blocks(concat([
+            paragraph(vec![text("a")]),
+            vec![separator()],
+            paragraph(concat([vec![hard()], emphasis(vec![hard()]), vec![hard()]])),
+        ]))),
+        r#"paragraph("a")"#
+    );
+}
+
+#[test]
+fn replaces_hard_breaks_in_table_cells() {
+    assert_eq!(
+        settled(build_blocks(table(concat([
+            vec![text("a"), hard(), text("b")],
+            emphasis(vec![hard(), text("c")]),
+            vec![hard()],
+            delete(emphasis(vec![text("d"), hard()])),
+            vec![hard()],
+        ])))),
+        r#"Start(Table)(Start(TableHead)(Start(TableRow)(cell("a b " emphasis("c") " " delete(emphasis("d")) "  "))))"#
+    );
+}
+
+#[test]
+fn removes_empty_paragraphs_with_one_separator() {
+    let blank = || paragraph(vec![soft(), hard()]);
+    assert_eq!(
+        settled(build_blocks(concat([
+            blank(),
+            vec![separator()],
+            paragraph(vec![text("a")]),
+            vec![separator()],
+            blank(),
+            vec![separator()],
+            paragraph(vec![]),
+            vec![separator()],
+            paragraph(vec![text("b")]),
+            vec![separator()],
+            blank(),
+        ]))),
+        r#"paragraph("a") separator paragraph("b")"#
+    );
+    // Adjacent separators lose only one each.
+    assert_eq!(
+        settled(build_blocks(concat([
+            paragraph(vec![text("a")]),
+            vec![separator(), separator()],
+            blank(),
+            blank(),
+        ]))),
+        r#"paragraph("a")"#
+    );
+    // A detached paragraph stays, as the root of a detached subtree is never removed.
+    let mut document = build(vec![soft()]);
+    let paragraph = document.children(document.root()).next().unwrap();
+    document.detach(paragraph).unwrap();
+    document.normalize();
+    assert!(document.is_normalized());
+    assert_eq!(describe(&document, paragraph), "paragraph()");
+}
+
+#[test]
+fn keeps_the_breaks_of_task_paragraphs() {
+    let task = || event(EventKind::TaskMarker(false), 0..0);
+    let item = |children| {
+        attention(
+            Tag::List {
+                start: None,
+                tight: true,
+            },
+            TagKind::List,
+            attention(
+                Tag::Item { block_end: false },
+                TagKind::Item,
+                paragraph(children),
+            ),
+        )
+    };
+    let mut document = build_blocks(item(vec![task(), text(" a"), soft()]));
+    assert!(document.is_normalized());
+    document.normalize();
+    assert_eq!(
+        describe(&document, document.root()),
+        r#"Start(List { start: None, tight: true })(item false(paragraph(task " a" soft)))"#
+    );
+    // Attention in it still moves its whitespace out.
+    assert_eq!(
+        settled(build_blocks(item(concat([
+            vec![task(), text(" ")],
+            emphasis(vec![text("a ")]),
+        ])))),
+        r#"Start(List { start: None, tight: true })(item false(paragraph(task " " emphasis("a") " ")))"#
+    );
+}
+
+#[test]
+fn detached_attention_keeps_its_own_edges() {
+    let mut document = build(emphasis(concat([
+        vec![text(" a")],
+        strong(vec![text(" b ")]),
+        vec![text(" ")],
+    ])));
+    let paragraph = document.children(document.root()).next().unwrap();
+    let attention = document.children(paragraph).next().unwrap();
+    document.detach(attention).unwrap();
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert!(document.is_normalized());
+    assert_eq!(
+        describe(&document, attention),
+        r#"emphasis(" a " strong("b") "  ")"#
+    );
+}
+
+#[test]
+fn splitting_text_keeps_the_node_and_its_span() {
+    // Source text, a literal, and borrowed and owned values each split.
+    let source = " a ";
+    let texts = [
+        Text::Source(0..3),
+        Text::Literal(" a "),
+        Text::Value(Cow::Borrowed(" a ")),
+        Text::Value(Cow::Owned(" a ".to_owned())),
+    ];
+    for value in texts {
+        let mut document = build_in(
+            source,
+            concat([
+                vec![text("x")],
+                emphasis(vec![event(EventKind::Text(Text::Literal("b")), 0..3)]),
+                vec![text("y")],
+            ]),
+        );
+        let paragraph = document.children(document.root()).next().unwrap();
+        let attention = document.children(paragraph).nth(1).unwrap();
+        let inner = document.children(attention).next().unwrap();
+        // Building copies borrowed values, so set the value in place to keep it as it is.
+        document.set_kind(inner, EventKind::Text(value)).unwrap();
+        document.normalize();
+        assert!(document.is_normalized());
+        assert_eq!(
+            describe(&document, document.root()),
+            r#"paragraph("x " emphasis("a") " y")"#
+        );
+        // The text keeps its ID and span, and the whitespace split off joined the text beside it.
+        assert_eq!(document.children(attention).next(), Some(inner));
+        assert_eq!(document.node(inner).unwrap().span, 0..3);
+    }
+}
+
+#[test]
+fn moved_whole_nodes_keep_their_ids() {
+    let mut document = build_blocks(table(concat([
+        vec![text("a")],
+        emphasis(vec![text("b"), soft(), hard()]),
+        vec![text("c")],
+    ])));
+    let row = |document: &Document<String>| {
+        let table = document.children(document.root()).next().unwrap();
+        let head = document.children(table).next().unwrap();
+        let row = document.children(head).next().unwrap();
+        document.children(row).next().unwrap()
+    };
+    let cell = row(&document);
+    let attention = document.children(cell).nth(1).unwrap();
+    let breaks: Vec<_> = document.children(attention).skip(1).collect();
+    document.normalize();
+    assert_eq!(
+        describe(&document, cell),
+        r#"cell("a" emphasis("b") soft " c")"#
+    );
+    // The soft break moved whole; the hard break became a space and joined the text after it.
+    assert_eq!(document.children(cell).nth(2), Some(breaks[0]));
+}
+
+#[test]
+fn is_normalized_finds_each_edge_shape() {
+    let shapes = [
+        build(vec![code("a", None), code("b", None)]),
+        build(vec![math("a"), math("b")]),
+        build(emphasis(vec![text(" a")])),
+        build(concat([vec![text("a")], emphasis(vec![text("b\u{a0}")])])),
+        build(concat([vec![text("a")], emphasis(vec![soft(), text("b")])])),
+        build(concat([
+            vec![text("a")],
+            strong(vec![text("b"), hard()]),
+            vec![text("c")],
+        ])),
+        build(vec![soft(), text("a")]),
+        build(vec![text("a"), soft()]),
+        build(vec![text("a"), hard()]),
+        build_blocks(heading(vec![soft(), text("a")])),
+        build_blocks(table(vec![text("a"), hard(), text("b")])),
+        build_blocks(table(vec![text("a"), soft()])),
+        build_blocks(paragraph(vec![])),
+    ];
+    for document in shapes {
+        assert!(
+            !document.is_normalized(),
+            "{}",
+            describe(&document, document.root())
+        );
+    }
+    let normal = [
+        build(vec![code("a", None), code("b", Some("rust"))]),
+        build(vec![code("a", None), math("b")]),
+        build(concat([
+            vec![text("a ")],
+            emphasis(vec![hard(), text("b")]),
+            vec![text(" c")],
+        ])),
+        build(vec![text("\u{a0}a\u{a0}")]),
+        build(vec![text(" a ")]),
+        build(vec![hard(), text("a")]),
+        build_blocks(heading(vec![text("\ta")])),
+        build_blocks(table(vec![text("a\n")])),
+        build(concat([
+            vec![text("a")],
+            link(vec![text(" b ")]),
+            vec![text("c")],
+        ])),
+        build_blocks(heading(vec![])),
+        build_blocks(table(vec![])),
+    ];
+    for document in normal {
+        assert!(
+            document.is_normalized(),
+            "{}",
+            describe(&document, document.root())
+        );
+    }
+}
+
+/// Time normalizing the document from `build`, without serializing, for trees nested deeper than the serializer recurses comfortably, and check what is left with `check`.
+fn assert_normalize_only_linear(
+    build: impl Fn(usize) -> Document<String>,
+    check: impl Fn(&Document<String>, usize),
+) {
+    assert_linear(|size| {
+        let mut document = build(size);
+        let started = Instant::now();
+        document.normalize();
+        let elapsed = started.elapsed();
+        assert!(document.is_normalized());
+        check(&document, size);
+        elapsed
+    });
+}
+
+/// Attention nested `depth` deep, alternating emphasis and strong, each level holding `before`, the next level and `after`, around `inner`.
+fn nested_edges(
+    depth: usize,
+    before: impl Fn() -> Vec<Result<Event<'static>, StreamError>>,
+    inner: Vec<Result<Event<'static>, StreamError>>,
+    after: impl Fn() -> Vec<Result<Event<'static>, StreamError>>,
+) -> Vec<Result<Event<'static>, StreamError>> {
+    let mut events = Vec::new();
+    for level in 0..depth {
+        events.push(start(if level % 2 == 0 {
+            Tag::Emphasis
+        } else {
+            Tag::Strong
+        }));
+        events.extend(before());
+    }
+    events.extend(inner);
+    for level in (0..depth).rev() {
+        events.extend(after());
+        events.push(end(if level % 2 == 0 {
+            TagKind::Emphasis
+        } else {
+            TagKind::Strong
+        }));
+    }
+    events
+}
+
+#[test]
+fn moving_whitespace_out_of_deep_attention_is_linear() {
+    // Each level starts and ends with whitespace, which moves out through every level outside it.
+    assert_normalize_only_linear(
+        |size| {
+            build(concat([
+                vec![text("x")],
+                nested_edges(
+                    size / 4,
+                    || vec![text(" "), soft()],
+                    vec![text("a")],
+                    || vec![text(" ")],
+                ),
+                vec![text("y")],
+            ]))
+        },
+        |document, size| {
+            // Before the levels, the text that moved out stays apart between the soft breaks, the first joining "x"; after them, it all joins "y".
+            assert_eq!(
+                document.descendants(document.root()).count(),
+                2 + size / 4 * 3 + 2
+            );
+        },
+    );
+    // Whitespace alone inside: every level is emptied and removed.
+    assert_normalize_only_linear(
+        |size| {
+            build(concat([
+                vec![text("x")],
+                nested_edges(
+                    size / 4,
+                    || vec![text(" ")],
+                    vec![soft()],
+                    || vec![text("\t")],
+                ),
+                vec![text("y")],
+            ]))
+        },
+        |document, _| {
+            let paragraph = document.children(document.root()).next().unwrap();
+            // The spaces join "x", the soft break stays apart, and the tabs join "y".
+            assert_eq!(document.children(paragraph).count(), 3);
+        },
+    );
+    // Hard breaks at the end of each level move out to the end of the block and are removed.
+    assert_normalize_only_linear(
+        |size| {
+            build(nested_edges(size / 2, Vec::new, vec![text("a")], || {
+                vec![hard()]
+            }))
+        },
+        |document, size| {
+            assert_eq!(
+                document.descendants(document.root()).count(),
+                2 + size / 2 + 1
+            );
+        },
+    );
+}
+
+#[test]
+fn removing_break_chains_is_linear() {
+    // At the end of a block.
+    assert_normalize_linear(|size| {
+        build(concat([
+            vec![text("a")],
+            (0..size).map(|_| hard()).collect(),
+        ]))
+    });
+    // At the end of attention, followed by more text.
+    assert_normalize_linear(|size| {
+        build(concat([
+            emphasis(concat([
+                vec![text("a")],
+                (0..size).map(|_| hard()).collect(),
+            ])),
+            vec![text("b")],
+        ]))
+    });
+    // In a table cell, where each becomes a space.
+    assert_normalize_linear(|size| {
+        build_blocks(table(concat([
+            vec![text("a")],
+            (0..size).map(|_| hard()).collect(),
+            vec![text("b")],
+        ])))
+    });
+}
+
+#[test]
+fn joining_code_and_math_is_linear() {
+    assert_normalize_linear(|size| build((0..size).map(|_| code("a", None)).collect()));
+    assert_normalize_linear(|size| build((0..size).map(|_| math("a")).collect()));
 }

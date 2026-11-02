@@ -31,6 +31,8 @@ const NEWLINES: u32 = LANGUAGE
 enum Before {
     Any,
     Previous(u8),
+    /// Nothing, at the start of the context, such as a table cell.
+    Start,
     Line,
     Digits,
 }
@@ -47,6 +49,8 @@ enum After {
     Math,
     /// A line ending that ends the context, such as the one written after a paragraph.
     Closing,
+    /// Nothing, at the end of the context, such as a table cell.
+    End,
 }
 struct Rule {
     byte: u8,
@@ -73,6 +77,9 @@ static RULES: &[Rule] = &[
     rule!(b'\t', B, Set(b"\n"), PHRASING, 0),
     rule!(b'\t', Previous(b'\n'), A, PHRASING, 0),
     rule!(b'\t', B, A, LANGUAGE, 0),
+    // The parser trims spaces and tabs at the edges of a table cell.
+    rule!(b'\t', Before::Start, A, bit(TableCell), 0),
+    rule!(b'\t', B, After::End, bit(TableCell), 0),
     // Line endings are LF, so a CR in a value is a character reference, and is written as one
     // wherever references are decoded.
     rule!(b'\r', B, A, NEWLINES | PHRASING | TITLES, 0),
@@ -86,6 +93,8 @@ static RULES: &[Rule] = &[
     rule!(b' ', B, Set(b"\n"), PHRASING, 0),
     rule!(b' ', Previous(b'\n'), A, PHRASING, 0),
     rule!(b' ', B, A, LANGUAGE, 0),
+    rule!(b' ', Before::Start, A, bit(TableCell), 0),
+    rule!(b' ', B, After::End, bit(TableCell), 0),
     rule!(b'!', B, Set(b"["), PHRASING, FULL_SPANS),
     rule!(b'"', B, A, bit(TitleQuote), 0),
     rule!(b'#', Line, A, 0, 0),
@@ -201,6 +210,12 @@ impl Rule {
                 }
                 position - 1
             }
+            Before::Start => {
+                if position > 0 {
+                    return None;
+                }
+                position
+            }
             Before::Line | Before::Digits => {
                 let mut at = position;
                 if matches!(self.before, Before::Digits) {
@@ -280,6 +295,12 @@ impl Rule {
                 (Some(b'\n' | b'\r'), None, _) | (Some(b'\r'), Some(b'\n'), None) => 0,
                 _ => return None,
             },
+            After::End => {
+                if next.is_some() {
+                    return None;
+                }
+                0
+            }
         };
         Some(start..position + 1 + width)
     }
@@ -369,7 +390,7 @@ pub(super) fn collect(
         let flags = || EscapeInfos {
             before: !matches!(rule.before, Before::Any),
             // What closes the context is never escaped, so an escape before it always applies.
-            after: !matches!(rule.after, After::Any | After::Closing)
+            after: !matches!(rule.after, After::Any | After::Closing | After::End)
                 && !(matches!(rule.after, After::Math) && single_math),
             email: matches!(rule.after, After::Email),
         };
@@ -569,8 +590,10 @@ mod tests {
                                         expected.push((
                                             position,
                                             !matches!(rule.before, Before::Any),
-                                            !matches!(rule.after, After::Any | After::Closing)
-                                                && !(matches!(rule.after, After::Math) && single),
+                                            !matches!(
+                                                rule.after,
+                                                After::Any | After::Closing | After::End
+                                            ) && !(matches!(rule.after, After::Math) && single),
                                         ));
                                     }
                                 }
@@ -602,6 +625,7 @@ mod tests {
                     Before::Previous(_) => "(\\])",
                     Before::Line => "([\\r\\n][\\t ]*)",
                     Before::Digits => "([\\r\\n][\\t ]*[0-9]+)",
+                    Before::Start => "\\A",
                 };
                 let after = match rule.after {
                     After::Any => "".to_string(),
@@ -616,6 +640,7 @@ mod tests {
                     After::Math if single => "".into(),
                     After::Math => "\\$".into(),
                     After::Closing => "".into(),
+                    After::End => "\\z".into(),
                 };
                 let expression = regex::Regex::new(&format!(
                     "{before}{}{after}",
