@@ -17,7 +17,7 @@ use super::{
 use crate::{
     message::Message,
     stream::{EventKind, Tag},
-    util::line_ending::push_spaced,
+    util::line_ending::{push_spaced, trim_terminal_ending},
     CodeFence, Document, NodeId, NodeSyntax, ReferenceKind,
 };
 use alloc::{borrow::Cow, string::String};
@@ -54,12 +54,14 @@ impl State<'_> {
         Ok(())
     }
 
+    /// `value` is the stored value, whose lines each end in a line ending except perhaps the last, so a body of one blank line is `"\n"` and an empty body is `""`.
     pub(super) fn code(
         &mut self,
-        content: &str,
+        value: &str,
         language: Option<&str>,
         metadata: Option<&str>,
     ) -> Result<(), Message> {
+        let content = trim_terminal_ending(value);
         let marker = self.options.check_fence()?;
         let start = self.output.len();
         if format_code_as_indented(content, language.is_none(), self) {
@@ -102,7 +104,7 @@ impl State<'_> {
             }
         }
         self.output.push('\n');
-        if !content.is_empty() {
+        if !value.is_empty() {
             // Grow once for the body, closing fence and terminating line ending.
             self.output.reserve(content.len() + size + 2);
             self.output.push_str(content);
@@ -310,7 +312,9 @@ impl State<'_> {
         self.output.extend(core::iter::repeat(marker).take(size));
     }
 
-    pub(super) fn math(&mut self, content: &str, metadata: Option<&str>) -> Result<(), Message> {
+    /// `value` is the stored value, as for [`Self::code`].
+    pub(super) fn math(&mut self, value: &str, metadata: Option<&str>) -> Result<(), Message> {
+        let content = trim_terminal_ending(value);
         let size = (longest_run(content, b'$') + 1).max(2);
         let start = self.output.len();
         self.output.extend(core::iter::repeat('$').take(size));
@@ -324,7 +328,7 @@ impl State<'_> {
             self.exit();
         }
         self.output.push('\n');
-        if !content.is_empty() {
+        if !value.is_empty() {
             self.output.push_str(content);
             self.output.push('\n');
         }

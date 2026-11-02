@@ -570,7 +570,7 @@ impl<'a> State<'a> {
                 math,
                 ..
             } => {
-                let value = trim_terminal_ending(value.resolve(source).unwrap());
+                let value = value.resolve(source).unwrap();
                 let language = language
                     .as_ref()
                     .map(|value| normalize_nul(value.resolve(source).unwrap()));
