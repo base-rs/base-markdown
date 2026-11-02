@@ -2009,3 +2009,23 @@ fn joining_code_and_math_is_linear() {
     assert_normalize_linear(|size| build((0..size).map(|_| code("a", None)).collect()));
     assert_normalize_linear(|size| build((0..size).map(|_| math("a")).collect()));
 }
+
+#[test]
+fn serializing_code_and_math_with_many_line_endings_is_linear() {
+    // A line ending before a block marker is written as a space, so that it does not start a line. Each one flattened rescanned the content from its start (#115). Runs of line endings, CRLF and ordered-list digits each flatten differently, and math takes the same path as code.
+    let content = |unit: &str, size: usize| Text::from(unit.repeat(size) + "#");
+    for unit in ["a\n#", "\n", "a\r\n#", " \n\t", "a\n1. ", "a\n\n-"] {
+        assert_normalize_linear(|size| {
+            build(vec![event(
+                EventKind::Code {
+                    value: content(unit, size),
+                    language: None,
+                },
+                0..0,
+            )])
+        });
+    }
+    assert_normalize_linear(|size| {
+        build(vec![event(EventKind::Math(content("a\n#", size)), 0..0)])
+    });
+}
