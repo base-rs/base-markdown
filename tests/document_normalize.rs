@@ -1,13 +1,17 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
+
 use base_markdown::{
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
-    to_markdown, AstBuilder, CompileOptions, Constructs, Document, NodeId, ParseOptions,
+    to_markdown, AstBuilder, CompileOptions, Constructs, Document, NodeId, NodeSyntax,
+    ParseOptions,
 };
 use std::borrow::Cow;
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
+use support::fixture::canonical;
 
 fn event(
     kind: EventKind<'static>,
@@ -2232,4 +2236,388 @@ fn code_and_math_of_spaces_around_a_tab_are_stable() {
         let document = Document::parse(source, &math_text()).unwrap();
         assert_eq!(to_markdown(&document).unwrap(), source);
     }
+}
+
+/// A block of a list tree built through the document API, which keeps paragraph and item rendering hints in step with the list.
+enum Block {
+    Paragraph(Vec<EventKind<'static>>),
+    /// A list's start and tightness, and each item's recorded spread and blocks.
+    List(Option<u32>, bool, Vec<(bool, Vec<Block>)>),
+    Code,
+}
+
+fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) {
+    match block {
+        Block::Paragraph(phrasing) => {
+            let id = document
+                .append_child(parent, EventKind::Start(Tag::Paragraph { tight: false }))
+                .unwrap();
+            for kind in phrasing {
+                document.append_child(id, kind.clone()).unwrap();
+            }
+        }
+        Block::List(start, tight, items) => {
+            let list = document
+                .append_child(
+                    parent,
+                    EventKind::Start(Tag::List {
+                        start: *start,
+                        tight: *tight,
+                    }),
+                )
+                .unwrap();
+            for (spread, blocks) in items {
+                let item = document
+                    .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+                    .unwrap();
+                document
+                    .set_syntax(item, Some(NodeSyntax::ListItem { spread: *spread }))
+                    .unwrap();
+                for block in blocks {
+                    append_block(document, item, block);
+                }
+            }
+        }
+        Block::Code => {
+            document
+                .append_child(
+                    parent,
+                    EventKind::CodeBlock {
+                        value: Text::from("x\n".to_owned()),
+                        language: None,
+                        fence: None,
+                        math: false,
+                        unclosed: false,
+                    },
+                )
+                .unwrap();
+        }
+    }
+}
+
+fn build_list(block: &Block) -> Document<String> {
+    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+    let root = document.root();
+    append_block(&mut document, root, block);
+    document
+}
+
+fn rendered<S: AsRef<str>>(document: &Document<S>) -> String {
+    let mut output = String::new();
+    document
+        .render_html(&CompileOptions::default(), &mut output)
+        .unwrap();
+    output.trim_end().to_owned()
+}
+
+/// Normalize `document`, serialize it, and assert that it reads back as the same tree and HTML and is written the same again. Returns the Markdown.
+fn reads_back<S: AsRef<str> + Clone>(mut document: Document<S>) -> String {
+    document.normalize();
+    assert!(document.is_normalized());
+    let markdown = to_markdown(&document).unwrap();
+    let mut reparsed = Document::parse(markdown.as_str(), &ParseOptions::default()).unwrap();
+    reparsed.normalize();
+    assert!(reparsed.is_normalized());
+    assert_eq!(rendered(&reparsed), rendered(&document), "{markdown:?}");
+    assert_eq!(canonical(&reparsed), canonical(&document), "{markdown:?}");
+    assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
+    markdown
+}
+
+fn tight_of_first_list<S: AsRef<str>>(document: &Document<S>) -> bool {
+    let list = document.children(document.root()).next().unwrap();
+    match document.node(list).unwrap().kind {
+        EventKind::Start(Tag::List { tight, .. }) => tight,
+        _ => unreachable!("the first block is a list"),
+    }
+}
+
+#[test]
+fn a_loose_list_reads_back_loose_after_empty_paragraphs_are_removed() {
+    use Block::{Code, List, Paragraph};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let empties = || {
+        [
+            Paragraph(vec![]),
+            Paragraph(vec![EventKind::SoftBreak(Text::Literal("\n"))]),
+            Paragraph(vec![EventKind::TaskMarker(false)]),
+            Paragraph(vec![EventKind::HardBreak]),
+        ]
+    };
+    let nested = || List(None, true, vec![(false, vec![p("c")])]);
+    // Each item records its spread both ways: as the parser infers it, from a blank line between its blocks, and as a hand-built tree may leave it, unset.
+    for spread in [false, true] {
+        let lone = |blocks: Vec<Block>| List(None, false, vec![(spread, blocks)]);
+        for empty in empties() {
+            // The only item of a loose list, left with one paragraph, cannot be written loose: no blank line can separate items or blocks, so normalizing makes the list tight (#128).
+            let mut document = build_list(&lone(vec![empty, p("b")]));
+            assert!(!document.is_normalized());
+            assert_eq!(reads_back(document.clone()), "- b\n");
+            document.normalize();
+            assert!(tight_of_first_list(&document));
+        }
+        for (blocks, expected) in [
+            (vec![p("b"), Paragraph(vec![])], "- b\n"),
+            (vec![Paragraph(vec![])], "-\n"),
+            (vec![Paragraph(vec![]), Code], "- ```\n  x\n  ```\n"),
+            (vec![Paragraph(vec![]), nested()], "- - c\n"),
+            // A task marker with text after it stays.
+            (
+                vec![
+                    Paragraph(vec![EventKind::TaskMarker(false), text(" x")]),
+                    Paragraph(vec![]),
+                ],
+                "- [ ] x\n",
+            ),
+            (
+                vec![
+                    Paragraph(vec![EventKind::TaskMarker(false)]),
+                    Paragraph(vec![EventKind::TaskMarker(true), text(" x")]),
+                ],
+                "- [x] x\n",
+            ),
+            // So is a lone item that was never emptied.
+            (vec![p("b")], "- b\n"),
+            (vec![], "-\n"),
+            (vec![Code], "- ```\n  x\n  ```\n"),
+        ] {
+            assert_eq!(reads_back(build_list(&lone(blocks))), expected);
+        }
+        assert_eq!(
+            reads_back(build_list(&List(
+                Some(3),
+                false,
+                vec![(spread, vec![Paragraph(vec![]), p("b")])]
+            ))),
+            "3. b\n"
+        );
+        // An item left with two blocks or more is written with a blank line between them, so the list stays loose, whatever spread it records.
+        for (blocks, expected) in [
+            (vec![Paragraph(vec![]), p("b"), p("c")], "- b\n\n  c\n"),
+            (vec![p("b"), Paragraph(vec![]), nested()], "- b\n\n  - c\n"),
+            (
+                vec![Paragraph(vec![]), p("b"), Code],
+                "- b\n\n  ```\n  x\n  ```\n",
+            ),
+            (
+                vec![Paragraph(vec![]), Code, Code],
+                "- ```\n  x\n  ```\n\n  ```\n  x\n  ```\n",
+            ),
+            (vec![Paragraph(vec![]), nested(), p("b")], "- - c\n\n  b\n"),
+            (
+                vec![
+                    Paragraph(vec![EventKind::TaskMarker(false), text(" x")]),
+                    Paragraph(vec![]),
+                    p("b"),
+                ],
+                "- [ ] x\n\n  b\n",
+            ),
+            (vec![p("a"), nested()], "- a\n\n  - c\n"),
+        ] {
+            let document = build_list(&lone(blocks));
+            assert_eq!(reads_back(document.clone()), expected);
+            let mut document = document;
+            document.normalize();
+            assert!(!tight_of_first_list(&document));
+        }
+        // With other items, the blank lines between items keep the list loose, wherever the emptied item is.
+        for (items, expected) in [
+            (
+                vec![
+                    (spread, vec![Paragraph(vec![]), p("b")]),
+                    (false, vec![p("a")]),
+                ],
+                "- b\n\n- a\n",
+            ),
+            (
+                vec![
+                    (false, vec![p("a")]),
+                    (spread, vec![Paragraph(vec![]), p("b")]),
+                ],
+                "- a\n\n- b\n",
+            ),
+            (
+                vec![
+                    (false, vec![p("a")]),
+                    (spread, vec![Paragraph(vec![]), p("b")]),
+                    (false, vec![p("c")]),
+                ],
+                "- a\n\n- b\n\n- c\n",
+            ),
+            (
+                vec![(spread, vec![Paragraph(vec![])]), (false, vec![p("a")])],
+                "-\n\n- a\n",
+            ),
+            (
+                vec![
+                    (spread, vec![Paragraph(vec![])]),
+                    (spread, vec![Paragraph(vec![])]),
+                ],
+                "-\n\n-\n",
+            ),
+        ] {
+            let document = build_list(&List(None, false, items));
+            assert_eq!(reads_back(document.clone()), expected);
+            let mut document = document;
+            document.normalize();
+            assert!(!tight_of_first_list(&document));
+        }
+        let ordered = List(
+            Some(1),
+            false,
+            vec![
+                (false, vec![p("a")]),
+                (spread, vec![Paragraph(vec![]), p("b")]),
+                (false, vec![p("c")]),
+            ],
+        );
+        assert_eq!(reads_back(build_list(&ordered)), "1. a\n\n2. b\n\n3. c\n");
+        // A nested list is made tight on its own, and a loose list around it stays loose while it has other items.
+        let inner = || List(None, false, vec![(spread, vec![Paragraph(vec![]), p("b")])]);
+        for (list, expected) in [
+            (
+                List(None, true, vec![(false, vec![p("a"), inner()])]),
+                "- a\n  - b\n",
+            ),
+            (
+                List(
+                    None,
+                    false,
+                    vec![(false, vec![p("a")]), (false, vec![p("a"), inner()])],
+                ),
+                "- a\n\n- a\n  - b\n",
+            ),
+            (lone(vec![Paragraph(vec![]), inner()]), "- - b\n"),
+        ] {
+            assert_eq!(reads_back(build_list(&list)), expected);
+        }
+        // A tight list is left as it is.
+        assert_eq!(
+            reads_back(build_list(&List(
+                None,
+                true,
+                vec![(spread, vec![Paragraph(vec![]), p("b")])]
+            ))),
+            "- b\n"
+        );
+    }
+}
+
+#[test]
+fn is_normalized_finds_a_loose_list_that_reads_back_tight() {
+    use Block::{Code, List, Paragraph};
+    let p = || Paragraph(vec![EventKind::Text(Text::from("a".to_owned()))]);
+    let lone = |blocks: Vec<Block>| List(None, false, vec![(true, blocks)]);
+    assert!(!build_list(&lone(vec![p()])).is_normalized());
+    assert!(!build_list(&lone(vec![])).is_normalized());
+    assert!(!build_list(&lone(vec![Code])).is_normalized());
+    assert!(build_list(&lone(vec![p(), Code])).is_normalized());
+    assert!(build_list(&List(
+        None,
+        false,
+        vec![(false, vec![p()]), (false, vec![p()])]
+    ))
+    .is_normalized());
+    assert!(build_list(&List(None, true, vec![(false, vec![p()])])).is_normalized());
+    // A list whose one child is not an item is another shape, which is left as it is.
+    let mut document = build_list(&List(None, false, vec![]));
+    let list = document.children(document.root()).next().unwrap();
+    document
+        .append_child(list, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
+    let paragraph = document.children(list).next().unwrap();
+    document
+        .append_child(paragraph, EventKind::Text(Text::from("a".to_owned())))
+        .unwrap();
+    assert!(document.is_normalized());
+    // Separators between items and blocks are not counted.
+    let mut document = build_list(&lone(vec![p()]));
+    let list = document.children(document.root()).next().unwrap();
+    let item = document.children(list).next().unwrap();
+    for parent in [list, item] {
+        document
+            .append_child(
+                parent,
+                EventKind::Separator {
+                    value: Text::Literal("\n"),
+                    conditional: false,
+                },
+            )
+            .unwrap();
+    }
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert!(document.is_normalized());
+    assert!(tight_of_first_list(&document));
+    // A detached list is normalized too.
+    let mut document = build_list(&lone(vec![p()]));
+    let list = document.children(document.root()).next().unwrap();
+    document.detach(list).unwrap();
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert!(document.is_normalized());
+    assert!(matches!(
+        document.node(list).unwrap().kind,
+        EventKind::Start(Tag::List { tight: true, .. })
+    ));
+}
+
+#[test]
+fn parsed_lone_loose_items_keep_their_output() {
+    // The parser infers an item's spread from a blank line between its blocks in the source, but a nested list or footnote definition takes in the blank line after it, so these items record no spread although their lists are loose. A blank line after a nested list is written anyway, as a paragraph cannot follow it directly, so that output is unchanged; one after a footnote definition was not, and the paragraph after it read back as part of the definition.
+    for (source, expected) in [
+        ("- a\n  - b\n\n  c\n", "- a\n  - b\n\n  c\n"),
+        ("- [^1]: x\n\n  y\n", "- [^1]: x\n\n  y\n"),
+        ("- a\n\n  [x]: /u\n", "- a\n\n  [x]: /u\n"),
+        ("- a\n\n  b\n", "- a\n\n  b\n"),
+    ] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert!(document.is_normalized());
+        assert!(!tight_of_first_list(&document));
+        assert_eq!(reads_back(document), expected);
+    }
+}
+
+#[test]
+fn tightening_lone_loose_items_is_linear() {
+    // Lone loose items nested in each other, each left with one block once its empty paragraph is removed. Appending nests in time linear in the depth, and serializing nests too deeply for the stack, so the tree is built from events and only normalizing is timed.
+    assert_linear(|size| {
+        let mut events = Vec::new();
+        for _ in 0..size {
+            events.extend([
+                start(Tag::List {
+                    start: None,
+                    tight: false,
+                }),
+                start(Tag::Item { block_end: false }),
+            ]);
+            events.extend(paragraph(vec![]));
+        }
+        events.extend(paragraph(vec![text("a")]));
+        for _ in 0..size {
+            events.extend([end(TagKind::Item), end(TagKind::List)]);
+        }
+        let mut document = build_blocks(events);
+        let started = Instant::now();
+        document.normalize();
+        assert!(document.is_normalized());
+        started.elapsed()
+    });
+    // A lone item of many empty paragraphs and one that is not.
+    assert_normalize_linear(|size| {
+        let mut blocks: Vec<Block> = (0..size).map(|_| Block::Paragraph(vec![])).collect();
+        blocks.push(Block::Paragraph(vec![EventKind::Text(Text::from(
+            "a".to_owned(),
+        ))]));
+        build_list(&Block::List(None, false, vec![(false, blocks)]))
+    });
+    // A lone item of many blocks, which is written spread.
+    assert_normalize_linear(|size| {
+        build_list(&Block::List(
+            None,
+            false,
+            vec![(false, (0..size).map(|_| Block::Code).collect())],
+        ))
+    });
 }

@@ -111,18 +111,48 @@ impl<'a> Info<'a> {
 
 impl<'a> State<'a> {
     fn between<S: AsRef<str>>(
-        &mut self,
+        &self,
         document: &Document<S>,
         left: NodeId,
         right: NodeId,
         parent: NodeId,
-    ) {
-        let separator = if self.options.tight_definitions {
+    ) -> &'static str {
+        if self.options.tight_definitions {
             self.definition_separator(document, left, right)
         } else {
             self.default_separator(document, left, right, parent)
+        }
+    }
+
+    /// Whether `item` is the only item of a loose list and no blank line would be written between
+    /// its blocks. Nothing else can show the list is loose, so it is then written spread.
+    fn spreads_lone_item<S: AsRef<str>>(&self, document: &Document<S>, item: NodeId) -> bool {
+        let node = document.node(item).unwrap();
+        if !matches!(node.kind, EventKind::Start(Tag::Item { .. })) {
+            return false;
+        }
+        let Some(list) = node.parent() else {
+            return false;
         };
-        self.output.push_str(separator);
+        if !matches!(
+            document.node(list).unwrap().kind,
+            EventKind::Start(Tag::List { tight: false, .. })
+        ) || flow_children(document, list).nth(1).is_some()
+        {
+            return false;
+        }
+        let mut joined = false;
+        let mut left = None;
+        for right in flow_children(document, item) {
+            if let Some(left) = left {
+                if self.between(document, left, right, item) != "\n" {
+                    return false;
+                }
+                joined = true;
+            }
+            left = Some(right);
+        }
+        joined
     }
 
     pub fn container_flow<S: AsRef<str>>(
@@ -131,6 +161,7 @@ impl<'a> State<'a> {
         parent: NodeId,
     ) -> Result<(), Message> {
         let mut children = flow_children(document, parent).peekable();
+        let spread = self.spreads_lone_item(document, parent);
         self.index_stack.push(0);
         for index in 0.. {
             let Some(child) = children.next() else { break };
@@ -143,7 +174,12 @@ impl<'a> State<'a> {
             }
             self.write_node(document, child, &Info::new("\n", "\n"))?;
             if let Some(&next) = children.peek() {
-                self.between(document, child, next, parent);
+                let separator = if spread {
+                    "\n\n"
+                } else {
+                    self.between(document, child, next, parent)
+                };
+                self.output.push_str(separator);
             }
         }
         self.index_stack.pop();
