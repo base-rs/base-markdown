@@ -424,6 +424,9 @@ impl State<'_> {
             self.output.truncate(reference_start);
             if matches!(kind, ReferenceKind::Shortcut) {
                 self.output.pop();
+                if !image {
+                    self.label_end = Some((self.output.len(), false));
+                }
             } else {
                 self.output.push(']');
             }

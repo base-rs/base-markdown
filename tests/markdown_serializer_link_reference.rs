@@ -4,9 +4,14 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
+use base_markdown::markdown::to_markdown;
+use base_markdown::{Document, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::to_markdown as to;
-use support::fixture::{LinkReference, Node, Paragraph, ReferenceKind, Text};
+use support::fixture::{
+    canonical, Break, Definition, FootnoteDefinition, FootnoteReference, Fragment, Heading,
+    LinkReference, Node, Paragraph, ReferenceKind, Root, Text,
+};
 
 #[test]
 fn link_reference() {
@@ -208,4 +213,258 @@ fn link_reference() {
         "[a][b]\n",
         "should use `reference_type: ReferenceKind::Full` if the label doesn't match the reference"
     );
+}
+
+/// Serializes `document`, normalized, as `expected`, which reads back as the same tree and serializes the same.
+fn assert_round_trip(mut document: Document<String>, options: &ParseOptions, expected: &str) {
+    document.normalize();
+    let markdown = to_markdown(&document).unwrap();
+    assert_eq!(markdown, expected);
+    let mut reparsed = Document::parse(markdown.clone(), options).unwrap();
+    reparsed.normalize();
+    assert_eq!(canonical(&reparsed), canonical(&document), "{markdown:?}");
+    assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{markdown:?}");
+}
+
+fn text(value: &str) -> Node {
+    Node::Text(Text {
+        value: value.to_string(),
+        position: None,
+    })
+}
+
+fn definition(identifier: &str) -> Node {
+    Node::Definition(Definition {
+        position: None,
+        url: String::from("/u"),
+        title: None,
+        identifier: identifier.to_string(),
+        label: None,
+    })
+}
+
+#[test]
+fn reference_before_colon_round_trip() {
+    for (source, expected) in [
+        // A shortcut or footnote reference that starts a paragraph would read as a definition's
+        // label before `:` (#122).
+        ("[r]\\://a.b\n\n[r]: /u", "[r]\\://a.b\n\n[r]: /u\n"),
+        ("[r]\\: x\n\n[r]: /u", "[r]\\: x\n\n[r]: /u\n"),
+        ("[r]\\::x\n\n[r]: /u", "[r]\\::x\n\n[r]: /u\n"),
+        ("[*r*]\\:x\n\n[*r*]: /u", "[*r*]\\:x\n\n[*r*]: /u\n"),
+        ("[a\\]b]\\:x\n\n[a\\]b]: /u", "[a\\]b]\\:x\n\n[a\\]b]: /u\n"),
+        // `[^1]:` always starts a footnote definition.
+        ("[^1]\\: x\n\n[^1]: n", "[^1]\\: x\n\n[^1]: n\n"),
+        ("[^1]\\:x\n\n[^1]: n", "[^1]\\:x\n\n[^1]: n\n"),
+        ("[^1]\\: a b\n\n[^1]: n", "[^1]\\: a b\n\n[^1]: n\n"),
+        // The destination or title can come from later children.
+        (
+            "[r]\\: <https://a.b>\n\n[r]: /u",
+            "[r]\\: <https://a.b>\n\n[r]: /u\n",
+        ),
+        ("[r]\\: `x`\n\n[r]: /u", "[r]\\: `x`\n\n[r]: /u\n"),
+        ("[r]\\: [a](u)\n\n[r]: /u", "[r]\\: [a](u)\n\n[r]: /u\n"),
+        ("[r]\\: x [a](u)\n\n[r]: /u", "[r]: x [a](u)\n\n[r]: /u\n"),
+        ("[r]\\: x \"t\"\n\n[r]: /u", "[r]\\: x \"t\"\n\n[r]: /u\n"),
+        ("[r]\\:\nx\n\n[r]: /u", "[r]\\:\nx\n\n[r]: /u\n"),
+        ("[r]\\: x\ny\n\n[r]: /u", "[r]\\: x\ny\n\n[r]: /u\n"),
+        ("[r]\\: <a\n\n[r]: /u", "[r]\\: \\<a\n\n[r]: /u\n"),
+        // A `[r]:` without a destination, followed on its line only by a title, is not a definition,
+        // so it is written as it is.
+        ("[r]\\: a b\n\n[r]: /u", "[r]: a b\n\n[r]: /u\n"),
+        ("[r]\\: x \"t\" y\n\n[r]: /u", "[r]: x \"t\" y\n\n[r]: /u\n"),
+        ("[r]\\: x *\"t\"*\n\n[r]: /u", "[r]: x *\"t\"*\n\n[r]: /u\n"),
+        ("[r]\\:\n\n[r]: /u", "[r]:\n\n[r]: /u\n"),
+        ("[r]\\: a)\n\n[r]: /u", "[r]: a)\n\n[r]: /u\n"),
+        ("- [r]\\: a b\n\n[r]: /u", "- [r]: a b\n\n[r]: /u\n"),
+        // Indentation is not written, and containers start a line.
+        ("   [r]\\:x\n\n[r]: /u", "[r]\\:x\n\n[r]: /u\n"),
+        ("- [r]\\:x\n\n[r]: /u", "- [r]\\:x\n\n[r]: /u\n"),
+        ("> [r]\\:x\n\n[r]: /u", "> [r]\\:x\n\n[r]: /u\n"),
+        ("[^1]: [r]\\:x\n\n[r]: /u", "[^1]: [r]\\:x\n\n[r]: /u\n"),
+        (
+            "[^1]: a\n\n    [r]\\:x\n\n[r]: /u",
+            "[^1]: a\n\n    [r]\\:x\n\n[r]: /u\n",
+        ),
+        // Definitions are taken from the start of a setext heading's content too.
+        ("[r]\\:x\nb\n===\n\n[r]: /u", "[r]\\:x\nb\n=\n\n[r]: /u\n"),
+        // A task marker is written before the item's content, so a paragraph that starts with one
+        // cannot start with a definition.
+        ("- [ ] [r]\\:x\n\n[r]: /u", "- [ ] [r]:x\n\n[r]: /u\n"),
+        ("- [ ] [r]: /u\n\n[r]: /u", "- [ ] [r]: /u\n\n[r]: /u\n"),
+        ("- [ ] [r]: <u>\n\n[r]: /u", "- [ ] [r]: <u>\n\n[r]: /u\n"),
+        ("- [x] [^1]: x\n\n[^1]: n", "- [x] [^1]: x\n\n[^1]: n\n"),
+        // A footnote definition interrupts a paragraph, so a footnote reference starting any line
+        // is escaped before `:`, after a soft or hard break, also in a container or attention.
+        ("a\n[^1]\\: u\n\n[^1]: n", "a\n[^1]\\: u\n\n[^1]: n\n"),
+        ("a\\\n[^1]\\: u\n\n[^1]: n", "a\\\n[^1]\\: u\n\n[^1]: n\n"),
+        ("a  \n[^1]\\: u\n\n[^1]: n", "a\\\n[^1]\\: u\n\n[^1]: n\n"),
+        ("> a\n[^1]\\: u\n\n[^1]: n", "> a\n> [^1]\\: u\n\n[^1]: n\n"),
+        (
+            "- a\n  [^1]\\: x\n\n[^1]: n",
+            "- a\n  [^1]\\: x\n\n[^1]: n\n",
+        ),
+        (
+            "- [ ] a\n  [^1]\\: x\n\n[^1]: n",
+            "- [ ] a\n  [^1]\\: x\n\n[^1]: n\n",
+        ),
+        ("*a\n[^1]\\: x*\n\n[^1]: n", "*a\n[^1]\\: x*\n\n[^1]: n\n"),
+        ("a&#xA;[^1]\\: x\n\n[^1]: n", "a\n[^1]\\: x\n\n[^1]: n\n"),
+        (
+            "a\n[^a\\]b]\\: x\n\n[^a\\]b]: n",
+            "a\n[^a\\]b]\\: x\n\n[^a\\]b]: n\n",
+        ),
+        // Not at the start of a line, in a table cell, where line endings are references, or with a
+        // label that a footnote definition cannot have, it is written as it is.
+        ("a\nb [^1]\\: x\n\n[^1]: n", "a\nb [^1]: x\n\n[^1]: n\n"),
+        ("a\n[^1] \\: x\n\n[^1]: n", "a\n[^1] : x\n\n[^1]: n\n"),
+        (
+            "| a |\n| - |\n| b<br>[^1]\\: x |\n\n[^1]: n",
+            "| a |\n| --- |\n| b<br>[^1]: x |\n\n[^1]: n\n",
+        ),
+        ("a\n[^ 1]\\: x\n\n[^1]: n", "a\n[^ 1]: x\n\n[^1]: n\n"),
+        // At the start of a paragraph, such a label can still start a link definition.
+        ("[^ 1]\\: x\n\n[^1]: n", "[^ 1]\\: x\n\n[^1]: n\n"),
+        ("[^ 1]\\: a b\n\n[^1]: n", "[^ 1]: a b\n\n[^1]: n\n"),
+        // Only the start of a paragraph can hold a definition.
+        (
+            "[r]\\:x\n[s]\\:y\n\n[r]: /u\n[s]: /v",
+            "[r]\\:x\n[s]:y\n\n[r]: /u\n\n[s]: /v\n",
+        ),
+        ("a\n[r]\\:x\n\n[r]: /u", "a\n[r]:x\n\n[r]: /u\n"),
+        ("x [r]\\:x\n\n[r]: /u", "x [r]:x\n\n[r]: /u\n"),
+        ("*[r]*\\:x\n\n[r]: /u", "*[r]*:x\n\n[r]: /u\n"),
+        ("# [r]\\:x\n\n[r]: /u", "# [r]:x\n\n[r]: /u\n"),
+        (
+            "| a |\n| - |\n| [r]\\:x |\n\n[r]: /u",
+            "| a |\n| --- |\n| [r]:x |\n\n[r]: /u\n",
+        ),
+        // A definition's label is followed by `:` directly, and is one label.
+        ("[r] \\:x\n\n[r]: /u", "[r] :x\n\n[r]: /u\n"),
+        ("[r][]\\:x\n\n[r]: /u", "[r][]:x\n\n[r]: /u\n"),
+        ("[t][r]\\:x\n\n[r]: /u", "[t][r]:x\n\n[r]: /u\n"),
+        ("![r]\\:x\n\n[r]: /u", "![r]:x\n\n[r]: /u\n"),
+        ("[a](u)\\:x", "[a](u):x\n"),
+        // Text brackets at the start of a line are escaped already.
+        ("[r]\\:x", "\\[r]:x\n"),
+    ] {
+        for options in [ParseOptions::default(), ParseOptions::gfm()] {
+            let document = Document::parse(source.to_string(), &options).unwrap();
+            assert_round_trip(document, &options, expected);
+        }
+    }
+}
+
+#[test]
+fn reference_before_colon_tree_round_trip() {
+    let shortcut = Node::LinkReference(LinkReference {
+        children: vec![text("r")],
+        position: None,
+        reference_kind: ReferenceKind::Shortcut,
+        identifier: String::from("r"),
+        label: None,
+    });
+    let footnote = Node::FootnoteReference(FootnoteReference {
+        position: None,
+        identifier: String::from("1"),
+        label: None,
+    });
+    let footnote_definition = Node::FootnoteDefinition(FootnoteDefinition {
+        children: vec![Node::Paragraph(Paragraph {
+            children: vec![text("n")],
+            position: None,
+        })],
+        position: None,
+        identifier: String::from("1"),
+        label: None,
+    });
+    // Phrasing directly in the document is written as a paragraph.
+    assert_eq!(
+        to(&Node::Fragment(Fragment {
+            children: vec![shortcut.clone(), text(":x")],
+        }))
+        .unwrap(),
+        "[r]\\:x\n"
+    );
+    assert_eq!(
+        to(&Node::Fragment(Fragment {
+            children: vec![shortcut.clone(), text(": a b")],
+        }))
+        .unwrap(),
+        "[r]: a b\n"
+    );
+    for (tree, expected) in [
+        (
+            vec![
+                Node::Paragraph(Paragraph {
+                    children: vec![shortcut.clone(), text("://a.b")],
+                    position: None,
+                }),
+                definition("r"),
+            ],
+            "[r]\\://a.b\n\n[r]: /u\n",
+        ),
+        (
+            vec![
+                Node::Paragraph(Paragraph {
+                    children: vec![shortcut.clone(), text(": a b")],
+                    position: None,
+                }),
+                definition("r"),
+            ],
+            "[r]: a b\n\n[r]: /u\n",
+        ),
+        (
+            vec![
+                Node::Heading(Heading {
+                    children: vec![shortcut.clone(), text(":a\nb")],
+                    position: None,
+                    depth: 2,
+                }),
+                definition("r"),
+            ],
+            "[r]\\:a\nb\n-\n\n[r]: /u\n",
+        ),
+        (
+            vec![
+                Node::Paragraph(Paragraph {
+                    children: vec![footnote.clone(), text(": x")],
+                    position: None,
+                }),
+                footnote_definition.clone(),
+            ],
+            "[^1]\\: x\n\n[^1]: n\n",
+        ),
+        (
+            vec![
+                Node::Paragraph(Paragraph {
+                    children: vec![text("a\n"), footnote.clone(), text(": x")],
+                    position: None,
+                }),
+                footnote_definition.clone(),
+            ],
+            "a\n[^1]\\: x\n\n[^1]: n\n",
+        ),
+        (
+            vec![
+                Node::Paragraph(Paragraph {
+                    children: vec![
+                        text("a"),
+                        Node::Break(Break { position: None }),
+                        footnote.clone(),
+                        text(": x"),
+                    ],
+                    position: None,
+                }),
+                footnote_definition.clone(),
+            ],
+            "a\\\n[^1]\\: x\n\n[^1]: n\n",
+        ),
+    ] {
+        let tree = Node::Root(Root {
+            children: tree,
+            position: None,
+        });
+        assert_round_trip(tree.document(), &ParseOptions::default(), expected);
+    }
 }
