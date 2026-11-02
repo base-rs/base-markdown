@@ -2107,6 +2107,11 @@ fn code_and_math_with_line_endings_read_back_and_are_stable() {
         " \n ",
         "\n`\n",
         "\n$\n",
+        // A tab is not a space, so the parser strips the spaces around it.
+        " \t ",
+        "\n\t\n",
+        "\t",
+        " \u{a0} ",
     ];
     let mut trees = Vec::new();
     for value in values {
@@ -2142,5 +2147,89 @@ fn code_and_math_with_line_endings_read_back_and_are_stable() {
             "{markdown:?}"
         );
         assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
+    }
+}
+
+fn image(
+    children: Vec<Result<Event<'static>, StreamError>>,
+) -> Vec<Result<Event<'static>, StreamError>> {
+    attention(
+        Tag::Image {
+            destination: Text::Literal("u"),
+            title: None,
+        },
+        TagKind::Image,
+        children,
+    )
+}
+
+#[test]
+fn code_and_math_in_image_text_keep_line_endings() {
+    // Image text writes code and math as alt text, where a line ending can be written and reads back, so normalizing leaves it, and the heading is still chosen as setext for it.
+    let literals: [fn() -> Result<Event<'static>, StreamError>; 2] =
+        [|| code("a\nb", None), || math("a\r\nb")];
+    for (kind, literal) in literals.iter().enumerate() {
+        let shapes = vec![
+            build_blocks(paragraph(image(vec![literal()]))),
+            build_blocks(heading(image(vec![literal()]))),
+            build_blocks(attention(
+                Tag::Heading(3),
+                TagKind::Heading,
+                image(vec![literal()]),
+            )),
+            build_blocks(table(image(vec![literal()]))),
+            build_blocks(heading(concat([
+                image(vec![literal()]),
+                vec![text(" "), literal()],
+            ]))),
+        ];
+        let expected = [
+            "![a\nb](u)\n",
+            "![a\nb](u)\n=====\n",
+            "### ![a&#xA;b](u)\n",
+            "| ![a&#xA;b](u) |\n| --- |\n",
+            "![a\nb](u) `a b`\n===========\n",
+        ];
+        let last = shapes.len() - 1;
+        for (index, mut tree) in shapes.into_iter().enumerate() {
+            let markdown = to_markdown(&tree).unwrap();
+            if kind == 0 {
+                assert_eq!(markdown, expected[index]);
+            }
+            // Only the code or math outside the image changes.
+            assert_eq!(tree.is_normalized(), index != last);
+            tree.normalize();
+            assert!(tree.is_normalized());
+            assert_eq!(to_markdown(&tree).unwrap(), markdown);
+            if index == last {
+                let heading = tree.children(tree.root()).next().unwrap();
+                let described = describe(&tree, heading);
+                assert!(
+                    described.ends_with(r#"" " code "a b")"#)
+                        || described.ends_with(r#"" " math "a b")"#),
+                    "{}",
+                    described
+                );
+            }
+            let mut reparsed = Document::parse(markdown.as_str(), &math_text()).unwrap();
+            assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
+            reparsed.normalize();
+            assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
+        }
+    }
+}
+
+#[test]
+fn code_and_math_of_spaces_around_a_tab_are_stable() {
+    // The parser strips one space from each side of `  \t  `, as it is not only spaces, so the serializer pads it. Whitespace with a tab at an edge is not stripped, so it is written as it is.
+    for source in [
+        "x `  \t  `\n",
+        "x $  \t  $\n",
+        "x ` \t`\n",
+        "x `\t`\n",
+        "x ` \ta\t `\n",
+    ] {
+        let document = Document::parse(source, &math_text()).unwrap();
+        assert_eq!(to_markdown(&document).unwrap(), source);
     }
 }

@@ -187,6 +187,15 @@ fn inline_literals_write_each_line_ending_as_a_space() {
     assert_eq!(core::mem::take(&mut state.output), "`  one  `");
     state.inline_math("\r\n\r").unwrap();
     assert_eq!(core::mem::take(&mut state.output), "$  $");
+    // A tab is not a space, so content of spaces and a tab is padded.
+    state.inline_code(" \t ", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "`  \t  `");
+    state.inline_code("\n\t\n", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "`  \t  `");
+    state.inline_math(" \t ").unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "$  \t  $");
+    state.inline_code("  ", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "`  `");
     state.inline_code("é ` α", None).unwrap();
     assert_eq!(core::mem::take(&mut state.output), "``é ` α``");
     state.inline_math(" $α$ ").unwrap();
