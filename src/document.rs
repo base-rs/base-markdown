@@ -1224,6 +1224,10 @@ fn table_cell(kind: &EventKind<'_>) -> bool {
     matches!(kind, EventKind::Start(Tag::TableCell { .. }))
 }
 
+fn image(kind: &EventKind<'_>) -> bool {
+    matches!(kind, EventKind::Start(Tag::Image { .. }))
+}
+
 // Whether a node is a paragraph, heading or table cell, whose phrasing normalization removes breaks at the edges of.
 fn block_phrasing(kind: &EventKind<'_>) -> bool {
     matches!(
@@ -1232,11 +1236,12 @@ fn block_phrasing(kind: &EventKind<'_>) -> bool {
     )
 }
 
-// The strikethrough and table cells that enclose a node.
+// The strikethrough, table cells and images that enclose a node.
 #[derive(Clone, Copy, Default)]
 struct Enclosing {
     deletes: usize,
     cells: usize,
+    images: usize,
 }
 
 impl Enclosing {
@@ -1244,15 +1249,17 @@ impl Enclosing {
     fn enter(&mut self, kind: &EventKind<'_>) {
         self.deletes += usize::from(delete(kind));
         self.cells += usize::from(table_cell(kind));
+        self.images += usize::from(image(kind));
     }
     // Stop counting a node once the nodes below it are passed.
     fn leave(&mut self, kind: &EventKind<'_>) {
         self.deletes -= usize::from(delete(kind));
         self.cells -= usize::from(table_cell(kind));
+        self.images -= usize::from(image(kind));
     }
 }
 
-// The node after `id` in document order within the subtree at `root`, keeping `enclosing` as the strikethrough and table cells that enclose the current node.
+// The node after `id` in document order within the subtree at `root`, keeping `enclosing` as the strikethrough, table cells and images that enclose the current node.
 fn next_enclosed(
     nodes: &[Node],
     root: NodeId,
@@ -1422,6 +1429,32 @@ fn push_node(nodes: &mut Vec<Node>, kind: EventKind<'static>, parent: NodeId) ->
         next_sibling: None,
     });
     id
+}
+
+// Whether `kind` is inline code or math with a line ending in its value, which the parser reads as a space, so that it cannot be written. In image text, code and math are written as alt text, where a line ending can be written, so callers leave them alone there.
+fn line_ending_in_code(kind: &EventKind<'_>, source: &str) -> bool {
+    let (EventKind::Code { value, .. } | EventKind::Math(value)) = kind else {
+        return false;
+    };
+    has_line_ending(value.resolve(source).expect("document text is validated"))
+}
+
+fn has_line_ending(value: &str) -> bool {
+    memchr::memchr2(b'\r', b'\n', value.as_bytes()).is_some()
+}
+
+// Replace each line ending in the value of inline code or math with the space the parser reads for it.
+fn space_line_endings(kind: &mut EventKind<'static>, source: &str) {
+    let (EventKind::Code { value, .. } | EventKind::Math(value)) = kind else {
+        return;
+    };
+    let resolved = value.resolve(source).expect("document text is validated");
+    if !has_line_ending(resolved) {
+        return;
+    }
+    let mut spaced = String::with_capacity(resolved.len());
+    crate::util::line_ending::push_spaced(&mut spaced, resolved);
+    *value = Text::from(spaced);
 }
 
 // Space a hard break in a table cell takes, as Markdown cannot write the break there.
@@ -1661,11 +1694,11 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// Markdown cannot write whitespace at the edges of emphasis, strong or strikethrough, so it moves out: Unicode whitespace in text and soft breaks at either edge, and hard breaks at the end, move out through any attention nested at that edge to just before or after the outermost attention whose edge they are. Attention left empty is removed, and what moved out takes its place. A hard break at the start of attention stays, and links and images keep whitespace at their edges. The parser reads no break at the edges of a paragraph, heading or table cell, so soft breaks at either edge of its phrasing are removed, and so are hard breaks at the end of a paragraph or heading, including those that moved out of attention; a hard break at the start stays. Markdown cannot write a hard break in a table cell, so one there, at any depth and at its end too, becomes a space, which the serializer encodes where it is at the edge of the cell, so `| a&#x20; |` is written for a cell of `a` and a hard break.
     ///
-    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code, math or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. The parser keeps the space or tab that separates a task marker from its text at the start of that text, and Markdown cannot write a marker with nothing after its separator, so when the phrasing of a paragraph, heading or table cell starts with a task marker followed only by breaks and at most one text that is a single space or tab, the marker is removed, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a marker alone, or of a marker and a hard break, is left empty, and one of a marker and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the marker keeps it, including whitespace after the separator, which the serializer encodes, so a marker and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
+    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code, math or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. The parser keeps the space or tab that separates a task marker from its text at the start of that text, and Markdown cannot write a marker with nothing after its separator, so when the phrasing of a paragraph, heading or table cell starts with a task marker followed only by breaks and at most one text that is a single space or tab, the marker is removed, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a marker alone, or of a marker and a hard break, is left empty, and one of a marker and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the marker keeps it, including whitespace after the separator, which the serializer encodes, so a marker and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. The parser reads each line ending in inline code or math as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. Code and math in image text are written as alt text, where line endings can be written, so they keep theirs. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
     ///
     /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, adjacent attention of the same kind, such as `*a*_b_`, stays separate, and strikethrough inside strikethrough, such as `~a~~b~~c~`, stays nested. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
     ///
-    /// The IDs of removed text, breaks, task markers, attention, paragraphs and separators, joined text, code and math, merged attention and unwrapped strikethrough no longer refer to nodes in the tree. Their arena slots remain, detached, but their contents are unspecified. Whitespace split off the edge of a text node is a new node with an empty span, and the text node keeps its ID and span with the rest of its value. Whitespace and breaks that move whole, and a hard break that becomes a space, keep their IDs. Other IDs stay valid.
+    /// The IDs of removed text, breaks, task markers, attention, paragraphs and separators, joined text, code and math, merged attention and unwrapped strikethrough no longer refer to nodes in the tree. Their arena slots remain, detached, but their contents are unspecified. Whitespace split off the edge of a text node is a new node with an empty span, and the text node keeps its ID and span with the rest of its value. Whitespace and breaks that move whole, and a hard break that becomes a space, keep their IDs, and code or math whose line endings become spaces keeps its ID and span. Other IDs stay valid.
     pub fn normalize(&mut self) {
         let mut scratch = Trailing::default();
         let mut blocks = Vec::new();
@@ -1676,9 +1709,30 @@ impl<S: AsRef<str>> Document<S> {
                 self.remove_empty_paragraphs(NodeId::new(index), &mut blocks);
             }
         }
+        self.space_line_endings();
     }
 
-    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent inline math, adjacent attention of the same kind, or a separator in phrasing; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, ends with a hard break, or starts with a task marker followed only by breaks and at most one text that is a single space or tab; and no attached paragraph is empty. This takes time linear in the size of the arena.
+    // Replace each line ending in inline code or math outside image text with a space, in every subtree, attached or detached, once its child lists are normalized.
+    fn space_line_endings(&mut self) {
+        let source = self.source.as_ref();
+        let nodes = &mut self.nodes;
+        for index in 0..nodes.len() {
+            if nodes[index].parent.is_some() {
+                continue;
+            }
+            let root = NodeId::new(index);
+            let mut enclosing = Enclosing::default();
+            let mut current = Some(root);
+            while let Some(id) = current {
+                if enclosing.images == 0 {
+                    space_line_endings(&mut nodes[id.index()].kind, source);
+                }
+                current = next_enclosed(nodes, root, id, &mut enclosing);
+            }
+        }
+    }
+
+    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent inline math, adjacent attention of the same kind, or a separator in phrasing; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, ends with a hard break, or starts with a task marker followed only by breaks and at most one text that is a single space or tab; no inline code or math outside image text has a line ending in its value; and no attached paragraph is empty. This takes time linear in the size of the arena.
     pub fn is_normalized(&self) -> bool {
         let source = self.source.as_ref();
         let nodes = &self.nodes;
@@ -1692,6 +1746,7 @@ impl<S: AsRef<str>> Document<S> {
                     let node = &nodes[id.index()];
                     if (enclosing.deletes > 0 && delete(&node.kind))
                         || (enclosing.cells > 0 && matches!(node.kind, EventKind::HardBreak))
+                        || (enclosing.images == 0 && line_ending_in_code(&node.kind, source))
                     {
                         return false;
                     }

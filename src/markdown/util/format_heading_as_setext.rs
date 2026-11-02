@@ -23,22 +23,51 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
     }
     let mut nonempty = false;
     let mut setext = state.options.setext;
-    // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading.
+    // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading. Line endings in inline code and math are always written as spaces, except in image text, which writes them as alt text, and a code block cannot be written in a heading.
     let unwrap = state.options.line_wrapping == LineWrapping::Unwrap;
-    document.descendants(id).any(|child| {
-        let kind = &document.node(child).unwrap().kind;
+    // Walk the descendants in document order, counting the images that enclose each.
+    let mut images = 0;
+    let mut current = document.node(id).unwrap().first_child();
+    while let Some(child) = current {
+        let node = document.node(child).unwrap();
+        let kind = &node.kind;
         if let Some(value) = crate::headings::semantic_text::<false>(kind, document.source()) {
             nonempty |= !value.is_empty();
             let unwrapped = unwrap && matches!(kind, EventKind::Text(_) | EventKind::SoftBreak(_));
+            let literal = matches!(kind, EventKind::CodeBlock { .. })
+                || images == 0 && matches!(kind, EventKind::Code { .. } | EventKind::Math(_));
             setext = setext
                 || matches!(kind, EventKind::HardBreak)
                 || !unwrapped && matches!(kind, EventKind::SoftBreak(_))
-                || !unwrapped
-                    && !matches!(kind, EventKind::CodeBlock { .. })
-                    && value.contains('\n');
+                || !unwrapped && !literal && value.contains('\n');
         }
-        nonempty && setext
-    })
+        if nonempty && setext {
+            return true;
+        }
+        if let Some(first) = node.first_child() {
+            images += usize::from(image(kind));
+            current = Some(first);
+            continue;
+        }
+        let mut at = child;
+        current = loop {
+            let node = document.node(at).unwrap();
+            if let Some(next) = node.next_sibling() {
+                break Some(next);
+            }
+            let parent = node.parent().expect("a descendant has a parent");
+            if parent == id {
+                break None;
+            }
+            images -= usize::from(image(&document.node(parent).unwrap().kind));
+            at = parent;
+        };
+    }
+    false
+}
+
+fn image(kind: &EventKind<'_>) -> bool {
+    matches!(kind, EventKind::Start(Tag::Image { .. }))
 }
 
 #[cfg(test)]
@@ -93,14 +122,9 @@ mod tests {
     }
 
     #[test]
-    fn inline_breaks_require_setext_but_code_block_breaks_do_not() {
+    fn inline_breaks_require_setext_but_code_and_math_breaks_do_not() {
         for kind in [
             EventKind::Text(Text::Literal("first\nsecond")),
-            EventKind::Code {
-                value: Text::Literal("first\nsecond"),
-                language: None,
-            },
-            EventKind::Math(Text::Literal("first\r\nsecond")),
             EventKind::Html {
                 value: Text::Literal("first\nsecond"),
                 block: false,
@@ -109,6 +133,17 @@ mod tests {
             EventKind::HardBreak,
         ] {
             assert!(eligible(2, &[kind], false));
+        }
+        // Code and math write each line ending as a space.
+        for kind in [
+            EventKind::Code {
+                value: Text::Literal("first\nsecond"),
+                language: None,
+            },
+            EventKind::Math(Text::Literal("first\r\nsecond")),
+        ] {
+            assert!(!eligible(2, core::slice::from_ref(&kind), false));
+            assert!(eligible(2, &[kind], true));
         }
         let block = EventKind::CodeBlock {
             value: Text::Literal("block\n"),

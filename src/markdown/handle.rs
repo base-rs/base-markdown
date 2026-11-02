@@ -17,7 +17,7 @@ use super::{
 use crate::{
     message::Message,
     stream::{EventKind, Tag},
-    util::line_ending::line_endings,
+    util::line_ending::push_spaced,
     CodeFence, Document, NodeId, NodeSyntax, ReferenceKind,
 };
 use alloc::{borrow::Cow, string::String};
@@ -280,34 +280,32 @@ impl State<'_> {
     fn inline_literal(&mut self, content: &str, marker: char, minimum: usize) {
         let size = super::util::scan::delimiter_size(content, marker as u8, minimum);
         self.output.extend(core::iter::repeat(marker).take(size));
-        let start = self.output.len();
-        let non_whitespace = !content.chars().all(char::is_whitespace);
-        let pad = non_whitespace
-            && (content.starts_with(char::is_whitespace) && content.ends_with(char::is_whitespace)
+        // The parser reads a line ending here as a space, and strips one space from each side when the content starts and ends with one and is not only spaces, so a tab is not a space here. Other content with whitespace at both edges is padded too, which reads back the same.
+        let space = |character: char| matches!(character, ' ' | '\r' | '\n');
+        let pad = !content.chars().all(space)
+            && (content.starts_with(space) && content.ends_with(space)
+                || !content.chars().all(char::is_whitespace)
+                    && content.starts_with(char::is_whitespace)
+                    && content.ends_with(char::is_whitespace)
                 || content.starts_with(marker)
                 || content.ends_with(marker));
         if pad {
             self.output.push(' ');
         }
+        // The parser reads each line ending in code or math as a space, so it is written as one, which is stable and starts no line (#135, #136).
         // GFM splits table cells before parsing code and math, so their pipes need escapes too.
         if self.stack.contains(&ConstructName::TableCell) {
             for (index, part) in content.split('|').enumerate() {
                 if index > 0 {
                     self.output.push_str("\\|");
                 }
-                self.output.push_str(part);
+                push_spaced(&mut self.output, part);
             }
         } else {
-            self.output.push_str(content);
+            push_spaced(&mut self.output, content);
         }
         if pad {
             self.output.push(' ');
-        }
-        // Flatten a physical line ending only when a block-opening rule would become active.
-        if line_endings(content).next().is_some() {
-            self.rewrite(start, |value, output| {
-                super::escape::normalize_inline(value, output);
-            });
         }
         self.output.extend(core::iter::repeat(marker).take(size));
     }

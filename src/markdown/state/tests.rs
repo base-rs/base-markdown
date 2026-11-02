@@ -174,15 +174,28 @@ fn joins_code_and_spread_items_consistently() {
 }
 
 #[test]
-fn inline_literals_normalize_block_openers_and_preserve_other_line_endings() {
+fn inline_literals_write_each_line_ending_as_a_space() {
     let options = Options::default();
     let mut state = State::new(&options);
     state.inline_code("one\r\n# two", None).unwrap();
     assert_eq!(core::mem::take(&mut state.output), "`one # two`");
     state.inline_math("one\r\n> two").unwrap();
     assert_eq!(core::mem::take(&mut state.output), "$one > two$");
-    state.inline_code("one\r\ntwo", None).unwrap();
-    assert_eq!(core::mem::take(&mut state.output), "`one\r\ntwo`");
+    state.inline_code("one\r\ntwo\rthree\n|-|", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "`one two three |-|`");
+    state.inline_code("\r\none\n", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "`  one  `");
+    state.inline_math("\r\n\r").unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "$  $");
+    // A tab is not a space, so content of spaces and a tab is padded.
+    state.inline_code(" \t ", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "`  \t  `");
+    state.inline_code("\n\t\n", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "`  \t  `");
+    state.inline_math(" \t ").unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "$  \t  $");
+    state.inline_code("  ", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "`  `");
     state.inline_code("é ` α", None).unwrap();
     assert_eq!(core::mem::take(&mut state.output), "``é ` α``");
     state.inline_math(" $α$ ").unwrap();

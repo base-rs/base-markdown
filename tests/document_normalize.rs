@@ -3,7 +3,7 @@
 
 use base_markdown::{
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
-    to_markdown, AstBuilder, CompileOptions, Document, NodeId, ParseOptions,
+    to_markdown, AstBuilder, CompileOptions, Constructs, Document, NodeId, ParseOptions,
 };
 use std::borrow::Cow;
 use std::sync::{Mutex, PoisonError};
@@ -2012,10 +2012,19 @@ fn joining_code_and_math_is_linear() {
 
 #[test]
 fn serializing_code_and_math_with_many_line_endings_is_linear() {
-    // A line ending before a block marker is written as a space, so that it does not start a line. Each one flattened rescanned the content from its start (#115). Runs of line endings, CRLF and ordered-list digits each flatten differently, and math takes the same path as code.
+    // Each line ending in code or math is written as a space, and normalizing replaces it with one. Writing them once flattened only those before a block marker, rescanning the content from its start for each (#115). Runs of line endings, CRLF and ordered-list digits each took a different path, and math takes the same path as code. The trees are serialized without normalizing too, which must stay linear.
     let content = |unit: &str, size: usize| Text::from(unit.repeat(size) + "#");
-    for unit in ["a\n#", "\n", "a\r\n#", " \n\t", "a\n1. ", "a\n\n-"] {
-        assert_normalize_linear(|size| {
+    let check = |tree: &dyn Fn(usize) -> Document<String>| {
+        assert_normalize_linear(tree);
+        assert_linear(|size| {
+            let document = tree(size);
+            let started = Instant::now();
+            to_markdown(&document).unwrap();
+            started.elapsed()
+        });
+    };
+    for unit in ["a\n#", "\n", "a\r\n#", " \n\t", "a\n1. ", "a\n\n-", "\r"] {
+        check(&|size| {
             build(vec![event(
                 EventKind::Code {
                     value: content(unit, size),
@@ -2025,7 +2034,202 @@ fn serializing_code_and_math_with_many_line_endings_is_linear() {
             )])
         });
     }
-    assert_normalize_linear(|size| {
-        build(vec![event(EventKind::Math(content("a\n#", size)), 0..0)])
-    });
+    check(&|size| build(vec![event(EventKind::Math(content("a\n#", size)), 0..0)]));
+}
+
+fn math_text() -> ParseOptions {
+    ParseOptions {
+        constructs: Constructs {
+            math_text: true,
+            ..Constructs::default()
+        },
+        ..ParseOptions::default()
+    }
+}
+
+#[test]
+fn line_endings_in_code_and_math_become_spaces() {
+    // The parser reads each line ending in inline code or math as one space, CRLF too, so one in the value cannot be written.
+    assert_eq!(
+        settled(build(vec![
+            text("x "),
+            code("a\r\nb\rc\nd", Some("rust")),
+            text(" "),
+            math("\n\r\n\r"),
+            text(" "),
+            code("\na\n", None),
+        ])),
+        r#"paragraph("x " code "a b c d" "rust" " " math "   " " " code " a ")"#
+    );
+    // Code joined from parts is spaced once it is joined.
+    assert_eq!(
+        settled(build(vec![code("a\r", None), code("\nb", None)])),
+        r#"paragraph(code "a b")"#
+    );
+    // Flow code keeps its line endings.
+    let mut document = build_blocks(vec![event(
+        EventKind::CodeBlock {
+            value: Text::Literal("a\nb\n"),
+            language: None,
+            fence: None,
+            math: false,
+            unclosed: false,
+        },
+        0..0,
+    )]);
+    assert!(document.is_normalized());
+    document.normalize();
+    assert_eq!(to_markdown(&document).unwrap(), "```\na\nb\n```\n");
+}
+
+#[test]
+fn code_and_math_with_line_endings_read_back_and_are_stable() {
+    let values = [
+        // #136: a line ending read back as a space.
+        "a\nb",
+        "a\r\nb",
+        "a\rb",
+        // #135: a line that reads as a table delimiter row.
+        "a\n|-|\nb",
+        "a\n:-\nb",
+        "a\n-|-\nb",
+        // A block marker, an indented line and a blank line.
+        "a\n# b",
+        "a\n    b",
+        "a\n\nb",
+        "a\r\n\r\nb",
+        // Line endings at the edges, and nothing else.
+        "\na\n",
+        "\r\na\r",
+        "\n",
+        "\r\n",
+        "\n\r\n\r",
+        " \n ",
+        "\n`\n",
+        "\n$\n",
+        // A tab is not a space, so the parser strips the spaces around it.
+        " \t ",
+        "\n\t\n",
+        "\t",
+        " \u{a0} ",
+    ];
+    let mut trees = Vec::new();
+    for value in values {
+        for (prefix, literal) in [
+            ("x ", code(value, None)),
+            ("x | y ", code(value, None)),
+            ("x ", math(value)),
+            ("x | y ", math(value)),
+        ] {
+            trees.push(build_blocks(paragraph(vec![text(prefix), literal])));
+        }
+        trees.push(build_blocks(heading(vec![code(value, None)])));
+        trees.push(build_blocks(heading(vec![text("x "), math(value)])));
+        trees.push(build_blocks(table(vec![text("x "), code(value, None)])));
+    }
+    for tree in trees {
+        let unnormalized = to_markdown(&tree).unwrap();
+        let mut normal = tree;
+        normal.normalize();
+        assert!(normal.is_normalized());
+        let markdown = to_markdown(&normal).unwrap();
+        // The serializer writes each line ending as the space normalizing replaces it with.
+        assert_eq!(unnormalized, markdown);
+        let mut reparsed = Document::parse(markdown.as_str(), &math_text()).unwrap();
+        assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
+        reparsed.normalize();
+        let reparsed_block = reparsed.children(reparsed.root()).next().unwrap();
+        let normal_block = normal.children(normal.root()).next().unwrap();
+        // The parser keeps a separator after a table row, which the hand-built table has none of.
+        assert_eq!(
+            describe(&reparsed, reparsed_block).replace(" separator", ""),
+            describe(&normal, normal_block),
+            "{markdown:?}"
+        );
+        assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
+    }
+}
+
+fn image(
+    children: Vec<Result<Event<'static>, StreamError>>,
+) -> Vec<Result<Event<'static>, StreamError>> {
+    attention(
+        Tag::Image {
+            destination: Text::Literal("u"),
+            title: None,
+        },
+        TagKind::Image,
+        children,
+    )
+}
+
+#[test]
+fn code_and_math_in_image_text_keep_line_endings() {
+    // Image text writes code and math as alt text, where a line ending can be written and reads back, so normalizing leaves it, and the heading is still chosen as setext for it.
+    let literals: [fn() -> Result<Event<'static>, StreamError>; 2] =
+        [|| code("a\nb", None), || math("a\r\nb")];
+    for (kind, literal) in literals.iter().enumerate() {
+        let shapes = vec![
+            build_blocks(paragraph(image(vec![literal()]))),
+            build_blocks(heading(image(vec![literal()]))),
+            build_blocks(attention(
+                Tag::Heading(3),
+                TagKind::Heading,
+                image(vec![literal()]),
+            )),
+            build_blocks(table(image(vec![literal()]))),
+            build_blocks(heading(concat([
+                image(vec![literal()]),
+                vec![text(" "), literal()],
+            ]))),
+        ];
+        let expected = [
+            "![a\nb](u)\n",
+            "![a\nb](u)\n=====\n",
+            "### ![a&#xA;b](u)\n",
+            "| ![a&#xA;b](u) |\n| --- |\n",
+            "![a\nb](u) `a b`\n===========\n",
+        ];
+        let last = shapes.len() - 1;
+        for (index, mut tree) in shapes.into_iter().enumerate() {
+            let markdown = to_markdown(&tree).unwrap();
+            if kind == 0 {
+                assert_eq!(markdown, expected[index]);
+            }
+            // Only the code or math outside the image changes.
+            assert_eq!(tree.is_normalized(), index != last);
+            tree.normalize();
+            assert!(tree.is_normalized());
+            assert_eq!(to_markdown(&tree).unwrap(), markdown);
+            if index == last {
+                let heading = tree.children(tree.root()).next().unwrap();
+                let described = describe(&tree, heading);
+                assert!(
+                    described.ends_with(r#"" " code "a b")"#)
+                        || described.ends_with(r#"" " math "a b")"#),
+                    "{}",
+                    described
+                );
+            }
+            let mut reparsed = Document::parse(markdown.as_str(), &math_text()).unwrap();
+            assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
+            reparsed.normalize();
+            assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
+        }
+    }
+}
+
+#[test]
+fn code_and_math_of_spaces_around_a_tab_are_stable() {
+    // The parser strips one space from each side of `  \t  `, as it is not only spaces, so the serializer pads it. Whitespace with a tab at an edge is not stripped, so it is written as it is.
+    for source in [
+        "x `  \t  `\n",
+        "x $  \t  $\n",
+        "x ` \t`\n",
+        "x `\t`\n",
+        "x ` \ta\t `\n",
+    ] {
+        let document = Document::parse(source, &math_text()).unwrap();
+        assert_eq!(to_markdown(&document).unwrap(), source);
+    }
 }
