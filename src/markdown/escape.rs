@@ -406,6 +406,13 @@ pub(super) fn strikethrough(stack: &[ConstructName]) -> bool {
     scopes & PHRASING != 0 && scopes & FULL_SPANS == 0
 }
 
+/// Whether text in `stack` can form GFM literal autolinks: parsed phrasing outside a label. No
+/// literal forms in link text, and image text is written flattened, as the text of whatever
+/// nodes it has, so a literal there stays one.
+pub(super) fn autolink_literals(stack: &[ConstructName]) -> bool {
+    strikethrough(stack) && scopes(stack) & bit(Label) == 0
+}
+
 /// Add to `applied` the text `~` that could pair as strikethrough, so that none does.
 ///
 /// `input` is written at output position `start`, between `before` and `after`, and `applied`

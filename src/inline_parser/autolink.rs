@@ -7,6 +7,7 @@ use crate::util::{
     char::{classify, Kind},
     scheme::{scheme, SchemeKind, SCHEME_SIZE_MAX},
 };
+use alloc::vec::Vec;
 
 pub(super) struct Match {
     pub start: usize,
@@ -61,6 +62,101 @@ pub(crate) fn literal_autolink_prefix(text: &str) -> Option<&'static str> {
         })
 }
 
+/// Add to `markers`, in order, the offsets from `from` on in `text` of the bytes that make GFM
+/// literal autolinks of `text` as it is written in phrasing: the colon after a scheme, the dot
+/// after `www`, and the `@` of an email. A backslash before each of them leaves no literal, and
+/// keeps the others from forming. The text before `from` is written already, and `www_start`
+/// says whether what comes before `text` lets `www` start a literal.
+///
+/// Whether a literal forms is decided within `text`. In phrasing, what follows it is another
+/// node, which is written starting with punctuation. That ends a domain, except `_` from `_`
+/// attention, which a host name cannot have, so a domain that runs on into the next node is never
+/// valid, and `www.` or `https://` at the end of `text` needs no escape. A literal that would run on into a following text
+/// sibling, which only a tree that is not normalized has, is not found, nor in image alt one that
+/// would run on into the text of a link, which is written as it is. The scan
+/// is linear: domains are scanned once, except that a `www` after `_` within a scanned domain is
+/// taken to form, and an email's local part is scanned back to the byte before it.
+pub(crate) fn literal_markers(text: &str, from: usize, www_start: bool, markers: &mut Vec<usize>) {
+    let bytes = text.as_bytes();
+    let mut suffixes = Trail::default();
+    let mut scanned = 0;
+    // Literals whose domains are invalid, which an escape before a later `@` can make valid.
+    let mut invalid = Vec::new();
+    for marker in memchr::memchr2_iter(b':', b'.', &bytes[from..]).map(|at| from + at) {
+        let Some((start, domain_start, _)) = web_prefix(bytes, 0, marker, bytes.len()) else {
+            continue;
+        };
+        if start == 0 && bytes[marker] == b'.' && !www_start {
+            continue;
+        }
+        if domain_start < scanned {
+            markers.push(marker);
+            continue;
+        }
+        let (tail, boundary) = suffixes.suffix(text, domain_start, bytes.len());
+        let (end, valid) = domain(text, domain_start, tail, boundary);
+        scanned = end;
+        if valid {
+            markers.push(marker);
+        } else {
+            invalid.push((marker, domain_start, end));
+        }
+    }
+    let web = markers.len();
+    let mut next = 0;
+    for at in memchr::memchr_iter(b'@', &bytes[from..]).map(|at| from + at) {
+        let mut local = at;
+        while local > 0 && local_part(bytes[local - 1]) {
+            local -= 1;
+        }
+        // An escaped byte ends the run of text an email is found in, and the next run starts
+        // after it, as it does after the escapes written before the dots after `www`.
+        let backslashes = bytes[..local]
+            .iter()
+            .rev()
+            .take_while(|&&byte| byte == b'\\')
+            .count();
+        let mut min = if backslashes == 0 {
+            0
+        } else {
+            local + backslashes % 2
+        };
+        while next < web && markers[next] < at {
+            if markers[next] >= local {
+                min = markers[next] + 1;
+            }
+            next += 1;
+        }
+        if email(text, min, at, bytes.len()).is_some() {
+            markers.push(at);
+        }
+    }
+    // An escape that a later email gets ends a literal at its `@`, which leaves out the trailing
+    // punctuation before it, so `www.a..@b.cd` links `www.a` once its `@` is escaped. Such a domain
+    // ends at the `@`: what is between is in the local part, and the only byte there that ends a
+    // domain before it is `+`, which is not trailing. Each domain is scanned once more at most.
+    let emails = markers.len();
+    let mut next = web;
+    for (marker, domain_start, end) in invalid {
+        while next < emails && markers[next] < end {
+            next += 1;
+        }
+        let Some(&at) = markers[web..emails].get(next - web) else {
+            break;
+        };
+        if end == at {
+            let (tail, boundary) = terminal_suffix(text, domain_start, at);
+            if domain(text, domain_start, tail, boundary).1 {
+                markers.push(marker);
+            }
+        }
+    }
+    // The web markers found first and the emails are each in order, and so are those found last.
+    if markers.len() > emails || (emails > web && web > 0) {
+        markers.sort_unstable();
+    }
+}
+
 /// Recognize a protocol colon or the dot after `www`. The lower bound excludes stripped container prefixes and preceding inline constructs.
 pub(super) fn web(
     source: &str,
@@ -70,78 +166,10 @@ pub(super) fn web(
     suffix_cache: &mut Trail,
 ) -> Option<Match> {
     let bytes = source.as_bytes();
-    let (start, domain, prefix) = match bytes[marker] {
-        b':' => {
-            if marker + 3 > limit || &bytes[marker + 1..marker + 3] != b"//" {
-                return None;
-            }
-            let start = scheme_start(bytes, min, marker, u8::is_ascii_alphabetic);
-            if !scheme(&bytes[start..marker]).is_some_and(|scheme| scheme.kind == SchemeKind::Host)
-            {
-                return None;
-            }
-            (start, marker + 3, AutolinkPrefix::None)
-        }
-        b'.' => {
-            // A bare `www.` is no link, whether the text or the literal ends after it.
-            if marker < min + 3
-                || !bytes[marker - 3..marker].eq_ignore_ascii_case(b"www")
-                || marker + 1 == limit
-                || bytes[marker + 1] == b'\\'
-            {
-                return None;
-            }
-            let start = marker - 3;
-            if start > min
-                && !matches!(
-                    bytes[start - 1],
-                    b'\t' | b'\r' | b'\n' | b' ' | b'(' | b'*' | b'_' | b'[' | b']' | b'~'
-                )
-            {
-                return None;
-            }
-            (start, start, AutolinkPrefix::Http)
-        }
-        _ => return None,
-    };
-    let (tail, boundary) = suffix_cache.suffix(source, domain, limit);
-    let mut at = domain;
-    let mut seen = false;
-    let mut underscore = false;
-    let mut previous_underscore = false;
-    while at < boundary {
-        match bytes[at] {
-            b'.' | b'_' => {
-                if at >= tail {
-                    break;
-                }
-                if bytes[at] == b'_' {
-                    underscore = true;
-                } else {
-                    previous_underscore = underscore;
-                    underscore = false;
-                }
-                at += 1;
-            }
-            b'-' => at += 1,
-            byte if byte.is_ascii() => {
-                if ascii_whitespace(byte) || byte.is_ascii_punctuation() {
-                    break;
-                }
-                seen = true;
-                at += 1;
-            }
-            _ => {
-                let character = source[at..limit].chars().next().unwrap();
-                if classify(character) != Kind::Other {
-                    break;
-                }
-                seen = true;
-                at += character.len_utf8();
-            }
-        }
-    }
-    if !seen || underscore || previous_underscore {
+    let (start, domain_start, prefix) = web_prefix(bytes, min, marker, limit)?;
+    let (tail, boundary) = suffix_cache.suffix(source, domain_start, limit);
+    let (mut at, valid) = domain(source, domain_start, tail, boundary);
+    if !valid {
         return None;
     }
     let mut opening = 0;
@@ -168,6 +196,106 @@ pub(super) fn web(
         end: at,
         prefix,
     })
+}
+
+/// The start, the domain start and the prefix of a literal whose protocol colon or `www` dot is
+/// at `marker`, judged from what comes before the domain.
+fn web_prefix(
+    bytes: &[u8],
+    min: usize,
+    marker: usize,
+    limit: usize,
+) -> Option<(usize, usize, AutolinkPrefix)> {
+    match bytes[marker] {
+        b':' => {
+            if marker + 3 > limit || &bytes[marker + 1..marker + 3] != b"//" {
+                return None;
+            }
+            let start = scheme_start(bytes, min, marker, u8::is_ascii_alphabetic);
+            if !scheme(&bytes[start..marker]).is_some_and(|scheme| scheme.kind == SchemeKind::Host)
+            {
+                return None;
+            }
+            Some((start, marker + 3, AutolinkPrefix::None))
+        }
+        b'.' => {
+            // A bare `www.` is no link, whether the text or the literal ends after it.
+            if marker < min + 3
+                || !bytes[marker - 3..marker].eq_ignore_ascii_case(b"www")
+                || marker + 1 == limit
+                || bytes[marker + 1] == b'\\'
+            {
+                return None;
+            }
+            let start = marker - 3;
+            if start > min && !www_previous(bytes[start - 1]) {
+                return None;
+            }
+            // The domain is what follows `www.`, so `www.` needs one: `www. a` is no link.
+            Some((start, marker + 1, AutolinkPrefix::Http))
+        }
+        _ => None,
+    }
+}
+
+/// Whether `www` after `byte` can start a literal.
+pub(crate) fn www_previous(byte: u8) -> bool {
+    matches!(
+        byte,
+        b'\t' | b'\r' | b'\n' | b' ' | b'(' | b'*' | b'_' | b'[' | b']' | b'~'
+    )
+}
+
+/// Where the domain that starts at `at` ends, and whether it is a host name as RFC 952 and RFC
+/// 1123 define it, with non-ASCII alphanumerics allowed for internationalized names (RFC 5890):
+/// labels of letters, digits and `-`, separated by `.`, none empty and none starting or ending
+/// with `-`. The domain runs up to the first byte that cannot be in one or the trailing
+/// punctuation before the end of the literal, and an `_` in it makes it invalid rather than
+/// ending it, so `www.a_b.c` is no link at all rather than a link to `www.a`.
+fn domain(source: &str, mut at: usize, tail: usize, boundary: usize) -> (usize, bool) {
+    let bytes = source.as_bytes();
+    let mut valid = true;
+    // Whether the current label is empty, and whether its last byte is `-`.
+    let mut empty = true;
+    let mut hyphen = false;
+    while at < boundary {
+        match bytes[at] {
+            b'.' | b'_' if at >= tail => break,
+            b'.' => {
+                valid &= !empty && !hyphen;
+                empty = true;
+                at += 1;
+            }
+            b'_' => {
+                valid = false;
+                at += 1;
+            }
+            b'-' => {
+                valid &= !empty;
+                empty = false;
+                hyphen = true;
+                at += 1;
+            }
+            byte if byte.is_ascii() => {
+                if ascii_whitespace(byte) || byte.is_ascii_punctuation() {
+                    break;
+                }
+                empty = false;
+                hyphen = false;
+                at += 1;
+            }
+            _ => {
+                let character = source[at..boundary].chars().next().unwrap();
+                if classify(character) != Kind::Other {
+                    break;
+                }
+                empty = false;
+                hyphen = false;
+                at += character.len_utf8();
+            }
+        }
+    }
+    (at, valid && !empty && !hyphen)
 }
 
 /// Find the terminal punctuation run once, so each URL needs linear work even with long punctuation or entity-like suffixes.
@@ -250,13 +378,16 @@ fn is_trailing(byte: u8) -> bool {
     )
 }
 
+/// Whether `byte` can be in the local part of an email literal.
+fn local_part(byte: u8) -> bool {
+    matches!(byte, b'+' | b'-' | b'.' | b'0'..=b'9' | b'A'..=b'Z' | b'_' | b'a'..=b'z')
+}
+
 /// Email expansion follows inline resolution and sees only a contiguous ordinary text run. Protocols already present in the source retain their spelling.
 pub(super) fn email(source: &str, min: usize, at: usize, limit: usize) -> Option<Match> {
     let bytes = source.as_bytes();
     let mut start = at;
-    while start > min
-        && matches!(bytes[start - 1], b'+' | b'-' | b'.' | b'0'..=b'9' | b'A'..=b'Z' | b'_' | b'a'..=b'z')
-    {
+    while start > min && local_part(bytes[start - 1]) {
         start -= 1;
     }
     // Browsers read a backslash as `/`, so it blocks the local part as a path separator would.
@@ -288,6 +419,18 @@ pub(super) fn email(source: &str, min: usize, at: usize, limit: usize) -> Option
         end += 1;
     }
     if end == at + 1 || !dot || !matches!(bytes[end - 1], b'.' | b'A'..=b'Z' | b'a'..=b'z') {
+        return None;
+    }
+    // The domain must be a host name, as for `www.` and URLs, though the local part and an `xmpp`
+    // resource may have `_`.
+    let host = &bytes[at + 1..end];
+    let host = host.split(|&byte| byte == b'/').next().unwrap();
+    if host.split(|&byte| byte == b'.').any(|label| {
+        label.is_empty()
+            || label.contains(&b'_')
+            || label[0] == b'-'
+            || label[label.len() - 1] == b'-'
+    }) {
         return None;
     }
     Some(Match { start, end, prefix })
@@ -324,10 +467,9 @@ mod tests {
             ("www.example.com]x", "www.example.com]x", "http://"),
             ("www.example.com<after", "www.example.com", "http://"),
             ("www.點看.com/界\u{2003}after", "www.點看.com/界", "http://"),
-            ("www.$", "www.$", "http://"),
-            ("www.-a..b.c", "www.-a..b.c", "http://"),
-            ("www.aaa_bbb.ccc.ddd", "www.aaa_bbb.ccc.ddd", "http://"),
-            ("www. ", "www", "http://"),
+            ("www.例.jp", "www.例.jp", "http://"),
+            ("www.a-b.c-d", "www.a-b.c-d", "http://"),
+            ("www.a.b._", "www.a.b", "http://"),
             ("http://x.org\0", "http://x.org\0", ""),
             // A backslash ends the literal like the end of the text, so trailing punctuation before it is excluded.
             ("www.a\\_b.com", "www.a", "http://"),
@@ -348,6 +490,10 @@ mod tests {
     fn web_prefixes_and_domain_rejections() {
         for source in [
             "www.",
+            // `www.` needs a domain after it.
+            "www. ",
+            "www.$",
+            "www._a",
             "awww.example.com",
             ":www.example.com",
             "ahttp://example.com",
@@ -358,6 +504,17 @@ mod tests {
             "http://",
             "http://---/x",
             "www.aaa_bbb.ccc",
+            // Domains are host names: no `_`, no empty label, and no label that starts or ends
+            // with `-`. An invalid domain is no link, rather than a shorter one.
+            "www.-a..b.c",
+            "www.aaa_bbb.ccc.ddd",
+            "www._a.b.c",
+            "www.-a.b",
+            "www.a-.b",
+            "www.a..b",
+            "www.a./b",
+            "http://_a.b.c",
+            "https://a_b.com",
             "www.aaa.bbb_ccc",
             "http://a_b.c/d",
             "www.\\x",
@@ -442,9 +599,9 @@ mod tests {
             ("mailto:a@example.org/path", "mailto:a@example.org", ""),
             ("XMPP:a@example.org/path.", "XMPP:a@example.org/path", ""),
             ("mmmmailto:a@example.org", "a@example.org", "mailto:"),
-            ("a@a_b.c", "a@a_b.c", "mailto:"),
-            ("aaa@a.b_.c", "aaa@a.b_.c", "mailto:"),
             ("a@b.c\\d", "a@b.c", "mailto:"),
+            ("a_b@c-d.e", "a_b@c-d.e", "mailto:"),
+            ("xmpp:a@b.c/x_y", "xmpp:a@b.c/x_y", ""),
         ] {
             let at = source.find('@').unwrap();
             let found = email(source, 0, at, source.len())
@@ -462,6 +619,12 @@ mod tests {
             "/a@a.b",
             "\\a@a.b",
             "a@界.com",
+            "a@a_b.c",
+            "aaa@a.b_.c",
+            "a@b_c.com",
+            "a@-b.com",
+            "a@b-.com",
+            "a@.b.com",
         ] {
             let at = source.find('@').unwrap();
             assert!(email(source, 0, at, source.len()).is_none(), "{:?}", source);

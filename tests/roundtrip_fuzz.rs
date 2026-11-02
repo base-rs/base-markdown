@@ -460,10 +460,8 @@ impl Classifier {
                 .iter()
                 .any(|literal| input.contains(literal))
         {
-            if differs("<code>") {
-                return "#97 literal autolink absorbs a code span";
-            }
-            return "literal autolink, not escaped by design";
+            // Text is escaped where GFM would read a literal autolink, so this should stay empty.
+            return "literal autolink formed from text";
         }
         if differs("<del>") {
             return "strikethrough";
