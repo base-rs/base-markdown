@@ -623,19 +623,13 @@ impl<'a> State<'a> {
                 title.as_ref().map(|value| value.resolve(source).unwrap()),
             ),
             EventKind::Opaque { value, .. } => {
-                if let Some(NodeSyntax::Frontmatter {
-                    info,
-                    fence,
-                    closing_fence_length,
-                }) = document.syntax(id)
-                {
+                if let Some(NodeSyntax::Frontmatter { info, fence, .. }) = document.syntax(id) {
                     self.frontmatter(
                         document
                             .frontmatter_value(id)
                             .expect("frontmatter syntax identifies a frontmatter body"),
                         info.resolve(source).unwrap(),
                         fence,
-                        closing_fence_length,
                     )
                 } else {
                     {

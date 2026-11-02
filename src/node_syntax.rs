@@ -293,9 +293,6 @@ pub(crate) fn frontmatter(
     let close = raw[closing_start..raw_end].trim_matches([' ', '\t']);
     let closing_fence_length = fence.frontmatter_close(close.as_bytes())?;
     let info = raw[fence.length..first_end].trim_matches([' ', '\t']);
-    if !fence.valid_frontmatter_info(info.as_bytes()) {
-        return None;
-    }
     let start = info.as_ptr() as usize - raw.as_ptr() as usize;
     Some((
         start..start + info.len(),

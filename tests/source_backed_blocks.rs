@@ -164,7 +164,7 @@ fn frontmatter_and_math_are_independent_of_code_fences() {
         assert_html(source, &options, "");
     }
     assert_html(
-        "```yaml\na: b\n```\n\n$$\nx\n$$",
+        "---\na: b\n---\n\n$$\nx\n$$",
         &options,
         "<pre><code class=\"language-math math-display\">x\n</code></pre>",
     );

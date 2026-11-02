@@ -264,80 +264,52 @@ fn delimiter_defaults_keep_the_authored_info_and_body() {
 
 #[test]
 fn tagged_frontmatter_keeps_opaque_info_and_literal_body() {
-    for (source, fence, opening, closing, info, body) in [
-        (
-            "```json\n{\"name\": \"Neptune\"}\n```",
-            '`',
-            3,
-            3,
-            "json",
-            "{\"name\": \"Neptune\"}\n",
-        ),
-        (
-            "~~~~toml title=planet\nname = 'Neptune'\n~~~~~",
-            '~',
-            4,
-            5,
-            "toml title=planet",
-            "name = 'Neptune'\n",
-        ),
+    for (source, fence, info, body) in [
         (
             "---yaml\nname: Neptune\n---",
             '-',
-            3,
-            3,
             "yaml",
             "name: Neptune\n",
         ),
-        ("--- json\n{}\n---", '-', 3, 3, "json", "{}\n"),
+        ("--- json\n{}\n---", '-', "json", "{}\n"),
         (
             "+++ custom\nraw &amp; \\* text\n+++",
             '+',
-            3,
-            3,
             "custom",
             "raw &amp; \\* text\n",
         ),
         (
-            "``` \tjson\\+ &amp; title=planet \t\n\na\n\n \t\n```",
-            '`',
-            3,
-            3,
+            "--- \tjson\\+ &amp; title=planet \t\n\na\n\n \t\n---",
+            '-',
             "json\\+ &amp; title=planet",
             "\na\n\n \t\n",
         ),
-        ("~~~\u{a0}\nraw\n~~~", '~', 3, 3, "\u{a0}", "raw\n"),
-        ("\u{feff}```json\n{}\n```", '`', 3, 3, "json", "{}\n"),
-        ("~~~\u{c}\nraw\n~~~", '~', 3, 3, "\u{c}", "raw\n"),
+        ("---\u{a0}\nraw\n---", '-', "\u{a0}", "raw\n"),
+        ("\u{feff}--- json\n{}\n---", '-', "json", "{}\n"),
+        ("+++\u{c}\nraw\n+++", '+', "\u{c}", "raw\n"),
         (
-            "~~~ ~format metadata\nraw\n~~~",
-            '~',
-            3,
-            3,
-            "~format metadata",
+            "--- ~format `metadata`\nraw\n---",
+            '-',
+            "~format `metadata`",
             "raw\n",
         ),
-        ("~~~json\n~~~", '~', 3, 3, "json", ""),
-        ("```json\r\n{}\r\n```", '`', 3, 3, "json", "{}\n"),
-        ("~~~json\r{}\r~~~", '~', 3, 3, "json", "{}\n"),
-        (
-            "~~~some`format\nraw\n   ~~~~ \t",
-            '~',
-            3,
-            4,
-            "some`format",
-            "raw\n",
-        ),
-        ("```json\n{}\n  ```", '`', 3, 3, "json", "{}\n"),
+        ("+++json\n+++", '+', "json", ""),
+        ("--- json\r\n{}\r\n---", '-', "json", "{}\n"),
+        ("+++json\r{}\r+++ \t", '+', "json", "{}\n"),
     ] {
         let node = parse_frontmatter(source);
         assert_eq!(node.info, info, "{source:?}");
         assert_eq!(node.value, body, "{source:?}");
         assert_eq!(
             (node.fence, node.fence_length, node.closing_fence_length),
-            (fence, opening, closing)
+            (fence, 3, 3)
         );
-        assert_eq!(node.language(), info.split_ascii_whitespace().next());
+        assert_eq!(
+            node.language(),
+            info.split_ascii_whitespace()
+                .next()
+                .or(Some(if fence == '-' { "yaml" } else { "toml" }))
+        );
         let document = parse_document(source, &parse_options());
         let output = base_markdown::to_markdown(&document).unwrap();
         let reparsed = parse_frontmatter(&output);
@@ -349,13 +321,35 @@ fn tagged_frontmatter_keeps_opaque_info_and_literal_body() {
                 reparsed.fence_length,
                 reparsed.closing_fence_length
             ),
-            (fence, opening, closing)
+            (fence, 3, 3)
         );
     }
 }
 
 #[test]
-fn only_closed_tagged_fences_at_document_start_are_frontmatter() {
+fn code_fences_at_document_start_are_code_blocks() {
+    for source in [
+        "```json\n{}\n```",
+        "~~~toml\na = 1\n~~~",
+        "~~~~custom title=x\nraw\n~~~~~",
+        "\u{feff}```json\n{}\n```",
+    ] {
+        let document = parse_document(source, &parse_options());
+        let id = document.children(document.root()).next().unwrap();
+        assert!(
+            matches!(
+                document.node(id).unwrap().kind,
+                base_markdown::stream::EventKind::CodeBlock { .. }
+            ),
+            "{:?}",
+            source
+        );
+        assert_eq!(document.frontmatter_value(id), None);
+    }
+}
+
+#[test]
+fn only_closed_delimiter_fences_at_document_start_are_frontmatter() {
     for source in [
         "```\nbody\n```",
         "~~~ \t\nbody\n~~~",
@@ -401,17 +395,17 @@ fn only_closed_tagged_fences_at_document_start_are_frontmatter() {
 
 #[test]
 fn nonclosing_fence_lines_remain_in_the_body() {
-    let source = "````json\n```\n~~~~\n```` suffix\n    ````\n`````";
+    let source = "+++ json\n```\n~~~~\n++++\n+++ suffix\n +++\n+++";
     assert_eq!(
         parse_frontmatter(source).value,
-        "```\n~~~~\n```` suffix\n    ````\n"
+        "```\n~~~~\n++++\n+++ suffix\n +++\n"
     );
     assert_eq!(
         parse_frontmatter("---custom\n----\n--- suffix\n---").value,
         "----\n--- suffix\n"
     );
     assert_eq!(
-        parse_frontmatter("~~~json\nbody\n~~~\n\n```rust\ncode\n```").value,
+        parse_frontmatter("---json\nbody\n---\n\n```rust\ncode\n```").value,
         "body\n"
     );
 }
@@ -447,10 +441,10 @@ fn both_html_paths_omit_frontmatter_and_keep_later_code() {
 
 #[test]
 fn frontmatter_preserves_source_spans_and_body_after_detaching() {
-    let source = "```json title=x\n{}\n```";
+    let source = "--- json title=x\n{}\n---";
     let mut document = parse_document(source, &parse_options());
     let node = document.children(document.root()).next().unwrap();
-    assert_eq!(document.node(node).unwrap().span, 0..22);
+    assert_eq!(document.node(node).unwrap().span, 0..23);
     assert_eq!(document.frontmatter_value(node), Some("{}\n"));
     assert_eq!(document.children(node).count(), 0);
     assert_eq!(document.descendants(node).count(), 1);
@@ -458,7 +452,7 @@ fn frontmatter_preserves_source_spans_and_body_after_detaching() {
     assert_eq!(document.frontmatter_value(node), Some("{}\n"));
     assert_eq!(
         base_markdown::to_markdown_node(&document, node, &Default::default()).unwrap(),
-        "```json title=x\n{}\n```\n"
+        "--- json title=x\n{}\n---\n"
     );
 }
 
@@ -476,7 +470,7 @@ fn an_edited_lf_body_equal_to_the_whole_block_stays_an_edit_after_rebuilding() {
     assert_eq!(rebuilt.frontmatter_value(node), Some("---\na: 1\n---"));
     assert_eq!(
         base_markdown::to_markdown(&rebuilt).unwrap(),
-        "~~~yaml\n---\na: 1\n---\n~~~\n\n# x\n"
+        "+++ yaml\n---\na: 1\n---\n+++\n\n# x\n"
     );
 }
 
@@ -495,7 +489,7 @@ fn an_edited_body_equal_to_the_whole_block_stays_an_edit() {
         );
         assert_eq!(
             base_markdown::to_markdown(&document).unwrap(),
-            "~~~yaml\n---\na\n---\n~~~\n\nx\n",
+            "+++ yaml\n---\na\n---\n+++\n\nx\n",
             "{source:?}"
         );
         // Replacing the node with the parsed block, as a value, is an edit too.
@@ -539,21 +533,20 @@ fn an_edited_body_equal_to_the_whole_block_stays_an_edit() {
 #[test]
 fn serialization_protects_edited_frontmatter_bodies() {
     for (source, body, expected) in [
-        (
-            "```json\n{}\n```",
-            "a\n```\nb\n",
-            "````json\na\n```\nb\n````\n",
-        ),
-        ("~~~custom\n~~~", "~~~~\n", "~~~~~custom\n~~~~\n~~~~~\n"),
-        ("--- json\n---", "--- \t\n", "~~~json\n--- \t\n~~~\n"),
-        ("+++ json\n+++", "+++\nbody\n", "~~~json\n+++\nbody\n~~~\n"),
+        ("--- json\n---", "--- \t\n", "+++ json\n--- \t\n+++\n"),
+        ("+++ json\n+++", "+++\nbody\n", "--- json\n+++\nbody\n---\n"),
         ("--- json\n---", "value", "--- json\nvalue\n---\n"),
-        ("~~~json\n~~~~~", "", "~~~json\n~~~~~\n"),
-        ("---\n---", "---\n", "~~~yaml\n---\n~~~\n"),
-        ("+++\n+++", "+++\n", "~~~toml\n+++\n~~~\n"),
+        (
+            "--- json\n---",
+            "----\n+++ x\n --- \n",
+            "--- json\n----\n+++ x\n --- \n---\n",
+        ),
+        ("---\n---", "---\n", "+++ yaml\n---\n+++\n"),
+        ("+++\n+++", "+++\n", "--- toml\n+++\n---\n"),
         ("---\n---", "value", "---\nvalue\n---\n"),
         ("+++\n+++", "value", "+++\nvalue\n+++\n"),
-        ("---\u{c}\n---", "---\n", "~~~yaml\n---\n~~~\n"),
+        ("+++\n+++", "", "+++\n+++\n"),
+        ("---\u{c}\n---", "---\n", "+++ yaml\n---\n+++\n"),
     ] {
         let mut frontmatter = parse_frontmatter(source);
         let language = frontmatter.language().map(str::to_owned);
@@ -573,17 +566,56 @@ fn serialization_protects_edited_frontmatter_bodies() {
 }
 
 #[test]
-fn serialization_rejects_invalid_edited_frontmatter_metadata() {
-    for (fence, info) in [
-        ('!', "json"),
-        ('~', ""),
-        ('~', " \t"),
-        ('~', "json\nother"),
-        ('~', "json\rother"),
-        ('`', "json`other"),
+fn code_fence_frontmatter_syntax_is_written_with_delimiters() {
+    // A hand-built node with a code-fence character, which no parsed node has any more, keeps its info as the format hint.
+    for (fence, info, body, expected, language) in [
+        ('`', "json", "{}\n", "--- json\n{}\n---\n", "json"),
+        (
+            '~',
+            "toml title=x",
+            "a = 1",
+            "--- toml title=x\na = 1\n---\n",
+            "toml",
+        ),
+        ('`', "", "a: b\n", "---\na: b\n---\n", "yaml"),
+        ('~', "json", "---\n", "+++ json\n---\n+++\n", "json"),
     ] {
-        let mut document = parse_document("~~~json\n~~~", &parse_options());
+        let output = Node::Frontmatter(Frontmatter {
+            value: body.into(),
+            info: info.into(),
+            fence,
+            fence_length: 4,
+            closing_fence_length: 5,
+            position: None,
+        })
+        .to_markdown();
+        assert_eq!(output, expected);
+        let reparsed = parse_frontmatter(&output);
+        assert_eq!(reparsed.language(), Some(language));
+        assert_eq!(reparsed.info, info);
+        assert_eq!(
+            reparsed.value,
+            if body.ends_with('\n') {
+                body.to_string()
+            } else {
+                format!("{body}\n")
+            }
+        );
+    }
+}
+
+#[test]
+fn serialization_rejects_invalid_edited_frontmatter_metadata() {
+    for (fence, info, body) in [
+        ('!', "json", "a\n"),
+        ('-', "json\nother", "a\n"),
+        ('~', "json\rother", "a\n"),
+        ('-', "json", "---\n+++\n"),
+        ('`', "", "+++ \n---\t\n"),
+    ] {
+        let mut document = parse_document("--- json\n---", &parse_options());
         let id = document.children(document.root()).next().unwrap();
+        *document.text_mut(id).unwrap() = body.into();
         let result = document.set_syntax(
             id,
             Some(NodeSyntax::Frontmatter {
@@ -611,7 +643,7 @@ fn serialization_rejects_invalid_edited_frontmatter_metadata() {
 #[cfg(feature = "serde")]
 #[test]
 fn frontmatter_serde_roundtrip_preserves_body_and_fences() {
-    let document = parse_document("~~~~custom title=x\nraw\n~~~~~", &parse_options());
+    let document = parse_document("--- custom title=x\nraw\n---", &parse_options());
     let json = serde_json::to_string(&document).unwrap();
     let restored: Document = serde_json::from_str(&json).unwrap();
     let id = restored.children(restored.root()).next().unwrap();
@@ -625,8 +657,8 @@ fn frontmatter_serde_roundtrip_preserves_body_and_fences() {
         panic!("frontmatter syntax");
     };
     assert_eq!(info.resolve(restored.source()).unwrap(), "custom title=x");
-    assert_eq!(fence.length, 4);
-    assert_eq!(closing_fence_length, 5);
+    assert_eq!((fence.character, fence.length), ('-', 3));
+    assert_eq!(closing_fence_length, 3);
     assert_eq!(
         base_markdown::to_markdown(&document).unwrap(),
         base_markdown::to_markdown(&restored).unwrap()
@@ -637,7 +669,7 @@ fn frontmatter_serde_roundtrip_preserves_body_and_fences() {
 fn frontmatter_does_not_require_the_code_fenced_construct() {
     let mut options = parse_options();
     options.constructs.code_fenced = false;
-    let document = parse_document("```json\n{}\n```", &options);
+    let document = parse_document("--- json\n{}\n---", &options);
     let id = document.children(document.root()).next().unwrap();
     assert!(document.frontmatter_value(id).is_some());
 }

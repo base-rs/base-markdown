@@ -122,15 +122,15 @@ pub struct Constructs {
     /// Frontmatter with an unindented opening fence on the first document line,
     /// outside list items and blockquotes, and a matching closing fence.
     ///
-    /// Frontmatter is language-agnostic, following [Markly](https://github.com/socketry/markly) and [cmarkly](https://github.com/socketry/cmarkly). All forms produce a source-backed opaque node with [`NodeSyntax::Frontmatter`][crate::NodeSyntax::Frontmatter] metadata. Untagged `---` and `+++` imply YAML and TOML, with an empty info string. A format hint after either delimiter (such as `--- json` or `---yaml`), or a language-tagged backtick/tilde code fence, supplies an explicit language. The parser preserves the raw body and the full authored info string without parsing the named format; [`Document::frontmatter_value`][crate::Document::frontmatter_value] returns the body. HTML omits the frontmatter. Backtick/tilde fences without a language, fences later in a document, and unclosed fences remain ordinary Markdown.
+    /// Frontmatter is language-agnostic, following [Markly](https://github.com/socketry/markly) and [cmarkly](https://github.com/socketry/cmarkly). It opens with exactly `---` or `+++` and closes with the same three characters alone on a line, and produces a source-backed opaque node with [`NodeSyntax::Frontmatter`][crate::NodeSyntax::Frontmatter] metadata. Untagged `---` and `+++` imply YAML and TOML, with an empty info string, and a format hint after the opening fence (such as `--- json` or `---yaml`) supplies an explicit language. The parser preserves the raw body and the full authored info string without parsing the named format; [`Document::frontmatter_value`][crate::Document::frontmatter_value] returns the body. HTML omits the frontmatter. A backtick or tilde code fence is never frontmatter, even at the start of a document, and fences later in a document and unclosed fences remain ordinary Markdown.
     ///
-    /// Markdown serialization retains the stored info string and body while normalizing spacing around the info string. It can lengthen fences or change their marker when edited content would close them prematurely, writing an implied language explicitly when replacing an untagged dash/plus delimiter, and adds a line ending before the closing fence when an edited body needs one. Round trips preserve the body and effective language.
+    /// Markdown serialization retains the stored info string and body while normalizing spacing around the info string. It writes `+++` instead of `---`, or `---` instead of `+++`, when an edited body has a line that would close the fence, writing the implied language explicitly when the info has none, and adds a line ending before the closing fence when an edited body needs one. A frontmatter node whose syntax has another fence character, such as one built by hand, is written with `---` and its info. A body with both a `---` and a `+++` line cannot be written. Round trips preserve the body and effective language.
     ///
     /// ````
     /// use base_markdown::{Document, NodeSyntax, ParseOptions};
     ///
     /// let options = ParseOptions::default();
-    /// let document = Document::parse("```json title=example\n{\"draft\": true}\n```\n\n# Hello", &options).unwrap();
+    /// let document = Document::parse("--- json title=example\n{\"draft\": true}\n---\n\n# Hello", &options).unwrap();
     /// let node = document.children(document.root()).next().unwrap();
     /// let Some(NodeSyntax::Frontmatter { info, .. }) = document.syntax(node) else { panic!() };
     /// assert_eq!(info.resolve(document.source()).unwrap(), "json title=example");

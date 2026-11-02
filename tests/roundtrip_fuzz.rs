@@ -460,9 +460,6 @@ impl Classifier {
         if differs("<table>") {
             return "#108 lazy table line becomes a table";
         }
-        if differs("<pre>") && (output.starts_with("```") || output.starts_with("~~~")) {
-            return "#107 fence at document start reads as frontmatter";
-        }
         if self.cell_edge.replace_all(before, "$1$2") == self.cell_edge.replace_all(after, "$1$2") {
             return "#109 whitespace at a table cell edge";
         }
