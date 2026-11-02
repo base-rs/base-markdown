@@ -1497,7 +1497,7 @@ fn removes_empty_paragraphs_with_one_separator() {
 }
 
 #[test]
-fn trims_the_breaks_of_task_paragraphs_after_content() {
+fn removes_task_markers_with_nothing_written_after_them() {
     let task = || event(EventKind::TaskMarker(false), 0..0);
     let item = |children| {
         attention(
@@ -1529,21 +1529,41 @@ fn trims_the_breaks_of_task_paragraphs_after_content() {
         ])))),
         list(r#"task " a" emphasis("b")"#)
     );
-    // With nothing but whitespace text and breaks after the marker, the breaks stay, as the marker cannot be written alone.
-    for after in [
-        vec![soft()],
-        vec![hard(), soft()],
-        vec![text(" "), soft()],
-        vec![text(" "), hard(), soft(), soft()],
-        vec![text("\u{a0}\t"), hard()],
+    // With nothing but whitespace text and breaks after the marker, the marker cannot be written, so it is removed. Its breaks are then removed as at the edges of any paragraph, whitespace text stays, and a paragraph left empty is removed.
+    for (after, expected) in [
+        (vec![], "item false()"),
+        (vec![soft()], "item false()"),
+        (vec![hard(), soft()], "item false()"),
+        (
+            vec![soft(), soft(), text(" ")],
+            r#"item false(paragraph(" "))"#,
+        ),
+        (vec![text(" ")], r#"item false(paragraph(" "))"#),
+        (vec![text("  ")], r#"item false(paragraph("  "))"#),
+        (vec![text(" "), soft()], r#"item false(paragraph(" "))"#),
+        (
+            vec![text(" "), hard(), soft(), soft()],
+            r#"item false(paragraph(" "))"#,
+        ),
+        (
+            vec![text("\u{a0}\t"), hard()],
+            r#"item false(paragraph("\u{a0}\t"))"#,
+        ),
+        (
+            vec![hard(), text(" ")],
+            r#"item false(paragraph(break " "))"#,
+        ),
+        (
+            vec![text(" "), soft(), text(" ")],
+            r#"item false(paragraph(" " soft " "))"#,
+        ),
     ] {
         let mut children = vec![task()];
         children.extend(after);
-        let mut document = build_blocks(item(children));
-        assert!(document.is_normalized());
-        let once = describe(&document, document.root());
-        document.normalize();
-        assert_eq!(describe(&document, document.root()), once);
+        assert_eq!(
+            settled(build_blocks(item(children))),
+            format!("Start(List {{ start: None, tight: true }})({expected})")
+        );
     }
     // Whitespace moved out of attention counts as whitespace text.
     assert_eq!(
@@ -1551,7 +1571,7 @@ fn trims_the_breaks_of_task_paragraphs_after_content() {
             vec![task(), text(" ")],
             emphasis(vec![soft()]),
         ])))),
-        list(r#"task " " soft"#)
+        list(r#"" ""#)
     );
     assert_eq!(
         settled(build_blocks(item(concat([
@@ -1559,15 +1579,41 @@ fn trims_the_breaks_of_task_paragraphs_after_content() {
             emphasis(vec![text(" ")]),
             vec![soft()],
         ])))),
-        list(r#"task " " soft"#)
+        list(r#"" ""#)
+    );
+    assert_eq!(
+        settled(build_blocks(item(concat([
+            vec![task()],
+            emphasis(vec![hard()]),
+        ])))),
+        "Start(List { start: None, tight: true })(item false())"
     );
     // The rule is the same in any block phrasing that starts with a marker.
-    assert!(build_blocks(heading(vec![task(), hard()])).is_normalized());
+    assert!(!build_blocks(heading(vec![task(), hard()])).is_normalized());
+    assert_eq!(
+        settled(build_blocks(heading(vec![task(), hard()]))),
+        "heading()"
+    );
+    let cell = build_blocks(table(vec![text(" ")]));
+    assert_eq!(
+        settled(build_blocks(table(vec![task(), text(" ")]))),
+        describe(&cell, cell.root())
+    );
     assert_eq!(
         settled(build_blocks(heading(vec![task(), text(" a"), hard()]))),
         r#"heading(task " a")"#
     );
-    // A marker that does not start the paragraph is not exempt.
+    // A marker followed by anything else stays, such as a marker, code or a link.
+    for after in [
+        vec![task()],
+        vec![text(" "), code("c", None)],
+        concat([vec![text(" ")], link(vec![text(" ")])]),
+    ] {
+        let mut children = vec![task()];
+        children.extend(after);
+        assert!(build_blocks(item(children)).is_normalized());
+    }
+    // A marker that does not start the paragraph stays.
     assert_eq!(
         settled(build_blocks(item(vec![text("a"), task(), hard()]))),
         list(r#""a" task"#)
@@ -1630,6 +1676,20 @@ fn trimmed_shapes_serialize_stably() {
         ]))),
         "- [ ] a*b*\n",
     );
+    // A marker with nothing written after it is removed, and whitespace text after it is encoded.
+    for (after, expected) in [
+        (vec![], "-\n"),
+        (vec![soft()], "-\n"),
+        (vec![text(" ")], "- &#x20;\n"),
+        (vec![text("  ")], "- &#x20;&#x20;\n"),
+        (vec![text(" "), soft()], "- &#x20;\n"),
+        (vec![text(" "), hard()], "- &#x20;\n"),
+        (vec![text("\u{a0}"), hard()], "- \u{a0}\n"),
+    ] {
+        let mut children = vec![task()];
+        children.extend(after);
+        serializes_stably(build_blocks(item(children)), expected);
+    }
     serializes_stably(
         build(concat([
             vec![text("a"), soft()],

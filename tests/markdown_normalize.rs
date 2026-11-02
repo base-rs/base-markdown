@@ -89,7 +89,7 @@ fn preserves_gfm_tables_and_normalizes_task_list_markers() {
 #[test]
 fn keeps_whitespace_after_the_task_marker_separator() {
     // Only the space that separates the marker from the text is dropped; once text is joined, an encoded space after it is content.
-    for source in ["- [ ] &#x20;a\n", "- [ ] &#x20;\n", "- [x] &#x9;a\n"] {
+    for source in ["- [ ] &#x20;a\n", "- [x] &#x9;a\n"] {
         let normalized = normalize_markdown(source).unwrap();
         assert_eq!(normalized, source);
         assert_eq!(
@@ -100,6 +100,15 @@ fn keeps_whitespace_after_the_task_marker_separator() {
     }
     // The second space of an authored double space is content too, so it is kept as a reference.
     assert_eq!(normalize_markdown("- [ ]  a\n").unwrap(), "- [ ] &#x20;a\n");
+    // A marker with only whitespace after it is removed, as one with nothing written after it cannot be written, and the whitespace stays.
+    assert_eq!(
+        normalize_markdown("- [ ] &#x20;\n").unwrap(),
+        "- &#x20;&#x20;\n"
+    );
+    assert_eq!(
+        normalize_markdown("- [x] &#x20;\n").unwrap(),
+        "- &#x20;&#x20;\n"
+    );
 }
 
 #[test]
