@@ -560,8 +560,20 @@ impl State<'_> {
         }
         self.output.push(bullet);
         // The checkbox starts the item's content, as in `mdast-util-gfm-task-list-item`, so continuation lines indent to the content start the parser uses, which excludes the checkbox.
-        let task =
-            item_task(document, node).map(|(_, checked)| if checked { "[x]" } else { "[ ]" });
+        // The text after the marker starts with the space or tab that separates them, which the text writer drops, so the marker is written with that character and a tab reads back as one.
+        let task = item_task(document, node).map(|(marker, checked)| {
+            let separator = document
+                .node(marker)
+                .unwrap()
+                .next_sibling()
+                .and_then(|id| match &document.node(id).unwrap().kind {
+                    EventKind::Text(text) => text.resolve(document.source()).ok(),
+                    _ => None,
+                })
+                .filter(|value| value.starts_with('\t'))
+                .map_or(' ', |_| '\t');
+            (if checked { "[x]" } else { "[ ]" }, separator)
+        });
         let prefix_size = self.output.len() - prefix_start;
         let mut size = prefix_size + 1;
         let expand = match self.options.list_item_indent {
@@ -585,11 +597,11 @@ impl State<'_> {
         self.container_flow(document, node)?;
         self.indent_lines(start, |line, index, blank, output| {
             if index == 0 {
-                if let Some(task) = task {
+                if let Some((task, separator)) = task {
                     output.extend(core::iter::repeat(' ').take(size - prefix_size));
                     // A task item's first line holds its paragraph, so it is never blank.
                     output.push_str(task);
-                    output.push(' ');
+                    output.push(separator);
                     output.push_str(line);
                     return;
                 }

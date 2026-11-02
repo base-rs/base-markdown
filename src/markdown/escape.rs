@@ -39,6 +39,12 @@ enum Before {
     Start,
     Line,
     Digits,
+    /// [`Before::Line`] after a line ending written as `&#xA;`, such as the second of two soft
+    /// breaks. It reads back as text `\n`, after which the next write judges text by the rules for
+    /// the start of a line, so the first write judges it by them too (#125).
+    EncodedLine,
+    /// [`Before::Digits`] after a line ending written as `&#xA;`, as for [`Before::EncodedLine`].
+    EncodedDigits,
 }
 #[derive(Clone, Copy)]
 enum After {
@@ -76,7 +82,7 @@ macro_rules! rule {
     };
 }
 use After::{Any as A, Set};
-use Before::{Any as B, Digits, Encoded, Line, Previous};
+use Before::{Any as B, Digits, Encoded, EncodedDigits, EncodedLine, Line, Previous};
 static RULES: &[Rule] = &[
     // A space or tab next to a line ending is trimmed. In a table cell every line ending is a
     // reference, which reads back as one, so none of these applies there.
@@ -108,34 +114,46 @@ static RULES: &[Rule] = &[
     // Rules that judge the start of a line apply nowhere in a table cell, where a line ending in
     // a value is a reference, so `~` after one is written as it is.
     rule!(b'#', Line, A, 0, bit(TableCell)),
+    rule!(b'#', EncodedLine, A, 0, bit(TableCell)),
     rule!(b'#', B, After::LineEnd, bit(HeadingAtx), 0),
     rule!(b'&', B, After::Entity, PHRASING, 0),
     rule!(b'\'', B, A, bit(TitleApostrophe), 0),
     rule!(b'(', B, A, bit(DestinationRaw), 0),
     rule!(b'(', Previous(b']'), A, PHRASING, FULL_SPANS),
     rule!(b')', Digits, A, 0, bit(TableCell)),
+    rule!(b')', EncodedDigits, A, 0, bit(TableCell)),
     rule!(b')', B, A, bit(DestinationRaw), 0),
     rule!(b'*', Line, Set(b" \t\r\n*"), 0, bit(TableCell)),
+    rule!(b'*', EncodedLine, Set(b" \t\r\n*"), 0, bit(TableCell)),
     rule!(b'*', B, A, PHRASING, FULL_SPANS),
     rule!(b'+', Line, Set(b" \t\r\n"), 0, bit(TableCell)),
+    rule!(b'+', EncodedLine, Set(b" \t\r\n"), 0, bit(TableCell)),
     rule!(b'-', Line, Set(b" \t\r\n-"), 0, bit(TableCell)),
+    rule!(b'-', EncodedLine, Set(b" \t\r\n-"), 0, bit(TableCell)),
     rule!(b'.', Digits, After::SpaceOrEnd, 0, bit(TableCell)),
+    rule!(b'.', EncodedDigits, After::SpaceOrEnd, 0, bit(TableCell)),
     rule!(b'<', Line, After::Html, 0, bit(TableCell)),
+    rule!(b'<', EncodedLine, After::Html, 0, bit(TableCell)),
     rule!(b'<', B, After::Html, PHRASING, FULL_SPANS),
     rule!(b'<', B, After::Email, PHRASING, FULL_SPANS),
     rule!(b'<', B, A, bit(DestinationLiteral), 0),
     rule!(b'=', Line, A, 0, bit(TableCell)),
+    rule!(b'=', EncodedLine, A, 0, bit(TableCell)),
     rule!(b'>', Line, A, 0, bit(TableCell)),
+    rule!(b'>', EncodedLine, A, 0, bit(TableCell)),
     rule!(b'>', B, A, bit(DestinationLiteral), 0),
     rule!(b'[', Line, A, 0, bit(TableCell)),
+    rule!(b'[', EncodedLine, A, 0, bit(TableCell)),
     rule!(b'[', B, A, PHRASING, FULL_SPANS),
     rule!(b'[', B, A, bit(Label) | bit(Reference), 0),
     rule!(b'\\', B, Set(b"\n"), PHRASING, 0),
     rule!(b']', B, A, bit(Label) | bit(Reference), 0),
     rule!(b'|', B, A, bit(TableCell), 0),
     rule!(b'_', Line, A, 0, bit(TableCell)),
+    rule!(b'_', EncodedLine, A, 0, bit(TableCell)),
     rule!(b'_', B, A, PHRASING, FULL_SPANS),
     rule!(b'`', Line, A, 0, bit(TableCell)),
+    rule!(b'`', EncodedLine, A, 0, bit(TableCell)),
     rule!(
         b'`',
         B,
@@ -145,9 +163,11 @@ static RULES: &[Rule] = &[
     ),
     rule!(b'`', B, A, PHRASING, FULL_SPANS),
     rule!(b'~', Line, A, 0, bit(TableCell)),
+    rule!(b'~', EncodedLine, A, 0, bit(TableCell)),
     rule!(b'$', B, After::Math, PHRASING, 0),
     rule!(b'$', B, A, bit(MathFlowMeta), 0),
     rule!(b'$', Line, Set(b"$"), 0, bit(TableCell)),
+    rule!(b'$', EncodedLine, Set(b"$"), 0, bit(TableCell)),
 ];
 
 // A first character outside every escape rule stays literal in any formatting scope.
@@ -203,6 +223,15 @@ impl Context<'_> {
     }
 }
 
+/// Where a line ending written as `&#xA;` that ends just before `position` starts.
+fn encoded_line_ending(value: Context<'_>, position: usize) -> Option<usize> {
+    const ENCODED: &[u8] = b"&#xA;";
+    let start = position.checked_sub(ENCODED.len())?;
+    (0..ENCODED.len())
+        .all(|at| value.get(start + at) == Some(ENCODED[at]))
+        .then_some(start)
+}
+
 fn scopes(stack: &[ConstructName]) -> u32 {
     stack.iter().fold(0, |mask, name| mask | bit(*name))
 }
@@ -220,25 +249,16 @@ impl Rule {
                 }
                 position - 1
             }
-            Before::Encoded => {
-                const ENCODED: &[u8] = b"&#xA;";
-                if position < ENCODED.len()
-                    || !(0..ENCODED.len())
-                        .all(|at| value.get(position - ENCODED.len() + at) == Some(ENCODED[at]))
-                {
-                    return None;
-                }
-                position - ENCODED.len()
-            }
+            Before::Encoded => encoded_line_ending(value, position)?,
             Before::Start => {
                 if position > 0 {
                     return None;
                 }
                 position
             }
-            Before::Line | Before::Digits => {
+            Before::Line | Before::Digits | Before::EncodedLine | Before::EncodedDigits => {
                 let mut at = position;
-                if matches!(self.before, Before::Digits) {
+                if matches!(self.before, Before::Digits | Before::EncodedDigits) {
                     // Markdown ordered-list markers use ASCII digits.
                     while at > 0 && value.get(at - 1).is_some_and(|byte| byte.is_ascii_digit()) {
                         at -= 1;
@@ -250,10 +270,13 @@ impl Rule {
                 while at > 0 && matches!(value.get(at - 1), Some(b' ' | b'\t')) {
                     at -= 1;
                 }
-                if at == 0 || !matches!(value.get(at - 1), Some(b'\r' | b'\n')) {
+                if matches!(self.before, Before::EncodedLine | Before::EncodedDigits) {
+                    encoded_line_ending(value, at)?
+                } else if at > 0 && matches!(value.get(at - 1), Some(b'\r' | b'\n')) {
+                    at - 1
+                } else {
                     return None;
                 }
-                at - 1
             }
         };
         let next = value.get(position + 1);
@@ -534,6 +557,7 @@ pub(super) fn unsafe_newline(stack: &[ConstructName]) -> bool {
 }
 
 pub(super) fn normalize_inline(value: &mut String) {
+    // Only a raw line ending can start a line in code, which does not decode `&#xA;`.
     for rule in RULES
         .iter()
         .filter(|rule| matches!(rule.before, Before::Line | Before::Digits))
@@ -575,6 +599,8 @@ mod tests {
             "a$$$$$ $$$$\n$$$",
             "\n1)\n22)\n -\n-\n-",
             "a&#xA; \t&#xA;\t\n \t#xA; ",
+            "&#xA;  # x&#xA;12. y&#xA;\t1) z",
+            "&#xA;-\n- &#xA;*&#xA;-- &#xA; 3.",
         ] {
             let boundaries: Vec<_> = (0..=value.len())
                 .filter(|&at| value.is_char_boundary(at))
@@ -642,7 +668,7 @@ mod tests {
     fn fixed_matchers_preserve_non_overlapping_regex_rules() {
         let contexts = [
             "", "\n", "\r\n  ", "\n\t123", "x]", "\n12", "\n123 ", "é", "\n\n", "\r", "\r\n",
-            "&#xA;", "#xA;", "x&#xA;",
+            "&#xA;", "#xA;", "x&#xA;", "&#xA; \t", "&#xA;12", "\n&#xA;",
         ];
         // A regular expression consumes what follows, so `After::Closing` is checked at each byte.
         let closing = regex::Regex::new("\\A(?:\n|\r\n?)\\z").unwrap();
@@ -655,6 +681,8 @@ mod tests {
                     Before::Previous(_) => "(\\])",
                     Before::Line => "([\\r\\n][\\t ]*)",
                     Before::Digits => "([\\r\\n][\\t ]*[0-9]+)",
+                    Before::EncodedLine => "(&#xA;[\\t ]*)",
+                    Before::EncodedDigits => "(&#xA;[\\t ]*[0-9]+)",
                     Before::Start => "\\A",
                 };
                 let after = match rule.after {

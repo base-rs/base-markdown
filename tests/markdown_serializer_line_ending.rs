@@ -332,6 +332,111 @@ fn whitespace_after_an_encoded_soft_break_is_encoded() {
     assert_source("\\&#xA; b", "\\&#xA;&#x20;b\n");
 }
 
+/// `document` with the phrasing of its paragraph moved into a heading, or its paragraph moved into
+/// nested `containers`.
+fn in_block(mut document: Document<String>, containers: &[Tag<'static>]) -> Document<String> {
+    let paragraph = document.children(document.root()).next().unwrap();
+    document.detach(paragraph).unwrap();
+    let mut parent = document.root();
+    for container in containers {
+        parent = document
+            .append_child(parent, EventKind::Start(container.clone()))
+            .unwrap();
+    }
+    if matches!(containers.last(), Some(Tag::Heading(_))) {
+        let children: Vec<_> = document.children(paragraph).collect();
+        for child in children {
+            document.attach(parent, child, None).unwrap();
+        }
+    } else {
+        document.attach(parent, paragraph, None).unwrap();
+    }
+    document
+}
+
+#[test]
+fn line_starts_after_an_encoded_soft_break_are_escaped() {
+    // A soft break after another is written as `&#xA;`, which reads back as text `\n`, after which
+    // text is judged as at the start of a line, so it is escaped on the first write too (#125).
+    let list = Tag::List {
+        start: None,
+        tight: true,
+    };
+    let item = Tag::Item { block_end: false };
+    let blocks: [(&[Tag<'static>], &str, &str); 4] = [
+        (&[], "", ""),
+        (&[Tag::Heading(1)], "# ", ""),
+        (&[list, item], "- ", "  "),
+        (&[Tag::BlockQuote], "> ", "> "),
+    ];
+    for (containers, first, rest) in blocks {
+        for (value, written) in [
+            ("#", "\\#"),
+            (">", "\\>"),
+            ("- x", "\\- x"),
+            ("+ x", "\\+ x"),
+            ("* x", "\\* x"),
+            ("1. x", "1\\. x"),
+            ("1) x", "1\\) x"),
+            ("=", "\\="),
+            ("---", "\\---"),
+            ("~x", "\\~x"),
+            ("~~~", "\\~\\~\\~"),
+            ("<div>", "\\<div>"),
+            ("  # x", "&#x20; \\# x"),
+            ("\t12. x", "&#x9;12\\. x"),
+            ("a#", "a#"),
+        ] {
+            let document = in_block(
+                with_soft_breaks(&[Some("a"), None, None, Some(value)]),
+                containers,
+            );
+            let mut normalized = document;
+            normalized.normalize();
+            let output = to_markdown(&normalized).unwrap();
+            // A heading of more than one line is written as a setext heading.
+            let lines = format!("{first}a\n{rest}&#xA;{written}\n");
+            if first == "# " {
+                assert!(
+                    output.starts_with(&lines[2..]) && output[lines.len() - 2..].starts_with('='),
+                    "{:?}",
+                    output
+                );
+            } else {
+                assert_eq!(output, lines, "{containers:?} {value:?}");
+            }
+            let mut reparsed = Document::parse(output.clone(), &ParseOptions::default()).unwrap();
+            reparsed.normalize();
+            let render = |document: &Document<String>| {
+                let mut html = String::new();
+                document
+                    .render_html(&base_markdown::CompileOptions::default(), &mut html)
+                    .unwrap();
+                html.trim_end().to_owned()
+            };
+            assert_eq!(
+                render(&reparsed),
+                render(&normalized),
+                "{containers:?} {value:?}"
+            );
+            assert_eq!(
+                to_markdown(&reparsed).unwrap(),
+                output,
+                "{containers:?} {value:?}"
+            );
+        }
+    }
+    // Literal text that reads `&#xA;` is judged the same, which only adds an escape.
+    for (source, expected) in [
+        ("\\&#xA;# a", "\\&#xA;\\# a\n"),
+        ("a \\&#xA;1. b", "a \\&#xA;1\\. b\n"),
+        ("a \\&#xA;- b", "a \\&#xA;\\- b\n"),
+        ("&amp;#xA;~~~", "\\&#xA;\\~\\~\\~\n"),
+    ] {
+        assert_source(source, expected);
+    }
+}
+
 /// The values of `kind` that hold content, which excludes a separator, the line ending the HTML
 /// renderer writes between blocks.
 fn values<'a>(kind: &'a EventKind<'a>) -> Vec<&'a Value<'a>> {
