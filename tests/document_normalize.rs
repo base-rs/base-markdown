@@ -1497,7 +1497,7 @@ fn removes_empty_paragraphs_with_one_separator() {
 }
 
 #[test]
-fn keeps_the_breaks_of_task_paragraphs() {
+fn trims_the_breaks_of_task_paragraphs_after_content() {
     let task = || event(EventKind::TaskMarker(false), 0..0);
     let item = |children| {
         attention(
@@ -1513,12 +1513,36 @@ fn keeps_the_breaks_of_task_paragraphs() {
             ),
         )
     };
-    let mut document = build_blocks(item(vec![task(), text(" a"), soft()]));
-    assert!(document.is_normalized());
-    document.normalize();
+    let list = |inner: &str| {
+        format!(r#"Start(List {{ start: None, tight: true }})(item false(paragraph({inner})))"#)
+    };
+    // Breaks after text are trimmed, as after any paragraph's phrasing.
     assert_eq!(
-        describe(&document, document.root()),
-        r#"Start(List { start: None, tight: true })(item false(paragraph(task " a" soft)))"#
+        settled(build_blocks(item(vec![task(), text(" a"), hard(), soft()]))),
+        list(r#"task " a""#)
+    );
+    // So is a hard break that moves out of attention at the end.
+    assert_eq!(
+        settled(build_blocks(item(concat([
+            vec![task(), text(" a")],
+            emphasis(vec![text("b"), hard()]),
+        ])))),
+        list(r#"task " a" emphasis("b")"#)
+    );
+    // With nothing but breaks after the marker, they stay, as the marker cannot be written alone.
+    for breaks in [vec![soft()], vec![hard(), soft()]] {
+        let mut children = vec![task()];
+        children.extend(breaks);
+        let mut document = build_blocks(item(children));
+        assert!(document.is_normalized());
+        let once = describe(&document, document.root());
+        document.normalize();
+        assert_eq!(describe(&document, document.root()), once);
+    }
+    // A marker that does not start the paragraph is not exempt.
+    assert_eq!(
+        settled(build_blocks(item(vec![text("a"), task(), hard()]))),
+        list(r#""a" task"#)
     );
     // Attention in it still moves its whitespace out.
     assert_eq!(
@@ -1526,7 +1550,64 @@ fn keeps_the_breaks_of_task_paragraphs() {
             vec![task(), text(" ")],
             emphasis(vec![text("a ")]),
         ])))),
-        r#"Start(List { start: None, tight: true })(item false(paragraph(task " " emphasis("a") " ")))"#
+        list(r#"task " " emphasis("a") " ""#)
+    );
+}
+
+/// Normalize `document`, serialize it, and check the output is `expected` and serializes the same once read back.
+fn serializes_stably(mut document: Document<String>, expected: &str) {
+    document.normalize();
+    let output = to_markdown(&document).unwrap();
+    assert_eq!(output, expected);
+    let mut reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+    reparsed.normalize();
+    let html = |document: &Document<String>| {
+        let mut html = String::new();
+        document
+            .render_html(&CompileOptions::default(), &mut html)
+            .unwrap();
+        html.trim_end()
+            .replace("<li>\n<p>", "<li>")
+            .replace("</p></li>", "</li>")
+    };
+    assert_eq!(html(&reparsed), html(&document));
+    assert_eq!(to_markdown(&reparsed).unwrap(), output);
+}
+
+#[test]
+fn trimmed_shapes_serialize_stably() {
+    let item = |children| {
+        attention(
+            Tag::List {
+                start: None,
+                tight: true,
+            },
+            TagKind::List,
+            attention(
+                Tag::Item { block_end: false },
+                TagKind::Item,
+                paragraph(children),
+            ),
+        )
+    };
+    let task = || event(EventKind::TaskMarker(false), 0..0);
+    serializes_stably(
+        build_blocks(item(vec![task(), text(" a"), hard()])),
+        "- [ ] a\n",
+    );
+    serializes_stably(
+        build_blocks(item(concat([
+            vec![task(), text(" a")],
+            emphasis(vec![text("b"), hard()]),
+        ]))),
+        "- [ ] a*b*\n",
+    );
+    serializes_stably(
+        build(concat([
+            vec![text("a"), soft()],
+            emphasis(vec![soft(), text(" b")]),
+        ])),
+        "a\n&#xA;&#x20;*b*\n",
     );
 }
 

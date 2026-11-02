@@ -217,6 +217,67 @@ fn constructed_trees_round_trip() {
     );
 }
 
+/// A paragraph built from `children`, where `None` is a soft break, which the fixture cannot build.
+fn with_soft_breaks(children: &[Option<&str>]) -> Document<String> {
+    let mut document = Node::Root(Root {
+        children: vec![paragraph(vec![])],
+        position: None,
+    })
+    .document();
+    let paragraph = document.children(document.root()).next().unwrap();
+    for child in children {
+        let kind = match child {
+            Some(value) => EventKind::Text(Value::from(value.to_string())),
+            None => EventKind::SoftBreak(Value::Literal("\n")),
+        };
+        document.append_child(paragraph, kind).unwrap();
+    }
+    document
+}
+
+#[test]
+fn whitespace_after_an_encoded_soft_break_is_encoded() {
+    // A soft break after another is written as `&#xA;`, which reads back as text `\n`, after which
+    // whitespace is judged as after a raw line ending, so it is encoded on the first write too.
+    for (children, expected) in [
+        (
+            &[Some("a"), None, None, Some(" b")][..],
+            "a\n&#xA;&#x20;b\n",
+        ),
+        (&[Some("a"), None, None, Some("\tb")], "a\n&#xA;&#x9;b\n"),
+        (
+            &[Some("a"), None, None, None, Some(" b")],
+            "a\n&#xA;\n&#x20;b\n",
+        ),
+        (
+            &[Some("a"), None, None, Some("\n b")],
+            "a\n&#xA;\n&#x20;b\n",
+        ),
+    ] {
+        let document = with_soft_breaks(children);
+        // The second soft break reads back as text, so compare the HTML rather than the trees.
+        let mut normalized = document;
+        normalized.normalize();
+        let output = to_markdown(&normalized).unwrap();
+        assert_eq!(output, expected, "{children:?}");
+        let mut reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+        reparsed.normalize();
+        let render = |document: &Document<String>| {
+            let mut html = String::new();
+            document
+                .render_html(&base_markdown::CompileOptions::default(), &mut html)
+                .unwrap();
+            html.trim_end().to_owned()
+        };
+        assert_eq!(render(&reparsed), render(&normalized), "{children:?}");
+        assert_eq!(to_markdown(&reparsed).unwrap(), output, "{children:?}");
+    }
+    // A soft break moved out of emphasis is written the same.
+    assert_source("a\n&#xA;&#x20;*b*", "a\n&#xA;&#x20;*b*\n");
+    // Literal text that reads `&#xA;` is judged the same, which only adds a reference.
+    assert_source("\\&#xA; b", "\\&#xA;&#x20;b\n");
+}
+
 /// The values of `kind` that hold content, which excludes a separator, the line ending the HTML
 /// renderer writes between blocks.
 fn values<'a>(kind: &'a EventKind<'a>) -> Vec<&'a Value<'a>> {

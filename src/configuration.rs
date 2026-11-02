@@ -1226,7 +1226,8 @@ impl Options {
     /// * Literal domains must be RFC 952 and RFC 1123 host names, with no `_`, no empty label and
     ///   no `-` at either end of a label, though letters of internationalized names are allowed:
     ///   `www.a_b.com` and `a@-b.com` are text, with no shorter link, and `www.例.jp` links.
-    /// * A backslash ends a literal: `www.a.b\x` links `www.a.b`, not `http://www.a.b%5C`.
+    /// * A backslash ends a literal: `www.a.b\x` links `www.a.b`, not `http://www.a.b%5Cx`, and
+    ///   one directly before an email address blocks it: `x\a@b.c` is text.
     /// * Literals also link `ftp://`, `sftp://`, `ssh://`, `irc://` and `ircs://`: `ssh://a.b`.
     /// * Angle-bracket autolinks need a scheme from the link-scheme table, or an email address:
     ///   `<gopher://a>` and `Option<std::io::Error>` are not links.

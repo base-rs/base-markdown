@@ -22,7 +22,7 @@ A panic fails the test whatever the baseline.
 | `soup` | Single characters from `*_~a. \n\`. |
 | `edge` | Markers next to `&#x20;`, `&#xA;`, `&#x9;`, encoded letters and escaped markers, sometimes in a heading, table cell, item or quote. |
 | `strike` | Tilde runs of every length among letters, digits, attention, escapes, code and links. |
-| `tree-asterisk`, `tree-underscore` | The same hand-built paragraphs, headings and table cells of nested emphasis, strong, strikethrough, links, code and breaks, serialized with `*` and with `_` as the emphasis and strong marker. A hard break is never the last child of a block or attention, where it has no source, and never in a table cell, which GFM cannot write. |
+| `tree-asterisk`, `tree-underscore` | The same hand-built paragraphs, headings and table cells of nested emphasis, strong, strikethrough, links, code and breaks, serialized with `*` and with `_` as the emphasis and strong marker. Hard breaks also fall at the end of a block or attention and in table cells, where Markdown cannot write them, so normalizing moves them out of attention, removes them at the end of a paragraph or heading, and turns them into a space in a table cell. |
 
 Each corpus has its own seed and a small xorshift generator, so the inputs and counts are the same on every platform, and the first inputs of a larger run are the inputs of a smaller one.
 

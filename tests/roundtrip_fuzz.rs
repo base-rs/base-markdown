@@ -172,7 +172,7 @@ fn text(value: String) -> Node {
     })
 }
 
-/// Phrasing of one to four nodes. `outside` lists the attention and links that enclose it, which are not nested in themselves, and `break` in a table cell, which GFM cannot write. A hard break is never the last child, as Markdown has no source for a break at the end of a block or of attention.
+/// Phrasing of one to four nodes. `outside` lists the attention and links that enclose it, which are not nested in themselves. A hard break can be the last child, at the end of a block or of attention, and can be in a table cell, where normalizing moves it out of attention, removes it at the end of a paragraph or heading, and turns it into a space in a table cell.
 fn phrasing(random: &mut Random, depth: usize, outside: &[&str]) -> Vec<Node> {
     let mut children = Vec::new();
     for _ in 0..1 + random.below(4) {
@@ -217,16 +217,13 @@ fn phrasing(random: &mut Random, depth: usize, outside: &[&str]) -> Vec<Node> {
             }),
         });
     }
-    if let Some(last @ Node::Break(_)) = children.last_mut() {
-        *last = text(random.concatenate(TREE_TEXT, 4));
-    }
     children
 }
 
 /// A paragraph, heading or one-cell table of random phrasing.
 fn tree(random: &mut Random) -> Input {
     let kind = random.below(4);
-    let children = phrasing(random, 0, if kind == 1 { &["break"] } else { &[] });
+    let children = phrasing(random, 0, &[]);
     let block = match kind {
         0 => Node::Heading(Heading {
             children,

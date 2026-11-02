@@ -31,6 +31,10 @@ const NEWLINES: u32 = LANGUAGE
 enum Before {
     Any,
     Previous(u8),
+    /// A line ending, raw or written as `&#xA;`. A line ending in text that a raw one would change
+    /// is written as `&#xA;`, and so is a soft break, which reads back as text `\n` and is then
+    /// judged in the text's own value, so whitespace after it is judged as after a raw one.
+    LineEnding,
     /// Nothing, at the start of the context, such as a table cell.
     Start,
     Line,
@@ -72,10 +76,10 @@ macro_rules! rule {
     };
 }
 use After::{Any as A, Set};
-use Before::{Any as B, Digits, Line, Previous};
+use Before::{Any as B, Digits, Line, LineEnding, Previous};
 static RULES: &[Rule] = &[
     rule!(b'\t', B, Set(b"\n"), PHRASING, 0),
-    rule!(b'\t', Previous(b'\n'), A, PHRASING, 0),
+    rule!(b'\t', LineEnding, A, PHRASING, 0),
     rule!(b'\t', B, A, LANGUAGE, 0),
     // The parser trims spaces and tabs at the edges of a table cell.
     rule!(b'\t', Before::Start, A, bit(TableCell), 0),
@@ -91,7 +95,7 @@ static RULES: &[Rule] = &[
     // A table row is one line.
     rule!(b'\n', B, A, bit(TableCell), 0),
     rule!(b' ', B, Set(b"\n"), PHRASING, 0),
-    rule!(b' ', Previous(b'\n'), A, PHRASING, 0),
+    rule!(b' ', LineEnding, A, PHRASING, 0),
     rule!(b' ', B, A, LANGUAGE, 0),
     rule!(b' ', Before::Start, A, bit(TableCell), 0),
     rule!(b' ', B, After::End, bit(TableCell), 0),
@@ -209,6 +213,19 @@ impl Rule {
                     return None;
                 }
                 position - 1
+            }
+            Before::LineEnding => {
+                const ENCODED: &[u8] = b"&#xA;";
+                if position > 0 && value.get(position - 1) == Some(b'\n') {
+                    position - 1
+                } else if position >= ENCODED.len()
+                    && (0..ENCODED.len())
+                        .all(|at| value.get(position - ENCODED.len() + at) == Some(ENCODED[at]))
+                {
+                    position - ENCODED.len()
+                } else {
+                    return None;
+                }
             }
             Before::Start => {
                 if position > 0 {
@@ -547,6 +564,7 @@ mod tests {
             "`**__~~$",
             "a$$$$$ $$$$\n$$$",
             "\n1)\n22)\n -\n-\n-",
+            "a&#xA; \t&#xA;\t\n \t#xA; ",
         ] {
             let boundaries: Vec<_> = (0..=value.len())
                 .filter(|&at| value.is_char_boundary(at))
@@ -614,6 +632,7 @@ mod tests {
     fn fixed_matchers_preserve_non_overlapping_regex_rules() {
         let contexts = [
             "", "\n", "\r\n  ", "\n\t123", "x]", "\n12", "\n123 ", "é", "\n\n", "\r", "\r\n",
+            "&#xA;", "#xA;", "x&#xA;",
         ];
         // A regular expression consumes what follows, so `After::Closing` is checked at each byte.
         let closing = regex::Regex::new("\\A(?:\n|\r\n?)\\z").unwrap();
@@ -622,6 +641,7 @@ mod tests {
                 let before = match rule.before {
                     Before::Any => "",
                     Before::Previous(b'\n') => "(\\n)",
+                    Before::LineEnding => "(\\n|&#xA;)",
                     Before::Previous(_) => "(\\])",
                     Before::Line => "([\\r\\n][\\t ]*)",
                     Before::Digits => "([\\r\\n][\\t ]*[0-9]+)",
