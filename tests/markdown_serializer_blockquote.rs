@@ -147,7 +147,7 @@ fn block_quote() {
             position: None,
         }))
         .unwrap(),
-        "> a\n> b\n>\n> > a\n> > `b\n> > c`\n> > d\n> >\n> > # a b\n",
+        "> a\n> b\n>\n> > a\n> > `b c`\n> > d\n> >\n> > # a b\n",
         "should support a block quote in a block quote"
     );
 
@@ -235,7 +235,7 @@ fn block_quote() {
             position: None,
         }))
         .unwrap(),
-        "> a\n> `b\n> c`\n> d\n",
+        "> a\n> `b c`\n> d\n",
         "should support code (text) in a block quote"
     );
 

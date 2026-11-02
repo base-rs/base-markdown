@@ -304,18 +304,18 @@ fn synthetic_math_blocks_use_semantic_info_without_authored_syntax() {
 }
 
 #[test]
-fn multiline_inline_literals_choose_setext_heading_syntax() {
+fn multiline_inline_literals_write_line_endings_as_spaces_in_atx_headings() {
     for (kind, expected) in [
         (
             EventKind::Code {
                 value: Text::Literal("one\ntwo"),
                 language: None,
             },
-            "`one\ntwo`\n====\n",
+            "# `one two`\n",
         ),
         (
-            EventKind::Math(Text::Literal("one\ntwo")),
-            "$one\ntwo$\n====\n",
+            EventKind::Math(Text::Literal("one\r\ntwo")),
+            "# $one two$\n",
         ),
     ] {
         let mut document = empty();

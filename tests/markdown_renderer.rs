@@ -505,7 +505,7 @@ fn serializes_ast_variants_and_custom_markdown_options() {
         to_markdown_with_options(&custom, &custom_options).expect("custom options serialize");
     assert_eq!(
         output,
-        "*a\nb*\n--\n\n~~~~rust a ` b\n~~~\ncode\n~~~~\n\n$$ $x$\ny $$\n\n_ _ _ _\n"
+        "*a\nb*\n--\n\n~~~~rust a ` b\n~~~\ncode\n~~~~\n\n$$ $x$ y $$\n\n_ _ _ _\n"
     );
 
     let inline_break = Node::InlineCode(InlineCode {

@@ -23,7 +23,7 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
     }
     let mut nonempty = false;
     let mut setext = state.options.setext;
-    // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading.
+    // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading. Line endings in inline code and math are always written as spaces, and a code block cannot be written in a heading.
     let unwrap = state.options.line_wrapping == LineWrapping::Unwrap;
     document.descendants(id).any(|child| {
         let kind = &document.node(child).unwrap().kind;
@@ -34,7 +34,10 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
                 || matches!(kind, EventKind::HardBreak)
                 || !unwrapped && matches!(kind, EventKind::SoftBreak(_))
                 || !unwrapped
-                    && !matches!(kind, EventKind::CodeBlock { .. })
+                    && !matches!(
+                        kind,
+                        EventKind::CodeBlock { .. } | EventKind::Code { .. } | EventKind::Math(_)
+                    )
                     && value.contains('\n');
         }
         nonempty && setext
@@ -93,14 +96,9 @@ mod tests {
     }
 
     #[test]
-    fn inline_breaks_require_setext_but_code_block_breaks_do_not() {
+    fn inline_breaks_require_setext_but_code_and_math_breaks_do_not() {
         for kind in [
             EventKind::Text(Text::Literal("first\nsecond")),
-            EventKind::Code {
-                value: Text::Literal("first\nsecond"),
-                language: None,
-            },
-            EventKind::Math(Text::Literal("first\r\nsecond")),
             EventKind::Html {
                 value: Text::Literal("first\nsecond"),
                 block: false,
@@ -109,6 +107,17 @@ mod tests {
             EventKind::HardBreak,
         ] {
             assert!(eligible(2, &[kind], false));
+        }
+        // Code and math write each line ending as a space.
+        for kind in [
+            EventKind::Code {
+                value: Text::Literal("first\nsecond"),
+                language: None,
+            },
+            EventKind::Math(Text::Literal("first\r\nsecond")),
+        ] {
+            assert!(!eligible(2, core::slice::from_ref(&kind), false));
+            assert!(eligible(2, &[kind], true));
         }
         let block = EventKind::CodeBlock {
             value: Text::Literal("block\n"),

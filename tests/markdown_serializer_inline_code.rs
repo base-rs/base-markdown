@@ -50,8 +50,8 @@ fn text() {
             lang: None,
         }))
         .unwrap(),
-        "`\n`\n",
-        "should support an eol"
+        "` `\n",
+        "should write an eol as the space it reads back as"
     );
 
     assert_eq!(
