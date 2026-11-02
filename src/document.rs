@@ -1180,6 +1180,26 @@ fn empty_paragraph(node: &Node) -> bool {
     matches!(node.kind, EventKind::Start(Tag::Paragraph { .. })) && node.first_child.is_none()
 }
 
+// Whether `list` is loose with one item that holds fewer than two blocks, not counting separators or the empty paragraphs normalizing removes. No blank line can be written between its items or between the blocks of its item, so it reads back tight.
+fn reads_back_tight(nodes: &[Node], list: &Node) -> bool {
+    if !matches!(list.kind, EventKind::Start(Tag::List { tight: false, .. })) {
+        return false;
+    }
+    let blocks = |first: Option<NodeId>| {
+        core::iter::successors(first, |id| nodes[id.index()].next_sibling).filter(|id| {
+            let node = &nodes[id.index()];
+            !matches!(node.kind, EventKind::Separator { .. }) && !empty_paragraph(node)
+        })
+    };
+    let mut items = blocks(list.first_child);
+    let (Some(item), None) = (items.next(), items.next()) else {
+        return false;
+    };
+    let item = &nodes[item.index()];
+    matches!(item.kind, EventKind::Start(Tag::Item { .. }))
+        && blocks(item.first_child).nth(1).is_none()
+}
+
 // Whether a node is a separator between blocks.
 fn separator(nodes: &[Node], id: Option<NodeId>) -> bool {
     id.is_some_and(|id| matches!(nodes[id.index()].kind, EventKind::Separator { .. }))
@@ -1694,7 +1714,7 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// Markdown cannot write whitespace at the edges of emphasis, strong or strikethrough, so it moves out: Unicode whitespace in text and soft breaks at either edge, and hard breaks at the end, move out through any attention nested at that edge to just before or after the outermost attention whose edge they are. Attention left empty is removed, and what moved out takes its place. A hard break at the start of attention stays, and links and images keep whitespace at their edges. The parser reads no break at the edges of a paragraph, heading or table cell, so soft breaks at either edge of its phrasing are removed, and so are hard breaks at the end of a paragraph or heading, including those that moved out of attention; a hard break at the start stays. Markdown cannot write a hard break in a table cell, so one there, at any depth and at its end too, becomes a space, which the serializer encodes where it is at the edge of the cell, so `| a&#x20; |` is written for a cell of `a` and a hard break.
     ///
-    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code, math or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. The parser keeps the space or tab that separates a task marker from its text at the start of that text, and Markdown cannot write a marker with nothing after its separator, so when the phrasing of a paragraph, heading or table cell starts with a task marker followed only by breaks and at most one text that is a single space or tab, the marker is removed, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a marker alone, or of a marker and a hard break, is left empty, and one of a marker and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the marker keeps it, including whitespace after the separator, which the serializer encodes, so a marker and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. The parser reads each line ending in inline code or math as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. Code and math in image text are written as alt text, where line endings can be written, so they keep theirs. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
+    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code, math or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. The parser keeps the space or tab that separates a task marker from its text at the start of that text, and Markdown cannot write a marker with nothing after its separator, so when the phrasing of a paragraph, heading or table cell starts with a task marker followed only by breaks and at most one text that is a single space or tab, the marker is removed, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a marker alone, or of a marker and a hard break, is left empty, and one of a marker and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the marker keeps it, including whitespace after the separator, which the serializer encodes, so a marker and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. The parser reads each line ending in inline code or math as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. Code and math in image text are written as alt text, where line endings can be written, so they keep theirs. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
     ///
     /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, adjacent attention of the same kind, such as `*a*_b_`, stays separate, and strikethrough inside strikethrough, such as `~a~~b~~c~`, stays nested. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
     ///
@@ -1732,7 +1752,7 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent inline math, adjacent attention of the same kind, or a separator in phrasing; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, ends with a hard break, or starts with a task marker followed only by breaks and at most one text that is a single space or tab; no inline code or math outside image text has a line ending in its value; and no attached paragraph is empty. This takes time linear in the size of the arena.
+    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent inline math, adjacent attention of the same kind, or a separator in phrasing; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, ends with a hard break, or starts with a task marker followed only by breaks and at most one text that is a single space or tab; no inline code or math outside image text has a line ending in its value; no attached paragraph is empty; and no loose list has only one item with fewer than two blocks. This takes time linear in the size of the arena.
     pub fn is_normalized(&self) -> bool {
         let source = self.source.as_ref();
         let nodes = &self.nodes;
@@ -1772,6 +1792,9 @@ impl<S: AsRef<str>> Document<S> {
                         last = Some(&node.kind);
                         child = node.next_sibling;
                     }
+                    if reads_back_tight(nodes, node) {
+                        return false;
+                    }
                     if let (Some(first), Some(last)) = (node.first_child, last) {
                         if !edges_normalized(
                             node,
@@ -1809,14 +1832,40 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    // Remove each paragraph without children, which is left once its phrasing is removed or its breaks are, from the top down, as removing one empties nothing else. `kept` is scratch storage for the children kept so far in a list.
+    // Remove each paragraph without children, which is left once its phrasing is removed or its breaks are, from the top down, as removing one empties nothing else. A loose list that reads back tight once they are gone is made tight first. `kept` is scratch storage for the children kept so far in a list.
     fn remove_empty_paragraphs(&mut self, root: NodeId, kept: &mut Vec<NodeId>) {
         let mut current = Some(root);
         while let Some(id) = current {
+            if reads_back_tight(&self.nodes, &self.nodes[id.index()]) {
+                self.tighten(id);
+            }
             if self.nodes[id.index()].first_child.is_some() {
                 self.remove_empty_children(id, kept);
             }
             current = next_descendant(&self.nodes, root, id);
+        }
+    }
+
+    // Make the loose `list` tight, with the paragraphs of its one item, which are its only paragraphs that render differently.
+    fn tighten(&mut self, list: NodeId) {
+        let EventKind::Start(Tag::List { start, .. }) = self.nodes[list.index()].kind else {
+            unreachable!("only a list is tightened");
+        };
+        self.nodes[list.index()].kind = EventKind::Start(Tag::List { start, tight: true });
+        let mut item = self.nodes[list.index()].first_child;
+        while let Some(id) = item {
+            let mut child = self.nodes[id.index()].first_child;
+            while let Some(id) = child {
+                if matches!(
+                    self.nodes[id.index()].kind,
+                    EventKind::Start(Tag::Paragraph { .. })
+                ) {
+                    self.nodes[id.index()].kind = EventKind::Start(Tag::Paragraph { tight: true });
+                }
+                child = self.nodes[id.index()].next_sibling;
+            }
+            self.refresh_item(Some(id));
+            item = self.nodes[id.index()].next_sibling;
         }
     }
 
