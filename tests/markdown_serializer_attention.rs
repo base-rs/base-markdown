@@ -576,8 +576,8 @@ fn encode() {
 
     assert_eq!(
         serialize(vec![strong(vec![text(" a ")])], &Options::default()),
-        "**a**\n",
-        "should move whitespace out of strong, where the paragraph trims it"
+        "&#x20;**a**&#x20;\n",
+        "should move whitespace out of strong, and encode it at the edges of the paragraph"
     );
 
     assert_eq!(

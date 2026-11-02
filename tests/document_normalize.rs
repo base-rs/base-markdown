@@ -1316,7 +1316,7 @@ fn moves_whitespace_out_of_attention() {
             vec![text("a")],
             emphasis(concat([link(vec![text(" b")]), vec![text(" ")]])),
         ]))),
-        r#"paragraph("a" emphasis(link "http://a.b"(" b")))"#
+        r#"paragraph("a" emphasis(link "http://a.b"(" b")) " ")"#
     );
 }
 
@@ -1353,20 +1353,33 @@ fn html(value: &'static str) -> Result<Event<'static>, StreamError> {
 }
 
 #[test]
-fn keeps_whitespace_around_inline_html_at_the_start_of_a_paragraph() {
-    // Without the whitespace, the HTML would start a line, where it starts an HTML block, or be
-    // alone on its line, where it is one. Only the breaks at the edges are removed.
+fn keeps_whitespace_at_the_edges_of_blocks() {
+    // Whitespace is text, which normalizing never changes, so it stays at the edges of a paragraph, heading or table cell, where the serializer encodes it. Only soft breaks at either edge are removed.
     assert_eq!(
-        settled(build(vec![
-            soft(),
-            text(" "),
-            html("<b>"),
-            text(" "),
-            hard()
-        ])),
-        r#"paragraph(" " Html { value: Literal("<b>"), block: false }() " ")"#
+        settled(build(vec![soft(), text(" \t\na b\n "), soft()])),
+        r#"paragraph(" \t\na b\n ")"#
     );
-    // Whitespace moved out of attention before the HTML stays too.
+    for document in [
+        build(vec![text("\r a\r\n")]),
+        build(vec![text(" "), html("<b>"), text(" ")]),
+        build(vec![hard(), text(" a")]),
+        build_blocks(heading(vec![text(" \u{a0}a\u{a0} ")])),
+        build_blocks(table(vec![text("\ta ")])),
+    ] {
+        assert!(
+            document.is_normalized(),
+            "{}",
+            describe(&document, document.root())
+        );
+    }
+    // Whitespace that moved out of attention stays too.
+    assert_eq!(
+        settled(build_blocks(table(concat([
+            emphasis(vec![text(" a")]),
+            strong(vec![text("b ")]),
+        ])))),
+        r#"Start(Table)(Start(TableHead)(Start(TableRow)(cell(" " emphasis("a") strong("b") " "))))"#
+    );
     assert_eq!(
         settled(build(concat([
             emphasis(vec![text(" ")]),
@@ -1374,16 +1387,13 @@ fn keeps_whitespace_around_inline_html_at_the_start_of_a_paragraph() {
         ]))),
         r#"paragraph(" " Html { value: Literal("<b>"), block: false }())"#
     );
-    // A heading or table cell cannot start an HTML block, and is trimmed.
-    assert_eq!(
-        settled(build_blocks(heading(vec![
-            text(" "),
-            html("<b>"),
-            text(" ")
-        ]))),
-        r#"heading(Html { value: Literal("<b>"), block: false }())"#
-    );
+    // The serializer writes the whitespace so that it reads back, including before inline HTML, which would otherwise start a line, where it can start an HTML block.
     for (source, expected) in [
+        ("&#x20;hi&#x20;", "&#x20;hi&#x20;\n"),
+        ("&#x9;", "&#x9;\n"),
+        ("# &#x20;a&#x20;", "# &#x20;a&#x20;\n"),
+        ("| &#x20;a&#x20; |\n| - |", "| &#x20;a&#x20; |\n| --- |\n"),
+        ("*&#x20;a&#x20;*", "&#x20;*a*&#x20;\n"),
         ("&#x20;<b>", "&#x20;<b>\n"),
         ("<b>&#x20;", "<b>&#x20;\n"),
         ("&#x20;&#x20;<b>\n- a", "&#x20; <b>\n\n- a\n"),
@@ -1412,45 +1422,17 @@ fn keeps_whitespace_around_inline_html_at_the_start_of_a_paragraph() {
 }
 
 #[test]
-fn trims_the_edges_of_blocks() {
-    assert_eq!(
-        settled(build(vec![soft(), text(" \t\na b\n "), soft()])),
-        r#"paragraph("a b")"#
-    );
-    // Line endings in values are LF, so a CR is a character reference, which the parser does not
-    // trim, and it stays.
-    assert_eq!(
-        settled(build(vec![text("\r a\r\n")])),
-        r#"paragraph("\r a\r")"#
-    );
-    // A no-break space is not trimmed, and neither is a hard break at the start.
-    assert_eq!(
-        settled(build_blocks(concat([
-            heading(vec![text(" \u{a0}a\u{a0} ")]),
-            paragraph(vec![hard(), text(" a")]),
-        ]))),
-        r#"heading("\u{a0}a\u{a0}") paragraph(break " a")"#
-    );
-    // Whitespace that moved out of attention is trimmed too, and so is a cell.
-    assert_eq!(
-        settled(build_blocks(table(concat([
-            emphasis(vec![text(" a")]),
-            strong(vec![text("b ")]),
-        ])))),
-        r#"Start(Table)(Start(TableHead)(Start(TableRow)(cell(emphasis("a") strong("b")))))"#
-    );
-}
-
-#[test]
 fn removes_hard_breaks_at_the_end_of_a_block() {
     assert_eq!(
         settled(build(concat([
             vec![text("a"), hard(), text(" "), hard()],
             emphasis(vec![text("b"), hard(), soft()]),
-            vec![hard(), text("\n")],
+            vec![hard()],
         ]))),
         r#"paragraph("a" break " " break emphasis("b"))"#
     );
+    // A line ending in text is not a break, so the breaks before it stay.
+    assert!(build(vec![text("a"), hard(), soft(), text("\n")]).is_normalized());
     // Breaks alone are trimmed away, and the paragraph left empty with them.
     assert_eq!(
         settled(build_blocks(concat([
@@ -1472,13 +1454,13 @@ fn replaces_hard_breaks_in_table_cells() {
             delete(emphasis(vec![text("d"), hard()])),
             vec![hard()],
         ])))),
-        r#"Start(Table)(Start(TableHead)(Start(TableRow)(cell("a b " emphasis("c") " " delete(emphasis("d"))))))"#
+        r#"Start(Table)(Start(TableHead)(Start(TableRow)(cell("a b " emphasis("c") " " delete(emphasis("d")) "  "))))"#
     );
 }
 
 #[test]
 fn removes_empty_paragraphs_with_one_separator() {
-    let blank = || paragraph(vec![text(" ")]);
+    let blank = || paragraph(vec![soft(), hard()]);
     assert_eq!(
         settled(build_blocks(concat([
             blank(),
@@ -1506,7 +1488,7 @@ fn removes_empty_paragraphs_with_one_separator() {
         r#"paragraph("a")"#
     );
     // A detached paragraph stays, as the root of a detached subtree is never removed.
-    let mut document = build(vec![text(" ")]);
+    let mut document = build(vec![soft()]);
     let paragraph = document.children(document.root()).next().unwrap();
     document.detach(paragraph).unwrap();
     document.normalize();
@@ -1515,7 +1497,7 @@ fn removes_empty_paragraphs_with_one_separator() {
 }
 
 #[test]
-fn keeps_task_paragraphs_untrimmed() {
+fn keeps_the_breaks_of_task_paragraphs() {
     let task = || event(EventKind::TaskMarker(false), 0..0);
     let item = |children| {
         attention(
@@ -1531,12 +1513,12 @@ fn keeps_task_paragraphs_untrimmed() {
             ),
         )
     };
-    let mut document = build_blocks(item(vec![task(), text(" ")]));
+    let mut document = build_blocks(item(vec![task(), text(" a"), soft()]));
     assert!(document.is_normalized());
     document.normalize();
     assert_eq!(
         describe(&document, document.root()),
-        r#"Start(List { start: None, tight: true })(item false(paragraph(task " ")))"#
+        r#"Start(List { start: None, tight: true })(item false(paragraph(task " a" soft)))"#
     );
     // Attention in it still moves its whitespace out.
     assert_eq!(
@@ -1641,12 +1623,12 @@ fn is_normalized_finds_each_edge_shape() {
             strong(vec![text("b"), hard()]),
             vec![text("c")],
         ])),
-        build(vec![text("a ")]),
         build(vec![soft(), text("a")]),
+        build(vec![text("a"), soft()]),
         build(vec![text("a"), hard()]),
-        build_blocks(heading(vec![text("\ta")])),
+        build_blocks(heading(vec![soft(), text("a")])),
         build_blocks(table(vec![text("a"), hard(), text("b")])),
-        build_blocks(table(vec![text("a\n")])),
+        build_blocks(table(vec![text("a"), soft()])),
         build_blocks(paragraph(vec![])),
     ];
     for document in shapes {
@@ -1665,7 +1647,10 @@ fn is_normalized_finds_each_edge_shape() {
             vec![text(" c")],
         ])),
         build(vec![text("\u{a0}a\u{a0}")]),
+        build(vec![text(" a ")]),
         build(vec![hard(), text("a")]),
+        build_blocks(heading(vec![text("\ta")])),
+        build_blocks(table(vec![text("a\n")])),
         build(concat([
             vec![text("a")],
             link(vec![text(" b ")]),

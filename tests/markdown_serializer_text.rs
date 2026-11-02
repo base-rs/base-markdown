@@ -439,16 +439,16 @@ fn underscores_after_attention_markers_do_not_depend_on_text_splits() {
 
 #[test]
 fn whitespace_at_the_edges_of_attention_moves_out() {
-    // Markdown cannot write whitespace at the edges of attention, so normalizing moves it out, and the paragraph trims it at its own edges, other than a no-break space.
+    // Markdown cannot write whitespace at the edges of attention, so normalizing moves it out, and the serializer encodes it at the edges of the paragraph, other than a no-break space, which the parser does not trim.
     for (source, expected) in [
-        ("*&#x20;a*\n", "*a*\n"),
-        ("**&#x20;a**\n", "**a**\n"),
-        ("~~&#x20;a~~\n", "~~a~~\n"),
-        ("*&#9;a*\n", "*a*\n"),
-        ("*a&#x20;*\n", "*a*\n"),
+        ("*&#x20;a*\n", "&#x20;*a*\n"),
+        ("**&#x20;a**\n", "&#x20;**a**\n"),
+        ("~~&#x20;a~~\n", "&#x20;~~a~~\n"),
+        ("*&#9;a*\n", "&#x9;*a*\n"),
+        ("*a&#x20;*\n", "*a*&#x20;\n"),
         ("*&#xA0;a*\n", "\u{a0}*a*\n"),
-        ("> *&#x20;a*\n", "> *a*\n"),
-        ("- *&#x20;a*\n", "- *a*\n"),
+        ("> *&#x20;a*\n", "> &#x20;*a*\n"),
+        ("- *&#x20;a*\n", "- &#x20;*a*\n"),
         ("x *&#x20;a*\n", "x  *a*\n"),
         ("x *a&#9;* b\n", "x *a*\t b\n"),
         ("x **&#x20;a&#x20;** b\n", "x  **a**  b\n"),
@@ -504,10 +504,10 @@ fn whitespace_at_the_edges_of_constructed_attention_moves_out() {
         ),
     ];
     for (wrap, marker) in attention {
-        // The whitespace that moves out, and what of it a paragraph keeps at its start.
+        // The whitespace that moves out, and how it is written at the start of a paragraph.
         for (value, space, kept) in [
-            (" note", " ", ""),
-            ("\tnote", "\t", ""),
+            (" note", " ", "&#x20;"),
+            ("\tnote", "\t", "&#x9;"),
             ("\u{a0}note", "\u{a0}", "\u{a0}"),
         ] {
             let inline = || wrap(vec![text(value)]);
@@ -704,7 +704,7 @@ fn a_tilde_that_could_pair_as_strikethrough_is_escaped() {
         ("x *\\~a~*\n", "x *\\~a\\~*\n"),
         ("x \\~a \\*b\\~ c\\*\n", "x ~a \\*b\\~ c\\*\n"),
         // A run escapes whole, as what is left of a run can still pair.
-        ("x ~~a~\n", "x \\~\\~a\\~\n"),
+        ("&#x20; ~~a~\n", "&#x20; \\~\\~a\\~\n"),
         // The run after an escaped backslash is judged by the backslash before it.
         ("~\\\\~~:~\n", "~~\\\\\\~\\~:~~\n"),
         ("a\\\\~b\n", "a\\\\~b\n"),

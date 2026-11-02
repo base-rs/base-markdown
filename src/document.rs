@@ -1224,8 +1224,8 @@ fn table_cell(kind: &EventKind<'_>) -> bool {
     matches!(kind, EventKind::Start(Tag::TableCell { .. }))
 }
 
-// Whether a node is a paragraph, heading or table cell, whose phrasing normalization trims.
-fn trimmed(kind: &EventKind<'_>) -> bool {
+// Whether a node is a paragraph, heading or table cell, whose phrasing normalization removes breaks at the edges of.
+fn block_phrasing(kind: &EventKind<'_>) -> bool {
     matches!(
         kind,
         EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_) | Tag::TableCell { .. })
@@ -1280,7 +1280,7 @@ fn next_enclosed(
     }
 }
 
-// How much of a child, at one of its edges, is whitespace that normalization moves out of attention or trims from a block.
+// How much of a child, at one of its edges, is whitespace that normalization moves out of attention.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Edge {
     // The child does not start or end with whitespace.
@@ -1296,45 +1296,13 @@ fn unicode_whitespace(character: char) -> bool {
     character.is_whitespace()
 }
 
-// Whitespace at the edge of a paragraph, heading or table cell, which the parser trims: space, tab and line endings, which are LF in values, but not other Unicode whitespace such as a no-break space. A CR in a value is a character reference, which the parser does not trim, so it stays.
-fn line_whitespace(character: char) -> bool {
-    matches!(character, ' ' | '\t' | '\n')
-}
-
-// No whitespace, for a paragraph that starts with inline HTML, which loses only the breaks at its edges.
-fn no_whitespace(_: char) -> bool {
-    false
-}
-
-// Whether `parent` is a paragraph whose phrasing starts with inline HTML once the whitespace and soft breaks at its start are skipped. Trimming the whitespace before the HTML would leave it at the start of a line, where it can start an HTML block, and trimming the whitespace after it could leave it alone on its line, where it is one, so the whitespace text of such a paragraph stays.
-fn starts_with_html(nodes: &[Node], source: &str, parent: NodeId) -> bool {
-    if !matches!(
-        nodes[parent.index()].kind,
-        EventKind::Start(Tag::Paragraph { .. })
-    ) {
-        return false;
-    }
-    let mut child = nodes[parent.index()].first_child;
-    while let Some(id) = child {
-        let kind = &nodes[id.index()].kind;
-        if matches!(kind, EventKind::Html { .. }) {
-            return true;
-        }
-        if leading_edge(kind, source, line_whitespace) != Edge::All {
-            return false;
-        }
-        child = nodes[id.index()].next_sibling;
-    }
-    false
-}
-
-// The whitespace, matched by `space`, at the start of a child: a soft break, or text that starts with it.
-fn leading_edge(kind: &EventKind<'_>, source: &str, space: fn(char) -> bool) -> Edge {
+// The whitespace at the start of a child: a soft break, or text that starts with it.
+fn leading_edge(kind: &EventKind<'_>, source: &str) -> Edge {
     match kind {
         EventKind::SoftBreak(_) => Edge::All,
         EventKind::Text(text) => {
             let value = text.resolve(source).expect("document text is validated");
-            let rest = value.trim_start_matches(space);
+            let rest = value.trim_start_matches(unicode_whitespace);
             if rest.is_empty() {
                 Edge::All
             } else if rest.len() == value.len() {
@@ -1347,13 +1315,13 @@ fn leading_edge(kind: &EventKind<'_>, source: &str, space: fn(char) -> bool) -> 
     }
 }
 
-// The whitespace, matched by `space`, at the end of a child: a soft or hard break, or text that ends with it.
-fn trailing_edge(kind: &EventKind<'_>, source: &str, space: fn(char) -> bool) -> Edge {
+// The whitespace at the end of a child: a soft or hard break, or text that ends with it.
+fn trailing_edge(kind: &EventKind<'_>, source: &str) -> Edge {
     match kind {
         EventKind::SoftBreak(_) | EventKind::HardBreak => Edge::All,
         EventKind::Text(text) => {
             let value = text.resolve(source).expect("document text is validated");
-            let rest = value.trim_end_matches(space);
+            let rest = value.trim_end_matches(unicode_whitespace);
             if rest.is_empty() {
                 Edge::All
             } else if rest.len() == value.len() {
@@ -1366,28 +1334,21 @@ fn trailing_edge(kind: &EventKind<'_>, source: &str, space: fn(char) -> bool) ->
     }
 }
 
-// Whether the first and last children of `node` have no whitespace that normalization moves out of attached attention or trims from a paragraph, heading or table cell, other than a task item's paragraph.
+// Whether the first and last children of `node` have no whitespace that normalization moves out of attached attention, and no break that it removes from the edges of a paragraph, heading or table cell, other than a task item's paragraph.
 fn edges_normalized(
-    nodes: &[Node],
-    id: NodeId,
+    node: &Node,
     first: &EventKind<'_>,
     last: &EventKind<'_>,
     source: &str,
 ) -> bool {
-    let node = &nodes[id.index()];
-    let space: fn(char) -> bool = if attention(&node.kind) && node.parent.is_some() {
-        unicode_whitespace
-    } else if trimmed(&node.kind) && !matches!(first, EventKind::TaskMarker(_)) {
-        if starts_with_html(nodes, source, id) {
-            no_whitespace
-        } else {
-            line_whitespace
-        }
+    if attention(&node.kind) && node.parent.is_some() {
+        leading_edge(first, source) == Edge::None && trailing_edge(last, source) == Edge::None
+    } else if block_phrasing(&node.kind) && !matches!(first, EventKind::TaskMarker(_)) {
+        !matches!(first, EventKind::SoftBreak(_))
+            && !matches!(last, EventKind::SoftBreak(_) | EventKind::HardBreak)
     } else {
-        return true;
-    };
-    leading_edge(first, source, space) == Edge::None
-        && trailing_edge(last, source, space) == Edge::None
+        true
+    }
 }
 
 // Split `text` at byte `at`, keeping the part before it and returning the part after it, without copying source or literal text.
@@ -1488,7 +1449,7 @@ fn move_leading(
             continue;
         };
         break_to_space(&mut nodes[first.index()], cell);
-        let edge = leading_edge(&nodes[first.index()].kind, source, unicode_whitespace);
+        let edge = leading_edge(&nodes[first.index()].kind, source);
         let moved = match (&mut nodes[first.index()].kind, edge) {
             (_, Edge::All) => {
                 nodes[level.index()].first_child = nodes[first.index()].next_sibling;
@@ -1546,9 +1507,7 @@ fn move_trailing(
             let mut child = nodes[id.index()].first_child;
             while let Some(current) = child {
                 break_to_space(&mut nodes[current.index()], cell);
-                if trailing_edge(&nodes[current.index()].kind, source, unicode_whitespace)
-                    != Edge::All
-                {
+                if trailing_edge(&nodes[current.index()].kind, source) != Edge::All {
                     kept.push((current, previous));
                 }
                 previous = Some(current);
@@ -1592,7 +1551,7 @@ fn move_trailing(
             }
             continue;
         };
-        let edge = trailing_edge(&nodes[child.index()].kind, source, unicode_whitespace);
+        let edge = trailing_edge(&nodes[child.index()].kind, source);
         if let (EventKind::Text(text), Edge::Part(at)) = (&mut nodes[child.index()].kind, edge) {
             let tail = split_text(text, at);
             let moved = push_node(nodes, EventKind::Text(tail), parent);
@@ -1626,34 +1585,24 @@ fn resume(
     (linked, current)
 }
 
-// Trim space, tab and LF from the edges of the phrasing of `parent`, a paragraph, heading or table cell, removing soft breaks at either edge and hard breaks at the end. A paragraph that starts with inline HTML loses only the breaks. Returns whether anything changed.
-fn trim_edges(nodes: &mut [Node], source: &str, parent: NodeId) -> bool {
-    let space: fn(char) -> bool = if starts_with_html(nodes, source, parent) {
-        no_whitespace
-    } else {
-        line_whitespace
-    };
+// Remove the soft breaks at either edge of the phrasing of `parent`, a paragraph, heading or table cell, and the hard breaks at its end, which the parser does not read there. Returns whether anything changed.
+fn trim_breaks(nodes: &mut [Node], parent: NodeId) -> bool {
     let mut changed = false;
     while let Some(first) = nodes[parent.index()].first_child {
-        let edge = leading_edge(&nodes[first.index()].kind, source, space);
-        match (&mut nodes[first.index()].kind, edge) {
-            (_, Edge::All) => {
-                nodes[parent.index()].first_child = nodes[first.index()].next_sibling.take();
-                nodes[first.index()].parent = None;
-                changed = true;
-            }
-            (EventKind::Text(text), Edge::Part(at)) => {
-                *text = split_text(text, at);
-                changed = true;
-                break;
-            }
-            _ => break,
+        if !matches!(nodes[first.index()].kind, EventKind::SoftBreak(_)) {
+            break;
         }
+        nodes[parent.index()].first_child = nodes[first.index()].next_sibling.take();
+        nodes[first.index()].parent = None;
+        changed = true;
     }
     let mut last = None;
     let mut child = nodes[parent.index()].first_child;
     while let Some(id) = child {
-        if trailing_edge(&nodes[id.index()].kind, source, space) != Edge::All {
+        if !matches!(
+            nodes[id.index()].kind,
+            EventKind::SoftBreak(_) | EventKind::HardBreak
+        ) {
             last = Some(id);
         }
         child = nodes[id.index()].next_sibling;
@@ -1667,13 +1616,6 @@ fn trim_edges(nodes: &mut [Node], source: &str, parent: NodeId) -> bool {
         nodes[id.index()].parent = None;
         changed = true;
     }
-    if let Some(last) = last {
-        let edge = trailing_edge(&nodes[last.index()].kind, source, space);
-        if let (EventKind::Text(text), Edge::Part(at)) = (&mut nodes[last.index()].kind, edge) {
-            split_text(text, at);
-            changed = true;
-        }
-    }
     changed
 }
 
@@ -1682,9 +1624,9 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// Empty text is removed, and so is emphasis, strong or strikethrough that has no children once its own children are normalized, such as emphasis of empty text or strong that holds only empty emphasis. Strikethrough inside other strikethrough, at any depth, is unwrapped: its children take its place, since strikethrough cannot be written inside strikethrough and renders the same once. Adjacent text is joined into the first text, adjacent inline code is joined into the first code when the second has no language of its own, and adjacent inline math is joined into the first math, as adjacent code spans or math cannot be written apart. Adjacent emphasis, strong or strikethrough of the same kind is merged by moving the children of the second to the end of the first.
     ///
-    /// Markdown cannot write whitespace at the edges of emphasis, strong or strikethrough, so it moves out: Unicode whitespace in text and soft breaks at either edge, and hard breaks at the end, move out through any attention nested at that edge to just before or after the outermost attention whose edge they are. Attention left empty is removed, and what moved out takes its place. A hard break at the start of attention stays, and links and images keep whitespace at their edges. The phrasing of a paragraph, heading or table cell is trimmed as the parser trims it: space, tab and LF at either edge are removed, with soft breaks there and hard breaks at the end, including those that moved out of attention, but other Unicode whitespace, such as a no-break space or a CR, which is a character reference as line endings are LF in values, stays, and so does a hard break at the start. Markdown cannot write a hard break in a table cell, so one there, at any depth, becomes a space.
+    /// Markdown cannot write whitespace at the edges of emphasis, strong or strikethrough, so it moves out: Unicode whitespace in text and soft breaks at either edge, and hard breaks at the end, move out through any attention nested at that edge to just before or after the outermost attention whose edge they are. Attention left empty is removed, and what moved out takes its place. A hard break at the start of attention stays, and links and images keep whitespace at their edges. The parser reads no break at the edges of a paragraph, heading or table cell, so soft breaks at either edge of its phrasing are removed, and so are hard breaks at its end, including those that moved out of attention; a hard break at the start stays. Markdown cannot write a hard break in a table cell, so one there, at any depth, becomes a space.
     ///
-    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code, math or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of whitespace alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. The paragraph of a task item is not trimmed, as the marker cannot be written without text after it. A paragraph that starts with inline HTML, once whitespace and soft breaks at its start are skipped, keeps its whitespace text and loses only the breaks at its edges, as the HTML would otherwise start a line, where it can start an HTML block, or be alone on its line, where it is one. Nothing else changes: text keeps its value apart from whitespace moved or trimmed at these edges. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
+    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code, math or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. The paragraph of a task item keeps its breaks, as the marker cannot be written without text after it. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
     ///
     /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, adjacent attention of the same kind, such as `*a*_b_`, stays separate, and strikethrough inside strikethrough, such as `~a~~b~~c~`, stays nested. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
     ///
@@ -1701,7 +1643,7 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent inline math, adjacent attention of the same kind, or a separator in phrasing; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell, other than the paragraph of a task item, starts or ends with space, tab, LF or a soft break, or ends with a hard break, though a paragraph that starts with inline HTML after whitespace may start or end with whitespace text; and no attached paragraph is empty. This takes time linear in the size of the arena.
+    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent inline math, adjacent attention of the same kind, or a separator in phrasing; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell, other than the paragraph of a task item, starts or ends with a soft break, or ends with a hard break; and no attached paragraph is empty. This takes time linear in the size of the arena.
     pub fn is_normalized(&self) -> bool {
         let source = self.source.as_ref();
         let nodes = &self.nodes;
@@ -1737,7 +1679,7 @@ impl<S: AsRef<str>> Document<S> {
                         child = node.next_sibling;
                     }
                     if let (Some(first), Some(last)) = (node.first_child, last) {
-                        if !edges_normalized(nodes, id, &nodes[first.index()].kind, last, source) {
+                        if !edges_normalized(node, &nodes[first.index()].kind, last, source) {
                             return false;
                         }
                     }
@@ -1767,7 +1709,7 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    // Remove each paragraph without children, which is left once its phrasing is removed or trimmed, from the top down, as removing one empties nothing else. `kept` is scratch storage for the children kept so far in a list.
+    // Remove each paragraph without children, which is left once its phrasing is removed or its breaks are, from the top down, as removing one empties nothing else. `kept` is scratch storage for the children kept so far in a list.
     fn remove_empty_paragraphs(&mut self, root: NodeId, kept: &mut Vec<NodeId>) {
         let mut current = Some(root);
         while let Some(id) = current {
@@ -1857,7 +1799,7 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    // Normalize the children of `parent`, enclosed by `enclosing` including itself, in one pass: unwrap each strikethrough child of strikethrough in place, so its children are normalized next; replace each hard break in a table cell with a space; unlink each child joined into the last child kept as it is met, merging attention first; once no more attention merges into the last kept attention, move whitespace out of its end and of the attention nested there, and continue from what moved after it; and move whitespace out of the start of each attention child and of the attention nested there, and continue from what moved before it. Then trim the edges of a paragraph, heading or table cell. Empty children have already been removed, and paragraphs emptied by trimming are removed afterwards.
+    // Normalize the children of `parent`, enclosed by `enclosing` including itself, in one pass: unwrap each strikethrough child of strikethrough in place, so its children are normalized next; replace each hard break in a table cell with a space; unlink each child joined into the last child kept as it is met, merging attention first; once no more attention merges into the last kept attention, move whitespace out of its end and of the attention nested there, and continue from what moved after it; and move whitespace out of the start of each attention child and of the attention nested there, and continue from what moved before it. Then remove the breaks at the edges of a paragraph, heading or table cell. Empty children have already been removed, and paragraphs emptied by removing breaks are removed afterwards.
     fn normalize_children(&mut self, parent: NodeId, enclosing: Enclosing, scratch: &mut Trailing) {
         let source = self.source.as_ref();
         let nodes = &mut self.nodes;
@@ -2002,12 +1944,12 @@ impl<S: AsRef<str>> Document<S> {
             }
             nodes[id.index()].kind = removed;
         }
-        // A task item's paragraph is not trimmed, as the marker cannot be written without text after it.
+        // A task item's paragraph keeps its breaks, as the marker cannot be written without text after it.
         let task = nodes[parent.index()]
             .first_child
             .is_some_and(|first| matches!(nodes[first.index()].kind, EventKind::TaskMarker(_)));
-        if trimmed(&nodes[parent.index()].kind) && !task {
-            changed |= trim_edges(nodes, source, parent);
+        if block_phrasing(&nodes[parent.index()].kind) && !task {
+            changed |= trim_breaks(nodes, parent);
         }
         if changed {
             self.refresh_item(Some(parent));

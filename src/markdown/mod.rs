@@ -67,7 +67,7 @@ pub fn normalize_markdown_with_options(
 ///
 /// The output uses LF line endings. The parser stores every source line ending as LF in node values, so a CR in a value is a character: it is written as `&#xD;` where character references are decoded, such as in text and titles, and as it is in code, HTML and frontmatter, where a parsed value never has one.
 ///
-/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text, code spans or math, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention or blocks, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
+/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text, code spans or math, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention, soft breaks at the edges of a block, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
 ///
 /// # Errors
 /// Returns invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
@@ -77,7 +77,7 @@ pub fn to_markdown<S: AsRef<str>>(document: &Document<S>) -> Result<String, Mess
 
 /// Serialize an arena document with formatting options.
 ///
-/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text, code spans or math, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention or blocks, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
+/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text, code spans or math, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention, soft breaks at the edges of a block, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
 ///
 /// # Errors
 /// Returns invalid formatting options, unsupported syntax metadata, or unsupported content shapes.
@@ -92,7 +92,7 @@ pub fn to_markdown_with_options<S: AsRef<str>>(
 ///
 /// The output always uses LF line endings. Non-empty block subtrees end with a line ending; inline (phrasing) subtrees, such as text, emphasis, or a link, are returned without an added line ending.
 ///
-/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text, code spans or math, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention or blocks, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
+/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text, code spans or math, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention, soft breaks at the edges of a block, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
 ///
 /// # Errors
 /// Returns an invalid node index, invalid formatting options, unsupported syntax metadata, or unsupported content shapes.

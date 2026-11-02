@@ -91,14 +91,17 @@ fn issue_repros_round_trip() {
         ("a&#xA;&#xA;b", "a\n&#xA;b\n"),
         ("a &#xA;&#xA; b", "a&#x20;\n&#xA;&#x20;b\n"),
         ("x ~~a &#xA;&#xA; b~~", "x ~~a&#x20;\n&#xA;&#x20;b~~\n"),
-        // Normalizing moves the whitespace out of the strikethrough, and trims it and line endings
-        // from the edges of a block, as the parser trims raw ones.
-        ("x ~a ~&#xA;&#xA;~&#x20;&#xA;~", "x ~~a~~\n"),
-        ("a&#xA;", "a\n"),
-        ("&#xA;a", "a\n"),
-        ("*a*&#xA;", "*a*\n"),
-        ("# a&#xA;", "# a\n"),
-        // The paragraph of a task item is not trimmed.
+        // Normalizing moves the whitespace out of the strikethrough, and the serializer encodes it
+        // at the end of the paragraph.
+        (
+            "x ~a ~&#xA;&#xA;~&#x20;&#xA;~",
+            "x ~~a~~&#x20;\n&#xA;&#x20;&#xA;\n",
+        ),
+        ("a&#xA;", "a&#xA;\n"),
+        ("&#xA;a", "&#xA;a\n"),
+        ("*a*&#xA;", "*a*&#xA;\n"),
+        // A heading with a line ending is written as setext.
+        ("# a&#xA;", "a&#xA;\n======\n"),
         ("- [ ] a&#xA;", "- [ ] a&#xA;\n"),
         // #116.
         ("| a&#xA;b |\n| - |", "| a&#xA;b |\n| --- |\n"),
@@ -115,16 +118,15 @@ fn consecutive_line_endings_encode_every_second_one() {
         ("a&#xA;&#xA;&#xA;b", "a\n&#xA;\nb\n"),
         ("a&#xA;&#xA;&#xA;&#xA;b", "a\n&#xA;\n&#xA;b\n"),
         ("a&#xA;&#xA;&#xA;&#xA;&#xA;b", "a\n&#xA;\n&#xA;\nb\n"),
-        // Line endings at the end of a block are trimmed when normalizing.
-        ("a&#xA;&#xA;", "a\n"),
-        ("a&#xA;&#xA;&#xA;", "a\n"),
+        ("a&#xA;&#xA;", "a\n&#xA;\n"),
+        ("a&#xA;&#xA;&#xA;", "a\n&#xA;&#xA;\n"),
         // A raw line ending after an encoded one ends no paragraph.
         ("a\n&#xA;\nb", "a\n&#xA;\nb\n"),
         // A soft break and an encoded line ending.
         ("a&#xA;\nb", "a\n&#xA;b\n"),
         ("a\n&#xA;b", "a\n&#xA;b\n"),
         // A backslash before an encoded line ending is escaped once.
-        ("a\\\\&#xA;", "a\\\\\n"),
+        ("a\\\\&#xA;", "a\\\\&#xA;\n"),
         ("a\\\\&#xA;&#xA;b", "a\\\\\n&#xA;b\n"),
     ] {
         assert_source(source, expected);
@@ -134,13 +136,13 @@ fn consecutive_line_endings_encode_every_second_one() {
 #[test]
 fn line_endings_in_containers_and_phrasing() {
     for (source, expected) in [
-        // At the start of a paragraph after a block boundary, where normalizing trims it.
-        ("p\n\n&#xA;a", "p\n\na\n"),
-        ("- &#xA;a", "- a\n"),
-        ("> &#xA;a", "> a\n"),
-        // Setext headings, which are written as ATX once trimming leaves no line ending.
+        // At the start of a paragraph after a block boundary.
+        ("p\n\n&#xA;a", "p\n\n&#xA;a\n"),
+        ("- &#xA;a", "- &#xA;a\n"),
+        ("> &#xA;a", "> &#xA;a\n"),
+        // Setext headings.
         ("a&#xA;&#xA;b\n===", "a\n&#xA;b\n======\n"),
-        ("a&#xA;\n===", "# a\n"),
+        ("a&#xA;\n===", "a&#xA;\n======\n"),
         // Container prefixes are written between the lines.
         ("- a&#xA;&#xA;b", "- a\n  &#xA;b\n"),
         ("1. a&#xA;&#xA;&#xA;b", "1. a\n   &#xA;\n   b\n"),
@@ -158,7 +160,7 @@ fn line_endings_in_containers_and_phrasing() {
         // Table cells.
         (
             "| a | b&#xA;&#xA; |\n| - | - |",
-            "| a | b |\n| --- | --- |\n",
+            "| a | b&#xA;&#xA; |\n| --- | --- |\n",
         ),
         (
             "| a | b&#xA;&#xA;c |\n| - | - |",
@@ -182,8 +184,7 @@ fn carriage_returns_are_encoded() {
         ("a&#xA;&#xD;b", "a\n&#xD;b\n"),
         ("a&#xD;&#xA;&#xA;b", "a&#xD;\n&#xA;b\n"),
         ("a&#xD;", "a&#xD;\n"),
-        // A CR is a character, which trimming the edges of a block keeps.
-        ("a&#xD;&#xA;", "a&#xD;\n"),
+        ("a&#xD;&#xA;", "a&#xD;&#xA;\n"),
         ("&#xD;a&#xD;", "&#xD;a&#xD;\n"),
         ("a\\\n&#xD;b", "a\\\n&#xD;b\n"),
         ("a\\\n&#xD;&#xA;b", "a\\\n&#xD;\nb\n"),
@@ -191,37 +192,6 @@ fn carriage_returns_are_encoded() {
         ("- a&#xD;&#xA;&#xD;&#xA;b", "- a&#xD;\n  &#xD;\n  b\n"),
     ] {
         assert_source(source, expected);
-    }
-}
-
-#[test]
-fn line_endings_at_block_edges_are_encoded_without_normalizing() {
-    // Normalizing trims these, but the serializer still writes them so that they parse back.
-    for (source, expected) in [
-        ("a&#xA;", "a&#xA;\n"),
-        ("&#xA;a", "&#xA;a\n"),
-        ("*a*&#xA;", "*a*&#xA;\n"),
-        // A heading with a line ending is written as setext.
-        ("# a&#xA;", "a&#xA;\n======\n"),
-        ("a&#xA;\n===", "a&#xA;\n======\n"),
-        ("a&#xA;&#xA;", "a\n&#xA;\n"),
-        ("a&#xA;&#xA;&#xA;", "a\n&#xA;&#xA;\n"),
-        ("a\\\\&#xA;", "a\\\\&#xA;\n"),
-        ("p\n\n&#xA;a", "p\n\n&#xA;a\n"),
-        ("- &#xA;a", "- &#xA;a\n"),
-        ("> &#xA;a", "> &#xA;a\n"),
-        (
-            "| a | b&#xA;&#xA; |\n| - | - |",
-            "| a | b&#xA;&#xA; |\n| --- | --- |\n",
-        ),
-        ("a&#xD;&#xA;", "a&#xD;&#xA;\n"),
-    ] {
-        let document = Document::parse(source.to_string(), &ParseOptions::normalize()).unwrap();
-        let output = to_markdown(&document).unwrap();
-        assert_eq!(output, expected, "{source}");
-        let reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
-        assert_eq!(canonical(&reparsed), canonical(&document), "{source}");
-        assert_eq!(to_markdown(&reparsed).unwrap(), output, "{source}");
     }
 }
 

@@ -42,6 +42,45 @@ fn table_cells_escape_like_paragraphs() {
 }
 
 #[test]
+fn table_cells_encode_whitespace_at_their_edges() {
+    // #109: the parser trims spaces and tabs at the edges of a cell, so they are encoded there.
+    for (source, expected) in [
+        ("| a&#x20; |\n| - |\n", "| a&#x20; |\n| --- |\n"),
+        ("| &#x20;a |\n| - |\n", "| &#x20;a |\n| --- |\n"),
+        ("| &#x9;a&#x9; |\n| - |\n", "| &#x9;a&#x9; |\n| --- |\n"),
+        ("| &#x20; |\n| - |\n", "| &#x20; |\n| --- |\n"),
+        ("| a &#x20; b |\n| - |\n", "| a   b |\n| --- |\n"),
+        (
+            "| www.a.b.&#x20; |\n| - |\n",
+            "| www.a.b.&#x20; |\n| --- |\n",
+        ),
+        ("| www.&#x20; |\n| - |\n", "| www.&#x20; |\n| --- |\n"),
+        ("| www\\.w&#x20; |\n| - |\n", "| www\\.w&#x20; |\n| --- |\n"),
+        ("| a\\\\&#x20; |\n| - |\n", "| a\\\\&#x20; |\n| --- |\n"),
+        ("| *a*&#x20; |\n| - |\n", "| *a*&#x20; |\n| --- |\n"),
+        ("| `a`&#x20; |\n| - |\n", "| `a`&#x20; |\n| --- |\n"),
+        (
+            "| a | &#x20;b |\n| - | - |\n",
+            "| a | &#x20;b |\n| --- | --- |\n",
+        ),
+    ] {
+        let mut document = Document::parse(source, &ParseOptions::gfm()).unwrap();
+        document.normalize();
+        let markdown = to_markdown(&document).unwrap();
+        assert_eq!(markdown, expected, "{source:?}");
+        let html = |value: &str| to_html_with_options(value, &Options::gfm());
+        assert_eq!(
+            html(&markdown),
+            html(source),
+            "{source:?} should round-trip"
+        );
+        let mut reparsed = Document::parse(markdown.as_str(), &ParseOptions::gfm()).unwrap();
+        reparsed.normalize();
+        assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{source:?}");
+    }
+}
+
+#[test]
 fn table_cells_escape_pipes_in_reference_labels() {
     // Labels match by their raw text, so they are written as they are and stay linked.
     for (source, expected, linked) in [

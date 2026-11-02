@@ -42,8 +42,8 @@ fn paragraph() {
             position: None
         }))
         .unwrap(),
-        "a\n",
-        "should trim spaces at the start of paragraphs"
+        "&#x20; a\n",
+        "should encode spaces at the start of paragraphs"
     );
 
     assert_eq!(
@@ -55,8 +55,8 @@ fn paragraph() {
             position: None
         }))
         .unwrap(),
-        "a\n",
-        "should trim spaces at the end of paragraphs"
+        "a &#x20;\n",
+        "should encode spaces at the end of paragraphs"
     );
 
     assert_eq!(
@@ -68,8 +68,8 @@ fn paragraph() {
             position: None
         }))
         .unwrap(),
-        "a\n",
-        "should trim tabs at the start of paragraphs"
+        "&#x9;\ta\n",
+        "should encode tabs at the start of paragraphs"
     );
 
     assert_eq!(
@@ -81,8 +81,8 @@ fn paragraph() {
             position: None
         }))
         .unwrap(),
-        "a\n",
-        "should trim tabs at the end of paragraphs"
+        "a\t&#x9;\n",
+        "should encode tabs at the end of paragraphs"
     );
 
     assert_eq!(
