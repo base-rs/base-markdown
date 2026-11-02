@@ -1497,7 +1497,7 @@ fn removes_empty_paragraphs_with_one_separator() {
 }
 
 #[test]
-fn trims_the_breaks_of_task_paragraphs_after_content() {
+fn removes_task_markers_with_nothing_written_after_them() {
     let task = || event(EventKind::TaskMarker(false), 0..0);
     let item = |children| {
         attention(
@@ -1529,29 +1529,62 @@ fn trims_the_breaks_of_task_paragraphs_after_content() {
         ])))),
         list(r#"task " a" emphasis("b")"#)
     );
-    // With nothing but whitespace text and breaks after the marker, the breaks stay, as the marker cannot be written alone.
-    for after in [
-        vec![soft()],
-        vec![hard(), soft()],
-        vec![text(" "), soft()],
-        vec![text(" "), hard(), soft(), soft()],
-        vec![text("\u{a0}\t"), hard()],
+    // A marker followed by nothing but breaks and the one space or tab that separates it from its text, which the parser keeps in that text, cannot be written, so it is removed. Its breaks are then removed as at the edges of any paragraph, the separator stays as whitespace text, and a paragraph left empty is removed.
+    for (after, expected) in [
+        (vec![], "item false()"),
+        (vec![soft()], "item false()"),
+        (vec![hard(), soft()], "item false()"),
+        (vec![text(" ")], r#"item false(paragraph(" "))"#),
+        (vec![text("\t")], r#"item false(paragraph("\t"))"#),
+        (vec![text(" "), soft()], r#"item false(paragraph(" "))"#),
+        (vec![text("\t"), hard()], r#"item false(paragraph("\t"))"#),
+        (
+            vec![text(" "), hard(), soft(), soft()],
+            r#"item false(paragraph(" "))"#,
+        ),
+        (
+            vec![soft(), soft(), text(" ")],
+            r#"item false(paragraph(" "))"#,
+        ),
+        (
+            vec![hard(), text(" ")],
+            r#"item false(paragraph(break " "))"#,
+        ),
     ] {
         let mut children = vec![task()];
         children.extend(after);
-        let mut document = build_blocks(item(children));
-        assert!(document.is_normalized());
-        let once = describe(&document, document.root());
-        document.normalize();
-        assert_eq!(describe(&document, document.root()), once);
+        assert_eq!(
+            settled(build_blocks(item(children))),
+            format!("Start(List {{ start: None, tight: true }})({expected})")
+        );
     }
-    // Whitespace moved out of attention counts as whitespace text.
+    // Anything else after the separator is written after it, so the marker stays, including more whitespace, which the serializer encodes; trailing breaks are still removed.
+    let normal = |mut document: Document<String>| {
+        document.normalize();
+        assert!(document.is_normalized());
+        describe(&document, document.root())
+    };
+    for (after, expected) in [
+        (vec![text("  ")], r#"task "  ""#),
+        (vec![text(" \t")], r#"task " \t""#),
+        (vec![text(" \u{a0}"), hard()], r#"task " \u{a0}""#),
+        (vec![text(" \u{3000}"), soft()], r#"task " \u{3000}""#),
+        (vec![text(" \n")], r#"task " \n""#),
+        (vec![text(" "), soft(), text(" ")], r#"task " " soft " ""#),
+        (vec![text(" "), text(" ")], r#"task "  ""#),
+        (vec![text("\u{a0}"), hard()], r#"task "\u{a0}""#),
+    ] {
+        let mut children = vec![task()];
+        children.extend(after);
+        assert_eq!(normal(build_blocks(item(children))), list(expected));
+    }
+    // Whitespace moved out of attention counts as text, and attention of breaks alone is removed.
     assert_eq!(
         settled(build_blocks(item(concat([
             vec![task(), text(" ")],
             emphasis(vec![soft()]),
         ])))),
-        list(r#"task " " soft"#)
+        list(r#"" ""#)
     );
     assert_eq!(
         settled(build_blocks(item(concat([
@@ -1559,15 +1592,48 @@ fn trims_the_breaks_of_task_paragraphs_after_content() {
             emphasis(vec![text(" ")]),
             vec![soft()],
         ])))),
-        list(r#"task " " soft"#)
+        list(r#"" ""#)
+    );
+    assert_eq!(
+        settled(build_blocks(item(concat([
+            vec![task(), text(" ")],
+            emphasis(vec![text(" ")]),
+        ])))),
+        list(r#"task "  ""#)
+    );
+    assert_eq!(
+        settled(build_blocks(item(concat([
+            vec![task()],
+            emphasis(vec![hard()]),
+        ])))),
+        "Start(List { start: None, tight: true })(item false())"
     );
     // The rule is the same in any block phrasing that starts with a marker.
-    assert!(build_blocks(heading(vec![task(), hard()])).is_normalized());
+    assert!(!build_blocks(heading(vec![task(), hard()])).is_normalized());
+    assert_eq!(
+        settled(build_blocks(heading(vec![task(), hard()]))),
+        "heading()"
+    );
+    let cell = build_blocks(table(vec![text(" ")]));
+    assert_eq!(
+        settled(build_blocks(table(vec![task(), text(" ")]))),
+        describe(&cell, cell.root())
+    );
     assert_eq!(
         settled(build_blocks(heading(vec![task(), text(" a"), hard()]))),
         r#"heading(task " a")"#
     );
-    // A marker that does not start the paragraph is not exempt.
+    // A marker followed by anything else stays, such as a marker, code or a link.
+    for after in [
+        vec![task()],
+        vec![text(" "), code("c", None)],
+        concat([vec![text(" ")], link(vec![text(" ")])]),
+    ] {
+        let mut children = vec![task()];
+        children.extend(after);
+        assert!(build_blocks(item(children)).is_normalized());
+    }
+    // A marker that does not start the paragraph stays.
     assert_eq!(
         settled(build_blocks(item(vec![text("a"), task(), hard()]))),
         list(r#""a" task"#)
@@ -1630,6 +1696,34 @@ fn trimmed_shapes_serialize_stably() {
         ]))),
         "- [ ] a*b*\n",
     );
+    // A marker with nothing written after its separator is removed, and the separator stays as whitespace text, which is encoded.
+    for (after, expected) in [
+        (vec![], "-\n"),
+        (vec![soft()], "-\n"),
+        (vec![text(" ")], "- &#x20;\n"),
+        (vec![text(" "), soft()], "- &#x20;\n"),
+        (vec![text(" "), hard()], "- &#x20;\n"),
+        (vec![text("\t"), hard()], "- &#x9;\n"),
+    ] {
+        let mut children = vec![task()];
+        children.extend(after);
+        serializes_stably(build_blocks(item(children)), expected);
+    }
+    // Anything else after the separator keeps the marker, and is encoded where it would be trimmed. A tab separator is written as one.
+    for (after, expected) in [
+        (vec![text("  ")], "- [ ] &#x20;\n"),
+        (vec![text(" \t")], "- [ ] &#x9;\n"),
+        (vec![text(" \u{a0}"), hard()], "- [ ] \u{a0}\n"),
+        (vec![text(" \u{3000}")], "- [ ] \u{3000}\n"),
+        (vec![text(" \n")], "- [ ] &#xA;\n"),
+        (vec![text(" "), soft(), text(" ")], "- [ ] &#xA;&#x20;\n"),
+        (vec![text("\t ")], "- [ ]\t&#x20;\n"),
+        (vec![text("\ta")], "- [ ]\ta\n"),
+    ] {
+        let mut children = vec![task()];
+        children.extend(after);
+        serializes_stably(build_blocks(item(children)), expected);
+    }
     serializes_stably(
         build(concat([
             vec![text("a"), soft()],
