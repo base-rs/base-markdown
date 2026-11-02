@@ -566,6 +566,49 @@ fn serialization_protects_edited_frontmatter_bodies() {
 }
 
 #[test]
+fn serialization_finds_closing_lines_at_every_line_ending() {
+    // The body's own line endings are written unchanged and read back as LF.
+    for (source, body, expected, value) in [
+        (
+            "---\n---",
+            "a\r---\rb",
+            "+++ yaml\na\r---\rb\n+++\n",
+            "a\n---\nb\n",
+        ),
+        (
+            "---\n---",
+            "a\r\n--- \t\r\nb\r\n",
+            "+++ yaml\na\r\n--- \t\r\nb\r\n+++\n",
+            "a\n--- \t\nb\n",
+        ),
+        ("+++\n+++", "+++\r", "--- toml\n+++\r---\n", "+++\n"),
+        (
+            "--- json\n---",
+            "a\r----\r",
+            "--- json\na\r----\r---\n",
+            "a\n----\n",
+        ),
+    ] {
+        let mut frontmatter = parse_frontmatter(source);
+        let language = frontmatter.language().map(str::to_owned);
+        frontmatter.value = body.into();
+        let output = Node::Frontmatter(frontmatter).to_markdown();
+        assert_eq!(output, expected);
+        let document = parse_document(&output, &parse_options());
+        let blocks = document.children(document.root()).filter(|&child| {
+            !matches!(
+                document.node(child).unwrap().kind,
+                base_markdown::stream::EventKind::Separator { .. }
+            )
+        });
+        assert_eq!(blocks.count(), 1, "{output:?}");
+        let reparsed = parse_frontmatter(&output);
+        assert_eq!(reparsed.language(), language.as_deref());
+        assert_eq!(reparsed.value, value);
+    }
+}
+
+#[test]
 fn code_fence_frontmatter_syntax_is_written_with_delimiters() {
     // A hand-built node with a code-fence character, which no parsed node has any more, keeps its info as the format hint.
     for (fence, info, body, expected, language) in [
@@ -612,6 +655,8 @@ fn serialization_rejects_invalid_edited_frontmatter_metadata() {
         ('~', "json\rother", "a\n"),
         ('-', "json", "---\n+++\n"),
         ('`', "", "+++ \n---\t\n"),
+        ('-', "", "a\r---\r+++\rb"),
+        ('+', "toml", "---\r\n+++ \r\n"),
     ] {
         let mut document = parse_document("--- json\n---", &parse_options());
         let id = document.children(document.root()).next().unwrap();

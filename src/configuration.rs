@@ -122,9 +122,9 @@ pub struct Constructs {
     /// Frontmatter with an unindented opening fence on the first document line,
     /// outside list items and blockquotes, and a matching closing fence.
     ///
-    /// Frontmatter is language-agnostic, following [Markly](https://github.com/socketry/markly) and [cmarkly](https://github.com/socketry/cmarkly). It opens with exactly `---` or `+++` and closes with the same three characters alone on a line, and produces a source-backed opaque node with [`NodeSyntax::Frontmatter`][crate::NodeSyntax::Frontmatter] metadata. Untagged `---` and `+++` imply YAML and TOML, with an empty info string, and a format hint after the opening fence (such as `--- json` or `---yaml`) supplies an explicit language. The parser preserves the raw body and the full authored info string without parsing the named format; [`Document::frontmatter_value`][crate::Document::frontmatter_value] returns the body. HTML omits the frontmatter. A backtick or tilde code fence is never frontmatter, even at the start of a document, and fences later in a document and unclosed fences remain ordinary Markdown.
+    /// Frontmatter is language-agnostic, following [Markly](https://github.com/socketry/markly) and [cmarkly](https://github.com/socketry/cmarkly). It opens with exactly `---` or `+++` and closes with the same three characters on a line of its own, optionally followed by spaces or tabs, and produces a source-backed opaque node with [`NodeSyntax::Frontmatter`][crate::NodeSyntax::Frontmatter] metadata. Untagged `---` and `+++` imply YAML and TOML, with an empty info string, and a format hint after the opening fence (such as `--- json` or `---yaml`) supplies an explicit language. The parser preserves the raw body and the full authored info string without parsing the named format; [`Document::frontmatter_value`][crate::Document::frontmatter_value] returns the body. HTML omits the frontmatter. A backtick or tilde code fence is never frontmatter, even at the start of a document, and fences later in a document and unclosed fences remain ordinary Markdown.
     ///
-    /// Markdown serialization retains the stored info string and body while normalizing spacing around the info string. It writes `+++` instead of `---`, or `---` instead of `+++`, when an edited body has a line that would close the fence, writing the implied language explicitly when the info has none, and adds a line ending before the closing fence when an edited body needs one. A frontmatter node whose syntax has another fence character, such as one built by hand, is written with `---` and its info. A body with both a `---` and a `+++` line cannot be written. Round trips preserve the body and effective language.
+    /// Markdown serialization retains the stored info string and body while normalizing spacing around the info string. It writes `+++` instead of `---`, or `---` instead of `+++`, when an edited body has a line that would close the fence, whether its lines end in LF, CRLF or CR, writing the implied language explicitly when the info has none, and adds a line ending before the closing fence when an edited body needs one. A frontmatter node whose syntax has another fence character, such as one built by hand with a backtick or tilde code fence, is written as `---` followed by its info as the language hint; with empty info that is plain `---`, which implies YAML. A body with both a `---` and a `+++` line cannot be written. Round trips preserve the body and effective language.
     ///
     /// ````
     /// use base_markdown::{Document, NodeSyntax, ParseOptions};
@@ -1167,16 +1167,18 @@ impl Default for ParseOptions {
 impl ParseOptions {
     /// `CommonMark`, with no extensions.
     ///
-    /// This is the default of earlier releases. Its `strikethrough_single_tilde`
-    /// is `true`, as it was then, which matters only when `strikethrough` is
-    /// turned on afterward.
+    /// This is the default of earlier releases. Its options other than
+    /// `constructs` are those of [`ParseOptions::default`], so an extension
+    /// turned on afterward behaves as it does there: strikethrough needs two
+    /// tildes unless `strikethrough_single_tilde` is also set, and math
+    /// (text) forms with a single dollar unless `math_text_single_dollar` is
+    /// cleared.
     ///
     /// Parsing differs from `CommonMark` in one deliberate way, which
     /// [`Options::commonmark`](crate::Options::commonmark) describes.
     pub fn commonmark() -> Self {
         Self {
             constructs: Constructs::commonmark(),
-            strikethrough_single_tilde: true,
             ..Self::default()
         }
     }
@@ -1217,6 +1219,7 @@ impl ParseOptions {
 /// | `strikethrough_single_tilde` | no | yes | no |
 /// | `frontmatter` | yes | no | no |
 /// | `math_flow`, `math_text` | no | no | no |
+/// | `math_text_single_dollar` | yes | yes | yes |
 /// | `CompileOptions::tagfilter` | no | yes | no |
 ///
 /// * [`Options::default`] is what most documents expect: `CommonMark` and

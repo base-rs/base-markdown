@@ -1,7 +1,9 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-use base_markdown::{normalize_markdown, to_html, to_html_with_options, Options};
+use base_markdown::{
+    normalize_markdown, to_html, to_html_with_options, Constructs, Options, ParseOptions,
+};
 
 #[test]
 fn presets_enable_their_extensions() {
@@ -47,6 +49,32 @@ fn presets_enable_their_extensions() {
             "commonmark: {source:?}"
         );
     }
+}
+
+#[test]
+fn commonmark_with_an_extension_matches_the_default() {
+    let constructs = Constructs {
+        strikethrough: true,
+        math_text: true,
+        ..Constructs::commonmark()
+    };
+    let with = |parse: ParseOptions| Options {
+        parse: ParseOptions {
+            constructs: constructs.clone(),
+            ..parse
+        },
+        ..Options::default()
+    };
+    let source = "~~a~~ ~b~ $c$";
+    let expected = "<p><del>a</del> ~b~ <code class=\"language-math math-inline\">c</code></p>";
+    assert_eq!(
+        to_html_with_options(source, &with(ParseOptions::commonmark())),
+        expected
+    );
+    assert_eq!(
+        to_html_with_options(source, &with(ParseOptions::default())),
+        expected
+    );
 }
 
 #[test]
