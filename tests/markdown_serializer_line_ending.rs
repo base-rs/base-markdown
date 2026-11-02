@@ -235,6 +235,35 @@ fn with_soft_breaks(children: &[Option<&str>]) -> Document<String> {
     document
 }
 
+/// The phrasing of the paragraph of `document` moved into the one cell of a table that replaces it.
+fn in_cell(mut document: Document<String>) -> Document<String> {
+    let paragraph = document.children(document.root()).next().unwrap();
+    let children: Vec<_> = document.children(paragraph).collect();
+    let table = document
+        .append_child(document.root(), EventKind::Start(Tag::Table))
+        .unwrap();
+    let head = document
+        .append_child(table, EventKind::Start(Tag::TableHead))
+        .unwrap();
+    let row = document
+        .append_child(head, EventKind::Start(Tag::TableRow))
+        .unwrap();
+    let cell = document
+        .append_child(
+            row,
+            EventKind::Start(Tag::TableCell {
+                alignment: base_markdown::AlignKind::None,
+                header: true,
+            }),
+        )
+        .unwrap();
+    for child in children {
+        document.attach(cell, child, None).unwrap();
+    }
+    document.detach(paragraph).unwrap();
+    document
+}
+
 #[test]
 fn whitespace_after_an_encoded_soft_break_is_encoded() {
     // A soft break after another is written as `&#xA;`, which reads back as text `\n`, after which
@@ -270,6 +299,31 @@ fn whitespace_after_an_encoded_soft_break_is_encoded() {
             html.trim_end().to_owned()
         };
         assert_eq!(render(&reparsed), render(&normalized), "{children:?}");
+        assert_eq!(to_markdown(&reparsed).unwrap(), output, "{children:?}");
+    }
+    // In a table cell every line ending is a reference, which reads back as one, so whitespace
+    // next to it stays as it is.
+    for (children, expected) in [
+        (&[Some("a"), None, Some(" b")][..], "| a&#xA; b |"),
+        (&[Some("a"), None, Some("\tb")], "| a&#xA;\tb |"),
+        (&[Some("a"), None, None, Some(" b")], "| a&#xA;&#xA; b |"),
+        (&[Some("a\n b")], "| a&#xA; b |"),
+        (&[Some("a "), None, Some("b")], "| a &#xA;b |"),
+        (
+            &[Some("a"), None, Some(" "), None, Some("b")],
+            "| a&#xA; &#xA;b |",
+        ),
+        (&[Some("a\n \nb")], "| a&#xA; &#xA;b |"),
+        (&[Some("a\t\n\tb")], "| a\t&#xA;\tb |"),
+        (&[Some("a"), None, Some("~~~ b")], "| a&#xA;~~~ b |"),
+        (&[Some("a\n# b")], "| a&#xA;# b |"),
+    ] {
+        let mut document = in_cell(with_soft_breaks(children));
+        document.normalize();
+        let output = to_markdown(&document).unwrap();
+        assert_eq!(output, format!("{expected}\n| --- |\n"), "{children:?}");
+        let mut reparsed = Document::parse(output.clone(), &ParseOptions::normalize()).unwrap();
+        reparsed.normalize();
         assert_eq!(to_markdown(&reparsed).unwrap(), output, "{children:?}");
     }
     // A soft break moved out of emphasis is written the same.

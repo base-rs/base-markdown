@@ -18,6 +18,7 @@
 mod support;
 
 use base_markdown::{
+    stream::{EventKind, Text as EventText},
     to_markdown_with_options, CompileOptions, Document, IncrementalParser, MarkdownOptions,
     ParseOptions,
 };
@@ -172,17 +173,17 @@ fn text(value: String) -> Node {
     })
 }
 
-/// Phrasing of one to four nodes. `outside` lists the attention and links that enclose it, which are not nested in themselves. A hard break can be the last child, at the end of a block or of attention, and can be in a table cell, where normalizing moves it out of attention, removes it at the end of a paragraph or heading, and turns it into a space in a table cell.
+/// Phrasing of one to four nodes, where a text of a lone line ending stands for a soft break. `outside` lists the attention and links that enclose it, which are not nested in themselves. A hard break can be the last child, at the end of a block or of attention, and can be in a table cell, where normalizing moves it out of attention, removes it at the end of a paragraph or heading, and turns it into a space in a table cell.
 fn phrasing(random: &mut Random, depth: usize, outside: &[&str]) -> Vec<Node> {
     let mut children = Vec::new();
     for _ in 0..1 + random.below(4) {
         let mut choice = if depth > 1 {
-            ["text", "text", "text", "code", "break"][random.below(5)]
+            ["text", "text", "text", "code", "break", "soft"][random.below(6)]
         } else {
             [
                 "text", "text", "text", "text", "delete", "emphasis", "strong", "code", "break",
-                "link",
-            ][random.below(10)]
+                "link", "soft",
+            ][random.below(11)]
         };
         if outside.contains(&choice) {
             choice = "text";
@@ -209,6 +210,8 @@ fn phrasing(random: &mut Random, depth: usize, outside: &[&str]) -> Vec<Node> {
                 position: None,
             }),
             "break" => Node::Break(Break { position: None }),
+            // The fixture has no soft break, so a text of a lone line ending stands for one.
+            "soft" => text("\n".into()),
             _ => Node::Link(Link {
                 children: phrasing(random, depth + 1, &inside),
                 position: None,
@@ -218,6 +221,27 @@ fn phrasing(random: &mut Random, depth: usize, outside: &[&str]) -> Vec<Node> {
         });
     }
     children
+}
+
+/// `document` with each text of a lone line ending replaced by a soft break, which the fixture cannot build, so that whitespace text and breaks meet soft breaks as separate nodes.
+fn soft_breaks(mut document: Document) -> Document {
+    let mut pending = vec![document.root()];
+    let mut soft = Vec::new();
+    while let Some(id) = pending.pop() {
+        let kind = &document.node(id).unwrap().kind;
+        if let EventKind::Text(value) = kind {
+            if value.resolve(document.source()).unwrap() == "\n" {
+                soft.push(id);
+            }
+        }
+        pending.extend(document.children(id));
+    }
+    for id in soft {
+        document
+            .set_kind(id, EventKind::SoftBreak(EventText::Literal("\n")))
+            .unwrap();
+    }
+    document
 }
 
 /// A paragraph, heading or one-cell table of random phrasing.
@@ -400,7 +424,7 @@ fn check(input: &Input, options: &MarkdownOptions) -> Outcome {
             options,
             false,
         ),
-        Input::Tree(node) => round_trip(node.document(), options, true),
+        Input::Tree(node) => round_trip(soft_breaks(node.document()), options, true),
     }
 }
 

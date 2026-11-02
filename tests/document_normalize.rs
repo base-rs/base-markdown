@@ -1529,16 +1529,44 @@ fn trims_the_breaks_of_task_paragraphs_after_content() {
         ])))),
         list(r#"task " a" emphasis("b")"#)
     );
-    // With nothing but breaks after the marker, they stay, as the marker cannot be written alone.
-    for breaks in [vec![soft()], vec![hard(), soft()]] {
+    // With nothing but whitespace text and breaks after the marker, the breaks stay, as the marker cannot be written alone.
+    for after in [
+        vec![soft()],
+        vec![hard(), soft()],
+        vec![text(" "), soft()],
+        vec![text(" "), hard(), soft(), soft()],
+        vec![text("\u{a0}\t"), hard()],
+    ] {
         let mut children = vec![task()];
-        children.extend(breaks);
+        children.extend(after);
         let mut document = build_blocks(item(children));
         assert!(document.is_normalized());
         let once = describe(&document, document.root());
         document.normalize();
         assert_eq!(describe(&document, document.root()), once);
     }
+    // Whitespace moved out of attention counts as whitespace text.
+    assert_eq!(
+        settled(build_blocks(item(concat([
+            vec![task(), text(" ")],
+            emphasis(vec![soft()]),
+        ])))),
+        list(r#"task " " soft"#)
+    );
+    assert_eq!(
+        settled(build_blocks(item(concat([
+            vec![task()],
+            emphasis(vec![text(" ")]),
+            vec![soft()],
+        ])))),
+        list(r#"task " " soft"#)
+    );
+    // The rule is the same in any block phrasing that starts with a marker.
+    assert!(build_blocks(heading(vec![task(), hard()])).is_normalized());
+    assert_eq!(
+        settled(build_blocks(heading(vec![task(), text(" a"), hard()]))),
+        r#"heading(task " a")"#
+    );
     // A marker that does not start the paragraph is not exempt.
     assert_eq!(
         settled(build_blocks(item(vec![text("a"), task(), hard()]))),

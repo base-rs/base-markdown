@@ -22,7 +22,7 @@ A panic fails the test whatever the baseline.
 | `soup` | Single characters from `*_~a. \n\`. |
 | `edge` | Markers next to `&#x20;`, `&#xA;`, `&#x9;`, encoded letters and escaped markers, sometimes in a heading, table cell, item or quote. |
 | `strike` | Tilde runs of every length among letters, digits, attention, escapes, code and links. |
-| `tree-asterisk`, `tree-underscore` | The same hand-built paragraphs, headings and table cells of nested emphasis, strong, strikethrough, links, code and breaks, serialized with `*` and with `_` as the emphasis and strong marker. Hard breaks also fall at the end of a block or attention and in table cells, where Markdown cannot write them, so normalizing moves them out of attention, removes them at the end of a paragraph or heading, and turns them into a space in a table cell. |
+| `tree-asterisk`, `tree-underscore` | The same hand-built paragraphs, headings and table cells of nested emphasis, strong, strikethrough, links, code and breaks, serialized with `*` and with `_` as the emphasis and strong marker. Hard breaks also fall at the end of a block or attention and in table cells, where Markdown cannot write them, so normalizing moves them out of attention, removes them at the end of a paragraph or heading, and turns them into a space in a table cell. Soft breaks fall anywhere in phrasing, next to whitespace text and other breaks; the generator builds each as text `\n`, which the reference HTML renders the same, and the harness turns it into a soft break before normalizing. |
 
 Each corpus has its own seed and a small xorshift generator, so the inputs and counts are the same on every platform, and the first inputs of a larger run are the inputs of a smaller one.
 
@@ -45,7 +45,7 @@ FUZZ_INPUTS=1000000 cargo test --release --test roundtrip_fuzz round_trip_fuzz -
 FUZZ_BLESS=1 cargo test --test roundtrip_fuzz round_trip_fuzz
 ```
 
-`FUZZ_OUTPUT=directory` writes, for each corpus, `<corpus>.txt`, its sorted and deduplicated failing inputs as one Rust string literal per line, and `<corpus>-details.txt`, each failure with its kind, bucket, output and both HTML renderings, separated by tabs. The files are large for the tree corpora at 1,000,000 inputs: about 220 MB of details and 140 MB of inputs each, against at most 20 MB for the other corpora.
+`FUZZ_OUTPUT=directory` writes, for each corpus, `<corpus>.txt`, its sorted and deduplicated failing inputs as one Rust string literal per line, and `<corpus>-details.txt`, each failure with its kind, bucket, output and both HTML renderings, separated by tabs. The files are large for the tree corpora at 1,000,000 inputs: about 3 MB of details and 2 MB of inputs each, against at most 20 MB for the other corpora.
 
 ## Comparing a branch with main
 
