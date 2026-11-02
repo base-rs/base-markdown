@@ -45,7 +45,7 @@ FUZZ_INPUTS=1000000 cargo test --release --test roundtrip_fuzz round_trip_fuzz -
 FUZZ_BLESS=1 cargo test --test roundtrip_fuzz round_trip_fuzz
 ```
 
-`FUZZ_OUTPUT=directory` writes, for each corpus, `<corpus>.txt`, its sorted and deduplicated failing inputs as one Rust string literal per line, and `<corpus>-details.txt`, each failure with its kind, bucket, output and both HTML renderings, separated by tabs. The files are large for the tree corpora at 1,000,000 inputs: about 3 MB of details and 2 MB of inputs each, against at most 20 MB for the other corpora.
+`FUZZ_OUTPUT=directory` writes, for each corpus, `<corpus>.txt`, its sorted and deduplicated failing inputs as one Rust string literal per line, and `<corpus>-details.txt`, each failure with its kind, bucket, output and both HTML renderings, separated by tabs. The files are largest for the tree corpora at 1,000,000 inputs, about 45 MB of details and 30 MB of inputs each, mostly soft breaks after hard breaks (#112), against at most about 11 MB for the other corpora.
 
 ## Comparing a branch with main
 

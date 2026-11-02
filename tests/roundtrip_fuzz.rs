@@ -10,7 +10,7 @@
 //! Environment variables:
 //!
 //! - `FUZZ_INPUTS=1000000` sets the inputs per corpus. The baseline is only checked at the default size. Run large sizes in release.
-//! - `FUZZ_OUTPUT=directory` writes `<corpus>.txt`, the sorted, deduplicated failing inputs of each corpus, one Rust string literal per line, and `<corpus>-details.txt`, each failure with its kind, class, output and both HTML renderings or canonical trees. The files are large for the tree corpora at 1,000,000 inputs: about 220 MB of details and 140 MB of inputs each.
+//! - `FUZZ_OUTPUT=directory` writes `<corpus>.txt`, the sorted, deduplicated failing inputs of each corpus, one Rust string literal per line, and `<corpus>-details.txt`, each failure with its kind, class, output and both HTML renderings or canonical trees. The files are largest for the tree corpora at 1,000,000 inputs: about 45 MB of details and 30 MB of inputs each.
 //! - `FUZZ_BLESS=1` rewrites the baseline from this run and prints what changed. It fails at any other size.
 //!
 //! See `context/roundtrip-fuzz.md` for comparing a branch with main.
