@@ -7,8 +7,10 @@
 
 mod support;
 use base_markdown::{
-    markdown::Options, message::Message, to_markdown, to_markdown_node, to_markdown_with_options,
-    Document, NodeId, ParseOptions,
+    markdown::Options,
+    message::Message,
+    stream::{EventKind, Tag, Text as EventText},
+    to_markdown, to_markdown_node, to_markdown_with_options, Document, NodeId, ParseOptions,
 };
 use pretty_assertions::assert_eq;
 use support::fixture::{
@@ -181,5 +183,62 @@ fn item_serialized_alone() {
     assert_eq!(
         to_markdown_node(&document, items[2], &fixed()).unwrap(),
         "999999998. c\n"
+    );
+}
+
+/// The items of the hand-built list that is the only child of the root of `document`.
+fn built_items(document: &Document<String>) -> (NodeId, Vec<NodeId>) {
+    let list = document.children(document.root()).next().unwrap();
+    let items = document
+        .children(list)
+        .filter(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Start(Tag::Item { .. })
+            )
+        })
+        .collect();
+    (list, items)
+}
+
+/// The number of the second item of a list that starts at `u32::MAX` is past `u32::MAX`, rather
+/// than wrapping to 0. Serializing the whole list fails at its first item, so the second is
+/// serialized alone.
+#[test]
+fn item_past_largest_start_does_not_wrap() {
+    let document = ordered(u32::MAX, &["a", "b"]).document();
+    let (_, items) = built_items(&document);
+    assert_too_long(
+        to_markdown_node(&document, items[1], &Options::default()),
+        1 << 32,
+    );
+}
+
+/// Separators among a list's children do not count as positions, so they do not raise the number
+/// of the items after them.
+#[test]
+fn separators_are_not_numbered() {
+    let mut document = ordered(999_999_998, &["a", "b"]).document();
+    let (list, items) = built_items(&document);
+    for before in &items {
+        let separator = document
+            .append_child(
+                list,
+                EventKind::Separator {
+                    value: EventText::Literal("\n"),
+                    conditional: false,
+                },
+            )
+            .unwrap();
+        document.attach(list, separator, Some(*before)).unwrap();
+    }
+    assert_eq!(document.children(list).count(), 4);
+    assert_eq!(
+        to_markdown(&document).unwrap(),
+        "999999998. a\n999999999. b\n"
+    );
+    assert_eq!(
+        to_markdown_node(&document, items[1], &Options::default()).unwrap(),
+        "999999999. b\n"
     );
 }
