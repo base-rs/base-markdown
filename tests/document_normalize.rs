@@ -2811,7 +2811,7 @@ fn an_empty_item_after_a_paragraph_in_a_tight_list_is_removed() {
     append_block(&mut document, root, &tight(vec![vec![]]));
     assert!(document.is_normalized());
     assert_eq!(reads_back(document), "p\n\n-\n");
-    // An ordered list keeps its start. A list after a paragraph in a tight list cannot start at any number but 1 either, which this does not change.
+    // An ordered list after a paragraph in a tight list cannot start at any number but 1 either, so once its leading empty items are removed, it starts at 1 (#152).
     let mut document = build_list(&after_p(ordered(3, vec![vec![], vec![p("a")]])));
     document.normalize();
     assert!(document.is_normalized());
@@ -2821,7 +2821,7 @@ fn an_empty_item_after_a_paragraph_in_a_tight_list_is_removed() {
     assert!(matches!(
         document.node(list).unwrap().kind,
         EventKind::Start(Tag::List {
-            start: Some(3),
+            start: Some(1),
             tight: true
         })
     ));
@@ -2874,4 +2874,184 @@ fn an_empty_item_after_a_paragraph_in_a_tight_list_is_removed() {
         .unwrap(),
         "- p\n"
     );
+}
+
+#[test]
+fn an_ordered_list_after_a_paragraph_in_a_tight_list_starts_at_1() {
+    use Block::{List, Paragraph, Quote, Separator};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let tight = |items: Vec<Vec<Block>>| {
+        List(
+            None,
+            true,
+            items.into_iter().map(|blocks| (false, blocks)).collect(),
+        )
+    };
+    let ordered = |start: u32, items: Vec<Vec<Block>>| {
+        List(
+            Some(start),
+            true,
+            items.into_iter().map(|blocks| (false, blocks)).collect(),
+        )
+    };
+    let after_p = |list: Block| tight(vec![vec![p("p"), list]]);
+    // Only an ordered list that starts at 1 can interrupt a paragraph, so in a tight list, where no blank line can come between them, `- p\n  3. a` reads back as text `p 3. a` (#152). Normalizing makes such a list start at 1, and keeps its items.
+    for (block, expected) in [
+        (after_p(ordered(3, vec![vec![p("a")]])), "- p\n  1. a\n"),
+        (after_p(ordered(0, vec![vec![p("a")]])), "- p\n  1. a\n"),
+        (after_p(ordered(2, vec![vec![p("a")]])), "- p\n  1. a\n"),
+        (
+            after_p(ordered(u32::MAX, vec![vec![p("a")]])),
+            "- p\n  1. a\n",
+        ),
+        (
+            after_p(ordered(3, vec![vec![p("a")], vec![p("b")], vec![]])),
+            "- p\n  1. a\n  2. b\n  3.\n",
+        ),
+        (
+            tight(vec![
+                vec![p("p"), ordered(3, vec![vec![p("a")]])],
+                vec![p("q")],
+            ]),
+            "- p\n  1. a\n- q\n",
+        ),
+        (
+            ordered(5, vec![vec![p("p"), ordered(5, vec![vec![p("a")]])]]),
+            "5. p\n   1. a\n",
+        ),
+        // Removing the leading empty items of a list after a paragraph can leave it starting at another number, so this runs after that (#150).
+        (
+            after_p(ordered(2, vec![vec![], vec![p("a")]])),
+            "- p\n  1. a\n",
+        ),
+        (
+            after_p(ordered(5, vec![vec![Paragraph(vec![])], vec![p("a")]])),
+            "- p\n  1. a\n",
+        ),
+        (
+            tight(vec![vec![
+                p("p"),
+                tight(vec![vec![]]),
+                Separator,
+                ordered(4, vec![vec![p("a")]]),
+            ]]),
+            "- p\n  1. a\n",
+        ),
+        // Separators and empty paragraphs are not counted, and a list after another block keeps its start.
+        (
+            tight(vec![vec![
+                p("p"),
+                Separator,
+                Paragraph(vec![]),
+                ordered(3, vec![vec![p("a")]]),
+                Separator,
+                Block::Code,
+                ordered(7, vec![vec![p("b")]]),
+            ]]),
+            "- p\n  1. a\n  ```\n  x\n  ```\n  7. b\n",
+        ),
+        // In a block quote, and at any depth.
+        (
+            Quote(vec![after_p(ordered(3, vec![vec![p("a")]]))]),
+            "> - p\n>   1. a\n",
+        ),
+        (
+            after_p(tight(vec![vec![p("q"), ordered(3, vec![vec![p("a")]])]])),
+            "- p\n  - q\n    1. a\n",
+        ),
+        (
+            tight(vec![vec![Quote(vec![after_p(ordered(
+                3,
+                vec![vec![p("a")]],
+            ))])]]),
+            "- > - p\n  >   1. a\n",
+        ),
+    ] {
+        let document = build_list(&block);
+        assert!(!document.is_normalized(), "{:?}", expected);
+        let mut once = document.clone();
+        once.normalize();
+        let mut twice = once.clone();
+        twice.normalize();
+        assert_eq!(canonical(&twice), canonical(&once), "{:?}", expected);
+        assert_eq!(reads_back(document), expected);
+    }
+    // Shapes that can be written are left as they are: an ordered list that starts at 1, a bullet list, an ordered list after a block other than a paragraph or as an item's first block, and an ordered list after a paragraph in a loose list or outside an item, where a blank line comes between them.
+    for (block, expected) in [
+        (after_p(ordered(1, vec![vec![p("a")]])), "- p\n  1. a\n"),
+        (after_p(tight(vec![vec![p("a")]])), "- p\n  - a\n"),
+        (
+            tight(vec![vec![ordered(3, vec![vec![p("a")]])]]),
+            "- 3. a\n",
+        ),
+        (
+            tight(vec![vec![
+                p("p"),
+                Block::Code,
+                ordered(3, vec![vec![p("a")]]),
+            ]]),
+            "- p\n  ```\n  x\n  ```\n  3. a\n",
+        ),
+        (
+            tight(vec![vec![
+                p("p"),
+                Quote(vec![p("q")]),
+                ordered(3, vec![vec![p("a")]]),
+            ]]),
+            "- p\n  > q\n  3. a\n",
+        ),
+        (
+            List(
+                None,
+                false,
+                vec![(true, vec![p("p"), ordered(3, vec![vec![p("a")]])])],
+            ),
+            "- p\n\n  3. a\n",
+        ),
+        (
+            List(
+                None,
+                false,
+                vec![
+                    (true, vec![p("p"), ordered(3, vec![vec![p("a")]])]),
+                    (false, vec![p("q")]),
+                ],
+            ),
+            "- p\n\n  3. a\n\n- q\n",
+        ),
+        (
+            Quote(vec![p("p"), ordered(3, vec![vec![p("a")]])]),
+            "> p\n>\n> 3. a\n",
+        ),
+    ] {
+        let document = build_list(&block);
+        assert!(document.is_normalized(), "{:?}", expected);
+        assert_eq!(reads_back(document), expected);
+    }
+    // Outside a list, a blank line is written between a paragraph and an ordered list.
+    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+    let root = document.root();
+    append_block(&mut document, root, &p("p"));
+    append_block(&mut document, root, &ordered(3, vec![vec![p("a")]]));
+    assert!(document.is_normalized());
+    assert_eq!(reads_back(document), "p\n\n3. a\n");
+    // Parsed ordered lists after a paragraph in a tight item start at 1, also when written `01.` or `1)`, and are left as they are; other numbers are read as text.
+    for source in [
+        "- p\n  1. a\n",
+        "- p\n  01. a\n",
+        "- p\n  1) a\n",
+        "- p\n  3. a\n",
+    ] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert!(document.is_normalized(), "{:?}", source);
+    }
+    // In a footnote definition, as in a block quote, a blank line is written between them.
+    let source = "[^1]: p\n\n    3. a\n";
+    let mut document = Document::parse(source, &ParseOptions::gfm()).unwrap();
+    assert!(document.is_normalized());
+    let before = canonical(&document);
+    document.normalize();
+    assert_eq!(canonical(&document), before);
+    assert_eq!(to_markdown(&document).unwrap(), source);
 }
