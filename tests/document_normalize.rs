@@ -3561,3 +3561,185 @@ fn a_spread_item_keeps_tight_definitions() {
         );
     }
 }
+
+/// As `reads_back`, but serialized with `options` and read back with `parse`.
+fn reads_back_with<S: AsRef<str> + Clone>(
+    mut document: Document<S>,
+    parse: &ParseOptions,
+    options: &base_markdown::MarkdownOptions,
+) -> String {
+    document.normalize();
+    assert!(document.is_normalized());
+    let markdown = base_markdown::to_markdown_with_options(&document, options).unwrap();
+    let mut reparsed = Document::parse(markdown.as_str(), parse).unwrap();
+    reparsed.normalize();
+    assert!(reparsed.is_normalized());
+    assert_eq!(rendered(&reparsed), rendered(&document), "{markdown:?}");
+    assert_eq!(canonical(&reparsed), canonical(&document), "{markdown:?}");
+    assert_eq!(
+        base_markdown::to_markdown_with_options(&reparsed, options).unwrap(),
+        markdown
+    );
+    markdown
+}
+
+fn without_fences() -> base_markdown::MarkdownOptions {
+    base_markdown::MarkdownOptions {
+        fences: false,
+        ..base_markdown::MarkdownOptions::default()
+    }
+}
+
+#[test]
+fn code_that_starts_a_footnote_definition_starts_on_the_next_line_without_fences() {
+    // Indented code cannot start on a definition's first line, where `[^a]:     a` reads back as a paragraph, so it starts on the next line, indented like the lines after it.
+    for parse in [ParseOptions::default(), ParseOptions::gfm()] {
+        for (source, expected) in [
+            // Issue #142.
+            (
+                "[^a]: ~~~\n    a\n    ~~~\n\nb[^a]",
+                "[^a]:\n        a\n\nb[^a]\n",
+            ),
+            ("[^1]:\n        x\n", "[^1]:\n        x\n"),
+            ("- [^1]:\n          x\n- a\n", "- [^1]:\n          x\n- a\n"),
+            ("> [^1]:\n>         x\n", "> [^1]:\n>         x\n"),
+            (
+                "[^1]: [^1]:\n            x\n",
+                "[^1]: [^1]:\n            x\n",
+            ),
+            ("[^1]:\n        x\n\n    a\n", "[^1]:\n        x\n\n    a\n"),
+            (
+                "- [^a]: ~~~\n      a\n      ~~~\n\n- b[^a]\n",
+                "- [^a]:\n          a\n\n- b[^a]\n",
+            ),
+            (
+                "[^a]: ~~~\n    a\n\n    b\n    ~~~\n",
+                "[^a]:\n        a\n\n        b\n",
+            ),
+            // Code that indented code cannot write is fenced as before.
+            ("[^a]: ~~~\n    ~~~\n", "[^a]: ```\n    ```\n"),
+            (
+                "[^a]: ~~~\n\n    a\n    ~~~\n",
+                "[^a]: ```\n\n    a\n    ```\n",
+            ),
+            (
+                "[^a]: ~~~ rs\n    a\n    ~~~\n",
+                "[^a]: ```rs\n    a\n    ```\n",
+            ),
+        ] {
+            let document = Document::parse(source, &parse).unwrap();
+            assert_eq!(
+                reads_back_with(document, &parse, &without_fences()),
+                expected,
+                "{source:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn two_code_blocks_that_start_a_footnote_definition_keep_the_comment_without_fences() {
+    // Two indented code blocks in a row are separated by `<!---->`, also at the start of a definition. The comment reads back as an HTML block, which is the older `<!---->` behaviour; apart from it, the code blocks read back as they were.
+    let parse = ParseOptions::default();
+    let source = "[^1]:\n        x\n\n    ```\n    y\n    ```\n";
+    let expected = "[^1]:\n        x\n\n    <!---->\n\n        y\n";
+    let mut document = Document::parse(source, &parse).unwrap();
+    document.normalize();
+    let markdown = base_markdown::to_markdown_with_options(&document, &without_fences()).unwrap();
+    assert_eq!(markdown, expected);
+    let reparsed = Document::parse(markdown.as_str(), &parse).unwrap();
+    assert_eq!(
+        rendered(&reparsed).replace("&lt;!----&gt;\n", ""),
+        rendered(&document)
+    );
+}
+
+#[test]
+fn code_after_a_footnote_definition_is_fenced_without_fences() {
+    // Indented code after a footnote definition would continue the definition, which takes in indented lines after a blank line, so it is fenced whatever `fences` says.
+    let parse = ParseOptions::default();
+    for (source, expected) in [
+        ("[^1]: f\n\n~~~\nx\n~~~\n", "[^1]: f\n\n```\nx\n```\n"),
+        (
+            "> [^1]: f\n>\n> ~~~\n> x\n> ~~~\n",
+            "> [^1]: f\n>\n> ```\n> x\n> ```\n",
+        ),
+        (
+            "- p\n\n  3. a\n\n  [^1]: f\n\n  ```\n  x\n  ```\n\n- q\n",
+            "- p\n\n  3. a\n\n  [^1]: f\n\n  ```\n  x\n  ```\n\n- q\n",
+        ),
+        // Only the code directly after the definition is fenced, and indented code after the fenced code needs no comment between them.
+        (
+            "[^1]: f\n\n~~~\nx\n~~~\n~~~\ny\n~~~\n",
+            "[^1]: f\n\n```\nx\n```\n\n    y\n",
+        ),
+    ] {
+        let document = Document::parse(source, &parse).unwrap();
+        assert_eq!(
+            reads_back_with(document, &parse, &without_fences()),
+            expected,
+            "{source:?}"
+        );
+    }
+}
+
+#[test]
+fn built_code_in_or_after_a_footnote_definition_reads_back_without_fences() {
+    use Block::{Code, Footnote, List, Paragraph, Quote};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let parse = ParseOptions::default();
+    let list = |spread: bool, first: Vec<Block>| {
+        List(None, false, vec![(spread, first), (false, vec![p("c")])])
+    };
+    for (block, expected) in [
+        // Issue #157: this was written `- [^1]: a\n      x\n\n- c\n`, where `x` joins the definition.
+        (
+            list(false, vec![Footnote(vec![p("a")]), Code]),
+            "- [^1]: a\n  ```\n  x\n  ```\n\n- c\n",
+        ),
+        (
+            list(false, vec![Footnote(vec![Code]), p("b")]),
+            "- [^1]:\n          x\n  b\n\n- c\n",
+        ),
+        (
+            list(false, vec![Footnote(vec![p("a")]), Code, Code]),
+            "- [^1]: a\n  ```\n  x\n  ```\n      x\n\n- c\n",
+        ),
+        // The blank line between the two code blocks shows the item is spread, so it reads back spread.
+        (
+            list(true, vec![Footnote(vec![p("a")]), Code, Code]),
+            "- [^1]: a\n\n  ```\n  x\n  ```\n\n      x\n\n- c\n",
+        ),
+    ] {
+        assert_eq!(
+            reads_back_with(build_list(&block), &parse, &without_fences()),
+            expected
+        );
+    }
+    for (block, expected) in [
+        (Footnote(vec![Code]), "[^1]:\n        x\n"),
+        (
+            Quote(vec![Footnote(vec![p("a")]), Code]),
+            "> [^1]: a\n>\n> ```\n> x\n> ```\n",
+        ),
+        (
+            Quote(vec![Footnote(vec![Code, p("b")])]),
+            "> [^1]:\n>         x\n>\n>     b\n",
+        ),
+    ] {
+        assert_eq!(
+            reads_back_with(build_list(&block), &parse, &without_fences()),
+            expected
+        );
+    }
+    // Code elsewhere is still indented.
+    assert_eq!(
+        reads_back_with(
+            build_list(&Quote(vec![p("a"), Code])),
+            &parse,
+            &without_fences()
+        ),
+        "> a\n>\n>     x\n"
+    );
+}

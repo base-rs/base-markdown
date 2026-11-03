@@ -55,16 +55,19 @@ impl State<'_> {
     }
 
     /// `value` is the stored value, whose lines each end in a line ending except perhaps the last, so a body of one blank line is `"\n"` and an empty body is `""`.
+    /// `fence` is whether the code's place needs a fence whatever the options, as from
+    /// `fences_code`.
     pub(super) fn code(
         &mut self,
         value: &str,
         language: Option<&str>,
         metadata: Option<&str>,
+        fence: bool,
     ) -> Result<(), Message> {
         let content = trim_terminal_ending(value);
         let marker = self.options.check_fence()?;
         let start = self.output.len();
-        if format_code_as_indented(content, language.is_none(), self) {
+        if !fence && format_code_as_indented(content, language.is_none(), self) {
             self.output.push_str(content);
             self.indent_lines(start, |line, _, blank, output| {
                 if !blank {
