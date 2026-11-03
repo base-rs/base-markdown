@@ -5,12 +5,14 @@
 
 mod support;
 use base_markdown::{
-    message, to_html, to_html_with_options, CompileOptions, Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, CompileOptions, Constructs, Document, Options,
+    ParseOptions,
 };
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
 use support::fixture::Position;
 use support::fixture::{Emphasis, Node, Paragraph, Root, Strong, Text};
+use support::linear::{assert_linear, timed};
 
 #[test]
 fn attention() -> Result<(), message::Message> {
@@ -883,4 +885,15 @@ fn attention() -> Result<(), message::Message> {
     );
 
     Ok(())
+}
+
+#[test]
+fn searching_for_openers_is_linear() {
+    // Each `_` closer finds no `_` opener among the `*` openers left open before it, and the search starts where the last failed search for that marker stopped.
+    assert_linear("*a b_ ", 1 << 9, |size| {
+        let source = "*a b_ ".repeat(size);
+        timed(|| {
+            Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+        })
+    });
 }

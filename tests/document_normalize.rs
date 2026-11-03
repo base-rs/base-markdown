@@ -796,9 +796,20 @@ fn assert_normalize_linear(label: &str, size: usize, build: impl Fn(usize) -> Do
 
 #[test]
 fn joining_text_is_linear() {
-    // Joining copies each text once. Copying what was joined so far on each join is cheap at small sizes, so this one is larger. Adjacent code and math, and the spaces that hard breaks in a table cell become, are joined the same way.
+    // Joining copies each text once. Copying what was joined so far on each join is cheap at small sizes, so this one is larger. The spaces that hard breaks in a table cell become are joined the same way.
     assert_normalize_linear("text", 1 << 14, |size| {
         build((0..size).map(|_| text("a")).collect())
+    });
+}
+
+#[test]
+fn joining_code_and_math_is_linear() {
+    // Code and math join like text, but each takes its own arm of the join.
+    assert_normalize_linear("code", 1 << 10, |size| {
+        build((0..size).map(|_| code("a", None)).collect())
+    });
+    assert_normalize_linear("math", 1 << 10, |size| {
+        build((0..size).map(|_| math("a")).collect())
     });
 }
 
@@ -852,6 +863,19 @@ fn removing_empty_attention_is_linear() {
             })),
             vec![text("b")],
         ]))
+    });
+}
+
+#[test]
+fn removing_empty_children_between_kept_ones_is_linear() {
+    // Removing continues from the child kept before what was removed, not from the first child.
+    assert_normalize_linear("empty text after text", 1 << 10, |size| {
+        build(concat((0..size).map(|_| vec![text("a"), text("")])))
+    });
+    assert_normalize_linear("empty attention after text", 1 << 10, |size| {
+        build(concat(
+            (0..size).map(|_| concat([vec![text("a")], strong(vec![])])),
+        ))
     });
 }
 
@@ -1892,6 +1916,24 @@ fn moving_whitespace_out_of_deep_attention_is_linear() {
             assert_eq!(document.children(paragraph).count(), 3);
         },
     );
+    // Whitespace at an edge of each of many sibling attention children: normalizing continues from what moved, not from the first child.
+    let siblings = |label: &str, unit: &dyn Fn() -> Vec<Result<Event<'static>, StreamError>>| {
+        assert_normalize_only_linear(
+            label,
+            1 << 9,
+            |size| build(concat((0..size).map(|_| unit()))),
+            |document, size| {
+                let paragraph = document.children(document.root()).next().unwrap();
+                assert_eq!(document.children(paragraph).count(), 2 * size);
+            },
+        );
+    };
+    siblings("whitespace leading each sibling", &|| {
+        concat([vec![text("b")], emphasis(vec![text(" a")])])
+    });
+    siblings("whitespace trailing each sibling", &|| {
+        concat([emphasis(vec![text("a ")]), vec![text("b")]])
+    });
 }
 
 #[test]
