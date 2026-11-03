@@ -688,10 +688,13 @@ mod tests {
                 // Otherwise only the byte between the two candidates connects what is before the
                 // first and what is after the byte, so each of those is checked against every
                 // byte with the other empty, along with a diagonal sample of the rest. This
-                // assumes no non-empty context is all spaces, tabs or digits, so a `Line` or
-                // `Digits` walk back from the last candidate stops inside the right context. A
-                // new rule whose `Before` reaches more than one byte back, or whose `After` reads
-                // past `position + 3`, needs the full product again.
+                // assumes the last candidate's `Before` never reaches back to the first candidate
+                // (no non-empty context is all spaces, tabs or digits, so the `Line`, `Digits`,
+                // `EncodedLine` and `EncodedDigits` walks stop inside the right context), and that
+                // no `After` that can match here reads past `position + 1` (`Closing` reads
+                // further but matches only at the end). A rule, `Before` or `After` variant, or
+                // context that breaks either needs the full product again; the diagonal sample is
+                // only a backstop.
                 let chained = |context: &str| context.as_bytes().contains(&rule.byte);
                 for (left_index, left) in contexts.iter().copied().enumerate() {
                     for (right_index, right) in contexts.iter().copied().enumerate() {
