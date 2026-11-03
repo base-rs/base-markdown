@@ -5,7 +5,12 @@
 
 mod support;
 use base_markdown::markdown::{IndentOptions, Options};
+use base_markdown::{
+    stream::{EventKind, Tag, Text as Value},
+    to_markdown_with_options, Document, ParseOptions,
+};
 use pretty_assertions::assert_eq;
+use std::time::{Duration, Instant};
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
 use support::fixture::{List, ListItem, Node, Paragraph, Root, Text, ThematicBreak};
 
@@ -486,4 +491,234 @@ where
         start: None,
         spread: false,
     })
+}
+
+/// Assert that serializing the document `build` makes takes linear time with each of `options`:
+/// 4x input within 8x the time, taking the fastest of three runs of each size. The sizes are small
+/// to keep the test fast, and quadratic time takes about 16x.
+fn assert_linear(label: &str, options: &[Options], build: impl Fn(usize) -> Document<String>) {
+    let time = |document: &Document<String>, options: &Options| {
+        let started = Instant::now();
+        to_markdown_with_options(document, options).unwrap();
+        started.elapsed()
+    };
+    let small_document = build(1 << 9);
+    let large_document = build(1 << 11);
+    for options in options {
+        time(&small_document, options);
+        let mut small = Duration::MAX;
+        let mut large = Duration::MAX;
+        for _ in 0..3 {
+            small = small.min(time(&small_document, options));
+            large = large.min(time(&large_document, options));
+        }
+        assert!(
+            large < small * 8,
+            "{}: 4x input took {:?} against {:?} with {:?}",
+            label,
+            large,
+            small,
+            options
+        );
+    }
+}
+
+/// A loose list of `4 * size` separators and then `size` items of a paragraph.
+fn separated_items(size: usize) -> Document<String> {
+    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+    let root = document.root();
+    let list = document
+        .append_child(
+            root,
+            EventKind::Start(Tag::List {
+                start: None,
+                tight: false,
+            }),
+        )
+        .unwrap();
+    for _ in 0..4 * size {
+        document
+            .append_child(
+                list,
+                EventKind::Separator {
+                    value: Value::Literal("\n"),
+                    conditional: false,
+                },
+            )
+            .unwrap();
+    }
+    for _ in 0..size {
+        let item = document
+            .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+            .unwrap();
+        let paragraph = document
+            .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
+            .unwrap();
+        document
+            .append_child(paragraph, EventKind::Text(Value::Literal("a")))
+            .unwrap();
+    }
+    document
+}
+
+/// A task item of `size` definitions and then `4 * size` paragraphs, each holding a task marker.
+fn task_item_after_definitions(size: usize) -> Document<String> {
+    let mut document = Document::parse(String::new(), &ParseOptions::gfm()).unwrap();
+    let root = document.root();
+    let list = document
+        .append_child(
+            root,
+            EventKind::Start(Tag::List {
+                start: None,
+                tight: true,
+            }),
+        )
+        .unwrap();
+    let item = document
+        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+        .unwrap();
+    for _ in 0..size {
+        document
+            .append_child(
+                item,
+                EventKind::Definition {
+                    label: Value::Literal("a"),
+                    destination: Value::Literal("/u"),
+                    title: None,
+                },
+            )
+            .unwrap();
+    }
+    for _ in 0..4 * size {
+        let paragraph = document
+            .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
+            .unwrap();
+        document
+            .append_child(paragraph, EventKind::TaskMarker(true))
+            .unwrap();
+    }
+    document
+}
+
+#[test]
+fn serializing_list_items_is_linear() {
+    let default = [Options::default()];
+    type Build = fn(usize) -> String;
+    let cases: [(&str, Build); 4] = [
+        ("headings in one item", |size| {
+            format!("- {}", "# a\n  ".repeat(size))
+        }),
+        ("footnote definitions in one item", |size| {
+            format!("- {}", "[^a]: b\n  ".repeat(size))
+        }),
+        ("nested lists between paragraphs", |size| {
+            format!("- a\n{}", "  - b\n\n  c\n".repeat(size))
+        }),
+        ("nested items with several blocks", |size| {
+            format!("- a\n  - b\n{}", "    # c\n    d\n    - e\n".repeat(size))
+        }),
+    ];
+    let parse = ParseOptions::gfm();
+    for (label, build) in cases {
+        assert_linear(label, &default, |size| {
+            Document::parse(build(size), &parse).unwrap()
+        });
+    }
+    assert_linear("items after separators", &default, separated_items);
+    // Finding the task marker does not depend on the options. With these, definitions are joined
+    // without a blank line and other blocks with one.
+    let both = [
+        Options::default(),
+        Options {
+            fences: false,
+            setext: true,
+            list_item_indent: IndentOptions::Mixed,
+            tight_definitions: true,
+            ..Options::default()
+        },
+    ];
+    assert_linear(
+        "task markers after definitions",
+        &both,
+        task_item_after_definitions,
+    );
+}
+
+#[test]
+fn writes_task_markers_outside_the_item_being_written() {
+    let parse = ParseOptions::gfm();
+    let options = Options::default();
+    // The marker of a task item belongs to the item, which writes it, so its paragraph written on
+    // its own leaves the marker out, whether or not the item is being written.
+    let document = Document::parse("- [x] a\n", &parse).unwrap();
+    let paragraph = document
+        .descendants(document.root())
+        .find(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Start(Tag::Paragraph { .. })
+            )
+        })
+        .unwrap();
+    assert_eq!(
+        base_markdown::to_markdown_node(&document, paragraph, &options).unwrap(),
+        "a\n"
+    );
+    // A marker in a paragraph that is not in an item is written as text.
+    let mut document = Document::parse(String::new(), &parse).unwrap();
+    let root = document.root();
+    let quote = document
+        .append_child(root, EventKind::Start(Tag::BlockQuote))
+        .unwrap();
+    let paragraph = document
+        .append_child(quote, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
+    document
+        .append_child(paragraph, EventKind::TaskMarker(true))
+        .unwrap();
+    document
+        .append_child(paragraph, EventKind::Text(Value::Literal(" a")))
+        .unwrap();
+    assert_eq!(
+        to_markdown_with_options(&document, &options).unwrap(),
+        "> [x] a\n"
+    );
+}
+
+#[test]
+fn writes_the_only_item_of_a_loose_list_before_separators_spread() {
+    // The separator after the item is not a block, so the item is still the list's only one.
+    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+    let root = document.root();
+    let list = document
+        .append_child(
+            root,
+            EventKind::Start(Tag::List {
+                start: None,
+                tight: false,
+            }),
+        )
+        .unwrap();
+    let item = document
+        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+        .unwrap();
+    for tag in [Tag::Paragraph { tight: false }, Tag::Heading(1)] {
+        let block = document.append_child(item, EventKind::Start(tag)).unwrap();
+        document
+            .append_child(block, EventKind::Text(Value::Literal("a")))
+            .unwrap();
+    }
+    document
+        .append_child(
+            list,
+            EventKind::Separator {
+                value: Value::Literal("\n"),
+                conditional: false,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        to_markdown_with_options(&document, &Options::default()).unwrap(),
+        "- a\n\n  # a\n"
+    );
 }
