@@ -2245,6 +2245,8 @@ enum Block {
     List(Option<u32>, bool, Vec<(bool, Vec<Block>)>),
     Code,
     Quote(Vec<Block>),
+    Footnote(Vec<Block>),
+    Leaf(EventKind<'static>),
     Separator,
 }
 
@@ -2287,6 +2289,20 @@ fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) 
             for block in blocks {
                 append_block(document, quote, block);
             }
+        }
+        Block::Footnote(blocks) => {
+            let definition = document
+                .append_child(
+                    parent,
+                    EventKind::Start(Tag::FootnoteDefinition(Text::from("1".to_owned()))),
+                )
+                .unwrap();
+            for block in blocks {
+                append_block(document, definition, block);
+            }
+        }
+        Block::Leaf(kind) => {
+            document.append_child(parent, kind.clone()).unwrap();
         }
         Block::Separator => {
             document
@@ -2586,7 +2602,7 @@ fn is_normalized_finds_a_loose_list_that_reads_back_tight() {
 
 #[test]
 fn parsed_lone_loose_items_keep_their_output() {
-    // The parser infers an item's spread from a blank line between its blocks in the source, but a nested list or footnote definition takes in the blank line after it, so these items record no spread although their lists are loose. A blank line after a nested list is written anyway, as a paragraph cannot follow it directly, so that output is unchanged; one after a footnote definition was not, and the paragraph after it read back as part of the definition.
+    // The parser infers an item's spread from a blank line between its blocks in the source, but a nested list or footnote definition takes in the blank line after it, so these items record no spread although their lists are loose. A blank line after either is written anyway before a paragraph, which could not follow it directly, so these outputs are unchanged.
     for (source, expected) in [
         ("- a\n  - b\n\n  c\n", "- a\n  - b\n\n  c\n"),
         ("- [^1]: x\n\n  y\n", "- [^1]: x\n\n  y\n"),
@@ -3054,4 +3070,199 @@ fn an_ordered_list_after_a_paragraph_in_a_tight_list_starts_at_1() {
     document.normalize();
     assert_eq!(canonical(&document), before);
     assert_eq!(to_markdown(&document).unwrap(), source);
+}
+
+#[test]
+fn a_footnote_definition_in_a_list_item_keeps_the_blank_line_before_a_paragraph() {
+    // A footnote definition takes in the blank line after it, so a parsed item of a definition and a paragraph records no spread. With more than one item, nothing else wrote the blank line, and the paragraph read back as part of the definition (#148). The same holds when the definition ends in a block quote or list, or has several paragraphs, and before a definition or table, which cannot interrupt a paragraph either.
+    for (source, expected) in [
+        ("- [^1]: a\n\n  b\n- c", "- [^1]: a\n\n  b\n\n- c\n"),
+        ("- c\n- [^1]: a\n\n  b", "- c\n\n- [^1]: a\n\n  b\n"),
+        ("1. [^1]: a\n\n   b\n2. c", "1. [^1]: a\n\n   b\n\n2. c\n"),
+        (
+            "- x\n  [^1]: a\n\n  b\n- c",
+            "- x\n  [^1]: a\n\n  b\n\n- c\n",
+        ),
+        (
+            "- [^1]: a\n\n      b\n\n  c\n- d",
+            "- [^1]: a\n\n      b\n\n  c\n\n- d\n",
+        ),
+        ("- [^1]: > q\n\n  b\n- c", "- [^1]: > q\n\n  b\n\n- c\n"),
+        (
+            "- [^1]: a\n\n      > q\n\n  b\n- c",
+            "- [^1]: a\n\n      > q\n\n  b\n\n- c\n",
+        ),
+        ("- [^1]: - a\n\n  c\n- d", "- [^1]: - a\n\n  c\n\n- d\n"),
+        (
+            "- [^1]: a\n\n  [r]: /u\n- c",
+            "- [^1]: a\n\n  [r]: /u\n\n- c\n",
+        ),
+        (
+            "- [^1]: a\n\n  | x |\n  | - |\n- c",
+            "- [^1]: a\n\n  | x |\n  | --- |\n\n- c\n",
+        ),
+        (
+            "- a\n\n  - [^1]: x\n\n    y\n  - z",
+            "- a\n\n  - [^1]: x\n\n    y\n\n  - z\n",
+        ),
+    ] {
+        for source in [source, expected] {
+            let document = Document::parse(source, &ParseOptions::default()).unwrap();
+            assert!(!tight_of_first_list(&document), "{:?}", source);
+            assert_eq!(reads_back(document), expected, "{:?}", source);
+        }
+    }
+}
+
+#[test]
+fn a_footnote_definition_in_a_list_item_is_written_unchanged_otherwise() {
+    // A line after a definition that does not end in a paragraph, or before a block that can interrupt a paragraph, ends the definition, so no blank line is added and a tight list stays tight. Outside a list, a blank line is always written between blocks.
+    for (source, tight) in [
+        ("- [^1]: # h\n  b\n- c\n", true),
+        ("- [^1]:\n  b\n- c\n", true),
+        ("- [^1]: | x |\n      | --- |\n  b\n- c\n", true),
+        ("- [^1]: a\n  # h\n- c\n", true),
+        ("- [^1]: a\n  [^2]: b\n- c\n", true),
+        ("- [^1]: a\n  > b\n- c\n", true),
+        ("- [^1]: a\n  # h\n\n- c\n", false),
+        ("- [^1]: a\n  ```\n  x\n  ```\n\n- c\n", false),
+        ("- [^1]: a\n  - b\n\n- c\n", false),
+        ("- [^1]: a\n\n  b\n", false),
+        ("- a\n  - b\n\n  c\n\n- d\n", false),
+        ("> [^1]: a\n>\n> b\n", true),
+        ("[^1]: a\n\nb\n", true),
+        ("[^1]: a\n\n    b\n\nc\n", true),
+        ("[^1]: a\n\n# h\n\n```\nx\n```\n\n- b\n\n[^2]: c\n", true),
+    ] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert!(document.is_normalized(), "{:?}", source);
+        if source.starts_with('-') {
+            assert_eq!(tight_of_first_list(&document), tight, "{:?}", source);
+        }
+        assert_eq!(reads_back(document), source);
+    }
+}
+
+#[test]
+fn a_built_footnote_definition_in_a_list_item_keeps_a_paragraph_after_it() {
+    use Block::{Code, Footnote, List, Paragraph, Quote};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    // Whatever spread the item records, a paragraph after a definition that ends in a paragraph is written after a blank line, so it reads back outside the definition.
+    for spread in [false, true] {
+        let list =
+            |first: Vec<Block>| List(None, false, vec![(spread, first), (false, vec![p("c")])]);
+        for (blocks, expected) in [
+            (
+                vec![Footnote(vec![p("a")]), p("b")],
+                "- [^1]: a\n\n  b\n\n- c\n",
+            ),
+            (
+                vec![Footnote(vec![p("a"), p("d")]), p("b")],
+                "- [^1]: a\n\n      d\n\n  b\n\n- c\n",
+            ),
+            (
+                vec![Footnote(vec![Quote(vec![p("a")])]), p("b")],
+                "- [^1]: > a\n\n  b\n\n- c\n",
+            ),
+            (
+                vec![
+                    Footnote(vec![List(None, true, vec![(false, vec![p("a")])])]),
+                    p("b"),
+                ],
+                "- [^1]: - a\n\n  b\n\n- c\n",
+            ),
+        ] {
+            assert_eq!(reads_back(build_list(&list(blocks))), expected);
+        }
+    }
+    // A definition that ends in a code block, or is empty, is ended by the paragraph's line, so no blank line is needed between them.
+    for (blocks, expected) in [
+        (
+            vec![Footnote(vec![Code]), p("b")],
+            "- [^1]: ```\n      x\n      ```\n  b\n\n- c\n",
+        ),
+        (vec![Footnote(vec![]), p("b")], "- [^1]:\n  b\n\n- c\n"),
+    ] {
+        let list = List(None, false, vec![(false, blocks), (false, vec![p("c")])]);
+        assert_eq!(reads_back(build_list(&list)), expected);
+    }
+}
+
+#[test]
+fn a_footnote_definition_in_the_only_item_of_a_loose_list_keeps_the_item_spread() {
+    use Block::{Footnote, Leaf, List, Paragraph};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let definition = || {
+        Leaf(EventKind::Definition {
+            label: Text::from("r".to_owned()),
+            destination: Text::from("/u".to_owned()),
+            title: None,
+        })
+    };
+    // The blank line written after a footnote definition is taken in by the definition when read back, so it does not count as showing that the only item of a loose list is spread: the item's other blocks are still written spread. Without that, an ordered list not starting at 1 or a list with a leading empty item would read back as text in the paragraph, and blocks after an empty definition would be joined differently on the next write.
+    for spread in [false, true] {
+        for (blocks, expected) in [
+            (
+                vec![
+                    Footnote(vec![p("a")]),
+                    p("b"),
+                    List(Some(3), true, vec![(false, vec![p("c")])]),
+                ],
+                "- [^1]: a\n\n  b\n\n  3. c\n",
+            ),
+            (
+                vec![
+                    Footnote(vec![p("a")]),
+                    p("b"),
+                    List(None, true, vec![(false, vec![]), (false, vec![p("c")])]),
+                ],
+                "- [^1]: a\n\n  b\n\n  -\n  - c\n",
+            ),
+            (
+                vec![Footnote(vec![]), Footnote(vec![p("x")]), definition()],
+                "- [^1]:\n\n  [^1]: x\n\n  [r]: /u\n",
+            ),
+        ] {
+            assert_eq!(
+                reads_back(build_list(&List(None, false, vec![(spread, blocks)]))),
+                expected
+            );
+        }
+    }
+    // Parsed, these are written as they were.
+    for source in [
+        "- [^2]: q\n\n  [^1]: a\n\n  b\n",
+        "- [^x]: q\n\n  a\n\n  | - |\n  | --- |\n",
+        "- [^1]: a\n\n  b\n\n  3. c\n",
+    ] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert!(!tight_of_first_list(&document), "{:?}", source);
+        assert_eq!(reads_back(document), source);
+    }
+    // A table whose header row lazily continues the item is written after a blank line, so it does not join the paragraph before it.
+    let source = "- [^x]: q\n\n  a\n| - |\n  | - |\n";
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    assert_eq!(
+        reads_back(document),
+        "- [^x]: q\n\n  a\n\n  | - |\n  | --- |\n"
+    );
+}
+
+#[test]
+fn serializing_footnote_definitions_in_a_list_item_is_linear() {
+    use Block::{Footnote, List, Paragraph};
+    let p = || Paragraph(vec![EventKind::Text(Text::from("a".to_owned()))]);
+    // Many definitions of many paragraphs, each followed by a paragraph.
+    assert_normalize_linear(|size| {
+        let blocks = (0..size / 2)
+            .flat_map(|_| [Footnote(vec![p(), p()]), p()])
+            .collect();
+        build_list(&List(
+            None,
+            false,
+            vec![(false, blocks), (false, vec![p()])],
+        ))
+    });
 }

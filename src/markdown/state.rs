@@ -125,7 +125,9 @@ impl<'a> State<'a> {
     }
 
     /// Whether `item` is the only item of a loose list and no blank line would be written between
-    /// its blocks. Nothing else can show the list is loose, so it is then written spread.
+    /// its blocks. Nothing else can show the list is loose, so it is then written spread. A blank
+    /// line after a footnote definition does not count: the definition takes it in, so the item read
+    /// back records no spread for it, and the item's other blocks are written spread as before.
     fn spreads_lone_item<S: AsRef<str>>(&self, document: &Document<S>, item: NodeId) -> bool {
         let node = document.node(item).unwrap();
         if !matches!(node.kind, EventKind::Start(Tag::Item { .. })) {
@@ -145,7 +147,11 @@ impl<'a> State<'a> {
         let mut left = None;
         for right in flow_children(document, item) {
             if let Some(left) = left {
-                if self.between(document, left, right, item) != "\n" {
+                if !matches!(
+                    document.node(left).unwrap().kind,
+                    EventKind::Start(Tag::FootnoteDefinition(_))
+                ) && self.between(document, left, right, item) != "\n"
+                {
                     return false;
                 }
                 joined = true;
@@ -891,8 +897,14 @@ impl<'a> State<'a> {
             document.node(parent).unwrap().kind,
             EventKind::Start(Tag::Item { .. } | Tag::List { .. })
         ) {
-            // Without a blank line, a block that cannot interrupt a paragraph would lazily continue the nested list's last paragraph.
-            if matches!(left_kind, EventKind::Start(Tag::List { .. }))
+            // Without a blank line, a block that cannot interrupt a paragraph would lazily continue the nested list's or footnote definition's last paragraph.
+            // Both take in the blank line after them, so the item records no spread for it.
+            let lazy = match left_kind {
+                EventKind::Start(Tag::List { .. }) => true,
+                EventKind::Start(Tag::FootnoteDefinition(_)) => ends_in_paragraph(document, left),
+                _ => false,
+            };
+            if lazy
                 && (matches!(
                     right_kind,
                     EventKind::Start(Tag::Paragraph { .. } | Tag::Table)
@@ -1450,6 +1462,22 @@ pub(crate) fn is_phrasing(kind: &EventKind<'_>) -> bool {
             | EventKind::Text(_)
             | EventKind::Html { block: false, .. }
     )
+}
+
+/// Whether the last block of container `id`, through the last blocks of any containers in it, is a
+/// paragraph, which a following line could lazily continue. Only last children are visited, which
+/// never come before another block, so each node is visited for at most one container.
+fn ends_in_paragraph<S: AsRef<str>>(document: &Document<S>, mut id: NodeId) -> bool {
+    while let Some(last) = flow_children(document, id).last() {
+        match document.node(last).unwrap().kind {
+            EventKind::Start(Tag::Paragraph { .. }) => return true,
+            EventKind::Start(
+                Tag::BlockQuote | Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition(_),
+            ) => id = last,
+            _ => return false,
+        }
+    }
+    false
 }
 
 pub(super) fn flow_children<S: AsRef<str>>(
