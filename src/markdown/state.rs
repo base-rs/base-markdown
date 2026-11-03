@@ -125,7 +125,9 @@ impl<'a> State<'a> {
     }
 
     /// Whether `item` is the only item of a loose list and no blank line would be written between
-    /// its blocks. Nothing else can show the list is loose, so it is then written spread.
+    /// its blocks. Nothing else can show the list is loose, so it is then written spread. A blank
+    /// line after a footnote definition does not count: the definition takes it in, so the item read
+    /// back records no spread for it, and the item's other blocks are written spread as before.
     fn spreads_lone_item<S: AsRef<str>>(&self, document: &Document<S>, item: NodeId) -> bool {
         let node = document.node(item).unwrap();
         if !matches!(node.kind, EventKind::Start(Tag::Item { .. })) {
@@ -145,7 +147,11 @@ impl<'a> State<'a> {
         let mut left = None;
         for right in flow_children(document, item) {
             if let Some(left) = left {
-                if self.between(document, left, right, item) != "\n" {
+                if !matches!(
+                    document.node(left).unwrap().kind,
+                    EventKind::Start(Tag::FootnoteDefinition(_))
+                ) && self.between(document, left, right, item) != "\n"
+                {
                     return false;
                 }
                 joined = true;

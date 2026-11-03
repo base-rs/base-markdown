@@ -369,9 +369,9 @@ fn nested_strikethrough_from_markdown_reads_back() {
         let mut document = Document::parse(source, &ParseOptions::gfm()).unwrap();
         assert!(!document.is_normalized());
         document.normalize();
-        assert_eq!(describe(&document, document.root()), tree, "{:?}", source);
+        assert_eq!(describe(&document, document.root()), tree, "{source:?}");
         let markdown = to_markdown(&document).unwrap();
-        assert_eq!(markdown, expected, "{:?}", source);
+        assert_eq!(markdown, expected, "{source:?}");
         let mut reparsed = Document::parse(markdown.as_str(), &ParseOptions::gfm()).unwrap();
         reparsed.normalize();
         // The serialized Markdown ends with a line ending, which is a separator after the paragraph.
@@ -2246,6 +2246,7 @@ enum Block {
     Code,
     Quote(Vec<Block>),
     Footnote(Vec<Block>),
+    Leaf(EventKind<'static>),
     Separator,
 }
 
@@ -2299,6 +2300,9 @@ fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) 
             for block in blocks {
                 append_block(document, definition, block);
             }
+        }
+        Block::Leaf(kind) => {
+            document.append_child(parent, kind.clone()).unwrap();
         }
         Block::Separator => {
             document
@@ -3183,6 +3187,67 @@ fn a_built_footnote_definition_in_a_list_item_keeps_a_paragraph_after_it() {
         let list = List(None, false, vec![(false, blocks), (false, vec![p("c")])]);
         assert_eq!(reads_back(build_list(&list)), expected);
     }
+}
+
+#[test]
+fn a_footnote_definition_in_the_only_item_of_a_loose_list_keeps_the_item_spread() {
+    use Block::{Footnote, Leaf, List, Paragraph};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let definition = || {
+        Leaf(EventKind::Definition {
+            label: Text::from("r".to_owned()),
+            destination: Text::from("/u".to_owned()),
+            title: None,
+        })
+    };
+    // The blank line written after a footnote definition is taken in by the definition when read back, so it does not count as showing that the only item of a loose list is spread: the item's other blocks are still written spread. Without that, an ordered list not starting at 1 or a list with a leading empty item would read back as text in the paragraph, and blocks after an empty definition would be joined differently on the next write.
+    for spread in [false, true] {
+        for (blocks, expected) in [
+            (
+                vec![
+                    Footnote(vec![p("a")]),
+                    p("b"),
+                    List(Some(3), true, vec![(false, vec![p("c")])]),
+                ],
+                "- [^1]: a\n\n  b\n\n  3. c\n",
+            ),
+            (
+                vec![
+                    Footnote(vec![p("a")]),
+                    p("b"),
+                    List(None, true, vec![(false, vec![]), (false, vec![p("c")])]),
+                ],
+                "- [^1]: a\n\n  b\n\n  -\n  - c\n",
+            ),
+            (
+                vec![Footnote(vec![]), Footnote(vec![p("x")]), definition()],
+                "- [^1]:\n\n  [^1]: x\n\n  [r]: /u\n",
+            ),
+        ] {
+            assert_eq!(
+                reads_back(build_list(&List(None, false, vec![(spread, blocks)]))),
+                expected
+            );
+        }
+    }
+    // Parsed, these are written as they were.
+    for source in [
+        "- [^2]: q\n\n  [^1]: a\n\n  b\n",
+        "- [^x]: q\n\n  a\n\n  | - |\n  | --- |\n",
+        "- [^1]: a\n\n  b\n\n  3. c\n",
+    ] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert!(!tight_of_first_list(&document), "{:?}", source);
+        assert_eq!(reads_back(document), source);
+    }
+    // A table whose header row lazily continues the item is written after a blank line, so it does not join the paragraph before it.
+    let source = "- [^x]: q\n\n  a\n| - |\n  | - |\n";
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    assert_eq!(
+        reads_back(document),
+        "- [^x]: q\n\n  a\n\n  | - |\n  | --- |\n"
+    );
 }
 
 #[test]
