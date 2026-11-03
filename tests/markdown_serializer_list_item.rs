@@ -10,9 +10,9 @@ use base_markdown::{
     to_markdown_with_options, Document, ParseOptions,
 };
 use pretty_assertions::assert_eq;
-use std::time::{Duration, Instant};
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
 use support::fixture::{List, ListItem, Node, Paragraph, Root, Text, ThematicBreak};
+use support::linear::{assert_linear, timed, SCALE};
 
 #[test]
 fn list_item() {
@@ -493,33 +493,22 @@ where
     })
 }
 
-/// Assert that serializing the document `build` makes takes linear time with each of `options`:
-/// 4x input within 8x the time, taking the fastest of three runs of each size. The sizes are small
-/// to keep the test fast, and quadratic time takes about 16x.
-fn assert_linear(label: &str, options: &[Options], build: impl Fn(usize) -> Document<String>) {
-    let time = |document: &Document<String>, options: &Options| {
-        let started = Instant::now();
-        to_markdown_with_options(document, options).unwrap();
-        started.elapsed()
-    };
-    let small_document = build(1 << 9);
-    let large_document = build(1 << 11);
-    for options in options {
-        time(&small_document, options);
-        let mut small = Duration::MAX;
-        let mut large = Duration::MAX;
-        for _ in 0..3 {
-            small = small.min(time(&small_document, options));
-            large = large.min(time(&large_document, options));
-        }
-        assert!(
-            large < small * 8,
-            "{}: 4x input took {:?} against {:?} with {:?}",
-            label,
-            large,
-            small,
-            options
-        );
+/// Assert that serializing the document `build` makes takes linear time with each of `options`.
+fn assert_serializes_linear(
+    label: &str,
+    size: usize,
+    options: &[(&str, Options)],
+    build: impl Fn(usize) -> Document<String>,
+) {
+    let small = build(size);
+    let large = build(SCALE * size);
+    for (name, options) in options {
+        assert_linear((label, name), size, |count| {
+            let document = if count == size { &small } else { &large };
+            timed(|| {
+                to_markdown_with_options(document, options).unwrap();
+            })
+        });
     }
 }
 
@@ -602,7 +591,7 @@ fn task_item_after_definitions(size: usize) -> Document<String> {
 
 #[test]
 fn serializing_list_items_is_linear() {
-    let default = [Options::default()];
+    let default = [("default", Options::default())];
     type Build = fn(usize) -> String;
     let cases: [(&str, Build); 4] = [
         ("headings in one item", |size| {
@@ -620,25 +609,29 @@ fn serializing_list_items_is_linear() {
     ];
     let parse = ParseOptions::gfm();
     for (label, build) in cases {
-        assert_linear(label, &default, |size| {
+        assert_serializes_linear(label, 1 << 8, &default, |size| {
             Document::parse(build(size), &parse).unwrap()
         });
     }
-    assert_linear("items after separators", &default, separated_items);
+    assert_serializes_linear("items after separators", 1 << 8, &default, separated_items);
     // Finding the task marker does not depend on the options. With these, definitions are joined
     // without a blank line and other blocks with one.
     let both = [
-        Options::default(),
-        Options {
-            fences: false,
-            setext: true,
-            list_item_indent: IndentOptions::Mixed,
-            tight_definitions: true,
-            ..Options::default()
-        },
+        ("default", Options::default()),
+        (
+            "combination",
+            Options {
+                fences: false,
+                setext: true,
+                list_item_indent: IndentOptions::Mixed,
+                tight_definitions: true,
+                ..Options::default()
+            },
+        ),
     ];
-    assert_linear(
+    assert_serializes_linear(
         "task markers after definitions",
+        1 << 8,
         &both,
         task_item_after_definitions,
     );

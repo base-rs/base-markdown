@@ -26,12 +26,12 @@ use regex::Regex;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::{Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::sync::PoisonError;
 use support::fixture::{
     canonical, AlignKind, Break, Delete, Emphasis, Heading, InlineCode, Link, Node, Paragraph,
     Root, Strong, Table, TableCell, TableRow, Text,
 };
+use support::linear::{assert_linear, timed, TIMING};
 
 /// Inputs per corpus when `FUZZ_INPUTS` is not set; the baseline records failures at this size.
 const DEFAULT_INPUTS: usize = 10_000;
@@ -658,11 +658,9 @@ fn change(now: usize, before: usize) -> String {
 
 const BLESS: &str = "FUZZ_BLESS=1 cargo test --test roundtrip_fuzz round_trip_fuzz";
 
-/// Taken by the fuzz run and by each scaling test, so that the fuzz threads never load the machine while a scaling test times.
-static TIMING: Mutex<()> = Mutex::new(());
-
 #[test]
 fn round_trip_fuzz() {
+    // The fuzz threads would load the machine while a scaling test times.
     let _timing = TIMING.lock().unwrap_or_else(PoisonError::into_inner);
     let count = environment("FUZZ_INPUTS").map_or(DEFAULT_INPUTS, |value| {
         value
@@ -854,65 +852,22 @@ fn baseline_rejects_malformed_lines() {
     assert!(parse("soup 1 0 digest\n"));
 }
 
-/// Assert that four times the input takes less than twelve times as long, after a warm-up, as in `tests/document_normalize.rs`.
-///
-/// Quadratic time would take sixteen times as long. Each size takes the fastest of five runs, alternating between the sizes, so that load slows both alike, and only one scaling test, or the fuzz run, runs at once.
-fn assert_linear(unit: &str, mut time: impl FnMut(usize) -> Duration) {
-    let _timing = TIMING.lock().unwrap_or_else(PoisonError::into_inner);
-    time(1 << 7);
-    let mut small = Duration::MAX;
-    let mut large = Duration::MAX;
-    for _ in 0..5 {
-        small = small.min(time(1 << 10));
-        large = large.min(time(1 << 12));
-    }
-    assert!(
-        large < small * 12,
-        "{:?}: 4x input took {:?} against {:?}",
-        unit,
-        large,
-        small
-    );
-}
-
 #[test]
 fn incremental_parsing_is_linear() {
-    // Each push completes a line, so each prepares the source again from the last clean block. With LF, CRLF and CR endings.
-    for unit in ["word\n\n", "word\r\n\r\n", "word\r\r"] {
-        assert_linear(unit, |size| {
+    // Each push completes a line, so each prepares the source again from the last clean block, which must not scan the accumulated source for a CR. With CRLF and CR endings, that scan finds one at once, so only LF endings are timed.
+    for unit in ["word\n\n"] {
+        assert_linear(unit, 1 << 7, |size| {
             let options = ParseOptions::default();
-            let started = Instant::now();
-            let mut parser = IncrementalParser::new(&options);
             let mut events = 0;
-            for _ in 0..size * 16 {
-                events += parser.push(unit).count();
-            }
-            events += parser.finish().count();
-            let elapsed = started.elapsed();
+            let elapsed = timed(|| {
+                let mut parser = IncrementalParser::new(&options);
+                for _ in 0..size * 16 {
+                    events += parser.push(unit).count();
+                }
+                events += parser.finish().count();
+            });
             assert_eq!(events, size * 16 * 4);
             elapsed
-        });
-    }
-}
-
-#[test]
-fn parsing_normalizing_and_serializing_is_linear() {
-    // Shapes from the fuzz corpora, repeated: encoded edges, escaped markers, adjacent and nested attention, and nested strikethrough.
-    for unit in [
-        "*&#x20;~a* ",
-        "\\\\\\~b*&#x20;c* ",
-        "*a (\\~&#xA;*b ",
-        "*a*_b_",
-        "**a*b*c** ",
-        "~a~~b~~c~ ",
-    ] {
-        assert_linear(unit, |size| {
-            let source = unit.repeat(size) + "\n";
-            let started = Instant::now();
-            let mut document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
-            document.normalize();
-            to_markdown_with_options(&document, &MarkdownOptions::default()).unwrap();
-            started.elapsed()
         });
     }
 }

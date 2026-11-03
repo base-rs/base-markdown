@@ -4,3 +4,4 @@
 // Copyright, 2026, by Samuel Williams.
 
 pub mod fixture;
+pub mod linear;

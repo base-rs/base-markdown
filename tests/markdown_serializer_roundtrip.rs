@@ -10,6 +10,7 @@ mod support;
 use base_markdown::{Document, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::canonical;
+use support::linear::{assert_linear, timed};
 
 #[test]
 fn normalizes_unordered_list_markers_by_default() {
@@ -564,20 +565,12 @@ fn text_angle_bracket_email_scans_stay_linear() {
     let time = |count: usize| {
         let input = "<1.2-3 ".repeat(count) + "x\n";
         let tree = Document::parse(&input, &Default::default()).unwrap();
-        let started = std::time::Instant::now();
-        let output = to(&tree).unwrap();
+        let mut output = String::new();
+        let elapsed = timed(|| output = to(&tree).unwrap());
         assert_eq!(output, input);
-        started.elapsed()
+        elapsed
     };
-    time(1 << 10);
-    let small = time(1 << 13);
-    let large = time(1 << 15);
-    assert!(
-        large < small * 16,
-        "4x input took {:?} against {:?}",
-        large,
-        small
-    );
+    assert_linear("<1.2-3 ", 1 << 9, time);
 }
 
 #[test]

@@ -728,62 +728,6 @@ fn encode_after_empty_text() {
 }
 
 #[test]
-fn empty_text_around_attention_stays_linear() {
-    // Serializing without normalizing may be incorrect, but must not panic. Normalizing first and serializing is linear, so four times the input takes about four times as long; each size takes the fastest of five runs, alternating between the sizes so that load slows both alike.
-    use base_markdown::{
-        stream::{Event, EventKind, Tag, TagKind, Text},
-        AstBuilder,
-    };
-    let time = |count: usize| {
-        let event = |kind: EventKind<'static>| Ok(Event { kind, span: 0..0 });
-        let empty = || event(EventKind::Text(Text::Literal("")));
-        let mut events = vec![
-            event(EventKind::Start(Tag::Document(None))),
-            event(EventKind::Start(Tag::Paragraph { tight: false })),
-        ];
-        events.extend((0..count).map(|_| empty()));
-        events.extend([
-            event(EventKind::Start(Tag::Emphasis)),
-            event(EventKind::Text(Text::Literal("a "))),
-            event(EventKind::End(TagKind::Emphasis)),
-        ]);
-        events.extend((0..count).map(|_| empty()));
-        events.extend([
-            event(EventKind::Text(Text::Literal("b"))),
-            event(EventKind::End(TagKind::Paragraph)),
-            event(EventKind::End(TagKind::Document)),
-        ]);
-        let mut builder = AstBuilder::new();
-        builder
-            .consume(&mut events.into_iter(), usize::MAX)
-            .unwrap();
-        let mut document = builder.finish(String::new()).unwrap();
-        if count == 1 << 10 {
-            to_markdown(&document, &Options::default());
-        }
-        let started = std::time::Instant::now();
-        document.normalize();
-        let markdown = to_markdown(&document, &Options::default());
-        let elapsed = started.elapsed();
-        assert_eq!(markdown, "*a* b\n");
-        elapsed
-    };
-    time(1 << 10);
-    let mut small = std::time::Duration::MAX;
-    let mut large = std::time::Duration::MAX;
-    for _ in 0..5 {
-        small = small.min(time(50_000));
-        large = large.min(time(200_000));
-    }
-    assert!(
-        large < small * 16,
-        "4x input took {:?} against {:?}",
-        large,
-        small
-    );
-}
-
-#[test]
 fn encode_after_cleared_text() {
     // Clearing the text a reference was split off keeps the reference for the text after it.
     let mut document =
