@@ -4168,23 +4168,40 @@ fn joining_paragraphs_and_loosening_lists_in_tight_items_is_linear() {
         |_, _| {},
     );
     assert_normalize_linear("serializing joined paragraphs", 1 << 6, paragraphs);
+    let quotes = |size: usize| {
+        let blocks = (0..size)
+            .flat_map(|_| {
+                [
+                    Quote(vec![Quote(vec![Paragraph(vec![text()])])]),
+                    Separator,
+                    Paragraph(vec![text()]),
+                    Separator,
+                ]
+            })
+            .collect();
+        build_list(&tight(vec![(false, blocks)]))
+    };
     assert_normalize_only_linear(
         "block quotes and paragraphs in a tight item",
         1 << 8,
+        quotes,
+        |_, _| {},
+    );
+    // Each paragraph after a block quote is written after a line of `>`, and each pair of block quotes in a row in a spread item of a loose list is checked for a blank line, which is linear only if each join looks at a bounded number of blocks.
+    assert_normalize_linear("serializing block quotes and paragraphs", 1 << 8, quotes);
+    assert_normalize_linear(
+        "serializing block quotes in a row in a loose list",
+        1 << 8,
         |size| {
             let blocks = (0..size)
-                .flat_map(|_| {
-                    [
-                        Quote(vec![Quote(vec![Paragraph(vec![text()])])]),
-                        Separator,
-                        Paragraph(vec![text()]),
-                        Separator,
-                    ]
-                })
+                .flat_map(|_| [Quote(vec![Paragraph(vec![text()])]), Separator])
                 .collect();
-            build_list(&tight(vec![(false, blocks)]))
+            build_list(&List(
+                None,
+                false,
+                vec![(true, blocks), (false, vec![Paragraph(vec![text()])])],
+            ))
         },
-        |_, _| {},
     );
     // A tight list of many items, of which only the last needs it to be loose.
     assert_normalize_only_linear(
