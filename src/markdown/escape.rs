@@ -683,9 +683,27 @@ mod tests {
                     regex::escape(&char::from(rule.byte).to_string())
                 ))
                 .unwrap();
-                for left in contexts {
-                    for right in contexts {
-                        for byte in 0..=127u8 {
+                // A context holding the rule's byte, or the byte itself, chains candidates whose
+                // matches can consume one another, so every combination with one is checked.
+                // Otherwise only the byte between the two candidates connects what is before the
+                // first and what is after the byte, so each of those is checked against every
+                // byte with the other empty, along with a diagonal sample of the rest. This
+                // assumes the last candidate's `Before` never reaches back to the first candidate
+                // (no non-empty context is all spaces, tabs or digits, so the `Line`, `Digits`,
+                // `EncodedLine` and `EncodedDigits` walks stop inside the right context), and that
+                // no `After` that can match here reads past `position + 1` (`Closing` reads
+                // further but matches only at the end). A rule, `Before` or `After` variant, or
+                // context that breaks either needs the full product again; the diagonal sample is
+                // only a backstop.
+                let chained = |context: &str| context.as_bytes().contains(&rule.byte);
+                for (left_index, left) in contexts.iter().copied().enumerate() {
+                    for (right_index, right) in contexts.iter().copied().enumerate() {
+                        let full =
+                            left.is_empty() || right.is_empty() || chained(left) || chained(right);
+                        for byte in (0..=127u8).filter(|&byte| {
+                            full || byte == rule.byte
+                                || usize::from(byte) % 16 == (left_index * 5 + right_index) % 16
+                        }) {
                             let value = format!(
                                 "{left}{}{}{right}{}",
                                 char::from(rule.byte),

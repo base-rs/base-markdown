@@ -45,3 +45,11 @@ reviewers = ["base-rs/maintainers"]
 
 [workspace.dependencies]
 pretty_assertions = "1"
+
+# The escape tests check matchers against regular expressions; an unoptimized `regex` dominates their run time.
+[profile.dev.package.regex]
+opt-level = 3
+[profile.dev.package.regex-automata]
+opt-level = 3
+[profile.dev.package.regex-syntax]
+opt-level = 3
