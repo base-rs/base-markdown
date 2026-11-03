@@ -564,7 +564,8 @@ impl State<'_> {
         self.output.push(bullet);
         // The checkbox starts the item's content, as in `mdast-util-gfm-task-list-item`, so continuation lines indent to the content start the parser uses, which excludes the checkbox.
         // The text after the marker starts with the space or tab that separates them, which the text writer drops, so the marker is written with that character and a tab reads back as one.
-        let task = item_task(document, node).map(|(marker, checked)| {
+        let item_task = item_task(document, node);
+        let task = item_task.map(|(marker, checked)| {
             let separator = document
                 .node(marker)
                 .unwrap()
@@ -597,7 +598,11 @@ impl State<'_> {
         }
         self.enter(ConstructName::ListItem);
         let start = self.output.len();
+        let task_item = self
+            .task_item
+            .replace((node, item_task.map(|(marker, _)| marker)));
         self.container_flow(document, node)?;
+        self.task_item = task_item;
         self.indent_lines(start, |line, index, blank, output| {
             if index == 0 {
                 if let Some((task, separator)) = task {
@@ -619,14 +624,25 @@ impl State<'_> {
         Ok(())
     }
 
+    /// Whether `node` is the task marker of the item its paragraph is in. Finding an item's task
+    /// marker reads past the definitions that start the item, so the marker of the item being
+    /// written is found once, rather than for each node that asks (#161).
     pub(super) fn is_item_task<S: AsRef<str>>(&self, document: &Document<S>, node: NodeId) -> bool {
-        document
-            .node(node)
-            .unwrap()
+        let node_ref = document.node(node).unwrap();
+        if !matches!(node_ref.kind, EventKind::TaskMarker(_)) {
+            return false;
+        }
+        let Some(item) = node_ref
             .parent()
             .and_then(|parent| document.node(parent).unwrap().parent())
-            .and_then(|item| item_task(document, item))
-            .is_some_and(|(marker, _)| marker == node)
+        else {
+            return false;
+        };
+        let marker = match self.task_item {
+            Some((written, marker)) if written == item => marker,
+            _ => item_task(document, item).map(|(marker, _)| marker),
+        };
+        marker == Some(node)
     }
 
     pub(super) fn item_spread<S: AsRef<str>>(&self, document: &Document<S>, node: NodeId) -> bool {

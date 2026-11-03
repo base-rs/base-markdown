@@ -145,7 +145,7 @@ fn joins_code_and_spread_items_consistently() {
         )
         .unwrap();
     assert!(matches!(
-        state.default_separator(&document, None, code, code, root),
+        state.default_separator(&document, None, code, code, root, false),
         "\n\n<!---->\n\n"
     ));
     let item = document
@@ -156,19 +156,40 @@ fn joins_code_and_spread_items_consistently() {
         .append_child(item, EventKind::Text(Text::Literal("other")))
         .unwrap();
     assert!(matches!(
-        state.default_separator(&document, None, left, right, item),
+        state.default_separator(
+            &document,
+            None,
+            left,
+            right,
+            item,
+            state.records_spread(&document, item)
+        ),
         "\n"
     ));
     document
         .set_syntax(item, Some(NodeSyntax::ListItem { spread: true }))
         .unwrap();
     assert!(matches!(
-        state.default_separator(&document, None, left, right, item),
+        state.default_separator(
+            &document,
+            None,
+            left,
+            right,
+            item,
+            state.records_spread(&document, item)
+        ),
         "\n\n"
     ));
     let right = paragraph(&mut document, item, "two");
     assert!(matches!(
-        state.default_separator(&document, None, left, right, item),
+        state.default_separator(
+            &document,
+            None,
+            left,
+            right,
+            item,
+            state.records_spread(&document, item)
+        ),
         "\n\n"
     ));
 }

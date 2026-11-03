@@ -5,7 +5,12 @@
 
 mod support;
 use base_markdown::markdown::{IndentOptions, Options};
+use base_markdown::{
+    stream::{EventKind, Tag, Text as Value},
+    to_markdown_with_options, Document, NodeSyntax, ParseOptions,
+};
 use pretty_assertions::assert_eq;
+use std::time::{Duration, Instant};
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
 use support::fixture::{List, ListItem, Node, Paragraph, Root, Text, ThematicBreak};
 
@@ -486,4 +491,210 @@ where
         start: None,
         spread: false,
     })
+}
+
+/// Assert that serializing the document `build` makes takes linear time with each of `options`:
+/// 4x input within 12x the time, taking the fastest of five runs of each size.
+fn assert_linear(label: &str, options: &[Options], build: impl Fn(usize) -> Document<String>) {
+    let time = |document: &Document<String>, options: &Options| {
+        let started = Instant::now();
+        to_markdown_with_options(document, options).unwrap();
+        started.elapsed()
+    };
+    let small_document = build(1 << 11);
+    let large_document = build(1 << 13);
+    for options in options {
+        time(&small_document, options);
+        let mut small = Duration::MAX;
+        let mut large = Duration::MAX;
+        for _ in 0..5 {
+            small = small.min(time(&small_document, options));
+            large = large.min(time(&large_document, options));
+        }
+        assert!(
+            large < small * 12,
+            "{}: 4x input took {:?} against {:?} with {:?}",
+            label,
+            large,
+            small,
+            options
+        );
+    }
+}
+
+/// A loose list of `size` separators and then `size` items, each with a paragraph and a heading,
+/// whose recorded spread is unset, false or true in turn.
+fn separated_items(size: usize) -> Document<String> {
+    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+    let root = document.root();
+    let list = document
+        .append_child(
+            root,
+            EventKind::Start(Tag::List {
+                start: None,
+                tight: false,
+            }),
+        )
+        .unwrap();
+    for _ in 0..size {
+        document
+            .append_child(
+                list,
+                EventKind::Separator {
+                    value: Value::Literal("\n"),
+                    conditional: false,
+                },
+            )
+            .unwrap();
+    }
+    for index in 0..size {
+        let item = document
+            .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+            .unwrap();
+        if index % 3 > 0 {
+            let spread = index % 3 == 2;
+            document
+                .set_syntax(item, Some(NodeSyntax::ListItem { spread }))
+                .unwrap();
+        }
+        for tag in [Tag::Paragraph { tight: false }, Tag::Heading(1)] {
+            let block = document.append_child(item, EventKind::Start(tag)).unwrap();
+            document
+                .append_child(block, EventKind::Text(Value::Literal("a")))
+                .unwrap();
+        }
+    }
+    document
+}
+
+#[test]
+fn serializing_list_items_is_linear() {
+    type Build = fn(usize) -> String;
+    let cases: [(&str, Build); 8] = [
+        ("headings in one item", |size| {
+            format!("- {}", "# a\n  ".repeat(size))
+        }),
+        ("paragraphs in one spread item", |size| {
+            format!("- a\n\n{}", "  b\n\n".repeat(size))
+        }),
+        ("paragraphs and quotes in one spread item", |size| {
+            format!("- a\n\n{}", "  > b\n\n  c\n\n".repeat(size))
+        }),
+        ("footnote definitions in one item", |size| {
+            format!("- {}", "[^a]: b\n  ".repeat(size))
+        }),
+        ("nested lists between paragraphs", |size| {
+            format!("- a\n{}", "  - b\n\n  c\n".repeat(size))
+        }),
+        ("nested items with several blocks", |size| {
+            format!("- a\n  - b\n{}", "    # c\n    d\n    - e\n".repeat(size))
+        }),
+        ("loose list of items with several blocks", |size| {
+            "- # a\n\n  b\n\n  > c\n\n".repeat(size)
+        }),
+        ("paragraphs after definitions in one item", |size| {
+            format!(
+                "- [a]: b\n{}\n{}",
+                "  [a]: b\n".repeat(size),
+                "  *c* d\n\n".repeat(size)
+            )
+        }),
+    ];
+    let option_sets = [
+        Options::default(),
+        // Definitions joined without a blank line, which separates the other blocks with one.
+        Options {
+            fences: false,
+            setext: true,
+            list_item_indent: IndentOptions::Mixed,
+            tight_definitions: true,
+            ..Options::default()
+        },
+    ];
+    let parse = ParseOptions::gfm();
+    for (label, build) in cases {
+        assert_linear(label, &option_sets, |size| {
+            Document::parse(build(size), &parse).unwrap()
+        });
+    }
+    assert_linear("items after separators", &option_sets, separated_items);
+}
+
+#[test]
+fn writes_task_markers_outside_the_item_being_written() {
+    let parse = ParseOptions::gfm();
+    let options = Options::default();
+    // The marker of a task item belongs to the item, which writes it, so its paragraph written on
+    // its own leaves the marker out, whether or not the item is being written.
+    let document = Document::parse("- [x] a\n", &parse).unwrap();
+    let paragraph = document
+        .descendants(document.root())
+        .find(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Start(Tag::Paragraph { .. })
+            )
+        })
+        .unwrap();
+    assert_eq!(
+        base_markdown::to_markdown_node(&document, paragraph, &options).unwrap(),
+        "a\n"
+    );
+    // A marker in a paragraph that is not in an item is written as text.
+    let mut document = Document::parse(String::new(), &parse).unwrap();
+    let root = document.root();
+    let quote = document
+        .append_child(root, EventKind::Start(Tag::BlockQuote))
+        .unwrap();
+    let paragraph = document
+        .append_child(quote, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
+    document
+        .append_child(paragraph, EventKind::TaskMarker(true))
+        .unwrap();
+    document
+        .append_child(paragraph, EventKind::Text(Value::Literal(" a")))
+        .unwrap();
+    assert_eq!(
+        to_markdown_with_options(&document, &options).unwrap(),
+        "> [x] a\n"
+    );
+}
+
+#[test]
+fn writes_the_only_item_of_a_loose_list_before_separators_spread() {
+    // The separator after the item is not a block, so the item is still the list's only one.
+    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+    let root = document.root();
+    let list = document
+        .append_child(
+            root,
+            EventKind::Start(Tag::List {
+                start: None,
+                tight: false,
+            }),
+        )
+        .unwrap();
+    let item = document
+        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+        .unwrap();
+    for tag in [Tag::Paragraph { tight: false }, Tag::Heading(1)] {
+        let block = document.append_child(item, EventKind::Start(tag)).unwrap();
+        document
+            .append_child(block, EventKind::Text(Value::Literal("a")))
+            .unwrap();
+    }
+    document
+        .append_child(
+            list,
+            EventKind::Separator {
+                value: Value::Literal("\n"),
+                conditional: false,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        to_markdown_with_options(&document, &Options::default()).unwrap(),
+        "- a\n\n  # a\n"
+    );
 }

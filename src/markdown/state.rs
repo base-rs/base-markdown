@@ -86,6 +86,8 @@ pub struct State<'a> {
     /// Whether the flow child being written is code that needs a fence whatever the options, as
     /// from `fences_code`. Set before each flow child is written.
     fence_code: bool,
+    /// The innermost item `list_item` is writing, and its task marker, if any.
+    pub(super) task_item: Option<(NodeId, Option<NodeId>)>,
 }
 
 impl<'a> Info<'a> {
@@ -114,7 +116,7 @@ impl<'a> Info<'a> {
 
 impl<'a> State<'a> {
     /// The separator between flow children `left` and `right` of `parent`, where `before` is the
-    /// flow child before `left`, if any.
+    /// flow child before `left`, if any, and `spread` is what `records_spread` gives for `parent`.
     fn between<S: AsRef<str>>(
         &self,
         document: &Document<S>,
@@ -122,11 +124,23 @@ impl<'a> State<'a> {
         left: NodeId,
         right: NodeId,
         parent: NodeId,
+        spread: bool,
     ) -> &'static str {
         if self.options.tight_definitions {
             self.definition_separator(document, left, right)
         } else {
-            self.default_separator(document, before, left, right, parent)
+            self.default_separator(document, before, left, right, parent, spread)
+        }
+    }
+
+    /// Whether `parent`, if it is a list or item, records a blank line between its blocks. An
+    /// item's spread is read from its syntax, which scans its blocks, so it is read once for all
+    /// its joins (#161). Other parents give `false`, which their joins do not read.
+    fn records_spread<S: AsRef<str>>(&self, document: &Document<S>, parent: NodeId) -> bool {
+        match document.node(parent).unwrap().kind {
+            EventKind::Start(Tag::List { tight, .. }) => !tight,
+            EventKind::Start(Tag::Item { .. }) => self.item_spread(document, parent),
+            _ => false,
         }
     }
 
@@ -146,7 +160,14 @@ impl<'a> State<'a> {
     /// between its blocks. Nothing else can show the list is loose. A blank line after a footnote
     /// definition does not count: the definition takes it in, so the item read back records no
     /// spread for it, and the item's other blocks are written spread as before.
-    fn spreads_item<S: AsRef<str>>(&self, document: &Document<S>, item: NodeId) -> bool {
+    ///
+    /// `spread` is what `records_spread` gives for `item`.
+    fn spreads_item<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        item: NodeId,
+        spread: bool,
+    ) -> bool {
         let node = document.node(item).unwrap();
         if !matches!(node.kind, EventKind::Start(Tag::Item { .. })) {
             return false;
@@ -160,7 +181,11 @@ impl<'a> State<'a> {
         ) {
             return false;
         }
-        let lone = flow_children(document, list).nth(1).is_none();
+        // Whether `item` is the list's only block. Each item looks past the separators up to the
+        // next block, and only the last item looks past those before the first, so the list's
+        // separators are each read a bounded number of times.
+        let lone = !flow_siblings_after(document, item)
+            && flow_children(document, list).next() == Some(item);
         let mut joined = false;
         let mut blank = false;
         let mut before = None;
@@ -170,14 +195,14 @@ impl<'a> State<'a> {
                 let left_kind = &document.node(left).unwrap().kind;
                 if matches!(left_kind, EventKind::Start(Tag::Paragraph { .. }))
                     && !list_interrupts_paragraph(document, right)
-                    && self.between(document, before, left, right, item) == "\n"
+                    && self.between(document, before, left, right, item, spread) == "\n"
                 {
                     return true;
                 }
                 blank = blank
                     || lone
                         && !matches!(left_kind, EventKind::Start(Tag::FootnoteDefinition(_)))
-                        && self.between(document, before, left, right, item) != "\n";
+                        && self.between(document, before, left, right, item, spread) != "\n";
                 joined = true;
             }
             before = left;
@@ -192,7 +217,8 @@ impl<'a> State<'a> {
         parent: NodeId,
     ) -> Result<(), Message> {
         let mut children = flow_children(document, parent).peekable();
-        let spread = self.spreads_item(document, parent);
+        let records_spread = self.records_spread(document, parent);
+        let spread = self.spreads_item(document, parent, records_spread);
         self.index_stack.push(0);
         let mut before = None;
         for index in 0.. {
@@ -207,10 +233,11 @@ impl<'a> State<'a> {
             self.fence_code = fences_code(document, before);
             self.write_node(document, child, &Info::new("\n", "\n"))?;
             if let Some(&next) = children.peek() {
-                let separator = match self.between(document, before, child, next, parent) {
-                    "\n" if spread => "\n\n",
-                    separator => separator,
-                };
+                let separator =
+                    match self.between(document, before, child, next, parent, records_spread) {
+                        "\n" if spread => "\n\n",
+                        separator => separator,
+                    };
                 self.output.push_str(separator);
             }
             before = Some(child);
@@ -915,6 +942,7 @@ impl<'a> State<'a> {
         left: NodeId,
         right: NodeId,
         parent: NodeId,
+        spread: bool,
     ) -> &'static str {
         let left_kind = &document.node(left).unwrap().kind;
         let right_kind = &document.node(right).unwrap().kind;
@@ -958,10 +986,6 @@ impl<'a> State<'a> {
                     return "\n\n";
                 }
             }
-            let spread = match document.node(parent).unwrap().kind {
-                EventKind::Start(Tag::List { tight, .. }) => !tight,
-                _ => self.item_spread(document, parent),
-            };
             return if spread { "\n\n" } else { "\n" };
         }
         "\n\n"
@@ -1021,6 +1045,7 @@ impl<'a> State<'a> {
             label_end: None,
             definition_colon: None,
             fence_code: false,
+            task_item: None,
         }
     }
 
@@ -1547,6 +1572,19 @@ fn ends_in_paragraph<S: AsRef<str>>(document: &Document<S>, mut id: NodeId) -> b
             ) => id = last,
             _ => return false,
         }
+    }
+    false
+}
+
+/// Whether a flow child, not a separator, follows `id` among its siblings.
+fn flow_siblings_after<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
+    let mut next = document.node(id).unwrap().next_sibling();
+    while let Some(sibling) = next {
+        let node = document.node(sibling).unwrap();
+        if !matches!(node.kind, EventKind::Separator { .. }) {
+            return true;
+        }
+        next = node.next_sibling();
     }
     false
 }
