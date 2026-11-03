@@ -3530,3 +3530,34 @@ fn a_spread_item_keeps_the_comment_before_indented_code() {
         );
     }
 }
+
+#[test]
+fn a_spread_item_keeps_tight_definitions() {
+    // With `tight_definitions`, a paragraph and a list after it are already joined by a blank line, so the item is not forced spread and adjacent definitions in it stay tight.
+    let options = base_markdown::MarkdownOptions {
+        tight_definitions: true,
+        ..base_markdown::MarkdownOptions::default()
+    };
+    for (source, expected) in [
+        (
+            "- p\n\n  3. a\n\n  [r]: /u\n  [s]: /v\n\n- q\n",
+            "- p\n\n  3. a\n\n  [r]: /u\n  [s]: /v\n\n- q\n",
+        ),
+        (
+            "- p\n\n    -\n  [r]: /u\n  [s]: /v",
+            "- p\n\n  -\n\n  [r]: /u\n  [s]: /v\n",
+        ),
+    ] {
+        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+        document.normalize();
+        let markdown = base_markdown::to_markdown_with_options(&document, &options).unwrap();
+        assert_eq!(markdown, expected, "{:?}", source);
+        let mut reparsed = Document::parse(markdown.as_str(), &ParseOptions::default()).unwrap();
+        reparsed.normalize();
+        assert_eq!(rendered(&reparsed), rendered(&document), "{:?}", source);
+        assert_eq!(
+            base_markdown::to_markdown_with_options(&reparsed, &options).unwrap(),
+            markdown
+        );
+    }
+}

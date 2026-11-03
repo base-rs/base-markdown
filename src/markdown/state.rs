@@ -130,8 +130,11 @@ impl<'a> State<'a> {
     /// An item with a paragraph directly followed by a list that cannot interrupt a paragraph,
     /// one that starts with an empty item or is ordered and starts at a number other than 1, needs
     /// a blank line between them, or the list would read back as text in the paragraph or, after
-    /// `-`, as a setext heading. That blank line makes the item read back spread, so all of its
-    /// blocks are written spread, which the list being loose already renders.
+    /// `-`, as a setext heading. When the join would otherwise be a single line ending, the item is
+    /// written spread: that blank line makes it read back spread, so each of its other joins that
+    /// would be a single line ending is written as a blank line too, which the list being loose
+    /// already renders. A join that is already a blank line, as with `tight_definitions`, needs
+    /// nothing, and the item is written as before.
     ///
     /// The only item of a loose list is also written spread when no blank line would be written
     /// between its blocks. Nothing else can show the list is loose. A blank line after a footnote
@@ -160,6 +163,7 @@ impl<'a> State<'a> {
                 let left_kind = &document.node(left).unwrap().kind;
                 if matches!(left_kind, EventKind::Start(Tag::Paragraph { .. }))
                     && !list_interrupts_paragraph(document, right)
+                    && self.between(document, left, right, item) == "\n"
                 {
                     return true;
                 }
