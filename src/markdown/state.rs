@@ -124,11 +124,20 @@ impl<'a> State<'a> {
         }
     }
 
-    /// Whether `item` is the only item of a loose list and no blank line would be written between
-    /// its blocks. Nothing else can show the list is loose, so it is then written spread. A blank
-    /// line after a footnote definition does not count: the definition takes it in, so the item read
-    /// back records no spread for it, and the item's other blocks are written spread as before.
-    fn spreads_lone_item<S: AsRef<str>>(&self, document: &Document<S>, item: NodeId) -> bool {
+    /// Whether `item` is an item of a loose list that is written with a blank line between each of
+    /// its blocks, whatever spread it records.
+    ///
+    /// An item with a paragraph directly followed by a list that cannot interrupt a paragraph,
+    /// one that starts with an empty item or is ordered and starts at a number other than 1, needs
+    /// a blank line between them, or the list would read back as text in the paragraph or, after
+    /// `-`, as a setext heading. That blank line makes the item read back spread, so all of its
+    /// blocks are written spread, which the list being loose already renders.
+    ///
+    /// The only item of a loose list is also written spread when no blank line would be written
+    /// between its blocks. Nothing else can show the list is loose. A blank line after a footnote
+    /// definition does not count: the definition takes it in, so the item read back records no
+    /// spread for it, and the item's other blocks are written spread as before.
+    fn spreads_item<S: AsRef<str>>(&self, document: &Document<S>, item: NodeId) -> bool {
         let node = document.node(item).unwrap();
         if !matches!(node.kind, EventKind::Start(Tag::Item { .. })) {
             return false;
@@ -139,26 +148,30 @@ impl<'a> State<'a> {
         if !matches!(
             document.node(list).unwrap().kind,
             EventKind::Start(Tag::List { tight: false, .. })
-        ) || flow_children(document, list).nth(1).is_some()
-        {
+        ) {
             return false;
         }
+        let lone = flow_children(document, list).nth(1).is_none();
         let mut joined = false;
+        let mut blank = false;
         let mut left = None;
         for right in flow_children(document, item) {
             if let Some(left) = left {
-                if !matches!(
-                    document.node(left).unwrap().kind,
-                    EventKind::Start(Tag::FootnoteDefinition(_))
-                ) && self.between(document, left, right, item) != "\n"
+                let left_kind = &document.node(left).unwrap().kind;
+                if matches!(left_kind, EventKind::Start(Tag::Paragraph { .. }))
+                    && !list_interrupts_paragraph(document, right)
                 {
-                    return false;
+                    return true;
                 }
+                blank = blank
+                    || lone
+                        && !matches!(left_kind, EventKind::Start(Tag::FootnoteDefinition(_)))
+                        && self.between(document, left, right, item) != "\n";
                 joined = true;
             }
             left = Some(right);
         }
-        joined
+        lone && joined && !blank
     }
 
     pub fn container_flow<S: AsRef<str>>(
@@ -167,7 +180,7 @@ impl<'a> State<'a> {
         parent: NodeId,
     ) -> Result<(), Message> {
         let mut children = flow_children(document, parent).peekable();
-        let spread = self.spreads_lone_item(document, parent);
+        let spread = self.spreads_item(document, parent);
         self.index_stack.push(0);
         for index in 0.. {
             let Some(child) = children.next() else { break };
@@ -1462,6 +1475,24 @@ pub(crate) fn is_phrasing(kind: &EventKind<'_>) -> bool {
             | EventKind::Text(_)
             | EventKind::Html { block: false, .. }
     )
+}
+
+/// Whether `id`, if it is a list, can interrupt a paragraph: it starts with an item that is not
+/// empty, not counting separators and empty paragraphs, and, if ordered, starts at 1. A node that
+/// is not a list counts as one that can.
+fn list_interrupts_paragraph<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
+    let EventKind::Start(Tag::List { start, .. }) = document.node(id).unwrap().kind else {
+        return true;
+    };
+    start.map_or(true, |start| start == 1)
+        && flow_children(document, id).next().map_or(true, |item| {
+            flow_children(document, item).any(|block| {
+                !matches!(
+                    document.node(block).unwrap().kind,
+                    EventKind::Start(Tag::Paragraph { .. })
+                ) || document.children(block).next().is_some()
+            })
+        })
 }
 
 /// Whether the last block of container `id`, through the last blocks of any containers in it, is a

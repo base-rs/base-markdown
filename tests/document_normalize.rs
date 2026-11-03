@@ -369,9 +369,9 @@ fn nested_strikethrough_from_markdown_reads_back() {
         let mut document = Document::parse(source, &ParseOptions::gfm()).unwrap();
         assert!(!document.is_normalized());
         document.normalize();
-        assert_eq!(describe(&document, document.root()), tree, "{source:?}");
+        assert_eq!(describe(&document, document.root()), tree, "{:?}", source);
         let markdown = to_markdown(&document).unwrap();
-        assert_eq!(markdown, expected, "{source:?}");
+        assert_eq!(markdown, expected, "{:?}", source);
         let mut reparsed = Document::parse(markdown.as_str(), &ParseOptions::gfm()).unwrap();
         reparsed.normalize();
         // The serialized Markdown ends with a line ending, which is a separator after the paragraph.
@@ -3258,6 +3258,238 @@ fn serializing_footnote_definitions_in_a_list_item_is_linear() {
     assert_normalize_linear(|size| {
         let blocks = (0..size / 2)
             .flat_map(|_| [Footnote(vec![p(), p()]), p()])
+            .collect();
+        build_list(&List(
+            None,
+            false,
+            vec![(false, blocks), (false, vec![p()])],
+        ))
+    });
+}
+
+/// Clear the recorded spread of each item of the first list, as a hand-built tree may leave it.
+fn unset_spread(mut document: Document<String>) -> Document<String> {
+    let list = document.children(document.root()).next().unwrap();
+    let items: Vec<NodeId> = document.children(list).collect();
+    for item in items {
+        document.set_syntax(item, None).unwrap();
+    }
+    document
+}
+
+#[test]
+fn a_list_that_cannot_interrupt_a_paragraph_in_a_loose_item_is_written_after_a_blank_line() {
+    use Block::{Code, List, Paragraph, Quote};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let tight = |start: Option<u32>, items: Vec<Vec<Block>>| {
+        List(
+            start,
+            true,
+            items.into_iter().map(|blocks| (false, blocks)).collect(),
+        )
+    };
+    // A list that starts with an empty item, or is ordered and starts at a number other than 1, cannot interrupt a paragraph. In a loose list of more than one item whose items record no spread, nothing wrote a blank line between them, so `- p\n  -` read back as a heading and `- p\n  3. a` as text (#151). The list is loose, so the item is written spread, which renders the same and reads back spread.
+    for spread in [None, Some(false), Some(true)] {
+        let loose = |first: Vec<Block>| {
+            List(
+                None,
+                false,
+                vec![
+                    (spread == Some(true), first),
+                    (spread == Some(true), vec![p("q")]),
+                ],
+            )
+        };
+        for (block, expected) in [
+            (
+                loose(vec![p("p"), tight(None, vec![vec![]])]),
+                "- p\n\n  -\n\n- q\n",
+            ),
+            (
+                loose(vec![p("p"), tight(Some(3), vec![vec![p("a")]])]),
+                "- p\n\n  3. a\n\n- q\n",
+            ),
+            (
+                loose(vec![p("p"), tight(Some(0), vec![vec![p("a")]])]),
+                "- p\n\n  0. a\n\n- q\n",
+            ),
+            (
+                loose(vec![p("p"), tight(Some(1), vec![vec![]])]),
+                "- p\n\n  1.\n\n- q\n",
+            ),
+            (
+                loose(vec![p("p"), tight(Some(1), vec![vec![], vec![p("a")]])]),
+                "- p\n\n  1.\n  2. a\n\n- q\n",
+            ),
+            (
+                loose(vec![p("p"), tight(None, vec![vec![], vec![p("a")]])]),
+                "- p\n\n  -\n  - a\n\n- q\n",
+            ),
+            (
+                loose(vec![p("p"), tight(None, vec![vec![Paragraph(vec![])]])]),
+                "- p\n\n  -\n\n- q\n",
+            ),
+            // The other blocks of the item are written spread too, so it reads back the same.
+            (
+                loose(vec![p("p"), tight(Some(3), vec![vec![p("a")]]), Code]),
+                "- p\n\n  3. a\n\n  ```\n  x\n  ```\n\n- q\n",
+            ),
+            (
+                loose(vec![
+                    Code,
+                    p("p"),
+                    tight(None, vec![vec![]]),
+                    tight(Some(1), vec![vec![p("a")]]),
+                ]),
+                "- ```\n  x\n  ```\n\n  p\n\n  -\n\n  1. a\n\n- q\n",
+            ),
+            (
+                List(
+                    None,
+                    false,
+                    vec![
+                        (spread == Some(true), vec![p("q")]),
+                        (
+                            spread == Some(true),
+                            vec![p("p"), tight(None, vec![vec![]])],
+                        ),
+                    ],
+                ),
+                "- q\n\n- p\n\n  -\n",
+            ),
+            (
+                List(
+                    Some(1),
+                    false,
+                    vec![
+                        (
+                            spread == Some(true),
+                            vec![p("p"), tight(Some(3), vec![vec![p("a")]])],
+                        ),
+                        (spread == Some(true), vec![p("q")]),
+                    ],
+                ),
+                "1. p\n\n   3. a\n\n2. q\n",
+            ),
+            (
+                Quote(vec![loose(vec![p("p"), tight(None, vec![vec![]])])]),
+                "> - p\n>\n>   -\n>\n> - q\n",
+            ),
+            (
+                Quote(vec![loose(vec![
+                    p("p"),
+                    tight(Some(3), vec![vec![p("a")]]),
+                ])]),
+                "> - p\n>\n>   3. a\n>\n> - q\n",
+            ),
+            // A list that can interrupt a paragraph is written as before.
+            (
+                loose(vec![p("p"), tight(None, vec![vec![p("a")]])]),
+                if spread == Some(true) {
+                    "- p\n\n  - a\n\n- q\n"
+                } else {
+                    "- p\n  - a\n\n- q\n"
+                },
+            ),
+            (
+                loose(vec![p("p"), tight(Some(1), vec![vec![p("a")], vec![]])]),
+                if spread == Some(true) {
+                    "- p\n\n  1. a\n  2.\n\n- q\n"
+                } else {
+                    "- p\n  1. a\n  2.\n\n- q\n"
+                },
+            ),
+            (
+                loose(vec![Code, tight(Some(3), vec![vec![p("a")]])]),
+                if spread == Some(true) {
+                    "- ```\n  x\n  ```\n\n  3. a\n\n- q\n"
+                } else {
+                    "- ```\n  x\n  ```\n  3. a\n\n- q\n"
+                },
+            ),
+        ] {
+            let mut document = build_list(&block);
+            if spread.is_none() && matches!(block, Block::List(..)) {
+                document = unset_spread(document);
+            }
+            assert_eq!(reads_back(document), expected, "{:?}", spread);
+        }
+        // The only item of a loose list is written spread, as before, also with a block after the list, which is already written after a blank line.
+        for (blocks, expected) in [
+            (
+                vec![p("p"), tight(Some(3), vec![vec![p("a")]])],
+                "- p\n\n  3. a\n",
+            ),
+            (vec![p("p"), tight(None, vec![vec![]])], "- p\n\n  -\n"),
+            (
+                vec![p("p"), tight(Some(3), vec![vec![p("a")]]), p("b")],
+                "- p\n\n  3. a\n\n  b\n",
+            ),
+        ] {
+            let mut document = build_list(&List(None, false, vec![(spread == Some(true), blocks)]));
+            if spread.is_none() {
+                document = unset_spread(document);
+            }
+            assert_eq!(reads_back(document), expected, "{:?}", spread);
+        }
+    }
+    // Parsed, an item with a blank line before such a list records spread, and is written as it was. One where the list can interrupt the paragraph stays as it was too.
+    for (source, expected) in [
+        ("- p\n\n  -\n\n- q\n", "- p\n\n  -\n\n- q\n"),
+        ("- p\n\n  3. a\n\n- q\n", "- p\n\n  3. a\n\n- q\n"),
+        ("- p\n\n  3. a\n- q\n", "- p\n\n  3. a\n\n- q\n"),
+        (
+            "- p\n\n  1.\n  2. a\n\n- q\n",
+            "- p\n\n  1.\n  2. a\n\n- q\n",
+        ),
+        ("> - p\n>\n>   -\n>\n> - q\n", "> - p\n>\n>   -\n>\n> - q\n"),
+        ("- p\n  - a\n\n- q\n", "- p\n  - a\n\n- q\n"),
+    ] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        if !source.starts_with('>') {
+            assert!(!tight_of_first_list(&document), "{:?}", source);
+        }
+        assert_eq!(reads_back(document), expected, "{:?}", source);
+    }
+}
+
+#[test]
+fn a_tight_list_after_a_paragraph_in_a_tight_item_stays_tight() {
+    use Block::{List, Paragraph};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    // In a tight list, normalizing removes the leading empty items and renumbers the list, so no blank line is written and the list stays tight (#150, #153).
+    for (start, items, expected) in [
+        (None, vec![vec![], vec![p("a")]], "- p\n  - a\n- q\n"),
+        (Some(3), vec![vec![p("a")]], "- p\n  1. a\n- q\n"),
+    ] {
+        let nested = List(
+            start,
+            true,
+            items.into_iter().map(|blocks| (false, blocks)).collect(),
+        );
+        let list = List(
+            None,
+            true,
+            vec![(false, vec![p("p"), nested]), (false, vec![p("q")])],
+        );
+        let document = reads_back(build_list(&list));
+        assert_eq!(document, expected);
+        assert!(tight_of_first_list(
+            &Document::parse(document.as_str(), &ParseOptions::default()).unwrap()
+        ));
+    }
+}
+
+#[test]
+fn serializing_lists_after_paragraphs_in_loose_items_is_linear() {
+    use Block::{List, Paragraph};
+    let p = || Paragraph(vec![EventKind::Text(Text::from("a".to_owned()))]);
+    // Many paragraphs, each followed by a list that starts with many empty paragraphs and cannot interrupt it.
+    assert_normalize_linear(|size| {
+        let blocks = (0..size / 2)
+            .flat_map(|_| [p(), List(Some(3), true, vec![(false, vec![p()])])])
             .collect();
         build_list(&List(
             None,
