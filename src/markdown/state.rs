@@ -83,6 +83,9 @@ pub struct State<'a> {
     /// Where the `:` after a shortcut reference that starts the paragraph being written is, to
     /// be escaped if the paragraph would otherwise start with a definition.
     definition_colon: Option<usize>,
+    /// Whether the flow child being written is code that needs a fence whatever the options, as
+    /// from `fences_code`. Set before each flow child is written.
+    fence_code: bool,
 }
 
 impl<'a> Info<'a> {
@@ -110,9 +113,12 @@ impl<'a> Info<'a> {
 }
 
 impl<'a> State<'a> {
+    /// The separator between flow children `left` and `right` of `parent`, where `before` is the
+    /// flow child before `left`, if any.
     fn between<S: AsRef<str>>(
         &self,
         document: &Document<S>,
+        before: Option<NodeId>,
         left: NodeId,
         right: NodeId,
         parent: NodeId,
@@ -120,7 +126,7 @@ impl<'a> State<'a> {
         if self.options.tight_definitions {
             self.definition_separator(document, left, right)
         } else {
-            self.default_separator(document, left, right, parent)
+            self.default_separator(document, before, left, right, parent)
         }
     }
 
@@ -157,22 +163,24 @@ impl<'a> State<'a> {
         let lone = flow_children(document, list).nth(1).is_none();
         let mut joined = false;
         let mut blank = false;
+        let mut before = None;
         let mut left = None;
         for right in flow_children(document, item) {
             if let Some(left) = left {
                 let left_kind = &document.node(left).unwrap().kind;
                 if matches!(left_kind, EventKind::Start(Tag::Paragraph { .. }))
                     && !list_interrupts_paragraph(document, right)
-                    && self.between(document, left, right, item) == "\n"
+                    && self.between(document, before, left, right, item) == "\n"
                 {
                     return true;
                 }
                 blank = blank
                     || lone
                         && !matches!(left_kind, EventKind::Start(Tag::FootnoteDefinition(_)))
-                        && self.between(document, left, right, item) != "\n";
+                        && self.between(document, before, left, right, item) != "\n";
                 joined = true;
             }
+            before = left;
             left = Some(right);
         }
         lone && joined && !blank
@@ -186,6 +194,7 @@ impl<'a> State<'a> {
         let mut children = flow_children(document, parent).peekable();
         let spread = self.spreads_item(document, parent);
         self.index_stack.push(0);
+        let mut before = None;
         for index in 0.. {
             let Some(child) = children.next() else { break };
             *self.index_stack.last_mut().unwrap() = index;
@@ -195,14 +204,16 @@ impl<'a> State<'a> {
             ) {
                 self.bullet_last_used = None;
             }
+            self.fence_code = fences_code(document, before, parent);
             self.write_node(document, child, &Info::new("\n", "\n"))?;
             if let Some(&next) = children.peek() {
-                let separator = match self.between(document, child, next, parent) {
+                let separator = match self.between(document, before, child, next, parent) {
                     "\n" if spread => "\n\n",
                     separator => separator,
                 };
                 self.output.push_str(separator);
             }
+            before = Some(child);
         }
         self.index_stack.pop();
         Ok(())
@@ -724,7 +735,8 @@ impl<'a> State<'a> {
                         }
                         _ => (language, None),
                     };
-                    self.code(value, language, meta)
+                    let fence = core::mem::take(&mut self.fence_code);
+                    self.code(value, language, meta, fence)
                 }
             }
             EventKind::Math(value) => self.inline_math(value.resolve(source).unwrap()),
@@ -897,15 +909,16 @@ impl<'a> State<'a> {
     fn default_separator<S: AsRef<str>>(
         &self,
         document: &Document<S>,
+        before: Option<NodeId>,
         left: NodeId,
         right: NodeId,
         parent: NodeId,
     ) -> &'static str {
         let left_kind = &document.node(left).unwrap().kind;
         let right_kind = &document.node(right).unwrap().kind;
-        if self.indented_code(document, right)
+        if self.indented_code(document, Some(left), right, parent)
             && (matches!(left_kind, EventKind::Start(Tag::List { .. }))
-                || self.indented_code(document, left))
+                || self.indented_code(document, before, left, parent))
         {
             return "\n\n<!---->\n\n";
         }
@@ -952,7 +965,18 @@ impl<'a> State<'a> {
         "\n\n"
     }
 
-    fn indented_code<S: AsRef<str>>(&self, document: &Document<S>, id: NodeId) -> bool {
+    /// Whether flow child `id` of `parent`, after flow child `before`, if any, is code written
+    /// indented.
+    fn indented_code<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        before: Option<NodeId>,
+        id: NodeId,
+        parent: NodeId,
+    ) -> bool {
+        if fences_code(document, before, parent) {
+            return false;
+        }
         if let EventKind::CodeBlock {
             value,
             language,
@@ -996,6 +1020,7 @@ impl<'a> State<'a> {
             line_start: 0,
             label_end: None,
             definition_colon: None,
+            fence_code: false,
         }
     }
 
@@ -1496,6 +1521,22 @@ fn list_interrupts_paragraph<S: AsRef<str>>(document: &Document<S>, id: NodeId) 
                 ) || document.children(block).next().is_some()
             })
         })
+}
+
+/// Whether code as a flow child of `parent`, after flow child `before`, if any, needs a fence
+/// whatever the options. Indented code cannot start on a footnote definition's first line, where it
+/// would read back as a paragraph, and directly after a footnote definition it would continue the
+/// definition, which takes in indented lines after a blank line.
+fn fences_code<S: AsRef<str>>(
+    document: &Document<S>,
+    before: Option<NodeId>,
+    parent: NodeId,
+) -> bool {
+    let node = before.unwrap_or(parent);
+    matches!(
+        document.node(node).unwrap().kind,
+        EventKind::Start(Tag::FootnoteDefinition(_))
+    )
 }
 
 /// Whether the last block of container `id`, through the last blocks of any containers in it, is a
