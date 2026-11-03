@@ -155,7 +155,8 @@ fn list() {
             spread: false
         }))
         .unwrap(),
-        "- a\n\n  b\n- ***\n",
+        // A blank line between the paragraphs would make the list loose, so normalizing joins them with a soft break (#154).
+        "- a\n  b\n- ***\n",
         "should support a list w/ `spread: false`, w/ a spread item"
     );
 
