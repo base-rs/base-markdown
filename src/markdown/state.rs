@@ -193,10 +193,9 @@ impl<'a> State<'a> {
             }
             self.write_node(document, child, &Info::new("\n", "\n"))?;
             if let Some(&next) = children.peek() {
-                let separator = if spread {
-                    "\n\n"
-                } else {
-                    self.between(document, child, next, parent)
+                let separator = match self.between(document, child, next, parent) {
+                    "\n" if spread => "\n\n",
+                    separator => separator,
                 };
                 self.output.push_str(separator);
             }

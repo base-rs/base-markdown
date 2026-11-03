@@ -369,9 +369,9 @@ fn nested_strikethrough_from_markdown_reads_back() {
         let mut document = Document::parse(source, &ParseOptions::gfm()).unwrap();
         assert!(!document.is_normalized());
         document.normalize();
-        assert_eq!(describe(&document, document.root()), tree, "{:?}", source);
+        assert_eq!(describe(&document, document.root()), tree, "{source:?}");
         let markdown = to_markdown(&document).unwrap();
-        assert_eq!(markdown, expected, "{:?}", source);
+        assert_eq!(markdown, expected, "{source:?}");
         let mut reparsed = Document::parse(markdown.as_str(), &ParseOptions::gfm()).unwrap();
         reparsed.normalize();
         // The serialized Markdown ends with a line ending, which is a separator after the paragraph.
@@ -3486,7 +3486,7 @@ fn a_tight_list_after_a_paragraph_in_a_tight_item_stays_tight() {
 fn serializing_lists_after_paragraphs_in_loose_items_is_linear() {
     use Block::{List, Paragraph};
     let p = || Paragraph(vec![EventKind::Text(Text::from("a".to_owned()))]);
-    // Many paragraphs, each followed by a list that starts with many empty paragraphs and cannot interrupt it.
+    // Many paragraphs, each followed by an ordered list that starts at 3, so it cannot interrupt the paragraph.
     assert_normalize_linear(|size| {
         let blocks = (0..size / 2)
             .flat_map(|_| [p(), List(Some(3), true, vec![(false, vec![p()])])])
@@ -3497,4 +3497,36 @@ fn serializing_lists_after_paragraphs_in_loose_items_is_linear() {
             vec![(false, blocks), (false, vec![p()])],
         ))
     });
+}
+
+#[test]
+fn a_spread_item_keeps_the_comment_before_indented_code() {
+    // An item written spread because of a list that cannot interrupt a paragraph, here an ordered list that starts at 3, still writes `<!---->` between the list and indented code after it, so the code is not read back as part of the list's last item.
+    let options = base_markdown::MarkdownOptions {
+        fences: false,
+        ..base_markdown::MarkdownOptions::default()
+    };
+    for (source, expected) in [
+        (
+            "- p\n\n  3. a\n\n  ```\n  x\n  ```\n\n- q\n",
+            "- p\n\n  3. a\n\n  <!---->\n\n      x\n\n- q\n",
+        ),
+        (
+            "- p\n\n  3. a\n\n  ```\n  x\n  ```\n",
+            "- p\n\n  3. a\n\n  <!---->\n\n      x\n",
+        ),
+    ] {
+        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+        document.normalize();
+        let markdown = base_markdown::to_markdown_with_options(&document, &options).unwrap();
+        assert_eq!(markdown, expected, "{:?}", source);
+        let reparsed = Document::parse(markdown.as_str(), &ParseOptions::default()).unwrap();
+        // The comment reads back as an HTML block, which the default HTML escapes; apart from it, the code block and the nested list read back as they were.
+        assert_eq!(
+            rendered(&reparsed).replace("&lt;!----&gt;\n", ""),
+            rendered(&document),
+            "{:?}",
+            source
+        );
+    }
 }
