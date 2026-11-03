@@ -159,6 +159,9 @@ impl<'a> State<'a> {
     /// already renders. A join that is already a blank line, as with `tight_definitions`, needs
     /// nothing, and the item is written as before.
     ///
+    /// Two block quotes in a row need a blank line between them too, or the second would continue
+    /// the first, so an item with them is written spread the same way (#154).
+    ///
     /// The only item of a loose list is also written spread when no blank line would be written
     /// between its blocks. Nothing else can show the list is loose. A blank line after a footnote
     /// definition does not count: the definition takes it in, so the item read back records no
@@ -196,16 +199,27 @@ impl<'a> State<'a> {
         for right in flow_children(document, item) {
             if let Some(left) = left {
                 let left_kind = &document.node(left).unwrap().kind;
-                if matches!(left_kind, EventKind::Start(Tag::Paragraph { .. }))
-                    && !list_interrupts_paragraph(document, right)
-                    && self.between(document, before, left, right, item, spread) == "\n"
+                let apart = match left_kind {
+                    EventKind::Start(Tag::Paragraph { .. }) => {
+                        !list_interrupts_paragraph(document, right)
+                    }
+                    EventKind::Start(Tag::BlockQuote) => matches!(
+                        document.node(right).unwrap().kind,
+                        EventKind::Start(Tag::BlockQuote)
+                    ),
+                    _ => false,
+                };
+                if apart
+                    && !writes_blank_line(self.between(document, before, left, right, item, spread))
                 {
                     return true;
                 }
                 blank = blank
                     || lone
                         && !matches!(left_kind, EventKind::Start(Tag::FootnoteDefinition(_)))
-                        && self.between(document, before, left, right, item, spread) != "\n";
+                        && writes_blank_line(
+                            self.between(document, before, left, right, item, spread),
+                        );
                 joined = true;
             }
             before = left;
@@ -238,7 +252,7 @@ impl<'a> State<'a> {
             if let Some(&next) = children.peek() {
                 let separator =
                     match self.between(document, before, child, next, parent, records_spread) {
-                        "\n" if spread => "\n\n",
+                        separator if spread && !writes_blank_line(separator) => "\n\n",
                         separator => separator,
                     };
                 self.output.push_str(separator);
@@ -994,22 +1008,38 @@ impl<'a> State<'a> {
             document.node(parent).unwrap().kind,
             EventKind::Start(Tag::Item { .. } | Tag::List { .. })
         ) {
-            // Without a blank line, a block that cannot interrupt a paragraph would lazily continue the nested list's or footnote definition's last paragraph.
-            // Both take in the blank line after them, so the item records no spread for it.
-            let lazy = match left_kind {
-                EventKind::Start(Tag::List { .. }) => true,
-                EventKind::Start(Tag::FootnoteDefinition(_)) => ends_in_paragraph(document, left),
-                _ => false,
-            };
-            if lazy
-                && (matches!(
+            // Without a blank line, a block that cannot interrupt a paragraph would lazily continue
+            // the last paragraph of a nested list, footnote definition or block quote, through the
+            // last blocks of any containers in it. A list or footnote definition takes in a blank
+            // line after it, so the item records no spread for it. A line of `>` alone ends a block
+            // quote's paragraph without a blank line in the item, so the item stays tight:
+            // `- > p\n  >\n  p` (#154). In a loose list, a blank line is written after any list.
+            let continues = || {
+                matches!(
                     right_kind,
                     EventKind::Start(Tag::Paragraph { .. } | Tag::Table)
                         | EventKind::Definition { .. }
                 ) || matches!(right_kind, EventKind::Start(Tag::Heading(_)))
-                    && format_heading_as_setext(document, right, self))
-            {
-                return "\n\n";
+                    && format_heading_as_setext(document, right, self)
+            };
+            match left_kind {
+                EventKind::Start(Tag::List { .. })
+                    if (!in_tight_list(document, parent) || ends_in_paragraph(document, left))
+                        && continues() =>
+                {
+                    return "\n\n";
+                }
+                EventKind::Start(Tag::FootnoteDefinition(_))
+                    if ends_in_paragraph(document, left) && continues() =>
+                {
+                    return "\n\n";
+                }
+                EventKind::Start(Tag::BlockQuote)
+                    if !spread && ends_in_paragraph(document, left) && continues() =>
+                {
+                    return QUOTE_END;
+                }
+                _ => {}
             }
             if matches!(left_kind, EventKind::Start(Tag::Paragraph { .. })) {
                 if matches!(
@@ -1595,6 +1625,28 @@ fn fences_code<S: AsRef<str>>(document: &Document<S>, before: Option<NodeId>) ->
         matches!(
             document.node(before).unwrap().kind,
             EventKind::Start(Tag::FootnoteDefinition(_))
+        )
+    })
+}
+
+/// The join after a block quote whose last paragraph the next block would lazily continue, in an
+/// item whose blocks are not written spread: a line of `>` alone, which ends the paragraph inside
+/// the quote rather than with a blank line in the item.
+const QUOTE_END: &str = "\n>\n";
+
+/// Whether a join between flow children writes a blank line, which an item records as spread.
+/// `QUOTE_END` does not: its line of `>` is inside the block quote.
+fn writes_blank_line(separator: &str) -> bool {
+    separator.starts_with("\n\n")
+}
+
+/// Whether `item`, an item or list whose blocks are being joined, is in a tight list. Only an item
+/// holds a list as one of its blocks.
+fn in_tight_list<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> bool {
+    document.node(item).unwrap().parent().is_some_and(|list| {
+        matches!(
+            document.node(list).unwrap().kind,
+            EventKind::Start(Tag::List { tight: true, .. })
         )
     })
 }

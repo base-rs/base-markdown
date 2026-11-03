@@ -3654,3 +3654,483 @@ fn built_code_in_or_after_a_footnote_definition_reads_back_without_fences() {
         "> a\n>\n>     x\n"
     );
 }
+
+#[test]
+fn paragraphs_in_a_row_in_a_tight_item_are_joined() {
+    use Block::{Code, List, Paragraph, Quote, Separator};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let code = |value: &'static str| {
+        Paragraph(vec![EventKind::Code {
+            value: Text::Literal(value),
+            language: None,
+        }])
+    };
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let tight = |items: Vec<Vec<Block>>| {
+        List(
+            None,
+            true,
+            items.into_iter().map(|blocks| (false, blocks)).collect(),
+        )
+    };
+    // No blank line can come between two paragraphs in an item of a tight list, so `- a\n\n  b` read back loose (#154). Normalizing joins them into the first, with a soft break between them, which renders the same in a tight list, as it has no `<p>`.
+    for (block, expected) in [
+        (tight(vec![vec![p("a"), p("b")]]), "- a\n  b\n"),
+        (tight(vec![vec![p("a"), Separator, p("b")]]), "- a\n  b\n"),
+        (
+            tight(vec![vec![
+                p("a"),
+                Separator,
+                Paragraph(vec![]),
+                Separator,
+                p("b"),
+            ]]),
+            "- a\n  b\n",
+        ),
+        (
+            tight(vec![vec![
+                p("a"),
+                Paragraph(vec![EventKind::SoftBreak(Text::Literal("\n"))]),
+                p("b"),
+            ]]),
+            "- a\n  b\n",
+        ),
+        (
+            tight(vec![vec![p("a"), p("b"), p("c")], vec![p("d"), p("e")]]),
+            "- a\n  b\n  c\n- d\n  e\n",
+        ),
+        // A list removed after a paragraph leaves the paragraphs on either side of it in a row (#129).
+        (
+            tight(vec![vec![p("a"), tight(vec![vec![]]), Separator, p("b")]]),
+            "- a\n  b\n",
+        ),
+        // Other blocks end a run.
+        (
+            tight(vec![vec![
+                p("a"),
+                p("b"),
+                Code,
+                Separator,
+                p("c"),
+                Separator,
+                p("d"),
+                tight(vec![vec![p("e")]]),
+            ]]),
+            "- a\n  b\n  ```\n  x\n  ```\n  c\n  d\n  - e\n",
+        ),
+        // The soft break keeps what meets apart: inline code is not joined.
+        (tight(vec![vec![code("a"), code("b")]]), "- `a`\n  `b`\n"),
+        // Whitespace that meets the soft break is encoded, as at the edges of a paragraph.
+        (
+            tight(vec![vec![p("a "), p(" b")]]),
+            "- a&#x20;\n  &#x20;b\n",
+        ),
+        // In a block quote, and at any depth.
+        (
+            Quote(vec![tight(vec![vec![p("a"), p("b")]])]),
+            "> - a\n>   b\n",
+        ),
+        (
+            tight(vec![vec![p("x"), tight(vec![vec![p("a"), p("b")]])]]),
+            "- x\n  - a\n    b\n",
+        ),
+    ] {
+        let document = build_list(&block);
+        assert!(!document.is_normalized(), "{:?}", expected);
+        let mut once = document.clone();
+        once.normalize();
+        let mut twice = once.clone();
+        twice.normalize();
+        assert_eq!(canonical(&twice), canonical(&once), "{:?}", expected);
+        assert_eq!(reads_back(document), expected);
+    }
+    // The second paragraph's children move into the first after a new soft break, and it and the separator between them are detached.
+    let mut document = build_list(&tight(vec![vec![p("a"), Separator, p("b")]]));
+    let item = document.descendants(document.root()).nth(2).unwrap();
+    let [first, between, second] = document.children(item).collect::<Vec<_>>()[..] else {
+        unreachable!("the item has three children");
+    };
+    document.normalize();
+    assert_eq!(document.children(item).collect::<Vec<_>>(), [first]);
+    let kinds: Vec<_> = document
+        .children(first)
+        .map(|id| document.node(id).unwrap().kind.clone())
+        .collect();
+    assert!(matches!(
+        &kinds[..],
+        [
+            EventKind::Text(_),
+            EventKind::SoftBreak(Text::Literal("\n")),
+            EventKind::Text(_)
+        ]
+    ));
+    assert_eq!(document.node(between).unwrap().parent(), None);
+    assert_eq!(document.node(second).unwrap().parent(), None);
+    assert_eq!(document.children(second).next(), None);
+    // Paragraphs in a row are left as they are where a blank line can be written between them: in a loose list, a block quote and the document.
+    for (block, expected) in [
+        (
+            List(None, false, vec![(true, vec![p("a"), p("b")])]),
+            "- a\n\n  b\n",
+        ),
+        (
+            List(
+                None,
+                false,
+                vec![(false, vec![p("a"), p("b")]), (false, vec![p("c")])],
+            ),
+            "- a\n\n  b\n\n- c\n",
+        ),
+        (Quote(vec![p("a"), p("b")]), "> a\n>\n> b\n"),
+    ] {
+        let document = build_list(&block);
+        assert!(document.is_normalized(), "{:?}", expected);
+        assert_eq!(reads_back(document), expected);
+    }
+    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+    let root = document.root();
+    append_block(&mut document, root, &p("a"));
+    append_block(&mut document, root, &p("b"));
+    assert!(document.is_normalized());
+    assert_eq!(reads_back(document), "a\n\nb\n");
+}
+
+#[test]
+fn blocks_that_need_a_blank_line_in_a_tight_item_make_the_list_loose() {
+    use Block::{Code, Footnote, List, Paragraph, Quote, Separator};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let tight = |items: Vec<Vec<Block>>| {
+        List(
+            None,
+            true,
+            items.into_iter().map(|blocks| (false, blocks)).collect(),
+        )
+    };
+    let quote = |value: &str| Quote(vec![p(value)]);
+    // In an item of a tight list, a paragraph after a list or footnote definition that ends in a paragraph would continue that paragraph without a blank line, two block quotes in a row would read back as one, and a paragraph after a block quote that ends in such a list or definition would continue it, as the line of `>` that ends a quote's paragraph is a blank line in the list or definition. Each needs a blank line, which makes the list loose, so normalizing makes it loose (#154). Its other items' paragraphs in a row stay apart, as a loose list can write them.
+    for (block, expected) in [
+        (
+            tight(vec![
+                vec![tight(vec![vec![p("a")]]), Separator, p("p")],
+                vec![p("q"), Separator, p("r")],
+            ]),
+            "- - a\n\n  p\n\n- q\n\n  r\n",
+        ),
+        (
+            tight(vec![vec![quote("a"), Separator, quote("b")]]),
+            "- > a\n\n  > b\n",
+        ),
+        (
+            tight(vec![vec![Quote(vec![]), Separator, quote("b")]]),
+            "- >\n\n  > b\n",
+        ),
+        (
+            tight(vec![vec![quote("a"), Separator, quote("b")], vec![p("q")]]),
+            "- > a\n\n  > b\n\n- q\n",
+        ),
+        (
+            tight(vec![vec![p("q")], vec![quote("a"), Separator, quote("b")]]),
+            "- q\n\n- > a\n\n  > b\n",
+        ),
+        (
+            tight(vec![vec![
+                tight(vec![vec![p("a")], vec![Quote(vec![p("b")])]]),
+                Separator,
+                p("p"),
+            ]]),
+            "- - a\n  - > b\n\n  p\n",
+        ),
+        (
+            tight(vec![vec![Footnote(vec![p("a")]), Separator, p("p")]]),
+            "- [^1]: a\n\n  p\n",
+        ),
+        (
+            tight(vec![vec![
+                Quote(vec![tight(vec![vec![p("a")]])]),
+                Separator,
+                p("p"),
+            ]]),
+            "- > - a\n\n  p\n",
+        ),
+        (
+            tight(vec![vec![
+                Quote(vec![Footnote(vec![p("a")])]),
+                Separator,
+                p("p"),
+            ]]),
+            "- > [^1]: a\n\n  p\n",
+        ),
+        // Separators and empty paragraphs are not counted.
+        (
+            tight(vec![vec![
+                quote("a"),
+                Separator,
+                Paragraph(vec![]),
+                Separator,
+                quote("b"),
+            ]]),
+            "- > a\n\n  > b\n",
+        ),
+        // Only the list that holds the item is made loose.
+        (
+            tight(vec![vec![
+                p("x"),
+                Separator,
+                tight(vec![vec![quote("a"), Separator, quote("b")]]),
+            ]]),
+            "- x\n  - > a\n\n    > b\n",
+        ),
+        (
+            Quote(vec![tight(vec![vec![quote("a"), Separator, quote("b")]])]),
+            "> - > a\n>\n>   > b\n",
+        ),
+    ] {
+        let document = build_list(&block);
+        assert!(!document.is_normalized(), "{:?}", expected);
+        let mut once = document.clone();
+        once.normalize();
+        let mut twice = once.clone();
+        twice.normalize();
+        assert_eq!(canonical(&twice), canonical(&once), "{:?}", expected);
+        assert_eq!(reads_back(document), expected);
+    }
+    // The list and every paragraph of its items are made loose.
+    let mut document = build_list(&tight(vec![
+        vec![quote("a"), Separator, quote("b")],
+        vec![p("q")],
+    ]));
+    document.normalize();
+    let list = document.children(document.root()).next().unwrap();
+    assert!(matches!(
+        document.node(list).unwrap().kind,
+        EventKind::Start(Tag::List { tight: false, .. })
+    ));
+    assert!(document.descendants(list).all(|id| !matches!(
+        document.node(id).unwrap().kind,
+        EventKind::Start(Tag::Paragraph { tight: true })
+    )));
+    // Shapes that can be written tight are left as they are: a paragraph after a list that does not end in a paragraph, such as one whose last item is empty, which the parser gives for `* *\n  p`, on the next line; a paragraph after a block quote that ends in a paragraph, through block quotes in it, which a line of `>` ends, or in a list in a block quote in it, which that line closes; blocks other than a paragraph after a list or block quote; and a paragraph after a block quote that ends in a list that does not end in a paragraph.
+    for (block, expected) in [
+        (
+            tight(vec![vec![tight(vec![vec![]]), Separator, p("p")]]),
+            "- -\n  p\n",
+        ),
+        (
+            tight(vec![vec![
+                tight(vec![vec![p("a")], vec![Code]]),
+                Separator,
+                p("p"),
+            ]]),
+            "- - a\n  - ```\n    x\n    ```\n  p\n",
+        ),
+        (
+            tight(vec![vec![quote("a"), Separator, p("p")]]),
+            "- > a\n  >\n  p\n",
+        ),
+        (
+            tight(vec![vec![Quote(vec![quote("a")]), Separator, p("p")]]),
+            "- > > a\n  >\n  p\n",
+        ),
+        (
+            tight(vec![vec![
+                Quote(vec![Quote(vec![tight(vec![vec![p("a")]])])]),
+                Separator,
+                p("p"),
+            ]]),
+            "- > > - a\n  >\n  p\n",
+        ),
+        (
+            tight(vec![vec![tight(vec![vec![p("a")]]), Code]]),
+            "- - a\n  ```\n  x\n  ```\n",
+        ),
+        (
+            tight(vec![vec![quote("a"), Code]]),
+            "- > a\n  ```\n  x\n  ```\n",
+        ),
+        (
+            tight(vec![vec![
+                Quote(vec![tight(vec![vec![Code]])]),
+                Separator,
+                p("p"),
+            ]]),
+            "- > - ```\n  >   x\n  >   ```\n  p\n",
+        ),
+        (
+            tight(vec![vec![p("p"), Separator, quote("a"), Separator, p("q")]]),
+            "- p\n  > a\n  >\n  q\n",
+        ),
+    ] {
+        let document = build_list(&block);
+        assert!(document.is_normalized(), "{:?}", expected);
+        assert_eq!(reads_back(document), expected);
+    }
+    for source in ["* *\n  p\n", "- 1.\n  p\n", "- - a\n  -\n  p\n"] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert!(document.is_normalized(), "{:?}", source);
+        assert!(tight_of_first_list(&document), "{:?}", source);
+        reads_back(document);
+    }
+    // In a loose list, these are written with a blank line between them. An item that does not record spread is written spread when it holds two block quotes in a row, as the blank line between them makes it read back spread.
+    for (block, expected) in [
+        (
+            List(
+                None,
+                false,
+                vec![
+                    (false, vec![quote("a"), Separator, quote("b"), Code]),
+                    (false, vec![p("q")]),
+                ],
+            ),
+            "- > a\n\n  > b\n\n  ```\n  x\n  ```\n\n- q\n",
+        ),
+        (
+            List(
+                None,
+                false,
+                vec![(false, vec![quote("a"), Separator, quote("b")])],
+            ),
+            "- > a\n\n  > b\n",
+        ),
+        (
+            List(
+                None,
+                false,
+                vec![
+                    (false, vec![tight(vec![vec![p("a")]]), Separator, p("p")]),
+                    (false, vec![p("q")]),
+                ],
+            ),
+            "- - a\n\n  p\n\n- q\n",
+        ),
+        // A blank line is written after a list in a loose list whatever it ends in, as before.
+        (
+            List(
+                None,
+                false,
+                vec![
+                    (false, vec![tight(vec![vec![]]), Separator, p("p")]),
+                    (false, vec![p("q")]),
+                ],
+            ),
+            "- -\n\n  p\n\n- q\n",
+        ),
+    ] {
+        let document = build_list(&block);
+        assert!(document.is_normalized(), "{:?}", expected);
+        assert_eq!(reads_back(document), expected);
+    }
+}
+
+#[test]
+fn a_paragraph_after_a_block_quote_in_an_item_is_written_after_a_line_of_quote_marker() {
+    // In an item that is not written spread, a paragraph directly after a block quote that ends in a paragraph would continue it lazily: `- > a\n  p` reads back as one quote of `a p` (#154). A line of `>` alone ends the quote's paragraph without a blank line in the item, so a tight list stays tight. This holds for a table, a definition and a setext heading, which would continue it too, and for block quotes and lists in the item.
+    for source in [
+        "- > a\n  >\n  p\n",
+        "- > a\n  >\n  p\n- q\n",
+        "- > > a\n  >\n  p\n",
+        "- > a\n  >\n  | a |\n  | --- |\n",
+        "- > a\n  >\n  [x]: y\n",
+        "> - > a\n>   >\n>   p\n",
+        "- q\n  - > a\n    >\n    p\n",
+        "1. > a\n   >\n   p\n",
+        // In a loose list, an item that does not record spread is written the same.
+        "- > a\n  >\n  p\n\n- q\n",
+        "- > - a\n  >\n  p\n\n- q\n",
+    ] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert!(document.is_normalized(), "{:?}", source);
+        assert_eq!(reads_back(document), source);
+    }
+    // A spread item and the only item of a loose list are written with a blank line instead.
+    for source in [
+        "- > a\n\n  p\n",
+        "- > a\n\n  p\n\n  ```\n  x\n  ```\n\n- q\n",
+    ] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert!(document.is_normalized(), "{:?}", source);
+        assert_eq!(reads_back(document), source);
+    }
+    let setext = base_markdown::MarkdownOptions {
+        setext: true,
+        ..base_markdown::MarkdownOptions::default()
+    };
+    let source = "- > a\n  >\n  b\n  -\n";
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    assert_eq!(
+        reads_back_with(document, &ParseOptions::default(), &setext),
+        source
+    );
+    // Without setext headings, a heading is not continued, and nothing is written between them.
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    assert_eq!(reads_back(document), "- > a\n  ## b\n");
+    // The line is indented as the item's other lines are.
+    for (indent, expected) in [
+        (base_markdown::IndentOptions::Tab, "-   > a\n    >\n    p\n"),
+        (base_markdown::IndentOptions::Mixed, "- > a\n  >\n  p\n"),
+    ] {
+        let options = base_markdown::MarkdownOptions {
+            list_item_indent: indent,
+            ..base_markdown::MarkdownOptions::default()
+        };
+        let document = Document::parse("- > a\n  >\n  p\n", &ParseOptions::default()).unwrap();
+        assert_eq!(
+            reads_back_with(document, &ParseOptions::default(), &options),
+            expected
+        );
+    }
+    // With `tight_definitions`, a blank line is written between them, as between any blocks but definitions.
+    let options = base_markdown::MarkdownOptions {
+        tight_definitions: true,
+        ..base_markdown::MarkdownOptions::default()
+    };
+    let document = Document::parse("- > a\n\n  p\n", &ParseOptions::default()).unwrap();
+    assert_eq!(
+        reads_back_with(document, &ParseOptions::default(), &options),
+        "- > a\n\n  p\n"
+    );
+}
+
+#[test]
+fn joining_paragraphs_and_loosening_lists_in_tight_items_is_linear() {
+    use Block::{List, Paragraph, Quote, Separator};
+    let text = || EventKind::Text(Text::from("a".to_owned()));
+    let tight = |items: Vec<(bool, Vec<Block>)>| List(None, true, items);
+    // An item of many paragraphs of a few children each, joined into one, and a paragraph after many block quotes that end in a paragraph through block quotes in them.
+    assert_normalize_linear("paragraphs in a row in a tight item", 1 << 9, |size| {
+        let blocks = (0..size)
+            .flat_map(|_| {
+                [
+                    Paragraph(vec![text(), EventKind::HardBreak, text()]),
+                    Separator,
+                ]
+            })
+            .collect();
+        build_list(&tight(vec![(false, blocks)]))
+    });
+    assert_normalize_linear(
+        "block quotes and paragraphs in a tight item",
+        1 << 9,
+        |size| {
+            let blocks = (0..size)
+                .flat_map(|_| {
+                    [
+                        Quote(vec![Quote(vec![Paragraph(vec![text()])])]),
+                        Separator,
+                        Paragraph(vec![text()]),
+                        Separator,
+                    ]
+                })
+                .collect();
+            build_list(&tight(vec![(false, blocks)]))
+        },
+    );
+    // A tight list of many items, of which only the last needs it to be loose.
+    assert_normalize_linear("a tight list made loose by its last item", 1 << 9, |size| {
+        let mut items: Vec<(bool, Vec<Block>)> = (0..size)
+            .map(|_| (false, vec![Paragraph(vec![text()])]))
+            .collect();
+        items.push((false, vec![Quote(vec![]), Separator, Quote(vec![])]));
+        build_list(&tight(items))
+    });
+}
