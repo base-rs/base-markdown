@@ -2244,6 +2244,8 @@ enum Block {
     /// A list's start and tightness, and each item's recorded spread and blocks.
     List(Option<u32>, bool, Vec<(bool, Vec<Block>)>),
     Code,
+    Quote(Vec<Block>),
+    Separator,
 }
 
 fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) {
@@ -2277,6 +2279,25 @@ fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) 
                     append_block(document, item, block);
                 }
             }
+        }
+        Block::Quote(blocks) => {
+            let quote = document
+                .append_child(parent, EventKind::Start(Tag::BlockQuote))
+                .unwrap();
+            for block in blocks {
+                append_block(document, quote, block);
+            }
+        }
+        Block::Separator => {
+            document
+                .append_child(
+                    parent,
+                    EventKind::Separator {
+                        value: Text::Literal("\n"),
+                        conditional: false,
+                    },
+                )
+                .unwrap();
         }
         Block::Code => {
             document
@@ -2620,4 +2641,237 @@ fn tightening_lone_loose_items_is_linear() {
             vec![(false, (0..size).map(|_| Block::Code).collect())],
         ))
     });
+}
+
+#[test]
+fn an_empty_item_after_a_paragraph_in_a_tight_list_is_removed() {
+    use Block::{List, Paragraph, Quote, Separator};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let task = || EventKind::TaskMarker(false);
+    let tight = |items: Vec<Vec<Block>>| {
+        List(
+            None,
+            true,
+            items.into_iter().map(|blocks| (false, blocks)).collect(),
+        )
+    };
+    let ordered = |start: u32, items: Vec<Vec<Block>>| {
+        List(
+            Some(start),
+            true,
+            items.into_iter().map(|blocks| (false, blocks)).collect(),
+        )
+    };
+    let after_p = |list: Block| tight(vec![vec![p("p"), list]]);
+    // An empty item cannot interrupt a paragraph, and `-` alone under one is a setext underline, so in a tight list, where no blank line can come between them, a list after a paragraph cannot start with an empty item: `- p\n  -` reads back as a heading, and `- p\n  1.` and `- p\n  *` as text (#129). Normalizing removes the leading empty items of such a list, and the list itself when none is left.
+    for (block, expected) in [
+        (after_p(tight(vec![vec![]])), "- p\n"),
+        (
+            tight(vec![vec![p("p"), tight(vec![vec![]])], vec![p("q")]]),
+            "- p\n- q\n",
+        ),
+        (after_p(ordered(1, vec![vec![]])), "- p\n"),
+        (
+            after_p(ordered(1, vec![vec![], vec![p("a")]])),
+            "- p\n  1. a\n",
+        ),
+        (after_p(tight(vec![vec![], vec![p("a")]])), "- p\n  - a\n"),
+        (after_p(tight(vec![vec![], vec![]])), "- p\n"),
+        (
+            after_p(tight(vec![vec![], vec![], vec![p("a")], vec![]])),
+            "- p\n  - a\n  -\n",
+        ),
+        // A task marker with nothing after it is removed, which leaves its item empty (#126).
+        (after_p(tight(vec![vec![Paragraph(vec![task()])]])), "- p\n"),
+        (
+            after_p(tight(vec![vec![Paragraph(vec![
+                task(),
+                EventKind::HardBreak,
+            ])]])),
+            "- p\n",
+        ),
+        (
+            after_p(tight(vec![vec![Paragraph(vec![
+                task(),
+                EventKind::SoftBreak(Text::Literal("\n")),
+            ])]])),
+            "- p\n",
+        ),
+        (
+            after_p(tight(vec![vec![Paragraph(vec![task()])], vec![p("a")]])),
+            "- p\n  - a\n",
+        ),
+        // An empty paragraph between them is removed first.
+        (
+            tight(vec![vec![p("p"), Paragraph(vec![]), tight(vec![vec![]])]]),
+            "- p\n",
+        ),
+        // Separators are not counted, and one goes with the list.
+        (
+            tight(vec![vec![p("p"), Separator, tight(vec![vec![Separator]])]]),
+            "- p\n",
+        ),
+        (
+            tight(vec![vec![
+                p("p"),
+                Separator,
+                tight(vec![vec![]]),
+                Separator,
+                Block::Code,
+            ]]),
+            "- p\n  ```\n  x\n  ```\n",
+        ),
+        // A list that then follows the paragraph is handled in turn.
+        (
+            tight(vec![vec![
+                p("p"),
+                tight(vec![vec![]]),
+                ordered(1, vec![vec![]]),
+            ]]),
+            "- p\n",
+        ),
+        (
+            tight(vec![vec![
+                p("p"),
+                tight(vec![vec![]]),
+                ordered(1, vec![vec![p("a")]]),
+            ]]),
+            "- p\n  1. a\n",
+        ),
+        // A loose nested list left with one item of one block reads back tight, so it is made tight.
+        (
+            after_p(List(
+                None,
+                false,
+                vec![(true, vec![]), (true, vec![p("a")])],
+            )),
+            "- p\n  - a\n",
+        ),
+        // In a block quote, and at any depth.
+        (Quote(vec![after_p(tight(vec![vec![]]))]), "> - p\n"),
+        (
+            after_p(tight(vec![vec![p("q"), tight(vec![vec![]])]])),
+            "- p\n  - q\n",
+        ),
+        (
+            tight(vec![vec![Quote(vec![after_p(tight(vec![
+                vec![],
+                vec![p("a")],
+            ]))])]]),
+            "- > - p\n  >   - a\n",
+        ),
+    ] {
+        let document = build_list(&block);
+        assert!(!document.is_normalized(), "{:?}", expected);
+        assert_eq!(reads_back(document), expected);
+    }
+    // Shapes that can be written are left as they are: an empty item after another item, an item whose only block is a list, an item of a task marker and its separator, which keeps the separator as text, a loose list, where a blank line comes before the nested list, and an empty item after a paragraph outside an item.
+    for (block, expected) in [
+        (
+            after_p(tight(vec![vec![p("a")], vec![]])),
+            "- p\n  - a\n  -\n",
+        ),
+        (
+            after_p(tight(vec![vec![p("a")], vec![], vec![]])),
+            "- p\n  - a\n  -\n  -\n",
+        ),
+        (
+            after_p(tight(vec![vec![tight(vec![vec![]])]])),
+            "- p\n  - -\n",
+        ),
+        (tight(vec![vec![p("p")], vec![]]), "- p\n-\n"),
+        (
+            List(None, false, vec![(true, vec![p("p"), tight(vec![vec![]])])]),
+            "- p\n\n  -\n",
+        ),
+        (
+            List(
+                None,
+                false,
+                vec![
+                    (true, vec![p("p"), tight(vec![vec![]])]),
+                    (false, vec![p("q")]),
+                ],
+            ),
+            "- p\n\n  -\n\n- q\n",
+        ),
+        (Quote(vec![p("p"), tight(vec![vec![]])]), "> p\n>\n> -\n"),
+    ] {
+        let document = build_list(&block);
+        assert!(document.is_normalized(), "{:?}", expected);
+        assert_eq!(reads_back(document), expected);
+    }
+    for (phrasing, expected) in [(" ", "- p\n  - &#x20;\n"), ("\t", "- p\n  - &#x9;\n")] {
+        let block = after_p(tight(vec![vec![Paragraph(vec![task(), text(phrasing)])]]));
+        assert_eq!(reads_back(build_list(&block)), expected);
+    }
+    let mut document = build_list(&p("p"));
+    let root = document.root();
+    append_block(&mut document, root, &tight(vec![vec![]]));
+    assert!(document.is_normalized());
+    assert_eq!(reads_back(document), "p\n\n-\n");
+    // An ordered list keeps its start. A list after a paragraph in a tight list cannot start at any number but 1 either, which this does not change.
+    let mut document = build_list(&after_p(ordered(3, vec![vec![], vec![p("a")]])));
+    document.normalize();
+    assert!(document.is_normalized());
+    let outer = document.children(document.root()).next().unwrap();
+    let item = document.children(outer).next().unwrap();
+    let list = document.children(item).nth(1).unwrap();
+    assert!(matches!(
+        document.node(list).unwrap().kind,
+        EventKind::Start(Tag::List {
+            start: Some(3),
+            tight: true
+        })
+    ));
+    assert_eq!(document.children(list).count(), 1);
+    // Separators between the items of the list are not counted either.
+    let mut document = build_list(&after_p(tight(vec![])));
+    let outer = document.children(document.root()).next().unwrap();
+    let item = document.children(outer).next().unwrap();
+    let list = document.children(item).nth(1).unwrap();
+    let separator = || EventKind::Separator {
+        value: Text::Literal("\n"),
+        conditional: false,
+    };
+    document.append_child(list, separator()).unwrap();
+    document
+        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+        .unwrap();
+    document.append_child(list, separator()).unwrap();
+    let nested = document
+        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+        .unwrap();
+    append_block(&mut document, nested, &p("a"));
+    assert!(!document.is_normalized());
+    assert_eq!(reads_back(document), "- p\n  - a\n");
+    // A list whose first child is not an item is another shape, which the serializer rejects, and is left as it is.
+    let mut document = build_list(&after_p(tight(vec![])));
+    let outer = document.children(document.root()).next().unwrap();
+    let item = document.children(outer).next().unwrap();
+    let list = document.children(item).nth(1).unwrap();
+    append_block(&mut document, list, &p("a"));
+    assert!(document.is_normalized());
+    let before = canonical(&document);
+    document.normalize();
+    assert_eq!(canonical(&document), before);
+    // A detached list is normalized too.
+    let mut document = build_list(&tight(vec![vec![after_p(tight(vec![vec![]]))]]));
+    let outer = document.children(document.root()).next().unwrap();
+    let item = document.children(outer).next().unwrap();
+    let list = document.children(item).next().unwrap();
+    document.detach(list).unwrap();
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert!(document.is_normalized());
+    assert_eq!(
+        base_markdown::to_markdown_node(
+            &document,
+            list,
+            &base_markdown::MarkdownOptions::default()
+        )
+        .unwrap(),
+        "- p\n"
+    );
 }
