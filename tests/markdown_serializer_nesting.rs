@@ -22,9 +22,18 @@ fn event(kind: EventKind<'static>) -> Result<Event<'static>, StreamError> {
 /// A document of `tags` nested in each other, outermost first, around text `a`. The text is
 /// `tags.len() + 1` levels below the root.
 fn nest(tags: &[Tag<'static>]) -> Document<String> {
+    build(tags, true)
+}
+
+/// A document of `tags` nested in each other, outermost first, with nothing in the innermost.
+fn nest_bare(tags: &[Tag<'static>]) -> Document<String> {
+    build(tags, false)
+}
+
+fn build(tags: &[Tag<'static>], text: bool) -> Document<String> {
     let mut events = vec![event(EventKind::Start(Tag::Document(None)))];
     events.extend(tags.iter().map(|tag| event(EventKind::Start(tag.clone()))));
-    events.push(event(EventKind::Text(Text::Literal("a"))));
+    events.extend(text.then(|| event(EventKind::Text(Text::Literal("a")))));
     events.extend(
         tags.iter()
             .rev()
@@ -174,6 +183,19 @@ fn content_at_the_limit_serializes_and_deeper_content_is_an_error() {
     for (label, document) in &deeper {
         assert_too_deep(to_markdown(document), label);
     }
+    // Far deeper content stops at the limit too, rather than recursing first, with or without
+    // text at the bottom.
+    for (label, tags) in shapes(4_000) {
+        assert_too_deep(to_markdown(&nest(&tags)), label);
+    }
+    let attention = levels(
+        4_000,
+        &[paragraph()],
+        &[Tag::Emphasis, Tag::Strong],
+        &[],
+        &Tag::Emphasis,
+    );
+    assert_too_deep(to_markdown(&nest_bare(&attention)), "bare attention");
     let quotes = &at_limit[0].1;
     assert_eq!(
         to_markdown(quotes).unwrap(),
@@ -205,6 +227,34 @@ fn each_part_of_a_table_counts_one_level() {
         let document = table(depth, group);
         assert_too_deep(to_markdown(&document), label);
     }
+    // An empty cell, and a row with no cells, are each one level too deep.
+    let quotes = |depth: usize| vec![Tag::BlockQuote; depth - 1];
+    let cell_parts = [Tag::Table, Tag::TableHead, Tag::TableRow, cell()];
+    for (parts, label) in [
+        (&cell_parts[..], "empty cell"),
+        (&cell_parts[..3], "empty row in a head"),
+        (&[Tag::Table, Tag::TableRow][..], "empty row"),
+    ] {
+        let mut tags = quotes(LIMIT + 2 - parts.len());
+        tags.extend_from_slice(parts);
+        assert_too_deep(to_markdown(&nest_bare(&tags)), label);
+    }
+}
+
+#[test]
+fn siblings_do_not_add_up() {
+    // Each reference link, and each row in a body, closes its level again.
+    for reference in ["[a][x]", "[x][]", "[x]"] {
+        let source = format!("{}\n\n[x]: u\n", [reference; 200].join(" "));
+        assert_eq!(
+            normalize_markdown(&source).unwrap(),
+            source,
+            "{}",
+            reference
+        );
+    }
+    let source = format!("| a |\n| --- |\n{}", "| b |\n".repeat(200));
+    assert_eq!(normalize_markdown(&source).unwrap(), source);
 }
 
 #[test]
