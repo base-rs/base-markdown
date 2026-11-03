@@ -94,31 +94,58 @@ impl AsciiSet {
 #[cfg(test)]
 mod tests {
     use super::AsciiSet;
-    use alloc::vec;
+    use alloc::{vec, vec::Vec};
+
+    /// Check `find` on `length` bytes of `a` with each of `bytes` at each index, starting the
+    /// slice at each of `alignments`.
+    fn check(set: &AsciiSet, markers: &[u8], alignments: &[usize], length: usize, bytes: &[u8]) {
+        for &alignment in alignments {
+            let mut buffer = vec![b'a'; alignment + length];
+            assert_eq!(set.find(&buffer[alignment..]), length);
+            for index in 0..length {
+                for &byte in bytes {
+                    buffer[alignment + index] = byte;
+                    let expected = if markers.contains(&byte) {
+                        index
+                    } else {
+                        length
+                    };
+                    assert_eq!(
+                        set.find(&buffer[alignment..]),
+                        expected,
+                        "{byte:#x} at {index}"
+                    );
+                }
+                buffer[alignment + index] = b'a';
+            }
+        }
+    }
 
     #[test]
     fn candidates_match_scalar_at_every_alignment_and_boundary() {
+        // Loads are unaligned and chunks count from the start of the slice, so a few alignments
+        // stand in for all of them.
+        let alignments = [0, 1, 7, 15, 16, 31];
+        let every: Vec<u8> = (0..=255).collect();
         for markers in [b"\0&\"<>".as_slice(), b"\0<\\\r\n&`*_[]!", b"", b"\x7f"] {
             let set = AsciiSet::new(markers);
-            for alignment in 0..32 {
-                for length in 0..65 {
-                    let mut bytes = vec![b'a'; alignment + length];
-                    assert_eq!(set.find(&bytes[alignment..]), length);
-                    for index in 0..length {
-                        for byte in 0..=255 {
-                            bytes[alignment + index] = byte;
-                            assert_eq!(
-                                set.find(&bytes[alignment..]),
-                                if markers.contains(&byte) {
-                                    index
-                                } else {
-                                    length
-                                }
-                            );
-                        }
-                        bytes[alignment + index] = b'a';
-                    }
-                }
+            // Every byte in every lane of one to four chunks, at every tail position with and
+            // without a chunk before it, and first in the tail after two and four chunks.
+            for length in [15, 16, 17, 31, 32, 33, 64, 65] {
+                check(&set, markers, &alignments, length, &every);
+            }
+            // Every position at every length, with each marker, each byte that shares a nibble
+            // with one, and UTF-8 continuation and lead bytes, at two alignments.
+            let probes: Vec<u8> = (0..=255)
+                .filter(|&byte: &u8| {
+                    matches!(byte, 0x80 | 0xbf | 0xc3 | 0xff)
+                        || markers
+                            .iter()
+                            .any(|&marker| byte & 15 == marker & 15 || byte >> 4 == marker >> 4)
+                })
+                .collect();
+            for length in 0..65 {
+                check(&set, markers, &alignments[..2], length, &probes);
             }
         }
     }

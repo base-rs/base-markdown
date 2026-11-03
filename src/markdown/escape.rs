@@ -683,9 +683,17 @@ mod tests {
                     regex::escape(&char::from(rule.byte).to_string())
                 ))
                 .unwrap();
+                // A context holding the rule's byte, or the byte itself, chains candidates whose
+                // matches can consume one another, so every combination with one is checked.
+                // Otherwise only the byte between the two candidates connects what is before the
+                // first and what is after the byte, so each of those is checked against every
+                // byte with the other empty.
+                let chained = |context: &str| context.as_bytes().contains(&rule.byte);
                 for left in contexts {
                     for right in contexts {
-                        for byte in 0..=127u8 {
+                        let full =
+                            left.is_empty() || right.is_empty() || chained(left) || chained(right);
+                        for byte in (0..=127u8).filter(|&byte| full || byte == rule.byte) {
                             let value = format!(
                                 "{left}{}{}{right}{}",
                                 char::from(rule.byte),
