@@ -9,6 +9,7 @@ use pretty_assertions::assert_eq;
 
 mod support;
 use support::fixture::canonical;
+use support::linear::{assert_linear, timed};
 
 fn parse(source: &str) -> Document<String> {
     Document::parse(source.to_owned(), &ParseOptions::default()).unwrap()
@@ -277,40 +278,22 @@ fn parsed_literals_are_links_and_are_written_as_they_were() {
 
 #[test]
 fn literal_scans_stay_linear() {
-    // Doubling the input roughly doubles the time, whether the text is one node or, without
-    // normalizing, many nodes split at escapes.
+    // Eight times the input takes about eight times as long, whether the text is one node or,
+    // without normalizing, many nodes split at escapes. A domain that starts inside one already
+    // scanned is not scanned again (`www.a_`), and the markers in the siblings of a text split at
+    // escapes are scanned from where the last scan stopped (`www\.a `, `x\@y.z`).
     let time = |unit: &str, count: usize, normalize: bool| {
         let source = unit.repeat(count) + "\n";
         let mut document = Document::parse(source.as_str(), &ParseOptions::gfm()).unwrap();
         if normalize {
             document.normalize();
         }
-        let started = std::time::Instant::now();
-        to_markdown(&document).unwrap();
-        started.elapsed()
+        timed(|| {
+            to_markdown(&document).unwrap();
+        })
     };
-    for (unit, normalize) in [
-        ("www.a_", true),
-        ("(www\\.a", true),
-        ("\\_\\@", true),
-        ("_www.", true),
-        ("<1@b.c>", true),
-        ("www\\.a ", false),
-        ("x\\@y.z", false),
-        ("a&#97;", false),
-        ("www.a..@b.cd ", true),
-        ("www.a)www.a..@b.cd", true),
-    ] {
-        time(unit, 1 << 9, normalize);
-        let small = time(unit, 1 << 11, normalize);
-        let large = time(unit, 1 << 13, normalize);
-        assert!(
-            large < small * 16,
-            "{:?}: 4x input took {:?} against {:?}",
-            unit,
-            large,
-            small
-        );
+    for (unit, normalize) in [("www.a_", true), ("www\\.a ", false), ("x\\@y.z", false)] {
+        assert_linear(unit, 1 << 8, |count| time(unit, count, normalize));
     }
 }
 

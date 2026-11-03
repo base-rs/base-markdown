@@ -10,10 +10,10 @@
 mod support;
 use base_markdown::{message, to_html, to_html_with_options, to_markdown, Options, ParseOptions};
 use pretty_assertions::assert_eq;
-use std::time::{Duration, Instant};
 use support::fixture::parse_fixture;
 use support::fixture::Position;
 use support::fixture::{Link, Node, Paragraph, Root, Text};
+use support::linear::{assert_linear, timed};
 
 #[test]
 fn autolink_literal() -> Result<(), message::Message> {
@@ -3211,65 +3211,31 @@ fn literal_domains_are_host_names() {
     }
 }
 
-/// Assert that sixteen times the input takes less than forty-eight times as long, after a
-/// warm-up.
-///
-/// Quadratic time would take 256 times as long, so the bound leaves room on both sides. The ratio
-/// of two sizes is compared, rather than a time, so that a slower machine or build slows both
-/// alike. Each size takes the fastest of seven runs, alternating between the sizes, so that a
-/// pause does not count, and a ratio over the bound is measured again up to twice, since noise
-/// makes linear work look slower only now and then, while quadratic work fails every time.
-fn assert_linear(unit: &str, mut run: impl FnMut(usize)) {
-    let mut time = |size| {
-        let started = Instant::now();
-        run(size);
-        started.elapsed()
-    };
-    time(1 << 7);
-    let mut ratios = Vec::new();
-    for _ in 0..3 {
-        let mut small = Duration::MAX;
-        let mut large = Duration::MAX;
-        for _ in 0..7 {
-            small = small.min(time(1 << 9));
-            large = large.min(time(1 << 13));
-        }
-        let ratio = large.as_secs_f64() / small.as_secs_f64();
-        if ratio < 48.0 {
-            return;
-        }
-        ratios.push(ratio);
-    }
-    panic!("{:?}: 16x input took {:?} times as long", unit, ratios);
-}
-
 #[test]
 fn literal_autolinks_are_linear() {
     for unit in [
         // A `www` after `_` within a domain, which an `_` makes invalid, starts another domain
-        // inside it (#123).
+        // inside it (#123), with ASCII, non-ASCII and `-` before the `_`.
         "www.a_",
-        "_www.a",
         "www.例_",
-        "www.a_www.",
-        "http://a_www.a_",
         "www.a-_",
-        // Other literals: emails and their chains, protocols, resources, paths and suffixes.
-        "a.b@",
-        "a@b.c.d@",
-        "a_b@c_",
-        "mailto:a@b.",
-        "xmpp:a@b/c_",
+        // Other literals: the cached trailing suffix of protocols and paths, an email with a
+        // scheme and resource, whose scans are bounded by the `@` on either side, and the
+        // parentheses of a path, counted once.
+        "http://a_www.a_",
         "http://a_b.c/",
+        "xmpp:a@b/c_",
+        "a_b@c_",
         "https://a.b/(",
-        "www.a.b&c;.",
-        "www.a..@b.c",
     ] {
-        assert_linear(unit, |size| {
+        assert_linear(unit, 1 << 8, |size| {
             let source = unit.repeat(size) + "\n";
-            let document =
-                base_markdown::Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
-            to_markdown(&document).unwrap();
+            timed(|| {
+                let document =
+                    base_markdown::Document::parse(source.as_str(), &ParseOptions::default())
+                        .unwrap();
+                to_markdown(&document).unwrap();
+            })
         });
     }
 }

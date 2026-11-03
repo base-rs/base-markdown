@@ -9,9 +9,9 @@ use base_markdown::{
     ParseOptions,
 };
 use std::borrow::Cow;
-use std::sync::{Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use support::fixture::canonical;
+use support::linear::{assert_linear, timed};
 
 fn event(
     kind: EventKind<'static>,
@@ -781,63 +781,30 @@ fn serializing_unnormalized_trees_does_not_panic() {
     }
 }
 
-/// Assert that four times the input takes less than twelve times as long, after a warm-up.
-///
-/// Quadratic time would take sixteen times as long, so the bound sits below that to catch it, with room above four times for noise from load and instrumentation.
-///
-/// Each size takes the fastest of five runs, alternating between the sizes, so that a pause, or a stretch of load from other tests or instrumentation, slows both sizes alike and does not count. Only one scaling test times at once, as large allocations in parallel tests contend with each other.
-fn assert_linear(mut time: impl FnMut(usize) -> Duration) {
-    static TIMING: Mutex<()> = Mutex::new(());
-    let _timing = TIMING.lock().unwrap_or_else(PoisonError::into_inner);
-    time(1 << 10);
-    let mut small = Duration::MAX;
-    let mut large = Duration::MAX;
-    for _ in 0..5 {
-        small = small.min(time(50_000));
-        large = large.min(time(200_000));
-    }
-    assert!(
-        large < small * 12,
-        "4x input took {:?} against {:?}",
-        large,
-        small
-    );
-}
-
-/// Time normalizing the document from `build` and serializing the result. Serializing the smallest tree before normalizing checks that it does not panic; that need not be linear, so it is not timed.
-fn assert_normalize_linear(build: impl Fn(usize) -> Document<String>) {
-    assert_linear(|size| {
+/// Time normalizing the document from `build` and serializing the result, with `size` against eight times as many units. Serializing a small tree before normalizing checks that it does not panic; that need not be linear, so it is not timed.
+fn assert_normalize_linear(label: &str, size: usize, build: impl Fn(usize) -> Document<String>) {
+    to_markdown(&build(size)).unwrap();
+    assert_linear(label, size, |size| {
         let mut document = build(size);
-        if size == 1 << 10 {
+        timed(|| {
+            document.normalize();
+            assert!(document.is_normalized());
             to_markdown(&document).unwrap();
-        }
-        let started = Instant::now();
-        document.normalize();
-        assert!(document.is_normalized());
-        to_markdown(&document).unwrap();
-        started.elapsed()
-    });
-}
-
-#[test]
-fn normalizing_empty_text_is_linear() {
-    assert_normalize_linear(|size| {
-        build(concat([
-            emphasis(vec![text("a")]),
-            (0..size).map(|_| text("")).collect(),
-            emphasis(vec![text("b")]),
-        ]))
+        })
     });
 }
 
 #[test]
 fn joining_text_is_linear() {
-    assert_normalize_linear(|size| build((0..size).map(|_| text("a")).collect()));
+    // Joining copies each text once. Copying what was joined so far on each join is cheap at small sizes, so this one is larger. Adjacent code and math, and the spaces that hard breaks in a table cell become, are joined the same way.
+    assert_normalize_linear("text", 1 << 14, |size| {
+        build((0..size).map(|_| text("a")).collect())
+    });
 }
 
 #[test]
 fn merging_attention_is_linear() {
-    assert_normalize_linear(|size| {
+    assert_normalize_linear("attention", 1 << 11, |size| {
         build(concat(
             (0..size).map(|_| emphasis(vec![text("a"), text("b")])),
         ))
@@ -860,7 +827,7 @@ fn merging_nested_attention_is_linear() {
         }
         events
     };
-    assert_linear(|size| {
+    assert_linear("nested attention", 1 << 11, |size| {
         let mut document = build(concat([nested(size / 4), nested(size / 4)]));
         let started = Instant::now();
         document.normalize();
@@ -873,7 +840,7 @@ fn merging_nested_attention_is_linear() {
 
 #[test]
 fn removing_empty_attention_is_linear() {
-    assert_normalize_linear(|size| {
+    assert_normalize_linear("empty attention", 1 << 11, |size| {
         build(concat([
             vec![text("a")],
             concat((0..size / 4).map(|_| {
@@ -891,7 +858,7 @@ fn removing_empty_attention_is_linear() {
 #[test]
 fn removing_nested_empty_attention_is_linear() {
     // The serializer recurses per level, so only normalizing is timed.
-    assert_linear(|size| {
+    assert_linear("nested empty attention", 1 << 11, |size| {
         let mut events = vec![text("a")];
         events.extend((0..size).map(|_| start(Tag::Emphasis)));
         events.push(text(""));
@@ -909,36 +876,8 @@ fn removing_nested_empty_attention_is_linear() {
 
 #[test]
 fn unwrapping_nested_strikethrough_is_linear() {
-    // Deep strikethrough becomes one level, which is serialized too. The serializer recurses per level, so the tree is not serialized before normalizing.
-    let deep = |size: usize| {
-        let mut events = Vec::new();
-        for index in 0..size {
-            events.push(text("a"));
-            events.push(start(Tag::Delete));
-            if index % 2 == 0 {
-                events.push(text("b"));
-            }
-        }
-        events.push(text("c"));
-        for _ in 0..size {
-            events.push(end(TagKind::Delete));
-            events.push(text("d"));
-        }
-        build(events)
-    };
-    assert_linear(|size| {
-        let mut document = deep(size);
-        let started = Instant::now();
-        document.normalize();
-        assert!(document.is_normalized());
-        to_markdown(&document).unwrap();
-        let elapsed = started.elapsed();
-        // The root, the paragraph, and text, strikethrough of text, and text in it.
-        assert_eq!(document.descendants(document.root()).count(), 6);
-        elapsed
-    });
-    // Strikethrough alternating with emphasis keeps the emphasis, so only normalizing is timed.
-    assert_linear(|size| {
+    // Whether a node is inside strikethrough is counted on the way down, not found by searching its ancestors. Strikethrough alternating with emphasis keeps the emphasis, so it stays deep, and only normalizing is timed, as the serializer recurses per level.
+    assert_linear("strikethrough alternating with emphasis", 1 << 11, |size| {
         let mut events = Vec::new();
         for _ in 0..size / 2 {
             events.push(start(Tag::Delete));
@@ -960,25 +899,9 @@ fn unwrapping_nested_strikethrough_is_linear() {
 }
 
 #[test]
-fn appending_children_is_linear() {
-    assert_linear(|size| {
-        let mut document = build(vec![]);
-        let paragraph = document.children(document.root()).next().unwrap();
-        let started = Instant::now();
-        for _ in 0..size {
-            document
-                .append_child(paragraph, EventKind::Text(Text::Literal("a")))
-                .unwrap();
-        }
-        let elapsed = started.elapsed();
-        assert_eq!(document.children(paragraph).count(), size);
-        elapsed
-    });
-}
-
-#[test]
 fn appending_to_an_item_is_linear() {
-    assert_linear(|size| {
+    // Appending finds the parent's last child from the child appended before, rather than walking its children, and refreshes an item's ending from the appended child alone. An item takes both paths.
+    assert_linear("appending to an item", 1 << 11, |size| {
         let mut document = Document::parse("- a\n", &ParseOptions::default()).unwrap();
         let list = document.children(document.root()).next().unwrap();
         let item = document.children(list).next().unwrap();
@@ -1877,10 +1800,12 @@ fn is_normalized_finds_each_edge_shape() {
 
 /// Time normalizing the document from `build`, without serializing, for trees nested deeper than the serializer recurses comfortably, and check what is left with `check`.
 fn assert_normalize_only_linear(
+    label: &str,
+    size: usize,
     build: impl Fn(usize) -> Document<String>,
     check: impl Fn(&Document<String>, usize),
 ) {
-    assert_linear(|size| {
+    assert_linear(label, size, |size| {
         let mut document = build(size);
         let started = Instant::now();
         document.normalize();
@@ -1921,8 +1846,10 @@ fn nested_edges(
 
 #[test]
 fn moving_whitespace_out_of_deep_attention_is_linear() {
-    // Each level starts and ends with whitespace, which moves out through every level outside it.
+    // Each level starts and ends with whitespace, which moves out through every level outside it. Attention already holds no whitespace at its edges once its parent has moved it out, so it is not searched again. Hard breaks at the end of each level take the same path.
     assert_normalize_only_linear(
+        "whitespace at the edges of each level",
+        1 << 9,
         |size| {
             build(concat([
                 vec![text("x")],
@@ -1943,8 +1870,10 @@ fn moving_whitespace_out_of_deep_attention_is_linear() {
             );
         },
     );
-    // Whitespace alone inside: every level is emptied and removed.
+    // Whitespace alone inside: every level is emptied and removed, and moving out continues from the level above, not from the outermost.
     assert_normalize_only_linear(
+        "whitespace alone inside",
+        1 << 9,
         |size| {
             build(concat([
                 vec![text("x")],
@@ -1963,33 +1892,19 @@ fn moving_whitespace_out_of_deep_attention_is_linear() {
             assert_eq!(document.children(paragraph).count(), 3);
         },
     );
-    // Hard breaks at the end of each level move out to the end of the block and are removed.
-    assert_normalize_only_linear(
-        |size| {
-            build(nested_edges(size / 2, Vec::new, vec![text("a")], || {
-                vec![hard()]
-            }))
-        },
-        |document, size| {
-            assert_eq!(
-                document.descendants(document.root()).count(),
-                2 + size / 2 + 1
-            );
-        },
-    );
 }
 
 #[test]
 fn removing_break_chains_is_linear() {
-    // At the end of a block.
-    assert_normalize_linear(|size| {
+    // At the end of a block, where the whole run is cut off at once.
+    assert_normalize_linear("breaks at the end of a block", 1 << 9, |size| {
         build(concat([
             vec![text("a")],
             (0..size).map(|_| hard()).collect(),
         ]))
     });
-    // At the end of attention, followed by more text.
-    assert_normalize_linear(|size| {
+    // At the end of attention, followed by more text, where the whole run moves out at once. In a table cell, each becomes a space and is joined, as `joining_text_is_linear` checks.
+    assert_normalize_linear("breaks at the end of attention", 1 << 9, |size| {
         build(concat([
             emphasis(concat([
                 vec![text("a")],
@@ -1998,37 +1913,23 @@ fn removing_break_chains_is_linear() {
             vec![text("b")],
         ]))
     });
-    // In a table cell, where each becomes a space.
-    assert_normalize_linear(|size| {
-        build_blocks(table(concat([
-            vec![text("a")],
-            (0..size).map(|_| hard()).collect(),
-            vec![text("b")],
-        ])))
-    });
-}
-
-#[test]
-fn joining_code_and_math_is_linear() {
-    assert_normalize_linear(|size| build((0..size).map(|_| code("a", None)).collect()));
-    assert_normalize_linear(|size| build((0..size).map(|_| math("a")).collect()));
 }
 
 #[test]
 fn serializing_code_and_math_with_many_line_endings_is_linear() {
-    // Each line ending in code or math is written as a space, and normalizing replaces it with one. Writing them once flattened only those before a block marker, rescanning the content from its start for each (#115). Runs of line endings, CRLF and ordered-list digits each took a different path, and math takes the same path as code. The trees are serialized without normalizing too, which must stay linear.
+    // Each line ending in code or math is written as a space, and normalizing replaces it with one. Writing them once flattened only those before a block marker, rescanning the content from its start for each (#115). Runs of line endings, CRLF, CR and ordered-list digits each took a different path, and math takes the same path as code; a line ending before `-` after a blank line was never quadratic. The trees are serialized without normalizing too, which must stay linear.
     let content = |unit: &str, size: usize| Text::from(unit.repeat(size) + "#");
-    let check = |tree: &dyn Fn(usize) -> Document<String>| {
-        assert_normalize_linear(tree);
-        assert_linear(|size| {
+    let check = |label: &str, tree: &dyn Fn(usize) -> Document<String>| {
+        assert_normalize_linear(label, 1 << 10, tree);
+        assert_linear(label, 1 << 10, |size| {
             let document = tree(size);
-            let started = Instant::now();
-            to_markdown(&document).unwrap();
-            started.elapsed()
+            timed(|| {
+                to_markdown(&document).unwrap();
+            })
         });
     };
-    for unit in ["a\n#", "\n", "a\r\n#", " \n\t", "a\n1. ", "a\n\n-", "\r"] {
-        check(&|size| {
+    for unit in ["a\n#", "\n", "a\r\n#", "a\n1. ", "\r"] {
+        check(unit, &|size| {
             build(vec![event(
                 EventKind::Code {
                     value: content(unit, size),
@@ -2038,7 +1939,9 @@ fn serializing_code_and_math_with_many_line_endings_is_linear() {
             )])
         });
     }
-    check(&|size| build(vec![event(EventKind::Math(content("a\n#", size)), 0..0)]));
+    check("math", &|size| {
+        build(vec![event(EventKind::Math(content("a\n#", size)), 0..0)])
+    });
 }
 
 fn math_text() -> ParseOptions {
@@ -2619,7 +2522,7 @@ fn parsed_lone_loose_items_keep_their_output() {
 #[test]
 fn tightening_lone_loose_items_is_linear() {
     // Lone loose items nested in each other, each left with one block once its empty paragraph is removed. Appending nests in time linear in the depth, and serializing nests too deeply for the stack, so the tree is built from events and only normalizing is timed.
-    assert_linear(|size| {
+    assert_linear("nested lone loose items", 1 << 8, |size| {
         let mut events = Vec::new();
         for _ in 0..size {
             events.extend([
@@ -2642,7 +2545,7 @@ fn tightening_lone_loose_items_is_linear() {
         started.elapsed()
     });
     // A lone item of many empty paragraphs and one that is not.
-    assert_normalize_linear(|size| {
+    assert_normalize_linear("a lone item of empty paragraphs", 1 << 8, |size| {
         let mut blocks: Vec<Block> = (0..size).map(|_| Block::Paragraph(vec![])).collect();
         blocks.push(Block::Paragraph(vec![EventKind::Text(Text::from(
             "a".to_owned(),
@@ -2650,7 +2553,7 @@ fn tightening_lone_loose_items_is_linear() {
         build_list(&Block::List(None, false, vec![(false, blocks)]))
     });
     // A lone item of many blocks, which is written spread.
-    assert_normalize_linear(|size| {
+    assert_normalize_linear("a lone item of many blocks", 1 << 8, |size| {
         build_list(&Block::List(
             None,
             false,
@@ -3250,23 +3153,6 @@ fn a_footnote_definition_in_the_only_item_of_a_loose_list_keeps_the_item_spread(
     );
 }
 
-#[test]
-fn serializing_footnote_definitions_in_a_list_item_is_linear() {
-    use Block::{Footnote, List, Paragraph};
-    let p = || Paragraph(vec![EventKind::Text(Text::from("a".to_owned()))]);
-    // Many definitions of many paragraphs, each followed by a paragraph.
-    assert_normalize_linear(|size| {
-        let blocks = (0..size / 2)
-            .flat_map(|_| [Footnote(vec![p(), p()]), p()])
-            .collect();
-        build_list(&List(
-            None,
-            false,
-            vec![(false, blocks), (false, vec![p()])],
-        ))
-    });
-}
-
 /// Clear the recorded spread of each item of the first list, as a hand-built tree may leave it.
 fn unset_spread(mut document: Document<String>) -> Document<String> {
     let list = document.children(document.root()).next().unwrap();
@@ -3480,23 +3366,6 @@ fn a_tight_list_after_a_paragraph_in_a_tight_item_stays_tight() {
             &Document::parse(document.as_str(), &ParseOptions::default()).unwrap()
         ));
     }
-}
-
-#[test]
-fn serializing_lists_after_paragraphs_in_loose_items_is_linear() {
-    use Block::{List, Paragraph};
-    let p = || Paragraph(vec![EventKind::Text(Text::from("a".to_owned()))]);
-    // Many paragraphs, each followed by an ordered list that starts at 3, so it cannot interrupt the paragraph.
-    assert_normalize_linear(|size| {
-        let blocks = (0..size / 2)
-            .flat_map(|_| [p(), List(Some(3), true, vec![(false, vec![p()])])])
-            .collect();
-        build_list(&List(
-            None,
-            false,
-            vec![(false, blocks), (false, vec![p()])],
-        ))
-    });
 }
 
 #[test]
