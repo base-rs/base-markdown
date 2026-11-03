@@ -891,8 +891,14 @@ impl<'a> State<'a> {
             document.node(parent).unwrap().kind,
             EventKind::Start(Tag::Item { .. } | Tag::List { .. })
         ) {
-            // Without a blank line, a block that cannot interrupt a paragraph would lazily continue the nested list's last paragraph.
-            if matches!(left_kind, EventKind::Start(Tag::List { .. }))
+            // Without a blank line, a block that cannot interrupt a paragraph would lazily continue the nested list's or footnote definition's last paragraph.
+            // Both take in the blank line after them, so the item records no spread for it.
+            let lazy = match left_kind {
+                EventKind::Start(Tag::List { .. }) => true,
+                EventKind::Start(Tag::FootnoteDefinition(_)) => ends_in_paragraph(document, left),
+                _ => false,
+            };
+            if lazy
                 && (matches!(
                     right_kind,
                     EventKind::Start(Tag::Paragraph { .. } | Tag::Table)
@@ -1450,6 +1456,22 @@ pub(crate) fn is_phrasing(kind: &EventKind<'_>) -> bool {
             | EventKind::Text(_)
             | EventKind::Html { block: false, .. }
     )
+}
+
+/// Whether the last block of container `id`, through the last blocks of any containers in it, is a
+/// paragraph, which a following line could lazily continue. Only last children are visited, which
+/// never come before another block, so each node is visited for at most one container.
+fn ends_in_paragraph<S: AsRef<str>>(document: &Document<S>, mut id: NodeId) -> bool {
+    while let Some(last) = flow_children(document, id).last() {
+        match document.node(last).unwrap().kind {
+            EventKind::Start(Tag::Paragraph { .. }) => return true,
+            EventKind::Start(
+                Tag::BlockQuote | Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition(_),
+            ) => id = last,
+            _ => return false,
+        }
+    }
+    false
 }
 
 pub(super) fn flow_children<S: AsRef<str>>(
