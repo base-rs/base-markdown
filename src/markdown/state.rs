@@ -1728,6 +1728,23 @@ fn nesting_too_deep() -> Message {
     }
 }
 
+/// The largest number an ordered list marker can have: CommonMark allows at most 9 digits.
+pub(super) const MAX_LIST_NUMBER: u64 = 999_999_999;
+
+/// A list item whose number, its list's start plus, when `increment_list_marker` is on, its
+/// position among the list's items, would need more than 9 digits, which reads back as text.
+pub(super) fn list_number_too_long(number: u64) -> Message {
+    Message {
+        span: None,
+        reason: alloc::format!(
+            "List item number {number} has more than 9 digits, so it cannot be written as a list marker"
+        )
+        .into(),
+        rule_id: "list-number-too-long",
+        source: "markdown",
+    }
+}
+
 pub(super) fn invalid_node() -> Message {
     Message {
         span: None,

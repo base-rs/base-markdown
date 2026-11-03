@@ -35,7 +35,7 @@ mod util;
 /// ```
 ///
 /// # Errors
-/// Returns unsupported content shapes from serialization, and content nested more than 128 levels deep, as for [`to_markdown`].
+/// Returns unsupported content shapes from serialization, content nested more than 128 levels deep, and list item numbers of more than 9 digits, as for [`to_markdown`].
 pub fn normalize_markdown(source: &str) -> Result<String, Message> {
     normalize_markdown_with_options(source, &ParseOptions::default())
 }
@@ -45,7 +45,7 @@ pub fn normalize_markdown(source: &str) -> Result<String, Message> {
 /// Use this for syntax beyond the default options of [`normalize_markdown`], such as math, or to disable individual constructs. The output is serialized as by [`normalize_markdown`].
 ///
 /// # Errors
-/// Returns unsupported content shapes from serialization, and content nested more than 128 levels deep, as for [`to_markdown`].
+/// Returns unsupported content shapes from serialization, content nested more than 128 levels deep, and list item numbers of more than 9 digits, as for [`to_markdown`].
 pub fn normalize_markdown_with_options(
     source: &str,
     parse_options: &ParseOptions,
@@ -70,7 +70,7 @@ pub fn normalize_markdown_with_options(
 /// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text, code spans or math, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention, soft breaks at the edges of a block, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
 ///
 /// # Errors
-/// Returns invalid formatting options, unsupported syntax metadata, unsupported content shapes, or content nested too deeply. Serializing recurses once per level of nesting, so content nested more than 128 levels below the serialized node is an error rather than a stack overflow. Every block and inline node counts one level; the nodes in an image's text, which is written flat, do not.
+/// Returns invalid formatting options, unsupported syntax metadata, unsupported content shapes, content nested too deeply, or a list item number that is too long. Serializing recurses once per level of nesting, so content nested more than 128 levels below the serialized node is an error rather than a stack overflow. Every block and inline node counts one level; the nodes in an image's text, which is written flat, do not. CommonMark limits an ordered list marker to 9 digits, so an item whose number would have more, which would read back as text, is an error with the rule id `list-number-too-long`. An item's number is its list's start plus, when [`Options::increment_list_marker`] is on, its position among the list's items, so with it off only the start must fit.
 pub fn to_markdown<S: AsRef<str>>(document: &Document<S>) -> Result<String, Message> {
     to_markdown_with_options(document, &Options::default())
 }
@@ -80,7 +80,7 @@ pub fn to_markdown<S: AsRef<str>>(document: &Document<S>) -> Result<String, Mess
 /// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text, code spans or math, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention, soft breaks at the edges of a block, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
 ///
 /// # Errors
-/// Returns invalid formatting options, unsupported syntax metadata, unsupported content shapes, or content nested more than 128 levels deep, as for [`to_markdown`].
+/// Returns invalid formatting options, unsupported syntax metadata, unsupported content shapes, content nested more than 128 levels deep, or list item numbers of more than 9 digits, as for [`to_markdown`].
 pub fn to_markdown_with_options<S: AsRef<str>>(
     document: &Document<S>,
     options: &Options,
@@ -95,7 +95,7 @@ pub fn to_markdown_with_options<S: AsRef<str>>(
 /// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text, code spans or math, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention, soft breaks at the edges of a block, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
 ///
 /// # Errors
-/// Returns an invalid node index, invalid formatting options, unsupported syntax metadata, unsupported content shapes, or content nested more than 128 levels below `node`, as for [`to_markdown`].
+/// Returns an invalid node index, invalid formatting options, unsupported syntax metadata, unsupported content shapes, content nested more than 128 levels below `node`, or list item numbers of more than 9 digits, as for [`to_markdown`]. An item serialized on its own is numbered by its position in its list.
 pub fn to_markdown_node<S: AsRef<str>>(
     document: &Document<S>,
     node: NodeId,

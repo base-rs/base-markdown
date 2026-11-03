@@ -5,7 +5,9 @@
 use super::{
     configure::IndentOptions,
     construct_name::ConstructName,
-    state::{flow_children, unsupported_content, Info, State},
+    state::{
+        flow_children, list_number_too_long, unsupported_content, Info, State, MAX_LIST_NUMBER,
+    },
     util::{
         contains_control_or_whitespace::contains_control_or_whitespace,
         format_code_as_indented::format_code_as_indented,
@@ -557,8 +559,13 @@ impl State<'_> {
                 } else {
                     0
                 };
-                write!(self.output, "{}", start as usize + position)
-                    .expect("writing to a String cannot fail");
+                // Each item's number is checked as it is written, so a list costs O(1) per item.
+                // `u64` holds any `u32` start plus any item position without wrapping.
+                let number = u64::from(start).saturating_add(position as u64);
+                if number > MAX_LIST_NUMBER {
+                    return Err(list_number_too_long(number));
+                }
+                write!(self.output, "{number}").expect("writing to a String cannot fail");
             }
         }
         self.output.push(bullet);
