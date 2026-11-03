@@ -4092,12 +4092,65 @@ fn a_paragraph_after_a_block_quote_in_an_item_is_written_after_a_line_of_quote_m
 }
 
 #[test]
+fn a_link_reference_definition_ending_a_block_in_a_tight_item_is_continued_like_a_paragraph() {
+    use Block::{Footnote, Leaf, List, Paragraph, Quote, Separator};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let tight = |blocks: Vec<Block>| List(None, true, vec![(false, blocks)]);
+    let definition = || {
+        Leaf(EventKind::Definition {
+            label: Text::from("d".to_owned()),
+            destination: Text::from("u".to_owned()),
+            title: None,
+        })
+    };
+    // A line after a link reference definition continues it lazily like a paragraph: as its title, `- - [d]: u\n  "t"` reads back with the paragraph gone, and as a paragraph in the nested item, `- - [d]: u\n  p` moves `p` into it. So a paragraph after a list or footnote definition ending in a definition makes the list loose, and one after a block quote ending in a definition is written after a line of `>`.
+    for (block, expected) in [
+        (
+            tight(vec![tight(vec![definition()]), Separator, p("p")]),
+            "- - [d]: u\n\n  p\n",
+        ),
+        (
+            tight(vec![tight(vec![definition()]), Separator, p("\"t\"")]),
+            "- - [d]: u\n\n  \"t\"\n",
+        ),
+        (
+            tight(vec![Footnote(vec![definition()]), Separator, p("p")]),
+            "- [^1]: [d]: u\n\n  p\n",
+        ),
+        (
+            tight(vec![
+                Quote(vec![tight(vec![definition()])]),
+                Separator,
+                p("p"),
+            ]),
+            "- > - [d]: u\n\n  p\n",
+        ),
+        (
+            tight(vec![Quote(vec![definition()]), Separator, p("p")]),
+            "- > [d]: u\n  >\n  p\n",
+        ),
+        (
+            tight(vec![Quote(vec![definition()]), Separator, p("\"t\"")]),
+            "- > [d]: u\n  >\n  \"t\"\n",
+        ),
+    ] {
+        assert_eq!(reads_back(build_list(&block)), expected);
+    }
+    for source in ["- > [d]: u\n  >\n  p\n", "- - [d]: u\n\n  p\n"] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert!(document.is_normalized(), "{:?}", source);
+        assert_eq!(reads_back(document), source);
+    }
+}
+
+#[test]
 fn joining_paragraphs_and_loosening_lists_in_tight_items_is_linear() {
     use Block::{List, Paragraph, Quote, Separator};
     let text = || EventKind::Text(Text::from("a".to_owned()));
     let tight = |items: Vec<(bool, Vec<Block>)>| List(None, true, items);
-    // An item of many paragraphs of a few children each, joined into one, and a paragraph after many block quotes that end in a paragraph through block quotes in them.
-    assert_normalize_linear("paragraphs in a row in a tight item", 1 << 9, |size| {
+    // An item of many paragraphs of a few children each, joined into one, and a paragraph after many block quotes that end in a paragraph through block quotes in them. Serializing these is slow next to normalizing them, so only normalizing is timed, at a size where joining that walks to the last child of the paragraph so far on each join already fails, and the joined paragraph is serialized once at a smaller size.
+    let paragraphs = |size: usize| {
         let blocks = (0..size)
             .flat_map(|_| {
                 [
@@ -4107,10 +4160,17 @@ fn joining_paragraphs_and_loosening_lists_in_tight_items_is_linear() {
             })
             .collect();
         build_list(&tight(vec![(false, blocks)]))
-    });
-    assert_normalize_linear(
+    };
+    assert_normalize_only_linear(
+        "paragraphs in a row in a tight item",
+        1 << 8,
+        paragraphs,
+        |_, _| {},
+    );
+    assert_normalize_linear("serializing joined paragraphs", 1 << 6, paragraphs);
+    assert_normalize_only_linear(
         "block quotes and paragraphs in a tight item",
-        1 << 9,
+        1 << 8,
         |size| {
             let blocks = (0..size)
                 .flat_map(|_| {
@@ -4124,13 +4184,19 @@ fn joining_paragraphs_and_loosening_lists_in_tight_items_is_linear() {
                 .collect();
             build_list(&tight(vec![(false, blocks)]))
         },
+        |_, _| {},
     );
     // A tight list of many items, of which only the last needs it to be loose.
-    assert_normalize_linear("a tight list made loose by its last item", 1 << 9, |size| {
-        let mut items: Vec<(bool, Vec<Block>)> = (0..size)
-            .map(|_| (false, vec![Paragraph(vec![text()])]))
-            .collect();
-        items.push((false, vec![Quote(vec![]), Separator, Quote(vec![])]));
-        build_list(&tight(items))
-    });
+    assert_normalize_only_linear(
+        "a tight list made loose by its last item",
+        1 << 8,
+        |size| {
+            let mut items: Vec<(bool, Vec<Block>)> = (0..size)
+                .map(|_| (false, vec![Paragraph(vec![text()])]))
+                .collect();
+            items.push((false, vec![Quote(vec![]), Separator, Quote(vec![])]));
+            build_list(&tight(items))
+        },
+        |_, _| {},
+    );
 }

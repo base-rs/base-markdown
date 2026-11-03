@@ -1278,12 +1278,12 @@ fn apart_only_when_loose(nodes: &[Node], left: &Node, right: &Node) -> bool {
     }
 }
 
-// Whether the last block of `node`, through the last blocks of any containers in it, is a paragraph, which a following line could lazily continue. Only last blocks are visited, which come before no other block, so each node is visited for at most one container.
+// Whether the last block of `node`, through the last blocks of any containers in it, is a paragraph or a link reference definition, which a following line could lazily continue. Only last blocks are visited, which come before no other block, so each node is visited for at most one container.
 fn ends_in_paragraph<'a>(nodes: &'a [Node], mut node: &'a Node) -> bool {
     while let Some(last) = blocks(nodes, node.first_child).last() {
         node = &nodes[last.index()];
         match node.kind {
-            EventKind::Start(Tag::Paragraph { .. }) => return true,
+            EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. } => return true,
             EventKind::Start(
                 Tag::BlockQuote | Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition(_),
             ) => {}
