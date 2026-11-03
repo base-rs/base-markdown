@@ -88,6 +88,9 @@ pub struct State<'a> {
     fence_code: bool,
     /// The innermost item `list_item` is writing, and its task marker, if any.
     pub(super) task_item: Option<(NodeId, Option<NodeId>)>,
+    /// How many nodes are open, which is the depth of the next node written: the serialized node
+    /// is at depth 0. See `MAX_NESTING`.
+    depth: usize,
 }
 
 impl<'a> Info<'a> {
@@ -312,6 +315,9 @@ impl<'a> State<'a> {
         previous: &Previous,
         last_child: bool,
     ) -> Result<Edge, Message> {
+        if !self.open() {
+            return Err(nesting_too_deep());
+        }
         let children: Vec<NodeId> = flow_children(document, id).collect();
         let [lead, before] = info.before(&self.output);
         let before = before
@@ -382,6 +388,7 @@ impl<'a> State<'a> {
             }
         }
         self.output.push_str(sequence);
+        self.depth -= 1;
         Ok(Edge {
             encode: after.filter(|_| choice.encode_after),
             tilde,
@@ -626,17 +633,29 @@ impl<'a> State<'a> {
         Ok(core::mem::take(&mut self.output))
     }
 
+    /// Open a node at the current depth, unless it is deeper than `MAX_NESTING`, which the caller
+    /// returns as an error before writing the node's children. The caller closes the node by
+    /// decrementing `depth`; after an error, serializing stops, so it is not closed.
+    fn open(&mut self) -> bool {
+        let open = self.depth <= MAX_NESTING;
+        self.depth += usize::from(open);
+        open
+    }
+
     fn write_node<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         id: NodeId,
         info: &Info,
     ) -> Result<(), Message> {
+        if !self.open() {
+            return Err(nesting_too_deep());
+        }
         let node = document
             .node(id)
             .expect("serialization uses existing arena nodes");
         let source = document.source();
-        match &node.kind {
+        let result = match &node.kind {
             EventKind::Start(tag) => match tag {
                 Tag::Document(_) => {
                     if flow_children(document, id)
@@ -653,10 +672,13 @@ impl<'a> State<'a> {
                 Tag::List { start, .. } => self.list(document, id, start.is_some()),
                 Tag::Item { .. } => self.list_item(document, id),
                 Tag::Emphasis | Tag::Strong | Tag::Delete => {
-                    // Attention outside a phrasing container is written on its own.
+                    // Attention outside a phrasing container is written on its own, and opened by
+                    // `attention`, so it is not counted twice.
+                    self.depth -= 1;
                     self.enter(ConstructName::Phrasing);
                     self.phrasing(document, &[id], info, &Edge::default())?;
                     self.exit();
+                    self.depth += 1;
                     Ok(())
                 }
                 Tag::Link { destination, title } | Tag::Image { destination, title } => {
@@ -666,7 +688,9 @@ impl<'a> State<'a> {
                     if let Some(NodeSyntax::Reference { kind, label }) = document.syntax(id) {
                         let label = label.resolve(source).unwrap();
                         if self.reference_matches(document, id, label, destination, title) {
-                            return self.reference(document, id, kind, label, image);
+                            let result = self.reference(document, id, kind, label, image);
+                            self.depth -= 1;
+                            return result;
                         }
                     }
                     self.resource(document, id, destination, title, image)
@@ -675,7 +699,8 @@ impl<'a> State<'a> {
                 Tag::TableRow => self.render_table_row(document, id),
                 Tag::TableCell { .. } => self.container_phrasing(document, id, info),
                 Tag::TableHead | Tag::TableBody => {
-                    self.render_table_rows(document, flow_children(document, id), false)
+                    let rows = flow_children(document, id).map(|row| (row, false));
+                    self.render_table_rows(document, rows, false)
                 }
                 Tag::FootnoteDefinition(label) => {
                     let syntax = document.syntax(id);
@@ -818,7 +843,9 @@ impl<'a> State<'a> {
             }
             EventKind::Separator { .. } => Ok(()),
             EventKind::End(_) => unreachable!("arena nodes store starts and leaves only"),
-        }
+        };
+        self.depth -= 1;
+        result
     }
 
     fn render_table<S: AsRef<str>>(
@@ -826,15 +853,17 @@ impl<'a> State<'a> {
         document: &Document<S>,
         id: NodeId,
     ) -> Result<(), Message> {
+        // Each row, and whether it is in a head or body, a level between it and the table.
         let rows = flow_children(document, id).flat_map(|child| {
             let group = matches!(
                 document.node(child).unwrap().kind,
                 EventKind::Start(Tag::TableHead | Tag::TableBody)
             );
-            (!group)
-                .then_some(child)
-                .into_iter()
-                .chain(flow_children(document, child).take(if group { usize::MAX } else { 0 }))
+            (!group).then_some((child, false)).into_iter().chain(
+                flow_children(document, child)
+                    .take(if group { usize::MAX } else { 0 })
+                    .map(|row| (row, true)),
+            )
         });
         self.render_table_rows(document, rows, true)
     }
@@ -842,10 +871,10 @@ impl<'a> State<'a> {
     fn render_table_rows<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
-        rows: impl Iterator<Item = NodeId>,
+        rows: impl Iterator<Item = (NodeId, bool)>,
         header: bool,
     ) -> Result<(), Message> {
-        for (index, row) in rows.enumerate() {
+        for (index, (row, grouped)) in rows.enumerate() {
             if !matches!(
                 document.node(row).unwrap().kind,
                 EventKind::Start(Tag::TableRow)
@@ -855,7 +884,12 @@ impl<'a> State<'a> {
             if index > 0 {
                 self.output.push('\n');
             }
+            // A row in a head or body opens that first, a level between the row and the table.
+            if grouped && !self.open() || !self.open() {
+                return Err(nesting_too_deep());
+            }
             self.render_table_row(document, row)?;
+            self.depth -= 1 + usize::from(grouped);
             if header && index == 0 {
                 self.output.push_str("\n| ");
                 for (index, cell) in flow_children(document, row).enumerate() {
@@ -898,7 +932,11 @@ impl<'a> State<'a> {
             }
             self.enter(ConstructName::TableCell);
             self.enter(ConstructName::Phrasing);
+            if !self.open() {
+                return Err(nesting_too_deep());
+            }
             self.container_phrasing(document, cell, &Info::new("", ""))?;
+            self.depth -= 1;
             self.exit();
             self.exit();
         }
@@ -1046,6 +1084,7 @@ impl<'a> State<'a> {
             definition_colon: None,
             fence_code: false,
             task_item: None,
+            depth: 0,
         }
     }
 
@@ -1614,6 +1653,24 @@ pub(super) fn unsupported_content() -> Message {
         span: None,
         reason: "This content shape cannot be represented in Markdown".into(),
         rule_id: "unsupported-node",
+        source: "markdown",
+    }
+}
+
+/// How deep the serializer nests: a node more than this many levels below the serialized node,
+/// counting every block and inline node between them, is an error rather than a deeper recursion
+/// that could overflow the stack. The text of an image is written flat, so the nodes in it are not
+/// counted.
+const MAX_NESTING: usize = 1000;
+
+fn nesting_too_deep() -> Message {
+    Message {
+        span: None,
+        reason: alloc::format!(
+            "Content nested more than {MAX_NESTING} levels deep cannot be serialized"
+        )
+        .into(),
+        rule_id: "nesting-too-deep",
         source: "markdown",
     }
 }
