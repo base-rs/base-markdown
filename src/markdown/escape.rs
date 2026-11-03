@@ -687,13 +687,20 @@ mod tests {
                 // matches can consume one another, so every combination with one is checked.
                 // Otherwise only the byte between the two candidates connects what is before the
                 // first and what is after the byte, so each of those is checked against every
-                // byte with the other empty.
+                // byte with the other empty, along with a diagonal sample of the rest. This
+                // assumes no non-empty context is all spaces, tabs or digits, so a `Line` or
+                // `Digits` walk back from the last candidate stops inside the right context. A
+                // new rule whose `Before` reaches more than one byte back, or whose `After` reads
+                // past `position + 3`, needs the full product again.
                 let chained = |context: &str| context.as_bytes().contains(&rule.byte);
-                for left in contexts {
-                    for right in contexts {
+                for (left_index, left) in contexts.iter().copied().enumerate() {
+                    for (right_index, right) in contexts.iter().copied().enumerate() {
                         let full =
                             left.is_empty() || right.is_empty() || chained(left) || chained(right);
-                        for byte in (0..=127u8).filter(|&byte| full || byte == rule.byte) {
+                        for byte in (0..=127u8).filter(|&byte| {
+                            full || byte == rule.byte
+                                || usize::from(byte) % 16 == (left_index * 5 + right_index) % 16
+                        }) {
                             let value = format!(
                                 "{left}{}{}{right}{}",
                                 char::from(rule.byte),
