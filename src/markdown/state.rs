@@ -1661,7 +1661,7 @@ pub(super) fn unsupported_content() -> Message {
 /// counting every block and inline node between them, is an error rather than a deeper recursion
 /// that could overflow the stack. The text of an image is written flat, so the nodes in it are not
 /// counted.
-const MAX_NESTING: usize = 1000;
+const MAX_NESTING: usize = 128;
 
 fn nesting_too_deep() -> Message {
     Message {

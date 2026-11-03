@@ -1,14 +1,10 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-//! The serializer recurses once per nesting level, so it fails on content nested more than 1,000
+//! The serializer recurses once per nesting level, so it fails on content nested more than 128
 //! levels below the serialized node, counting every block and inline node, rather than overflow
-//! the stack.
-//!
-//! Serializing 1,000 levels needs more stack than a test thread's 2 MiB in a debug build: from
-//! about 4.3 MiB for emphasis to about 11.2 MiB for links in links. In a release build it needs
-//! 0.8 to 1.6 MiB, and about 2.2 MiB for links in links. Serializing runs on a thread with a larger
-//! stack.
+//! the stack. 128 levels fit in a test thread's 2 MiB stack in a debug build, so these run on test
+//! threads.
 
 use base_markdown::{
     message::Message,
@@ -17,19 +13,7 @@ use base_markdown::{
     to_markdown, to_markdown_node, AlignKind, AstBuilder, Document, NodeId, ParseOptions,
 };
 
-const LIMIT: usize = 1000;
-
-/// Run `run` on a thread with enough stack to serialize `LIMIT` levels in a debug build.
-fn with_stack<T: Send>(run: impl FnOnce() -> T + Send) -> T {
-    std::thread::scope(|scope| {
-        std::thread::Builder::new()
-            .stack_size(64 << 20)
-            .spawn_scoped(scope, run)
-            .unwrap()
-            .join()
-            .unwrap()
-    })
-}
+const LIMIT: usize = 128;
 
 fn event(kind: EventKind<'static>) -> Result<Event<'static>, StreamError> {
     Ok(Event { kind, span: 0..0 })
@@ -168,7 +152,7 @@ fn assert_too_deep(result: Result<String, Message>, label: &str) {
     assert_eq!(error.rule_id, "nesting-too-deep", "{label}");
     assert_eq!(
         error.reason,
-        "Content nested more than 1000 levels deep cannot be serialized"
+        "Content nested more than 128 levels deep cannot be serialized"
     );
 }
 
@@ -184,17 +168,15 @@ fn content_at_the_limit_serializes_and_deeper_content_is_an_error() {
         .chain(shapes(LIMIT + 2))
         .map(|(label, tags)| (label, nest(&tags)))
         .collect();
-    with_stack(|| {
-        for (label, document) in &at_limit {
-            assert!(to_markdown(document).is_ok(), "{}", label);
-        }
-        for (label, document) in &deeper {
-            assert_too_deep(to_markdown(document), label);
-        }
-    });
+    for (label, document) in &at_limit {
+        assert!(to_markdown(document).is_ok(), "{}", label);
+    }
+    for (label, document) in &deeper {
+        assert_too_deep(to_markdown(document), label);
+    }
     let quotes = &at_limit[0].1;
     assert_eq!(
-        with_stack(|| to_markdown(quotes)).unwrap(),
+        to_markdown(quotes).unwrap(),
         format!("{}a\n", "> ".repeat(LIMIT - 2))
     );
 }
@@ -211,20 +193,17 @@ fn each_part_of_a_table_counts_one_level() {
         tags.extend([Tag::TableRow, cell()]);
         nest(&tags)
     };
-    let (ok, deeper) = (table(LIMIT - 4, true), table(LIMIT - 3, true));
-    with_stack(|| {
-        assert!(to_markdown(&ok).is_ok());
-        // The text, the cell, the row and the head are each one level too deep.
-        assert_too_deep(to_markdown(&deeper), "text");
-    });
+    assert!(to_markdown(&table(LIMIT - 4, true)).is_ok());
+    // The text, the cell, the row and the head are each one level too deep.
     for (depth, group, label) in [
+        (LIMIT - 3, true, "text"),
         (LIMIT - 2, true, "cell"),
         (LIMIT - 1, true, "row in a head"),
         (LIMIT, true, "head"),
         (LIMIT, false, "row"),
     ] {
         let document = table(depth, group);
-        assert_too_deep(with_stack(|| to_markdown(&document)), label);
+        assert_too_deep(to_markdown(&document), label);
     }
 }
 
@@ -237,7 +216,7 @@ fn image_text_is_written_flat_and_does_not_count() {
         ([image(), link()], "![a](u)\n"),
     ] {
         let document = nest(&levels(10_000, &[paragraph()], &unit, &[], &Tag::Emphasis));
-        assert_eq!(with_stack(|| to_markdown(&document)).unwrap(), expected);
+        assert_eq!(to_markdown(&document).unwrap(), expected);
     }
 }
 
@@ -253,39 +232,26 @@ fn descend(document: &Document<String>, depth: usize) -> NodeId {
 #[test]
 fn levels_count_from_the_serialized_node() {
     let options = Default::default();
-    // Text 2,000 levels deep, under quotes, a paragraph and attention.
-    let mut tags = vec![Tag::BlockQuote; 1000];
+    let attention = || vec![Tag::Emphasis, Tag::Strong].into_iter().cycle();
+    // Text `2 * LIMIT` levels deep, under quotes, a paragraph and attention.
+    let mut tags = vec![Tag::BlockQuote; LIMIT];
     tags.push(paragraph());
-    tags.extend(
-        [Tag::Emphasis, Tag::Strong]
-            .iter()
-            .cycle()
-            .take(998)
-            .cloned(),
-    );
+    tags.extend(attention().take(LIMIT - 2));
     let quotes = nest(&tags);
-    // Text 2,001 levels deep, under a paragraph and attention.
+    // Text `2 * LIMIT + 1` levels deep, under a paragraph and attention.
     let mut tags = vec![paragraph()];
-    tags.extend(
-        [Tag::Emphasis, Tag::Strong]
-            .iter()
-            .cycle()
-            .take(1999)
-            .cloned(),
-    );
+    tags.extend(attention().take(2 * LIMIT - 1));
     let attention = nest(&tags);
-    with_stack(|| {
-        assert_too_deep(to_markdown(&quotes), "document");
-        // The last quote, with the text 1,000 levels below it, and the one around it.
-        assert!(to_markdown_node(&quotes, descend(&quotes, 1000), &options).is_ok());
-        let quote = descend(&quotes, 999);
-        assert_too_deep(to_markdown_node(&quotes, quote, &options), "quote");
-        // Attention, which is written on its own outside phrasing, counts once.
-        let node = descend(&attention, 1001);
-        assert!(to_markdown_node(&attention, node, &options).is_ok());
-        let node = descend(&attention, 1000);
-        assert_too_deep(to_markdown_node(&attention, node, &options), "attention");
-    });
+    assert_too_deep(to_markdown(&quotes), "document");
+    // The last quote, with the text `LIMIT` levels below it, and the one around it.
+    assert!(to_markdown_node(&quotes, descend(&quotes, LIMIT), &options).is_ok());
+    let quote = descend(&quotes, LIMIT - 1);
+    assert_too_deep(to_markdown_node(&quotes, quote, &options), "quote");
+    // Attention, which is written on its own outside phrasing, counts once.
+    let node = descend(&attention, LIMIT + 1);
+    assert!(to_markdown_node(&attention, node, &options).is_ok());
+    let node = descend(&attention, LIMIT);
+    assert_too_deep(to_markdown_node(&attention, node, &options), "attention");
 }
 
 #[test]
@@ -308,20 +274,20 @@ fn deeply_nested_parsed_documents_are_an_error() {
         attention,
     ];
     for source in &sources {
-        // Parsing, normalizing and dropping the document do not recurse, so they fit in a test
-        // thread's stack.
+        // Parsing, normalizing and dropping the document do not recurse, and serializing stops at
+        // the limit, so all of it fits in a test thread's stack.
         let mut document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
         document.normalize();
         assert!(document.is_normalized());
-        assert_too_deep(with_stack(|| to_markdown(&document)), &source[..10]);
-        assert_too_deep(with_stack(|| normalize_markdown(source)), &source[..10]);
+        assert_too_deep(to_markdown(&document), &source[..10]);
+        assert_too_deep(normalize_markdown(source), &source[..10]);
     }
     // Quotes, a paragraph and text: the text is two levels below the last quote.
     let source = format!("{} a\n", ">".repeat(LIMIT - 2));
     assert_eq!(
-        with_stack(|| normalize_markdown(&source)).unwrap(),
+        normalize_markdown(&source).unwrap(),
         format!("{}a\n", "> ".repeat(LIMIT - 2))
     );
     let source = format!("{} a\n", ">".repeat(LIMIT - 1));
-    assert_too_deep(with_stack(|| normalize_markdown(&source)), "quotes");
+    assert_too_deep(normalize_markdown(&source), "quotes");
 }
