@@ -3591,26 +3591,40 @@ fn without_fences() -> base_markdown::MarkdownOptions {
 }
 
 #[test]
-fn code_that_starts_a_footnote_definition_is_fenced_without_fences() {
-    // Indented code cannot start on a definition's first line, where `[^a]:     a` reads back as a paragraph, so it is fenced whatever `fences` says.
+fn code_that_starts_a_footnote_definition_starts_on_the_next_line_without_fences() {
+    // Indented code cannot start on a definition's first line, where `[^a]:     a` reads back as a paragraph, so it starts on the next line, indented like the lines after it.
     for parse in [ParseOptions::default(), ParseOptions::gfm()] {
         for (source, expected) in [
+            // Issue #142.
             (
                 "[^a]: ~~~\n    a\n    ~~~\n\nb[^a]",
-                "[^a]: ```\n    a\n    ```\n\nb[^a]\n",
+                "[^a]:\n        a\n\nb[^a]\n",
             ),
+            ("[^1]:\n        x\n", "[^1]:\n        x\n"),
+            ("- [^1]:\n          x\n- a\n", "- [^1]:\n          x\n- a\n"),
+            ("> [^1]:\n>         x\n", "> [^1]:\n>         x\n"),
+            (
+                "[^1]: [^1]:\n            x\n",
+                "[^1]: [^1]:\n            x\n",
+            ),
+            ("[^1]:\n        x\n\n    a\n", "[^1]:\n        x\n\n    a\n"),
             (
                 "- [^a]: ~~~\n      a\n      ~~~\n\n- b[^a]\n",
-                "- [^a]: ```\n      a\n      ```\n\n- b[^a]\n",
+                "- [^a]:\n          a\n\n- b[^a]\n",
             ),
             (
-                "> [^a]: ~~~\n>     a\n>     ~~~\n",
-                "> [^a]: ```\n>     a\n>     ```\n",
+                "[^a]: ~~~\n    a\n\n    b\n    ~~~\n",
+                "[^a]:\n        a\n\n        b\n",
             ),
-            // Only the first child is fenced: later code in the definition is indented as before.
+            // Code that indented code cannot write is fenced as before.
+            ("[^a]: ~~~\n    ~~~\n", "[^a]: ```\n    ```\n"),
             (
-                "[^a]: ~~~\n    a\n    ~~~\n\n        b\n",
-                "[^a]: ```\n    a\n    ```\n\n        b\n",
+                "[^a]: ~~~\n\n    a\n    ~~~\n",
+                "[^a]: ```\n\n    a\n    ```\n",
+            ),
+            (
+                "[^a]: ~~~ rs\n    a\n    ~~~\n",
+                "[^a]: ```rs\n    a\n    ```\n",
             ),
         ] {
             let document = Document::parse(source, &parse).unwrap();
@@ -3621,6 +3635,23 @@ fn code_that_starts_a_footnote_definition_is_fenced_without_fences() {
             );
         }
     }
+}
+
+#[test]
+fn two_code_blocks_that_start_a_footnote_definition_keep_the_comment_without_fences() {
+    // Two indented code blocks in a row are separated by `<!---->`, also at the start of a definition. The comment reads back as an HTML block, which is the older `<!---->` behaviour; apart from it, the code blocks read back as they were.
+    let parse = ParseOptions::default();
+    let source = "[^1]:\n        x\n\n    ```\n    y\n    ```\n";
+    let expected = "[^1]:\n        x\n\n    <!---->\n\n        y\n";
+    let mut document = Document::parse(source, &parse).unwrap();
+    document.normalize();
+    let markdown = base_markdown::to_markdown_with_options(&document, &without_fences()).unwrap();
+    assert_eq!(markdown, expected);
+    let reparsed = Document::parse(markdown.as_str(), &parse).unwrap();
+    assert_eq!(
+        rendered(&reparsed).replace("&lt;!----&gt;\n", ""),
+        rendered(&document)
+    );
 }
 
 #[test]
@@ -3653,7 +3684,7 @@ fn code_after_a_footnote_definition_is_fenced_without_fences() {
 }
 
 #[test]
-fn built_code_next_to_a_footnote_definition_is_fenced_without_fences() {
+fn built_code_in_or_after_a_footnote_definition_reads_back_without_fences() {
     use Block::{Code, Footnote, List, Paragraph, Quote};
     let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
     let p = |value: &str| Paragraph(vec![text(value)]);
@@ -3669,7 +3700,7 @@ fn built_code_next_to_a_footnote_definition_is_fenced_without_fences() {
         ),
         (
             list(false, vec![Footnote(vec![Code]), p("b")]),
-            "- [^1]: ```\n      x\n      ```\n  b\n\n- c\n",
+            "- [^1]:\n          x\n  b\n\n- c\n",
         ),
         (
             list(false, vec![Footnote(vec![p("a")]), Code, Code]),
@@ -3687,14 +3718,14 @@ fn built_code_next_to_a_footnote_definition_is_fenced_without_fences() {
         );
     }
     for (block, expected) in [
-        (Footnote(vec![Code]), "[^1]: ```\n    x\n    ```\n"),
+        (Footnote(vec![Code]), "[^1]:\n        x\n"),
         (
             Quote(vec![Footnote(vec![p("a")]), Code]),
             "> [^1]: a\n>\n> ```\n> x\n> ```\n",
         ),
         (
-            Quote(vec![Footnote(vec![Code, Code])]),
-            "> [^1]: ```\n>     x\n>     ```\n>\n>         x\n",
+            Quote(vec![Footnote(vec![Code, p("b")])]),
+            "> [^1]:\n>         x\n>\n>     b\n",
         ),
     ] {
         assert_eq!(

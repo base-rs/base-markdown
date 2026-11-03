@@ -204,7 +204,7 @@ impl<'a> State<'a> {
             ) {
                 self.bullet_last_used = None;
             }
-            self.fence_code = fences_code(document, before, parent);
+            self.fence_code = fences_code(document, before);
             self.write_node(document, child, &Info::new("\n", "\n"))?;
             if let Some(&next) = children.peek() {
                 let separator = match self.between(document, before, child, next, parent) {
@@ -659,12 +659,14 @@ impl<'a> State<'a> {
                     self.output.push_str("[^");
                     self.output.push_str(label);
                     self.output.push_str("]:");
-                    if flow_children(document, id).next().is_some() {
-                        self.output.push(' ');
+                    if let Some(first) = flow_children(document, id).next() {
+                        // Indented code cannot start on the label's line, where it would read back as a paragraph, so it starts on the next line, indented like the lines after it.
+                        let next_line = self.indented_code(document, None, first);
+                        self.output.push(if next_line { '\n' } else { ' ' });
                         let start = self.output.len();
                         self.container_flow(document, id)?;
                         self.indent_lines(start, |line, index, blank, output| {
-                            if index > 0 && !blank {
+                            if (next_line || index > 0) && !blank {
                                 output.push_str("    ");
                             }
                             output.push_str(line);
@@ -916,9 +918,9 @@ impl<'a> State<'a> {
     ) -> &'static str {
         let left_kind = &document.node(left).unwrap().kind;
         let right_kind = &document.node(right).unwrap().kind;
-        if self.indented_code(document, Some(left), right, parent)
+        if self.indented_code(document, Some(left), right)
             && (matches!(left_kind, EventKind::Start(Tag::List { .. }))
-                || self.indented_code(document, before, left, parent))
+                || self.indented_code(document, before, left))
         {
             return "\n\n<!---->\n\n";
         }
@@ -965,16 +967,14 @@ impl<'a> State<'a> {
         "\n\n"
     }
 
-    /// Whether flow child `id` of `parent`, after flow child `before`, if any, is code written
-    /// indented.
+    /// Whether flow child `id`, after flow child `before`, if any, is code written indented.
     fn indented_code<S: AsRef<str>>(
         &self,
         document: &Document<S>,
         before: Option<NodeId>,
         id: NodeId,
-        parent: NodeId,
     ) -> bool {
-        if fences_code(document, before, parent) {
+        if fences_code(document, before) {
             return false;
         }
         if let EventKind::CodeBlock {
@@ -1523,20 +1523,16 @@ fn list_interrupts_paragraph<S: AsRef<str>>(document: &Document<S>, id: NodeId) 
         })
 }
 
-/// Whether code as a flow child of `parent`, after flow child `before`, if any, needs a fence
-/// whatever the options. Indented code cannot start on a footnote definition's first line, where it
-/// would read back as a paragraph, and directly after a footnote definition it would continue the
-/// definition, which takes in indented lines after a blank line.
-fn fences_code<S: AsRef<str>>(
-    document: &Document<S>,
-    before: Option<NodeId>,
-    parent: NodeId,
-) -> bool {
-    let node = before.unwrap_or(parent);
-    matches!(
-        document.node(node).unwrap().kind,
-        EventKind::Start(Tag::FootnoteDefinition(_))
-    )
+/// Whether code as a flow child after flow child `before`, if any, needs a fence whatever the
+/// options. Directly after a footnote definition, indented code would continue the definition,
+/// which takes in indented lines after a blank line.
+fn fences_code<S: AsRef<str>>(document: &Document<S>, before: Option<NodeId>) -> bool {
+    before.is_some_and(|before| {
+        matches!(
+            document.node(before).unwrap().kind,
+            EventKind::Start(Tag::FootnoteDefinition(_))
+        )
+    })
 }
 
 /// Whether the last block of container `id`, through the last blocks of any containers in it, is a
