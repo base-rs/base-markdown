@@ -264,43 +264,38 @@ fn structured_image_alt_and_link_text_use_their_semantic_content() {
 }
 
 #[test]
-fn synthetic_math_blocks_use_semantic_info_without_authored_syntax() {
-    use base_markdown::NodeSyntax;
+fn synthetic_math_blocks_take_metadata_from_syntax_and_have_no_language() {
+    use base_markdown::{stream::StreamError, NodeSyntax};
     let mut document = empty();
-    let block = document
-        .append_child(
-            document.root(),
-            EventKind::CodeBlock {
-                value: Text::Literal("x\n"),
-                language: Some(Text::Literal("latex")),
-                fence: None,
-                math: true,
-                unclosed: false,
-            },
-        )
+    let block = |language: Option<&'static str>, math| EventKind::CodeBlock {
+        value: Text::Literal("x\n"),
+        language: language.map(Text::Literal),
+        fence: None,
+        math,
+        unclosed: false,
+    };
+    // Math has no language to write: it would read back as metadata.
+    assert!(matches!(
+        document.append_child(document.root(), block(Some("latex"), true)),
+        Err(StreamError::InvalidValue)
+    ));
+    let id = document
+        .append_child(document.root(), block(None, true))
         .unwrap();
+    let info = |info| {
+        Some(NodeSyntax::Code {
+            info: Text::Literal(info),
+        })
+    };
+    document.set_syntax(id, info("latex")).unwrap();
     assert_eq!(to_markdown(&document).unwrap(), "$$latex\nx\n$$\n");
-    document
-        .set_kind(
-            block,
-            EventKind::CodeBlock {
-                value: Text::Literal("plain\n"),
-                language: None,
-                fence: None,
-                math: false,
-                unclosed: false,
-            },
-        )
-        .unwrap();
-    document
-        .set_syntax(
-            block,
-            Some(NodeSyntax::Code {
-                info: Text::Literal("ignored metadata"),
-            }),
-        )
-        .unwrap();
-    assert_eq!(to_markdown(&document).unwrap(), "```\nplain\n```\n");
+    // Code without a language has no info string to write.
+    document.set_kind(id, block(None, false)).unwrap();
+    assert!(matches!(
+        document.set_syntax(id, info("ignored metadata")),
+        Err(StreamError::InvalidValue)
+    ));
+    assert_eq!(to_markdown(&document).unwrap(), "```\nx\n```\n");
 }
 
 #[test]

@@ -396,3 +396,56 @@ fn text_deserialization_rejects_unknown_variants_and_invalid_ranges() {
         assert!(serde_json::from_value::<Text<'static>>(wire).is_err());
     }
 }
+
+/// A code block language that cannot be written, or a code info string that does not start with
+/// the language, is rejected when deserialized as when assigned (#144).
+#[test]
+fn serialized_code_languages_and_info_strings_that_cannot_be_written_are_rejected() {
+    let document = Document::parse("```x\n```\n".to_owned(), &Options::default().parse).unwrap();
+    let base = serde_json::to_value(document).unwrap();
+    let code = base["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| node["kind"].get("CodeBlock").is_some())
+        .unwrap();
+    let with = |language: Value, math: bool, info: Option<&str>| {
+        let mut wire = base.clone();
+        wire["nodes"][code]["kind"]["CodeBlock"]["language"] = language;
+        wire["nodes"][code]["kind"]["CodeBlock"]["math"] = json!(math);
+        if let Some(info) = info {
+            // Node IDs count from 1.
+            wire["syntax"] = json!({ (code + 1).to_string(): {"Code":{"info":{"Value":info}}} });
+        }
+        serde_json::from_value::<Document>(wire)
+    };
+    let x = || json!({"Value":"x"});
+    for (language, math, info) in [
+        (json!({"Value":""}), false, None),
+        (json!({"Source":{"start":3,"end":3}}), false, None),
+        (x(), true, None),
+        (x(), false, Some("y")),
+        (x(), false, Some("xy z")),
+        (Value::Null, false, Some("x")),
+    ] {
+        let result = with(language.clone(), math, info);
+        assert!(
+            result
+                .as_ref()
+                .is_err_and(|error| error.to_string().contains("invalid event value")),
+            "{} {} {:?}: {:?}",
+            language,
+            math,
+            info,
+            result
+        );
+    }
+    for (language, math, info) in [
+        (x(), false, Some("x \ta")),
+        (json!({"Source":{"start":3,"end":4}}), false, Some("x")),
+        (Value::Null, false, Some("")),
+        (Value::Null, true, Some(" y ")),
+    ] {
+        with(language, math, info).unwrap();
+    }
+}

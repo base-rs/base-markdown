@@ -815,20 +815,12 @@ impl<'a> State<'a> {
                 };
                 let authored_info = authored_info.as_deref();
                 if *math {
-                    self.math(
-                        value,
-                        authored_info.or(language).filter(|value| !value.is_empty()),
-                    )
+                    // Math has no language (`EventKind::validate`).
+                    self.math(value, authored_info.filter(|value| !value.is_empty()))
                 } else {
-                    let (language, meta) = match (authored_info, language) {
-                        (Some(info), Some(language)) => {
-                            let metadata = info
-                                .strip_prefix(language)
-                                .unwrap_or("")
-                                .trim_matches([' ', '\t']);
-                            (Some(language), (!metadata.is_empty()).then_some(metadata))
-                        }
-                        _ => (language, None),
+                    let meta = match (authored_info, language) {
+                        (Some(info), Some(language)) => code_meta(info, language),
+                        _ => None,
                     };
                     let fence = core::mem::take(&mut self.fence_code);
                     self.code(value, language, meta, fence)
@@ -1729,6 +1721,25 @@ pub(super) fn flow_children<S: AsRef<str>>(
             EventKind::Separator { .. }
         )
     })
+}
+
+/// The metadata of code whose info string is `info` and language `language`, which the serializer
+/// writes after the language and one space. The info string starts with the language and a space
+/// or tab (`NodeSyntax::validate`), and the run of spaces and tabs after the language separates
+/// it from the metadata, so two spaces there are written as one, as the parser reads them
+/// either way. When nothing but whitespace follows the language, all of it but the first space or
+/// tab is the metadata, which is encoded so it reads back. A parsed info string comes from the
+/// decoded source, so it starts with the language unless character escapes or references were
+/// off, and then the metadata is dropped as before.
+fn code_meta<'a>(info: &'a str, language: &str) -> Option<&'a str> {
+    let rest = info.strip_prefix(language)?;
+    let metadata = rest.trim_start_matches([' ', '\t']);
+    let metadata = if metadata.is_empty() {
+        rest.get(1..).unwrap_or("")
+    } else {
+        metadata
+    };
+    (!metadata.is_empty()).then_some(metadata)
 }
 
 fn normalize_nul(value: &str) -> Cow<'_, str> {

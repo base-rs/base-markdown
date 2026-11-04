@@ -87,11 +87,9 @@ impl State<'_> {
             } else {
                 ConstructName::CodeFencedLangTilde
             });
-            self.write_safe(
-                language,
-                &Info::at(start, self.output.len(), " "),
-                Some('`'),
-            );
+            // The language is its own context, after the fence, so that a `~` at its start in a
+            // tilde fence is escaped rather than lengthening the fence.
+            self.write_safe(language, &Info::new("", " "), Some('`'));
             self.exit();
             if let Some(metadata) = metadata {
                 self.enter(if marker == '`' {
@@ -100,11 +98,10 @@ impl State<'_> {
                     ConstructName::CodeFencedMetaTilde
                 });
                 self.output.push(' ');
-                self.write_safe(
-                    metadata,
-                    &Info::at(start, self.output.len(), "\n"),
-                    Some('`'),
-                );
+                // The parser trims the info string and splits the metadata off at the spaces and
+                // tabs after the language, so the metadata is its own context, where spaces and
+                // tabs at its edges are encoded.
+                self.write_safe(metadata, &Info::new("", ""), Some('`'));
                 self.exit();
             }
         }

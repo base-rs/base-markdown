@@ -705,7 +705,8 @@ fn escaped_footnote_labels_and_nul_code_info_roundtrip() {
     let Some(NodeSyntax::Code { info }) = document.syntax(id) else {
         panic!()
     };
-    assert_eq!(info.resolve(source).unwrap(), "r\0ust extra &");
+    // NUL is replaced in the info string as in the language, so the info starts with it (#144).
+    assert_eq!(info.resolve(source).unwrap(), "r\u{FFFD}ust extra &");
     let markdown = base_markdown::to_markdown(&document).unwrap();
     assert!(
         markdown.contains("extra &"),

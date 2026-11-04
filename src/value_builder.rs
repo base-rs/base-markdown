@@ -70,8 +70,9 @@ impl<'a> ValueBuilder<'a> {
     }
 }
 
+/// Decode escapes and references, and replace NUL with U+FFFD, as the parser decodes a value.
 pub(crate) fn decode_string(source: &str, range: Range<usize>) -> Text<'static> {
-    decode::<false>(source, range, true, true, false)
+    decode::<false>(source, range, true, true, true)
 }
 
 pub(crate) fn decode_string_with_options(

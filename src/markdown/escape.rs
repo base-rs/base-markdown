@@ -24,7 +24,8 @@ const LANGUAGE: u32 = bit(CodeFencedLangGraveAccent) | bit(CodeFencedLangTilde);
 const FENCE_INFO: u32 =
     LANGUAGE | bit(CodeFencedMetaGraveAccent) | bit(CodeFencedMetaTilde) | bit(MathFlowMeta);
 /// Contexts the parser trims spaces and tabs from at both edges.
-const TRIMMED: u32 = bit(TableCell) | bit(MathFlowMeta);
+const TRIMMED: u32 =
+    bit(TableCell) | bit(MathFlowMeta) | bit(CodeFencedMetaGraveAccent) | bit(CodeFencedMetaTilde);
 const NEWLINES: u32 = FENCE_INFO | bit(DestinationLiteral) | bit(HeadingAtx);
 
 #[derive(Clone, Copy)]
@@ -164,6 +165,8 @@ static RULES: &[Rule] = &[
     rule!(b'`', B, A, PHRASING, FULL_SPANS),
     rule!(b'~', Line, A, 0, bit(TableCell)),
     rule!(b'~', EncodedLine, A, 0, bit(TableCell)),
+    // A `~` at the start of the language of a tilde fence would lengthen the fence.
+    rule!(b'~', Before::Start, A, bit(CodeFencedLangTilde), 0),
     rule!(b'$', B, After::Math, PHRASING, 0),
     rule!(b'$', B, A, bit(MathFlowMeta), 0),
     rule!(b'$', Line, Set(b"$"), 0, bit(TableCell)),
