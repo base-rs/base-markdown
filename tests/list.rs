@@ -7,12 +7,14 @@ mod support;
 use base_markdown::stream::{EventKind, Tag};
 use base_markdown::{
     message, to_html, to_html_with_options, to_markdown, CompileOptions, Constructs, Document,
-    NodeId, NodeSyntax, Options, ParseOptions,
+    MarkdownOptions, NodeId, NodeSyntax, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
 use support::fixture::Position;
-use support::fixture::{FootnoteDefinition, Heading, List, ListItem, Node, Paragraph, Root, Text};
+use support::fixture::{
+    Blockquote, FootnoteDefinition, Heading, List, ListItem, Node, Paragraph, Root, Text,
+};
 use support::linear::{assert_linear, timed};
 
 #[test]
@@ -989,5 +991,112 @@ fn a_blank_line_after_a_nested_list_is_written_stably() {
         assert!(spread(&read, items(&read, read.root()).next().unwrap()));
         read.normalize();
         assert_eq!(to_markdown(&read).unwrap(), expected);
+    }
+}
+
+#[test]
+fn a_block_after_a_nested_list_in_a_block_quote_is_written_after_a_blank_line() {
+    let text = |value: &str| {
+        Node::Text(Text {
+            value: value.into(),
+            position: None,
+        })
+    };
+    let p = |value: &str| {
+        Node::Paragraph(Paragraph {
+            children: vec![text(value)],
+            position: None,
+        })
+    };
+    let item = |spread: bool, children: Vec<Node>| {
+        Node::ListItem(ListItem {
+            children,
+            position: None,
+            spread,
+            checked: None,
+        })
+    };
+    let list = |spread: bool, children: Vec<Node>| {
+        Node::List(List {
+            children,
+            position: None,
+            ordered: false,
+            start: None,
+            spread,
+        })
+    };
+    let quote = |children: Vec<Node>| {
+        Node::Blockquote(Blockquote {
+            children,
+            position: None,
+        })
+    };
+    let footnote = |children: Vec<Node>| {
+        Node::FootnoteDefinition(FootnoteDefinition {
+            children,
+            position: None,
+            identifier: "1".into(),
+            label: Some("1".into()),
+        })
+    };
+    let setext = MarkdownOptions {
+        setext: true,
+        ..MarkdownOptions::default()
+    };
+    // A line of `>` alone after a list or footnote definition that ends a block quote is a blank line in that list's last item or in the definition, which reads back as a blank line between the quote and the next block of its item (#157). So a blank line is written there instead, which the item records as spread when written again.
+    for (source, expected) in [
+        ("- > - a\n  # h\n\n- q\n", "- > - a\n\n  h\n  =\n\n- q\n"),
+        (
+            "- > [^1]: a\n  # h\n\n- q\n",
+            "- > [^1]: a\n\n  h\n  =\n\n- q\n",
+        ),
+        // A list in a nested block quote does not take the line in.
+        (
+            "- > > - a\n  # h\n\n- q\n",
+            "- > > - a\n  >\n  h\n  =\n\n- q\n",
+        ),
+    ] {
+        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+        document.normalize();
+        let written = base_markdown::to_markdown_with_options(&document, &setext).unwrap();
+        assert_eq!(written, expected, "{source:?}");
+        let mut read = Document::parse(written.as_str(), &ParseOptions::default()).unwrap();
+        read.normalize();
+        assert_eq!(
+            base_markdown::to_markdown_with_options(&read, &setext).unwrap(),
+            expected,
+            "{source:?}"
+        );
+    }
+    for (last, expected) in [
+        (
+            list(false, vec![item(false, vec![p("b")])]),
+            "- > - b\n\n  c\n\n- d\n",
+        ),
+        (footnote(vec![p("b")]), "- > [^1]: b\n\n  c\n\n- d\n"),
+    ] {
+        let mut document = Node::Root(Root {
+            children: vec![list(
+                true,
+                vec![
+                    item(false, vec![quote(vec![last]), p("c")]),
+                    item(false, vec![p("d")]),
+                ],
+            )],
+            position: None,
+        })
+        .document();
+        document.normalize();
+        for options in [MarkdownOptions::default(), setext.clone()] {
+            let written = base_markdown::to_markdown_with_options(&document, &options).unwrap();
+            assert_eq!(written, expected);
+            let mut read = Document::parse(written.as_str(), &ParseOptions::default()).unwrap();
+            assert!(spread(&read, items(&read, read.root()).next().unwrap()));
+            read.normalize();
+            assert_eq!(
+                base_markdown::to_markdown_with_options(&read, &options).unwrap(),
+                expected
+            );
+        }
     }
 }

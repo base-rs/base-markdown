@@ -1013,7 +1013,9 @@ impl<'a> State<'a> {
             // though a list or footnote definition takes it into its span (#157), so `spreads_item`
             // writes the item's other blocks spread too. A line of `>` alone ends a block quote's
             // paragraph without a blank line in the item, so the item stays tight:
-            // `- > p\n  >\n  p` (#154). In a loose list, a blank line is written after any list.
+            // `- > p\n  >\n  p` (#154). After a list or footnote definition ending the quote, that
+            // line is a blank line in it, which reads back as spread, so a blank line is written
+            // instead. In a loose list, a blank line is written after any list.
             let continues = || {
                 matches!(
                     right_kind,
@@ -1037,7 +1039,11 @@ impl<'a> State<'a> {
                 EventKind::Start(Tag::BlockQuote)
                     if !spread && ends_in_paragraph(document, left) && continues() =>
                 {
-                    return QUOTE_END;
+                    return if ends_in_list_or_footnote_definition(document, left) {
+                        "\n\n"
+                    } else {
+                        QUOTE_END
+                    };
                 }
                 _ => {}
             }
@@ -1666,6 +1672,21 @@ fn ends_in_paragraph<S: AsRef<str>>(document: &Document<S>, mut id: NodeId) -> b
         }
     }
     false
+}
+
+/// Whether the last flow child of block quote `quote` is a list or footnote definition. A line of
+/// `>` alone after it is a blank line in that list's last item or in the definition, which reads
+/// back as a blank line at the end of the quote's item (#157), so the join is a blank line instead.
+fn ends_in_list_or_footnote_definition<S: AsRef<str>>(
+    document: &Document<S>,
+    quote: NodeId,
+) -> bool {
+    flow_children(document, quote).last().is_some_and(|last| {
+        matches!(
+            document.node(last).unwrap().kind,
+            EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition(_))
+        )
+    })
 }
 
 /// Whether a flow child, not a separator, follows `id` among its siblings.
