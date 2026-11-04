@@ -143,11 +143,11 @@ impl AstBuilder {
         if let EventKind::End(kind) = event.kind {
             let id = self.open.pop().ok_or(StreamError::Unbalanced)?;
             let node = &mut self.nodes[id.index()];
+            if matches!(&node.kind, EventKind::Start(tag) if tag.kind().captures()) {
+                self.capturing -= 1;
+            }
             if !matches!(&node.kind, EventKind::Start(tag) if tag.kind() == kind) {
                 return Err(StreamError::Unbalanced);
-            }
-            if kind.captures() {
-                self.capturing -= 1;
             }
             if event.span.end < node.span.end {
                 return Err(StreamError::InvalidRange);

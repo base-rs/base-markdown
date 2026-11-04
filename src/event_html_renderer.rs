@@ -355,11 +355,11 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
 
     fn end(&mut self, kind: TagKind, end: usize) -> Result<(), StreamError> {
         let frame = self.stack.pop().ok_or(StreamError::Unbalanced)?;
+        if frame.kind.captures() {
+            self.capturing -= 1;
+        }
         if frame.kind != kind {
             return Err(StreamError::Unbalanced);
-        }
-        if kind.captures() {
-            self.capturing -= 1;
         }
         if end < frame.end {
             return Err(StreamError::InvalidRange);

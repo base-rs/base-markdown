@@ -4,7 +4,7 @@
 use base_markdown::{
     render_events,
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
-    AstBuilder, BuildProgress, Document, Options,
+    AstBuilder, BuildProgress, Document, EventHtmlRenderer, Options,
 };
 
 fn event(kind: EventKind<'static>) -> Result<Event<'static>, StreamError> {
@@ -550,21 +550,31 @@ fn capture_nesting_is_checked_during_construction_rendering_and_edits() {
         },
     ] {
         for child in [Tag::Heading(2), Tag::FootnoteDefinition(Text::Literal("x"))] {
-            let input = document(vec![
-                EventKind::Start(parent.clone()),
-                EventKind::Start(child.clone()),
-                EventKind::Text(Text::Literal("text")),
-                EventKind::End(child.kind()),
-                EventKind::End(parent.kind()),
-            ]);
-            let mut builder = AstBuilder::new();
-            assert!(builder
-                .consume(
-                    &mut input.iter().map(|e| Ok(e.as_ref().unwrap().clone())),
-                    usize::MAX
-                )
-                .is_err());
-            assert!(render_events("", input, &options.compile, &mut String::new()).is_err());
+            // Directly inside the parent, and inside a non-capturing container in it.
+            for wrap in [false, true] {
+                let mut body = vec![EventKind::Start(parent.clone())];
+                if wrap {
+                    body.push(EventKind::Start(Tag::Emphasis));
+                }
+                body.extend([
+                    EventKind::Start(child.clone()),
+                    EventKind::Text(Text::Literal("text")),
+                    EventKind::End(child.kind()),
+                ]);
+                if wrap {
+                    body.push(EventKind::End(TagKind::Emphasis));
+                }
+                body.push(EventKind::End(parent.kind()));
+                let input = document(body);
+                let mut builder = AstBuilder::new();
+                assert!(builder
+                    .consume(
+                        &mut input.iter().map(|e| Ok(e.as_ref().unwrap().clone())),
+                        usize::MAX
+                    )
+                    .is_err());
+                assert!(render_events("", input, &options.compile, &mut String::new()).is_err());
+            }
         }
     }
     let mut ast = Document::parse("> # h", &options.parse).unwrap();
@@ -886,4 +896,30 @@ fn deferred_image_titles_retain_values_until_the_image_closes() {
         output,
         "<img src=\"image\" alt=\"\" title=\"temporary &amp; title\" />"
     );
+}
+
+#[test]
+fn a_mismatched_end_still_closes_a_capturing_frame() {
+    // The renderer keeps accepting events after an error, so the popped heading must stop
+    // capturing.
+    let options = Options::gfm();
+    let mut output = String::new();
+    let mut renderer = EventHtmlRenderer::new("", &options.compile, &mut output);
+    renderer
+        .event(event(EventKind::Start(Tag::Document(None))).unwrap())
+        .unwrap();
+    renderer
+        .event(event(EventKind::Start(Tag::Heading(1))).unwrap())
+        .unwrap();
+    assert!(renderer
+        .event(event(EventKind::End(TagKind::Paragraph)).unwrap())
+        .is_err());
+    renderer
+        .event(
+            event(EventKind::Start(Tag::FootnoteDefinition(Text::Literal(
+                "x",
+            ))))
+            .unwrap(),
+        )
+        .unwrap();
 }
