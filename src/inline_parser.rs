@@ -117,6 +117,12 @@ pub(crate) struct InlineParser {
     reference_key: String,
     logical: String,
     segments: Vec<Segment>,
+    // The logical label ranges of the references and footnote calls resolved in a scan of
+    // logical text, by node, sorted before events are pulled.
+    labels: Vec<(usize, Range<usize>)>,
+    // The labels of the yielded references and footnote calls whose source span holds container
+    // prefixes that the parser did not read as part of the label, by the span of the event.
+    read_labels: Vec<(Range<usize>, String)>,
     code_info: Vec<CodeInfo>,
     normalized: bool,
     table: bool,
@@ -369,6 +375,7 @@ impl InlineParser {
         self.brackets.clear();
         self.links.clear();
         self.code_info.clear();
+        self.labels.clear();
         self.last = 0;
         self.cursor = 0;
         self.link_bottom = 0;
@@ -626,13 +633,20 @@ impl InlineParser {
                                     self.column(original_source, at)
                                 })
                             {
-                                normalize_identifier_into(&source[label], &mut self.reference_key);
+                                normalize_identifier_into(
+                                    &source[label.clone()],
+                                    &mut self.reference_key,
+                                );
                                 if let Some(index) = definitions.find_footnote(&self.reference_key)
                                 {
                                     if image {
                                         self.append(at, at + 1, Kind::Text);
                                     }
-                                    self.append(footnote_start, end, Kind::Footnote(index));
+                                    let node =
+                                        self.append(footnote_start, end, Kind::Footnote(index));
+                                    if self.normalized {
+                                        self.labels.push((node, label));
+                                    }
                                     at = end;
                                     self.link_bottom = self.nodes.len();
                                     continue;
@@ -719,12 +733,15 @@ impl InlineParser {
                                     return false;
                                 }
                                 normalize_reference_identifier_into(
-                                    &source[label],
+                                    &source[label.clone()],
                                     &mut self.reference_key,
                                 );
                                 resolved = definitions
                                     .find(&self.reference_key)
                                     .map(|index| (end, Kind::Reference(tag, index)));
+                                if resolved.is_some() && self.normalized {
+                                    self.labels.push((bracket.node, label));
+                                }
                             }
                         }
                         if let Some((end, kind)) = resolved {
@@ -759,6 +776,7 @@ impl InlineParser {
         if EXTENSIONS && options.constructs.autolink_literal && saw_email {
             self.resolve_email(source);
         }
+        self.labels.sort_unstable_by_key(|&(node, _)| node);
         self.cursor = self.nodes[0].next;
         true
     }
@@ -1031,7 +1049,8 @@ impl InlineParser {
             source
         };
         while self.cursor != 0 {
-            let mut node = self.nodes[self.cursor];
+            let index = self.cursor;
+            let mut node = self.nodes[index];
             self.cursor = node.next;
             let kind = match node.kind {
                 Kind::Text | Kind::EscapedText if node.start == node.end => continue,
@@ -1141,12 +1160,36 @@ impl InlineParser {
                     })
                 }
             };
-            return Some(Event {
-                kind,
-                span: self.source_range(node.start..node.end),
-            });
+            let span = self.source_range(node.start..node.end);
+            // A span longer than the node's logical text holds container prefixes.
+            if span.len() != node.end - node.start
+                && matches!(node.kind, Kind::Reference(..) | Kind::Footnote(_))
+            {
+                self.read_label(index, &span);
+            }
+            return Some(Event { kind, span });
         }
         None
+    }
+
+    /// Record the label of reference or footnote node `index`, yielded with `span`, whose source
+    /// also holds container prefixes, which are not part of it.
+    #[cold]
+    fn read_label(&mut self, index: usize, span: &Range<usize>) {
+        let at = self
+            .labels
+            .binary_search_by_key(&index, |&(node, _)| node)
+            .expect("every reference and footnote call resolved in logical text has its label");
+        let label = self.labels[at].1.clone();
+        let mut value = String::with_capacity(label.len());
+        crate::util::line_ending::push_normalized(&mut value, &self.logical[label]);
+        self.read_labels.push((span.clone(), value));
+    }
+
+    /// The labels of the references and footnote calls yielded so far whose source span holds
+    /// container prefixes, by the span of their event, in the order they were yielded.
+    pub(crate) fn take_read_labels(&mut self) -> Vec<(Range<usize>, String)> {
+        core::mem::take(&mut self.read_labels)
     }
 }
 

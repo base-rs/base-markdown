@@ -178,6 +178,22 @@ impl NodeSyntax<'_> {
     }
 }
 
+impl NodeSyntax<'static> {
+    /// This reference or footnote syntax with `label` in place of its label.
+    pub(crate) fn with_label(self, label: alloc::string::String) -> Self {
+        match self {
+            Self::Reference { kind, .. } => Self::Reference {
+                kind,
+                label: Text::from(label),
+            },
+            Self::Footnote { .. } => Self::Footnote {
+                label: Text::from(label),
+            },
+            _ => unreachable!("only references and footnote calls have read labels"),
+        }
+    }
+}
+
 /// Whether `label`, written as the label of a reference, definition or footnote, is no longer
 /// than the parser reads one: 999 bytes, counting the escape the serializer writes before a
 /// bracket that has none, or after a final backslash, but not a line ending or the spaces and

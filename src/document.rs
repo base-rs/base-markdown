@@ -261,13 +261,43 @@ impl<S: AsRef<str>> Document<S> {
     /// Returns stream validation errors; built-in Markdown parsing has no syntax errors.
     pub fn parse(source: S, options: &crate::ParseOptions) -> Result<Self, StreamError> {
         let mut builder = AstBuilder::new();
-        {
+        let labels = {
             let mut events = crate::EventParser::new(source.as_ref(), options);
             if builder.consume(&mut events, usize::MAX).is_err() {
                 unreachable!("the built-in Markdown producer yields a balanced semantic stream");
             }
+            events.take_read_labels()
+        };
+        let mut document = builder.finish(source)?;
+        document.record_read_labels(labels);
+        Ok(document)
+    }
+
+    // A reference or footnote label is inferred from its source span, which in a container also
+    // holds the prefixes of the lines it continues on, such as a block quote's `>`. The parser
+    // does not read those as part of the label, so the labels it read there are recorded as the
+    // nodes' syntax. `labels` are by span, in the order of the nodes.
+    fn record_read_labels(&mut self, labels: Vec<(core::ops::Range<usize>, String)>) {
+        let mut labels = labels.into_iter().peekable();
+        for index in 0..self.nodes.len() {
+            let Some((span, _)) = labels.peek() else {
+                return;
+            };
+            let node = &self.nodes[index];
+            if node.span != *span
+                || !matches!(
+                    node.kind,
+                    EventKind::Start(Tag::Link { .. } | Tag::Image { .. })
+                        | EventKind::FootnoteReference(_)
+                )
+            {
+                continue;
+            }
+            let (_, label) = labels.next().expect("peeked");
+            let syntax = crate::node_syntax::infer(self.source(), node.span.clone(), &node.kind)
+                .map(|syntax| syntax.with_label(label));
+            self.syntax.insert(NodeId::new(index), syntax);
         }
-        builder.finish(source)
     }
 
     /// The immutable source buffer.

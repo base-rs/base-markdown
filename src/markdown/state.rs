@@ -92,9 +92,6 @@ pub struct State<'a> {
     /// without one, a delimiter row starting the block could make the definition's last line a
     /// table's head. Set before each flow child is written.
     joined_definition: Option<(usize, bool)>,
-    /// How many block quotes, list items and footnote definitions are open, which write a prefix
-    /// before each line of their content once it is written.
-    pub(super) prefixed: usize,
     /// The innermost item `list_item` is writing, and its task marker, if any.
     pub(super) task_item: Option<(NodeId, Option<NodeId>)>,
     /// How many nodes are open, which is the depth of the next node written: the serialized node
@@ -881,9 +878,7 @@ impl<'a> State<'a> {
                         let next_line = self.indented_code(document, id, false, None, first);
                         self.output.push(if next_line { '\n' } else { ' ' });
                         let start = self.output.len();
-                        self.prefixed += 1;
                         self.container_flow(document, id)?;
-                        self.prefixed -= 1;
                         self.indent_lines(start, |line, index, blank, output| {
                             if (next_line || index > 0) && !blank {
                                 output.push_str("    ");
@@ -1265,7 +1260,6 @@ impl<'a> State<'a> {
             definition_colon: None,
             fence_code: false,
             joined_definition: None,
-            prefixed: 0,
             task_item: None,
             depth: 0,
         }

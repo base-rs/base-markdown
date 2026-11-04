@@ -516,8 +516,9 @@ fn assert_reads_back(mut document: Document<String>, expected: &str) {
     assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{markdown:?}");
 }
 
-/// A label on several lines in a container keeps its own indentation, but not the container's,
-/// which is written again before each of its lines (#146).
+/// A label on several lines in a container is what the parser read, without the container
+/// prefixes on its lines, which are written again before them, so it is written as authored and
+/// does not grow. In a block quote it is written as a reference rather than a link (#146).
 #[test]
 fn multiline_labels_in_containers_round_trip() {
     for (source, expected) in [
@@ -526,7 +527,7 @@ fn multiline_labels_in_containers_round_trip() {
         ("- [a\n  b]\n\n[a b]: /u", "- [a\n  b]\n\n[a b]: /u\n"),
         (
             "- [a][r\n      s]\n\n[r s]: /u",
-            "- [a][r\n  s]\n\n[r s]: /u\n",
+            "- [a][r\n      s]\n\n[r s]: /u\n",
         ),
         ("- [a][r\n\ts]\n\n[r s]: /u", "- [a][r\n  s]\n\n[r s]: /u\n"),
         (
@@ -545,6 +546,22 @@ fn multiline_labels_in_containers_round_trip() {
             "[^1]: [a][r\n    s]\n\n[r s]: /u",
             "[^1]: [a][r\n    s]\n\n[r s]: /u\n",
         ),
+        ("> [a][r\n> s]\n\n[r s]: /u", "> [a][r\n> s]\n\n[r s]: /u\n"),
+        ("> [r\n> s]\n\n[r s]: /u", "> [r\n> s]\n\n[r s]: /u\n"),
+        ("> [a][r\ns]\n\n[r s]: /u", "> [a][r\n> s]\n\n[r s]: /u\n"),
+        (
+            ">\t[a][r\n>\ts]\n\n[r s]: /u",
+            "> [a][r\n> s]\n\n[r s]: /u\n",
+        ),
+        (
+            "> > ![a][r\n> > s]\n\n[r s]: /u",
+            "> > ![a][r\n> > s]\n\n[r s]: /u\n",
+        ),
+        (
+            "- > [a][r\n  >   s]\n\n[r s]: /u",
+            "- > [a][r\n  >   s]\n\n[r s]: /u\n",
+        ),
+        ("> [^1\n> ]\n\n[^1]: n", "> [^1\n> ]\n\n[^1]: n\n"),
         // Outside a container, a label is written as authored.
         (
             "[a][r\n      s]\n\n[r s]: /u",
@@ -556,6 +573,63 @@ fn multiline_labels_in_containers_round_trip() {
             assert_round_trip(document, &options, expected);
         }
     }
+}
+
+/// Set the inferred label of the first link in `document` back, and return it.
+fn set_label_back(document: &mut Document<String>) -> String {
+    use base_markdown::{
+        stream::{EventKind, Tag, Text as Value},
+        NodeSyntax,
+    };
+    let link = document
+        .descendants(document.root())
+        .find(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Start(Tag::Link { .. })
+            )
+        })
+        .expect("the reference is read");
+    let Some(NodeSyntax::Reference { kind, label }) = document.syntax(link) else {
+        panic!("a reference has reference syntax");
+    };
+    let label = label.resolve(document.source()).unwrap().to_string();
+    let syntax = NodeSyntax::Reference {
+        kind,
+        label: Value::from(label.clone()),
+    };
+    document.set_syntax(link, Some(syntax)).unwrap();
+    label
+}
+
+/// The label of a parsed reference in a block quote is what the parser read, without the `>`
+/// prefixes of the lines it continues on, so one the parser read at its limit of 999 bytes can be
+/// set back as it is (#146).
+#[test]
+fn parsed_labels_in_block_quotes_can_be_set_back() {
+    for depth in 1..=3 {
+        let prefix = "> ".repeat(depth);
+        let source = format!(
+            "{prefix}[x][{}\n{prefix}{}]\n\n[{}\n{}]: /u",
+            "a".repeat(500),
+            "b".repeat(499),
+            "a".repeat(500),
+            "b".repeat(499),
+        );
+        let mut document = Document::parse(source.clone(), &ParseOptions::default()).unwrap();
+        let label = set_label_back(&mut document);
+        assert_eq!(label, format!("{}\n{}", "a".repeat(500), "b".repeat(499)));
+        assert_round_trip(document, &ParseOptions::default(), &format!("{source}\n"));
+    }
+    // Spread over many lines, the prefixes alone would pass the limit.
+    let source = format!(
+        "> [x][{}]\n\n[{}]: /u",
+        vec!["a"; 400].join("\n> "),
+        vec!["a"; 400].join(" ")
+    );
+    let mut document = Document::parse(source.clone(), &ParseOptions::default()).unwrap();
+    assert_eq!(set_label_back(&mut document), vec!["a"; 400].join("\n"));
+    assert_round_trip(document, &ParseOptions::default(), &format!("{source}\n"));
 }
 
 /// A shortcut reference followed by a node that starts with `[` would read back as one full
