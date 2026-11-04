@@ -9,8 +9,8 @@ use base_markdown::{Document, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::to_markdown as to;
 use support::fixture::{
-    canonical, Break, Definition, FootnoteDefinition, FootnoteReference, Fragment, Heading,
-    LinkReference, Node, Paragraph, ReferenceKind, Root, Text,
+    canonical, Break, Definition, FootnoteDefinition, FootnoteReference, Fragment, Heading, Html,
+    ImageReference, Link, LinkReference, Node, Paragraph, ReferenceKind, Root, Text,
 };
 
 #[test]
@@ -467,4 +467,262 @@ fn reference_before_colon_tree_round_trip() {
         });
         assert_round_trip(tree.document(), &ParseOptions::default(), expected);
     }
+}
+
+fn shortcut(label: &str) -> Node {
+    Node::LinkReference(LinkReference {
+        children: vec![text(label)],
+        position: None,
+        reference_kind: ReferenceKind::Shortcut,
+        identifier: label.to_string(),
+        label: None,
+    })
+}
+
+fn root(children: Vec<Node>) -> Document<String> {
+    Node::Root(Root {
+        children,
+        position: None,
+    })
+    .document()
+}
+
+/// Serializes `document`, normalized, as `expected`, which reads back as the same HTML without
+/// a definition it did not have, and serializes the same. Inline HTML that does not start with
+/// `<` reads back as text, so the tree is not compared.
+fn assert_reads_back(mut document: Document<String>, expected: &str) {
+    document.normalize();
+    let markdown = to_markdown(&document).unwrap();
+    assert_eq!(markdown, expected);
+    let options = base_markdown::Options::default();
+    let mut reparsed = Document::parse(markdown.clone(), &options.parse).unwrap();
+    reparsed.normalize();
+    let html = |document: &Document<String>| {
+        let mut html = String::new();
+        base_markdown::render_events(
+            document.source(),
+            document.events(),
+            &options.compile,
+            &mut html,
+        )
+        .unwrap();
+        html
+    };
+    assert_eq!(
+        html(&reparsed).trim_end(),
+        html(&document).trim_end(),
+        "{markdown:?}"
+    );
+    assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{markdown:?}");
+}
+
+/// A label on several lines in a container keeps its own indentation, but not the container's,
+/// which is written again before each of its lines (#146).
+#[test]
+fn multiline_labels_in_containers_round_trip() {
+    for (source, expected) in [
+        ("1. [ r\n] u\n\n[r]: /u", "1. [ r\n   ] u\n\n[r]: /u\n"),
+        ("1. [ r\n   ] u\n\n[r]: /u", "1. [ r\n   ] u\n\n[r]: /u\n"),
+        ("- [a\n  b]\n\n[a b]: /u", "- [a\n  b]\n\n[a b]: /u\n"),
+        (
+            "- [a][r\n      s]\n\n[r s]: /u",
+            "- [a][r\n  s]\n\n[r s]: /u\n",
+        ),
+        ("- [a][r\n\ts]\n\n[r s]: /u", "- [a][r\n  s]\n\n[r s]: /u\n"),
+        (
+            "- ![a][r\n  s]\n\n[r s]: /u",
+            "- ![a][r\n  s]\n\n[r s]: /u\n",
+        ),
+        (
+            "1. [a\n   b][ r\n   ] u\n\n[r]: /u",
+            "1. [a\n   b][ r\n   ] u\n\n[r]: /u\n",
+        ),
+        (
+            "- - [a][r\n    s]\n\n[r s]: /u",
+            "- - [a][r\n    s]\n\n[r s]: /u\n",
+        ),
+        (
+            "[^1]: [a][r\n    s]\n\n[r s]: /u",
+            "[^1]: [a][r\n    s]\n\n[r s]: /u\n",
+        ),
+        // Outside a container, a label is written as authored.
+        (
+            "[a][r\n      s]\n\n[r s]: /u",
+            "[a][r\n      s]\n\n[r s]: /u\n",
+        ),
+    ] {
+        for options in [ParseOptions::default(), ParseOptions::gfm()] {
+            let document = Document::parse(source.to_string(), &options).unwrap();
+            assert_round_trip(document, &options, expected);
+        }
+    }
+}
+
+/// A shortcut reference followed by a node that starts with `[` would read back as one full
+/// reference with what follows as its label, so it is written collapsed (#146).
+#[test]
+fn shortcut_references_before_a_bracket_round_trip() {
+    let link = Node::Link(Link {
+        children: vec![text("a")],
+        position: None,
+        url: String::from("/l"),
+        title: None,
+    });
+    let footnote = Node::FootnoteReference(FootnoteReference {
+        position: None,
+        identifier: String::from("1"),
+        label: None,
+    });
+    let footnote_definition = Node::FootnoteDefinition(FootnoteDefinition {
+        children: vec![Node::Paragraph(Paragraph {
+            children: vec![text("n")],
+            position: None,
+        })],
+        position: None,
+        identifier: String::from("1"),
+        label: None,
+    });
+    let image = Node::ImageReference(ImageReference {
+        position: None,
+        alt: String::from("r"),
+        reference_kind: ReferenceKind::Shortcut,
+        identifier: String::from("r"),
+        label: None,
+    });
+    for (children, expected) in [
+        (
+            vec![shortcut("r"), shortcut("r"), text(": /u")],
+            "[r][][r]: /u\n\n[r]: /u\n\n[s]: /u\n",
+        ),
+        (
+            vec![shortcut("r"), shortcut("s")],
+            "[r][][s]\n\n[r]: /u\n\n[s]: /u\n",
+        ),
+        (
+            vec![shortcut("r"), shortcut("s"), shortcut("r")],
+            "[r][][s][][r]\n\n[r]: /u\n\n[s]: /u\n",
+        ),
+        (
+            vec![shortcut("r"), link],
+            "[r][][a](/l)\n\n[r]: /u\n\n[s]: /u\n",
+        ),
+        (
+            vec![shortcut("r"), footnote.clone()],
+            "[r][][^1]\n\n[r]: /u\n\n[s]: /u\n\n[^1]: n\n",
+        ),
+        (
+            vec![image, shortcut("r")],
+            "![r][][r]\n\n[r]: /u\n\n[s]: /u\n",
+        ),
+        // Text escapes its `[`, and other nodes start with something else.
+        (
+            vec![shortcut("r"), text("[s]")],
+            "[r]\\[s]\n\n[r]: /u\n\n[s]: /u\n",
+        ),
+        (
+            vec![footnote, shortcut("r")],
+            "[^1][r]\n\n[r]: /u\n\n[s]: /u\n\n[^1]: n\n",
+        ),
+    ] {
+        let mut tree = vec![Node::Paragraph(Paragraph {
+            children,
+            position: None,
+        })];
+        tree.extend([definition("r"), definition("s")]);
+        if expected.contains("[^1]: n") {
+            tree.push(footnote_definition.clone());
+        }
+        assert_round_trip(root(tree), &ParseOptions::default(), expected);
+    }
+}
+
+/// The `:` after a reference that starts a paragraph, or a footnote reference that starts a line,
+/// is escaped whatever node writes it, such as inline HTML (#146).
+#[test]
+fn reference_before_colon_from_other_nodes_reads_back() {
+    let html = |value: &str| {
+        Node::Html(Html {
+            value: value.to_string(),
+            position: None,
+        })
+    };
+    let footnote = Node::FootnoteReference(FootnoteReference {
+        position: None,
+        identifier: String::from("1"),
+        label: None,
+    });
+    let footnote_definition = Node::FootnoteDefinition(FootnoteDefinition {
+        children: vec![Node::Paragraph(Paragraph {
+            children: vec![text("n")],
+            position: None,
+        })],
+        position: None,
+        identifier: String::from("1"),
+        label: None,
+    });
+    let paragraph = |children| {
+        Node::Paragraph(Paragraph {
+            children,
+            position: None,
+        })
+    };
+    for (tree, expected) in [
+        (
+            vec![
+                paragraph(vec![shortcut("r"), html(": /u")]),
+                definition("r"),
+            ],
+            "[r]\\: /u\n\n[r]: /u\n",
+        ),
+        // Not a definition, so written as it is.
+        (
+            vec![
+                paragraph(vec![shortcut("r"), html(": a b")]),
+                definition("r"),
+            ],
+            "[r]: a b\n\n[r]: /u\n",
+        ),
+        (
+            vec![
+                paragraph(vec![footnote.clone(), html(":x")]),
+                footnote_definition.clone(),
+            ],
+            "[^1]\\:x\n\n[^1]: n\n",
+        ),
+        (
+            vec![
+                paragraph(vec![text("a\n"), footnote.clone(), html(":x")]),
+                footnote_definition.clone(),
+            ],
+            "a\n[^1]\\:x\n\n[^1]: n\n",
+        ),
+        (
+            vec![
+                paragraph(vec![text("a "), footnote, html(":x")]),
+                footnote_definition,
+            ],
+            "a [^1]:x\n\n[^1]: n\n",
+        ),
+    ] {
+        assert_reads_back(root(tree), expected);
+    }
+}
+
+/// A label is read up to 999 bytes, so a longer one cannot be written, and it is rejected where
+/// it is assigned (#146). One of 999 bytes as written round-trips.
+#[test]
+fn labels_up_to_the_parser_limit_round_trip() {
+    for label in [
+        "a".repeat(999),
+        format!("{}\nb", "a".repeat(998)),
+        format!("{}\\]", "a".repeat(997)),
+    ] {
+        let source = format!("[{label}] x\n\n[{label}]: /u");
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        let expected = format!("[{label}] x\n\n[{label}]: /u\n");
+        assert_round_trip(document, &ParseOptions::default(), &expected);
+    }
+    let source = format!("[^{0}] x\n\n[^{0}]: n", "a".repeat(999));
+    let document = Document::parse(source.clone(), &ParseOptions::default()).unwrap();
+    assert_round_trip(document, &ParseOptions::default(), &format!("{source}\n"));
 }

@@ -14,6 +14,11 @@ use crate::{
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeSyntax<'a> {
     /// The authored reference label and whether it was full, collapsed, or shortcut.
+    ///
+    /// [`Document::set_syntax`][crate::Document::set_syntax] rejects a label longer than the
+    /// parser reads, as for a [`Definition`][crate::stream::EventKind::Definition]'s, with
+    /// [`StreamError::InvalidValue`], since it would be written as text. A footnote label is
+    /// checked the same way.
     Reference {
         kind: ReferenceKind,
         label: Text<'a>,
@@ -116,6 +121,11 @@ impl NodeSyntax<'_> {
         if !self.valid_for(kind, source) {
             return Err(StreamError::InvalidRange);
         }
+        if let Self::Reference { label, .. } | Self::Footnote { label } = self {
+            if !label_fits(label.resolve(source).expect("checked by `valid_for`")) {
+                return Err(StreamError::InvalidValue);
+            }
+        }
         if let (
             Self::Code { info },
             EventKind::CodeBlock {
@@ -166,6 +176,40 @@ impl NodeSyntax<'_> {
             _ => false,
         }
     }
+}
+
+/// Whether `label`, written as the label of a reference, definition or footnote, is no longer
+/// than the parser reads one: 999 bytes, counting the escape the serializer writes before a
+/// bracket that has none, or after a final backslash, but not a line ending or the spaces and
+/// tabs after one. A tab counts as one byte, as a parsed label's tabs are at least that wide.
+pub(crate) fn label_fits(label: &str) -> bool {
+    let bytes = label.as_bytes();
+    let mut size = 0;
+    let mut escaped = false;
+    let mut at = 0;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'\r' | b'\n' => {
+                at += 1;
+                while at < bytes.len() && matches!(bytes[at], b' ' | b'\t' | b'\r' | b'\n') {
+                    at += 1;
+                }
+                escaped = false;
+                continue;
+            }
+            b'[' | b']' if !escaped => size += 2,
+            b'\\' => {
+                size += 1;
+                escaped = !escaped;
+                at += 1;
+                continue;
+            }
+            _ => size += 1,
+        }
+        escaped = false;
+        at += 1;
+    }
+    size + usize::from(escaped) <= crate::util::constant::LINK_REFERENCE_SIZE_MAX
 }
 
 /// Whether `info` is a code info string whose first word is `language`, as the parser reads it:

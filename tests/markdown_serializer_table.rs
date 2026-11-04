@@ -1,11 +1,13 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
+mod support;
 use base_markdown::{
     stream::{EventKind, Tag, Text},
     to_html_with_options, to_markdown, Document, NodeSyntax, Options, ParseOptions, ReferenceKind,
 };
 use pretty_assertions::assert_eq;
+use support::linear::{assert_linear, timed};
 
 #[test]
 fn table_cells_escape_like_paragraphs() {
@@ -202,4 +204,102 @@ fn edited_labels_escape_brackets_and_a_trailing_backslash() {
     assert_eq!(markdown, "[a\\[b\\\\]: c\n");
     let reparsed = Document::parse(markdown.as_str(), &ParseOptions::gfm()).unwrap();
     assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
+}
+
+/// A lazy line that would be a delimiter row reads as text after a paragraph in a container, but
+/// once the container is written before it, it would start a table, so its first character is
+/// escaped. This is also the case after a definition, whose last line is the header (#146).
+#[test]
+fn lazy_delimiter_rows_in_containers_stay_text() {
+    for (source, expected) in [
+        ("[^r]: u\n| - |", "[^r]: u\n    \\| - |\n"),
+        ("- [R]: u\n| - |", "- [R]: u\n  \\| - |\n"),
+        ("- u\n| - |", "- u\n  \\| - |\n"),
+        ("> u\n| - |", "> u\n> \\| - |\n"),
+        ("- a\n  b\n| - |", "- a\n  b\n  \\| - |\n"),
+        ("- a\n| b\n| - |", "- a\n  | b\n  \\| - |\n"),
+        ("- a\n|b|\n:-", "- a\n  |b|\n  \\:-\n"),
+        ("- a\n  b | c\n| - | - |", "- a\n  b | c\n  \\| - | - |\n"),
+        ("- a\n\\| - |", "- a\n  \\| - |\n"),
+        // A row with other cells than its header, or a table, is written as it is.
+        ("- a\n| - | - |", "- a\n  | - | - |\n"),
+        ("- | a |\n  | - |", "- | a |\n  | --- |\n"),
+        ("> a\n> | - |", "> | a |\n> | --- |\n"),
+    ] {
+        let document = Document::parse(source, &ParseOptions::gfm()).unwrap();
+        let markdown = to_markdown(&document).unwrap();
+        assert_eq!(markdown, expected, "{source:?}");
+        let html = |value: &str| to_html_with_options(value, &Options::gfm());
+        assert_eq!(
+            html(&markdown).trim_end(),
+            html(source).trim_end(),
+            "{source:?}"
+        );
+        let reparsed = Document::parse(markdown.as_str(), &ParseOptions::gfm()).unwrap();
+        assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{source:?}");
+    }
+}
+
+/// A paragraph built with a line that would be a delimiter row has it escaped, also outside a
+/// container (#146).
+#[test]
+fn synthetic_delimiter_rows_in_paragraphs_stay_text() {
+    for (value, expected) in [
+        ("a\n| - |", "a\n\\| - |\n"),
+        ("a\n- | -", "a\n\\- | -\n"),
+        ("a\n:-:|", "a\n\\:-:|\n"),
+        ("a\nb\n| - |\n| - |", "a\nb\n\\| - |\n\\| - |\n"),
+    ] {
+        let mut document = Document::parse("", &ParseOptions::gfm()).unwrap();
+        let root = document.root();
+        let paragraph = document
+            .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+            .unwrap();
+        document
+            .append_child(paragraph, EventKind::Text(Text::from(value.to_string())))
+            .unwrap();
+        let markdown = to_markdown(&document).unwrap();
+        assert_eq!(markdown, expected, "{value:?}");
+        let reparsed = Document::parse(markdown.as_str(), &ParseOptions::gfm()).unwrap();
+        assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{value:?}");
+        let html = to_html_with_options(&markdown, &Options::gfm());
+        assert!(!html.contains("<table>"), "{}", html);
+    }
+}
+
+/// Checking each line of a block for a delimiter row, and escaping the ones that are, takes time
+/// linear in the block (#146).
+#[test]
+fn delimiter_row_escapes_scale_linearly() {
+    type Build = fn(usize) -> String;
+    let cases: [(&str, Build); 3] = [
+        ("rows", |count| format!("- a\n{}", "| - |\n".repeat(count))),
+        ("headers", |count| {
+            format!("- a\n{}| - |\n", "| b\n".repeat(count))
+        }),
+        ("quoted", |count| {
+            format!("> a\n{}", "| - |\n".repeat(count))
+        }),
+    ];
+    for (label, build) in cases {
+        assert_linear(label, 1 << 7, |count| {
+            let document = Document::parse(build(count), &ParseOptions::gfm()).unwrap();
+            timed(|| {
+                to_markdown(&document).unwrap();
+            })
+        });
+    }
+}
+
+/// Output is read with the default options, which have tables, so a table parsed as text without
+/// them is written with its delimiter row escaped, as it would otherwise read back as a table.
+#[test]
+fn tables_parsed_as_text_stay_text() {
+    let source = "| a | b |\n| --- | :-: |\n| c | d |\n";
+    let document = Document::parse(source, &ParseOptions::commonmark()).unwrap();
+    let markdown = to_markdown(&document).unwrap();
+    assert_eq!(markdown, "| a | b |\n\\| --- | :-: |\n| c | d |\n");
+    let html = to_html_with_options(&markdown, &Options::default());
+    assert!(!html.contains("<table>"), "{}", html);
+    assert_eq!(html, to_html_with_options(source, &Options::commonmark()));
 }

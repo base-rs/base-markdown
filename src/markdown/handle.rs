@@ -33,7 +33,9 @@ impl State<'_> {
     ) -> Result<(), Message> {
         self.enter(ConstructName::Blockquote);
         let start = self.output.len();
+        self.prefixed += 1;
         self.container_flow(document, node)?;
+        self.prefixed -= 1;
         self.indent_lines(start, |line, _, blank, output| {
             output.push('>');
             if !blank {
@@ -404,6 +406,7 @@ impl State<'_> {
         kind: ReferenceKind,
         label: &str,
         image: bool,
+        after: &str,
     ) -> Result<(), Message> {
         let start = self.output.len();
         let text = self.link_label(document, node, image, "]")?;
@@ -411,7 +414,15 @@ impl State<'_> {
         let stack = mem::take(&mut self.stack);
         self.enter(ConstructName::Reference);
         let reference_start = self.output.len();
-        self.write_label(label, &Info::at(start, reference_start, "]"));
+        // A parsed label keeps the indentation of its lines, which in a container includes the
+        // container's own, so it would grow each time it is written there. The spaces and tabs
+        // after a line ending in a label are not part of it, so they are left out (#146).
+        let label = if self.prefixed > 0 && label.contains('\n') {
+            Cow::Owned(trim_line_starts(label))
+        } else {
+            Cow::Borrowed(label)
+        };
+        self.write_label(&label, &Info::at(start, reference_start, "]"));
         self.exit();
         if stack.contains(&ConstructName::TableCell) {
             escape_table_pipes(&mut self.output, reference_start);
@@ -424,7 +435,9 @@ impl State<'_> {
             self.output.push(']');
         } else {
             self.output.truncate(reference_start);
-            if matches!(kind, ReferenceKind::Shortcut) {
+            // A shortcut reference followed by `[`, such as another reference, would read back
+            // as a full reference with what follows as its label, so it is written collapsed.
+            if matches!(kind, ReferenceKind::Shortcut) && !after.starts_with('[') {
                 self.output.pop();
                 if !image {
                     self.label_end = Some((self.output.len(), false));
@@ -605,7 +618,9 @@ impl State<'_> {
         let task_item = self
             .task_item
             .replace((node, item_task.map(|(marker, _)| marker)));
+        self.prefixed += 1;
         self.container_flow(document, node)?;
+        self.prefixed -= 1;
         self.task_item = task_item;
         self.indent_lines(start, |line, index, blank, output| {
             if index == 0 {
@@ -797,6 +812,20 @@ fn escape_table_pipes(output: &mut String, start: usize) {
             position = pipe + 1;
         }
     }
+}
+
+/// `label` without the spaces and tabs at the start of each line after the first.
+fn trim_line_starts(label: &str) -> String {
+    let mut trimmed = String::with_capacity(label.len());
+    for (index, line) in label.split('\n').enumerate() {
+        if index > 0 {
+            trimmed.push('\n');
+            trimmed.push_str(line.trim_start_matches([' ', '\t']));
+        } else {
+            trimmed.push_str(line);
+        }
+    }
+    trimmed
 }
 
 #[cfg(test)]

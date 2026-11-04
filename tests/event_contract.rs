@@ -1113,3 +1113,84 @@ fn a_mismatched_end_still_closes_a_capturing_frame() {
         )
         .unwrap();
 }
+
+fn definition(label: Text<'static>) -> EventKind<'static> {
+    EventKind::Definition {
+        label,
+        destination: Text::Literal("/u"),
+        title: None,
+    }
+}
+
+/// A definition label longer than the parser reads would be written as text, so it is rejected
+/// wherever an event enters a document or renderer, counting the escapes it is written with but
+/// not its line endings or the indentation after them (#146).
+#[test]
+fn definition_labels_longer_than_the_parser_reads_are_rejected() {
+    let options = Options::default();
+    let mut ast = Document::parse("[r]: /u", &options.parse).unwrap();
+    let id = ast.node(ast.root()).unwrap().first_child().unwrap();
+    let a = |count: usize| "a".repeat(count);
+    let render = |source: &str, kind: EventKind<'static>| {
+        render_events(
+            source,
+            document(vec![kind]),
+            &options.compile,
+            &mut String::new(),
+        )
+    };
+    let fits = [
+        a(999),
+        format!("{}\n   \t{}", a(500), a(499)),
+        format!("{}\\]", a(997)),
+        format!("{}\\", a(997)),
+    ];
+    let long = [
+        a(1000),
+        format!("{}]", a(998)),
+        format!("{}\\", a(998)),
+        format!("{}\\\\\\", a(996)),
+        format!("{}\n{}", a(500), a(500)),
+    ];
+    let mut check = |label: &String, valid: bool| {
+        let kind = definition(Text::from(label.clone()));
+        let root = ast.root();
+        let results = [
+            ast.set_kind(id, kind.clone()),
+            ast.append_child(root, kind.clone()).map(drop),
+            render("", kind.clone()),
+            AstBuilder::new()
+                .consume(&mut document(vec![kind]).into_iter(), usize::MAX)
+                .map(drop),
+            // A source-backed label is checked once the source is known.
+            {
+                let mut builder = AstBuilder::new();
+                builder
+                    .consume(
+                        &mut document(vec![definition(Text::Source(0..label.len()))]).into_iter(),
+                        usize::MAX,
+                    )
+                    .and_then(|_| builder.finish(label).map(drop))
+            },
+            render(label, definition(Text::Source(0..label.len()))),
+        ];
+        for result in results {
+            if valid {
+                assert!(result.is_ok(), "{:?}: {:?}", label, result);
+            } else {
+                assert!(
+                    matches!(result, Err(StreamError::InvalidValue)),
+                    "{:?}: {:?}",
+                    label,
+                    result
+                );
+            }
+        }
+    };
+    for label in &fits {
+        check(label, true);
+    }
+    for label in &long {
+        check(label, false);
+    }
+}
