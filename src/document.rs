@@ -1942,7 +1942,7 @@ impl<S: AsRef<str>> Document<S> {
         self.space_line_endings();
     }
 
-    // Replace each line ending in inline code or math outside image text with a space, in every subtree, attached or detached, once its child lists are normalized.
+    // Replace each line ending in inline code or math outside image text with a space, and give code and math block values the line endings the parser stores, in every subtree, attached or detached, once its child lists are normalized.
     fn space_line_endings(&mut self) {
         let source = self.source.as_ref();
         let nodes = &mut self.nodes;

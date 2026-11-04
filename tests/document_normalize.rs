@@ -4313,6 +4313,29 @@ fn code_block_value<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> String
 }
 
 #[test]
+fn canonical_ignores_a_missing_final_line_ending_only_on_the_last_node() {
+    let parse = ParseOptions::default();
+    let build = |value: &str, after: bool| {
+        let mut document = Document::parse(String::new(), &parse).unwrap();
+        let root = document.root();
+        document
+            .append_child(root, code_block(value, false))
+            .unwrap();
+        if after {
+            let paragraph = document
+                .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+                .unwrap();
+            document
+                .append_child(paragraph, EventKind::Text(Text::Literal("x")))
+                .unwrap();
+        }
+        canonical(&document)
+    };
+    assert_eq!(build("a", false), build("a\n", false));
+    assert_ne!(build("a", true), build("a\n", true));
+}
+
+#[test]
 fn code_and_math_block_values_get_the_line_endings_the_parser_stores() {
     let mut parse = ParseOptions::default();
     parse.constructs.math_flow = true;
