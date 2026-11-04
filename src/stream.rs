@@ -158,8 +158,11 @@ impl TagKind {
     // Capture containers cannot occur inside heading capture or image alt text.
     // Ordinary inline nesting remains unrestricted by the rendering contract.
     pub(crate) fn allows_descendant(self, child: Self) -> bool {
-        !matches!(self, Self::Heading | Self::Image)
-            || !matches!(child, Self::Heading | Self::FootnoteDefinition)
+        !self.captures() || !matches!(child, Self::Heading | Self::FootnoteDefinition)
+    }
+    // Whether this container captures its content as text, so that it cannot hold a heading or footnote definition.
+    pub(crate) fn captures(self) -> bool {
+        matches!(self, Self::Heading | Self::Image)
     }
 }
 

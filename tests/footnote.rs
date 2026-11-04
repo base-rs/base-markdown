@@ -5,12 +5,13 @@
 
 mod support;
 use base_markdown::{
-    message, to_html, to_html_with_options, CompileOptions, Options, ParseOptions,
+    message, to_html, to_html_with_options, CompileOptions, Document, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
 use support::fixture::Position;
 use support::fixture::{FootnoteDefinition, FootnoteReference, Node, Paragraph, Root, Text};
+use support::linear::{assert_linear, timed};
 
 #[test]
 fn footnote() -> Result<(), message::Message> {
@@ -1674,4 +1675,21 @@ multi-paragraph list items. <a href="#user-content-fnref-longnote" data-footnote
     );
 
     Ok(())
+}
+
+#[test]
+fn nesting_footnote_definitions_is_linear() {
+    // A footnote definition cannot start in a heading or an image. The HTML renderer and the document builder count the open headings and images rather than looking through every open container at each start, which made a deep nest of footnote definitions quadratic (#171).
+    assert_linear("to_html", 1 << 9, |size| {
+        let source = "- [^1]: ".repeat(size);
+        timed(|| {
+            to_html(&source);
+        })
+    });
+    assert_linear("Document::parse", 1 << 9, |size| {
+        let source = "- [^1]: ".repeat(size);
+        timed(|| {
+            Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+        })
+    });
 }

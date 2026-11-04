@@ -71,6 +71,8 @@ pub enum BuildProgress {
 pub struct AstBuilder {
     nodes: Vec<Node>,
     open: Vec<NodeId>,
+    // How many of the open containers are headings or images, which cannot hold a heading or footnote definition. Counting them keeps each start constant time, where looking through `open` made a deep nest of footnote definitions quadratic.
+    capturing: usize,
     // Only the active container needs a tail. Opening a child resets it; closing that child makes the child the parent's new tail.
     last_child: Option<NodeId>,
     complete: bool,
@@ -144,6 +146,9 @@ impl AstBuilder {
             if !matches!(&node.kind, EventKind::Start(tag) if tag.kind() == kind) {
                 return Err(StreamError::Unbalanced);
             }
+            if kind.captures() {
+                self.capturing -= 1;
+            }
             if event.span.end < node.span.end {
                 return Err(StreamError::InvalidRange);
             }
@@ -162,9 +167,12 @@ impl AstBuilder {
             return Err(StreamError::Unbalanced);
         }
         if let EventKind::Start(tag) = &event.kind {
-            if matches!(tag.kind(), crate::stream::TagKind::Heading | crate::stream::TagKind::FootnoteDefinition) && self.open.iter().any(|id| {
-                matches!(&self.nodes[id.index()].kind, EventKind::Start(parent) if !parent.kind().allows_descendant(tag.kind()))
-            }) {
+            if self.capturing != 0
+                && matches!(
+                    tag.kind(),
+                    crate::stream::TagKind::Heading | crate::stream::TagKind::FootnoteDefinition
+                )
+            {
                 return Err(StreamError::Unbalanced);
             }
         }
@@ -186,7 +194,10 @@ impl AstBuilder {
             }
         }
         self.last_child = if start { None } else { Some(id) };
-        if start {
+        if let EventKind::Start(tag) = &self.nodes[id.index()].kind {
+            if tag.kind().captures() {
+                self.capturing += 1;
+            }
             self.open.push(id);
         }
         Ok(())

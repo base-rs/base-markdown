@@ -65,6 +65,8 @@ pub struct EventHtmlRenderer<'a, W> {
     line_ending: LineEnding,
     last: Option<u8>,
     stack: Vec<Frame>,
+    // How many frames of `stack` are headings or images, which cannot hold a heading or footnote definition. Counting them keeps each start constant time, where looking through `stack` made a deep nest of footnote definitions quadratic.
+    capturing: usize,
     images: usize,
     image_titles: Vec<Text<'static>>,
     captures: Vec<Capture>,
@@ -86,6 +88,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             line_ending: options.default_line_ending.clone(),
             last: None,
             stack: Vec::new(),
+            capturing: 0,
             images: 0,
             image_titles: Vec::new(),
             captures: Vec::new(),
@@ -167,12 +170,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         } else if self.stack.is_empty() {
             return Err(StreamError::Unbalanced);
         }
-        if matches!(kind, TagKind::Heading | TagKind::FootnoteDefinition)
-            && self
-                .stack
-                .iter()
-                .any(|frame| !frame.kind.allows_descendant(kind))
-        {
+        if self.capturing != 0 && matches!(kind, TagKind::Heading | TagKind::FootnoteDefinition) {
             return Err(StreamError::Unbalanced);
         }
         let mut frame = Frame {
@@ -348,6 +346,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 self.last = None;
             }
         }
+        if kind.captures() {
+            self.capturing += 1;
+        }
         self.stack.push(frame);
         Ok(())
     }
@@ -356,6 +357,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         let frame = self.stack.pop().ok_or(StreamError::Unbalanced)?;
         if frame.kind != kind {
             return Err(StreamError::Unbalanced);
+        }
+        if kind.captures() {
+            self.capturing -= 1;
         }
         if end < frame.end {
             return Err(StreamError::InvalidRange);
