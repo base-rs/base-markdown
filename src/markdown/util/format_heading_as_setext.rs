@@ -15,6 +15,29 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
     id: NodeId,
     state: &State,
 ) -> bool {
+    heading_as_setext(
+        document,
+        id,
+        state.options.setext,
+        state.options.line_wrapping == LineWrapping::Unwrap,
+        false,
+    )
+}
+
+/// Whether heading `id` is written as a setext heading when `setext` is whether setext headings
+/// are preferred and `unwrap` whether soft breaks are written as spaces. With neither, this is
+/// whether it must be: only a setext heading can hold a line ending. `encode` is whether a line
+/// ending in text, including image text, is written in an ATX heading as `&#xA;`, which reads back
+/// as the same text, rather than making the heading setext. Only a heading that a setext heading
+/// cannot be written for without a blank line does that (#168), so that other headings are
+/// written as before.
+pub(crate) fn heading_as_setext<S: AsRef<str>>(
+    document: &Document<S>,
+    id: NodeId,
+    setext: bool,
+    unwrap: bool,
+    encode: bool,
+) -> bool {
     if !matches!(
         document.node(id).unwrap().kind,
         EventKind::Start(Tag::Heading(1 | 2))
@@ -22,9 +45,8 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
         return false;
     }
     let mut nonempty = false;
-    let mut setext = state.options.setext;
+    let mut setext = setext;
     // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading. Line endings in inline code and math are always written as spaces, except in image text, which writes them as alt text, and a code block cannot be written in a heading.
-    let unwrap = state.options.line_wrapping == LineWrapping::Unwrap;
     // Walk the descendants in document order, counting the images that enclose each.
     let mut images = 0;
     let mut current = document.node(id).unwrap().first_child();
@@ -39,7 +61,10 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
             setext = setext
                 || matches!(kind, EventKind::HardBreak)
                 || !unwrapped && matches!(kind, EventKind::SoftBreak(_))
-                || !unwrapped && !literal && value.contains('\n');
+                || !unwrapped
+                    && !literal
+                    && !(encode && matches!(kind, EventKind::Text(_)))
+                    && value.contains('\n');
         }
         if nonempty && setext {
             return true;

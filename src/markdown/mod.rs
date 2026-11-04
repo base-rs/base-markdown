@@ -22,6 +22,7 @@ mod construct_name;
 mod escape;
 mod handle;
 mod state;
+pub(crate) use self::{state::needs_blank_line, util::format_heading_as_setext::heading_as_setext};
 mod util;
 
 /// Normalize a Markdown document.
