@@ -588,25 +588,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         }
                         Ok(())
                     }
-                    EventKind::Math(value) => {
-                        if self.images == 0 {
-                            self.write("<code class=\"language-math math-inline\">")?;
-                        }
-                        self.escaped(
-                            value
-                                .resolve(self.source)
-                                .expect("event values are source-valid"),
-                            true,
-                        )?;
-                        if self.images == 0 {
-                            self.write("</code>")?;
-                        }
-                        Ok(())
-                    }
                     EventKind::CodeBlock {
                         value,
                         language,
-                        math,
                         unclosed,
                         ..
                     } => {
@@ -619,9 +603,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                             );
                         }
                         self.terminate()?;
-                        if *math {
-                            self.write("<pre><code class=\"language-math math-display\">")?;
-                        } else if let Some(language) = language {
+                        if let Some(language) = language {
                             self.write("<pre><code class=\"language-")?;
                             self.escaped(
                                 language

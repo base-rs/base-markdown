@@ -125,8 +125,6 @@ fn extended_metadata_and_rendering_options_roundtrip() {
     let mut options = Options::gfm();
     options.parse.inline_code_info = true;
     options.parse.constructs.frontmatter = true;
-    options.parse.constructs.math_flow = true;
-    options.parse.constructs.math_text = true;
     options.compile.heading_ids = true;
     options.compile.default_line_ending = base_markdown::LineEnding::CarriageReturnLineFeed;
     options.compile.task_list_item_checkable = true;
@@ -136,7 +134,7 @@ fn extended_metadata_and_rendering_options_roundtrip() {
     options.compile.footnote_label_attributes = Some("class=\"notes\"".into());
     options.compile.footnote_label_tag_name = Some("h3".into());
     for source in [
-        "---yaml\nx: y\n---\n# Same\n\n# Same\n\nUse ruby:`puts 1`, $x$ and [note][a].\n\n[a]: /path \"title\"\n\n$$\nx^2\n$$",
+        "---yaml\nx: y\n---\n# Same\n\n# Same\n\nUse ruby:`puts 1`, $x$ and [note][a].\n\n[a]: /path \"title\"\n\n```math\nx^2\n```",
         "# Image ![a *b*](url \"title\") and <b>c</b>\n",
         "[a][x] and [x]\n\n[x]: /one\n[x]: /two\n",
         "Note[^x], again[^x].\n\n[^x]: First.\n\n    > Second.\n",

@@ -68,9 +68,6 @@ pub struct State<'a> {
     pub options: &'a Options,
     pub stack: Vec<ConstructName>,
     pub serialization_root: Option<NodeId>,
-    /// Whether the document has math, so the output is read with math on and text `$` needs
-    /// escapes. Without math, the output is read with the default options, where `$` is text.
-    pub(super) math: bool,
     definitions: Option<BTreeMap<String, NodeId>>,
     reference_key: String,
     /// Where the phrasing of the paragraph, heading or table cell being written starts. A prefix
@@ -915,10 +912,7 @@ impl<'a> State<'a> {
                     .map(|language| language.resolve(source).unwrap()),
             ),
             EventKind::CodeBlock {
-                value,
-                language,
-                math,
-                ..
+                value, language, ..
             } => {
                 let value = value.resolve(source).unwrap();
                 let language = language
@@ -933,19 +927,13 @@ impl<'a> State<'a> {
                     _ => None,
                 };
                 let authored_info = authored_info.as_deref();
-                if *math {
-                    // Math has no language (`EventKind::validate`).
-                    self.math(value, authored_info.filter(|value| !value.is_empty()))
-                } else {
-                    let meta = match (authored_info, language) {
-                        (Some(info), Some(language)) => code_meta(info, language),
-                        _ => None,
-                    };
-                    let fence = core::mem::take(&mut self.fence_code);
-                    self.code(value, language, meta, fence)
-                }
+                let meta = match (authored_info, language) {
+                    (Some(info), Some(language)) => code_meta(info, language),
+                    _ => None,
+                };
+                let fence = core::mem::take(&mut self.fence_code);
+                self.code(value, language, meta, fence)
             }
-            EventKind::Math(value) => self.inline_math(value.resolve(source).unwrap()),
             EventKind::Html { value, .. } => {
                 self.output.push_str(value.resolve(source).unwrap());
                 Ok(())
@@ -1179,13 +1167,14 @@ impl<'a> State<'a> {
     }
 
     /// Whether heading `heading`, a flow child of `parent` after flow child `before`, if any, is
-    /// written as a setext heading. In an item of a tight list, a setext heading after a block it
+    /// written as a setext heading, as only one with a line ending in its text must be
+    /// (`format_heading_as_setext`). In an item of a tight list, a setext heading after a block it
     /// would otherwise continue, as `needs_blank_line` finds, could be written only after a blank
     /// line, which would make the list loose. An ATX heading interrupts a paragraph and ends the
     /// containers it would lazily continue, so a heading is written ATX there, with a line ending
     /// in its text written as `&#xA;`, unless it holds a soft or hard break, which only a setext
     /// heading can write, and for which `Document::normalize` makes the list loose instead:
-    /// `- a\n  # h\n- q` with `setext` too (#168).
+    /// `- a\n  # h&#xA;i\n- q` (#168).
     fn setext_heading<S: AsRef<str>>(
         &self,
         document: &Document<S>,
@@ -1200,7 +1189,6 @@ impl<'a> State<'a> {
                 && !heading_as_setext(
                     document,
                     heading,
-                    false,
                     self.options.line_wrapping == LineWrapping::Unwrap,
                     true,
                 ))
@@ -1218,10 +1206,7 @@ impl<'a> State<'a> {
         id: NodeId,
     ) -> bool {
         if let EventKind::CodeBlock {
-            value,
-            language,
-            math: false,
-            ..
+            value, language, ..
         } = &document.node(id).unwrap().kind
         {
             !fences_code(document, parent, before, spread)
@@ -1255,7 +1240,6 @@ impl<'a> State<'a> {
             options,
             stack: Vec::new(),
             serialization_root: None,
-            math: true,
             definitions: None,
             reference_key: String::new(),
             line_start: 0,
@@ -1354,7 +1338,6 @@ impl<'a> State<'a> {
             ),
             EventKind::Html { .. } => Some('<'),
             EventKind::Code { .. } => Some('`'),
-            EventKind::Math(_) => Some('$'),
             _ => None,
         }
     }
@@ -1364,14 +1347,7 @@ impl<'a> State<'a> {
         let start = before[0].len() + before[1].len();
         let end = start + input.len();
         self.escapes.clear();
-        super::escape::collect(
-            before,
-            input,
-            info.after,
-            &self.stack,
-            self.math.then_some(self.options.single_dollar_text_math),
-            &mut self.escapes,
-        );
+        super::escape::collect(before, input, info.after, &self.stack, &mut self.escapes);
         self.escapes.sort_unstable_by_key(|entry| entry.0);
         self.escapes.dedup_by(|right, left| {
             if right.0 == left.0 {
@@ -1616,14 +1592,7 @@ impl<'a> State<'a> {
         let before = info.before(&self.output);
         let start = before[0].len() + before[1].len();
         self.escapes.clear();
-        super::escape::collect(
-            before,
-            label,
-            info.after,
-            &self.stack,
-            self.math.then_some(self.options.single_dollar_text_math),
-            &mut self.escapes,
-        );
+        super::escape::collect(before, label, info.after, &self.stack, &mut self.escapes);
         self.escapes.sort_unstable_by_key(|entry| entry.0);
         self.escapes.dedup_by_key(|entry| entry.0);
         let bytes = label.as_bytes();
@@ -1724,7 +1693,6 @@ pub(crate) fn is_phrasing(kind: &EventKind<'_>) -> bool {
             | EventKind::SoftBreak(_)
             | EventKind::FootnoteReference(_)
             | EventKind::Code { .. }
-            | EventKind::Math(_)
             | EventKind::TaskMarker(_)
             | EventKind::Text(_)
             | EventKind::Html { block: false, .. }

@@ -12,7 +12,6 @@ pub(crate) fn semantic_text<'a, const HEADING: bool>(
     let value = match kind {
         EventKind::Text(value)
         | EventKind::SoftBreak(value)
-        | EventKind::Math(value)
         | EventKind::Code { value, .. }
         | EventKind::Html { value, .. } => value,
         EventKind::CodeBlock { value, .. } if !HEADING => value,

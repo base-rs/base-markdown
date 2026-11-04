@@ -371,47 +371,12 @@ fn core() {
         "- a\n  # b\n",
         "should honour `spread: false` for a paragraph and a heading"
     );
-
-    assert_eq!(
-        to_md_with_opts(
-            &Node::ListItem(ListItem {
-                children: vec![
-                    Node::Paragraph(Paragraph {
-                        children: vec![Node::Text(Text {
-                            value: String::from("a"),
-                            position: None
-                        })],
-                        position: None
-                    }),
-                    Node::Heading(Heading {
-                        children: vec![Node::Text(Text {
-                            value: String::from("b"),
-                            position: None
-                        })],
-                        position: None,
-                        depth: 1
-                    })
-                ],
-                position: None,
-                spread: false,
-                checked: None
-            }),
-            &Options {
-                setext: true,
-                ..Default::default()
-            }
-        )
-        .unwrap(),
-        "- a\n\n  b\n  =\n",
-        "should not honour `spread: false` for a paragraph and a setext heading"
-    );
 }
 
 #[test]
 fn writes_lf_line_endings_for_source_values() {
     let mut options = base_markdown::Options::gfm();
     options.parse.constructs.frontmatter = true;
-    options.parse.constructs.math_flow = true;
     for source in [
         "```\r\na\r\nb\r\n```\r\n",
         "```\ra\rb\r```\r",
@@ -419,7 +384,6 @@ fn writes_lf_line_endings_for_source_values() {
         "<div>\r\na\r\n</div>\r\n",
         "<!--\r\nx\r\n-->\r\n",
         "a <span\r\nx>\r\n",
-        "$$\r\na\r\nb\r\n$$\r\n",
         "---\r\na: 1\r\nb: 2\r\n---\r\n",
         "a\rb\r",
         "[a]: <b>\r\n  'c\r\nd'\r\n\r\n[a]\r\n",

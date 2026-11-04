@@ -25,7 +25,7 @@ pub enum NodeSyntax<'a> {
     },
     /// The authored spelling of a normalized footnote identifier.
     Footnote { label: Text<'a> },
-    /// The decoded complete code info string, or the metadata after a math fence.
+    /// The decoded complete code info string.
     ///
     /// The info string of code starts with its language, as the parser reads it: it is empty for
     /// code without a language, and otherwise it is the language, alone or followed by a space or
@@ -126,15 +126,7 @@ impl NodeSyntax<'_> {
                 return Err(StreamError::InvalidValue);
             }
         }
-        if let (
-            Self::Code { info },
-            EventKind::CodeBlock {
-                language,
-                math: false,
-                ..
-            },
-        ) = (self, kind)
-        {
+        if let (Self::Code { info }, EventKind::CodeBlock { language, .. }) = (self, kind) {
             // The info string is checked above, and the language when the kind was assigned.
             let info = info.resolve(source).expect("checked by `valid_for`");
             let language = language
@@ -324,7 +316,6 @@ pub(crate) fn infer(
         EventKind::CodeBlock {
             fence: Some(fence),
             language,
-            math,
             ..
         } => {
             let first = &raw[..raw.find(['\r', '\n']).unwrap_or(raw.len())];
@@ -343,8 +334,7 @@ pub(crate) fn infer(
             // escapes and references in the info string were decoded, so keep the first decoding
             // that starts with the language as the parser split it off: the info string the
             // parser read. Code from caller events may have a language its source does not
-            // start with, and then has no inferred info string. Math has no language, so any
-            // metadata is valid, decoded as by default.
+            // start with, and then has no inferred info string.
             let language = language
                 .as_ref()
                 .map(|value| value.resolve(source).expect("document text is validated"));
@@ -354,11 +344,10 @@ pub(crate) fn infer(
                     crate::value_builder::decode_info(source, range.clone(), escapes, references)
                 })
                 .find(|info| {
-                    *math
-                        || code_info_starts_with(
-                            info.resolve(source).expect("decoded from the source"),
-                            language,
-                        )
+                    code_info_starts_with(
+                        info.resolve(source).expect("decoded from the source"),
+                        language,
+                    )
                 })
                 .map(|info| NodeSyntax::Code { info })
         }

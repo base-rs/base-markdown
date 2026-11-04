@@ -8,7 +8,7 @@ use base_markdown::markdown::{to_markdown, to_markdown_with_options, Options};
 use base_markdown::stream::{EventKind, Tag};
 use base_markdown::{Document, NodeSyntax, ParseOptions};
 use pretty_assertions::assert_eq;
-use support::fixture::{canonical, Code, Math, Node};
+use support::fixture::{canonical, Code, Node};
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
 
 #[test]
@@ -356,7 +356,7 @@ fn text() {
     );
 }
 
-/// The stored value of each code and math block in `document`, with its terminal line ending.
+/// The stored value of each code block in `document`, with its terminal line ending.
 fn block_values(document: &Document<String>) -> Vec<String> {
     document
         .events()
@@ -408,26 +408,7 @@ fn fenced_blank_lines_round_trip() {
     }
 }
 
-#[test]
-fn math_blank_lines_round_trip() {
-    let mut options = ParseOptions::default();
-    options.constructs.math_flow = true;
-    options.constructs.math_text = true;
-    for ending in ["\n", "\r\n", "\r"] {
-        for (source, expected) in [
-            ("$${n}{n}$$", "$$\n\n$$\n"),
-            ("p{n}$${n}{n}$$", "p\n\n$$\n\n$$\n"),
-            ("- $${n}{n}  $$", "- $$\n\n  $$\n"),
-            ("> $${n}>{n}> $$", "> $$\n>\n> $$\n"),
-            ("$${n}$$", "$$\n$$\n"),
-            ("$${n}{n}{n}$$", "$$\n\n\n$$\n"),
-        ] {
-            assert_round_trip(&source.replace("{n}", ending), &options, expected);
-        }
-    }
-}
-
-/// The language and decoded info string of each code and math block in `document`, and the metadata the serializer writes after the language: the rest of the info after the spaces and tabs that separate it, or, when there is only whitespace after the language, all of it but the first space or tab.
+/// The language and decoded info string of each code block in `document`, and the metadata the serializer writes after the language: the rest of the info after the spaces and tabs that separate it, or, when there is only whitespace after the language, all of it but the first space or tab.
 fn fence_infos(document: &Document<String>) -> Vec<(Option<String>, String, String)> {
     let source = document.source();
     document
@@ -501,25 +482,6 @@ fn fence_info_round_trip() {
 }
 
 #[test]
-fn math_meta_round_trip() {
-    let mut options = ParseOptions::default();
-    options.constructs.math_flow = true;
-    options.constructs.math_text = true;
-    for (source, expected) in [
-        ("$$ \\&amp; x\n$$", "$$\\&amp; x\n$$\n"),
-        ("$$&amp;amp;#x9;\n$$", "$$\\&amp;#x9;\n$$\n"),
-        ("$$ \\\\&amp; a\\\\!\n$$", "$$\\\\& a\\\\!\n$$\n"),
-        // The parser trims the metadata, so whitespace at its edges is encoded.
-        ("$$ &#x20;a&#x9;\n$$", "$$&#x20;a&#x9;\n$$\n"),
-        ("$$ &#x9; a &#x20;\n$$", "$$&#x9; a &#x20;\n$$\n"),
-        ("$$ &#x20;\n$$", "$$&#x20;\n$$\n"),
-        ("$$ a&#xA;b\n$$", "$$a&#xA;b\n$$\n"),
-    ] {
-        assert_info_round_trip(source, &options, expected);
-    }
-}
-
-#[test]
 fn fence_info_references() {
     assert_eq!(
         to(&Node::Code(Code {
@@ -533,20 +495,9 @@ fn fence_info_references() {
         "```\\&amp; \\&#x9; & \\\\&\n```\n",
         "should escape `&` before a reference in the info of code"
     );
-
-    assert_eq!(
-        to(&Node::Math(Math {
-            value: String::new(),
-            position: None,
-            meta: Some(" &amp;\t".to_string())
-        }))
-        .unwrap(),
-        "$$&#x20;\\&amp;&#x9;\n$$\n",
-        "should escape `&` before a reference and encode whitespace at the edges of the meta of math"
-    );
 }
 
-/// The language and metadata of each code and math block in `document`, which is what reads back:
+/// The language and metadata of each code block in `document`, which is what reads back:
 /// the spaces and tabs between the language and the metadata are written as one space.
 fn languages_and_meta(document: &Document<String>) -> Vec<(Option<String>, String)> {
     fence_infos(document)
@@ -560,9 +511,7 @@ fn languages_and_meta(document: &Document<String>) -> Vec<(Option<String>, Strin
 fn assert_meta_round_trip(document: &Document<String>, options: &Options, expected: &str) {
     let markdown = to_markdown_with_options(document, options).unwrap();
     assert_eq!(markdown, expected);
-    let mut parse = ParseOptions::default();
-    parse.constructs.math_flow = true;
-    let reparsed = Document::parse(markdown.clone(), &parse).unwrap();
+    let reparsed = Document::parse(markdown.clone(), &ParseOptions::default()).unwrap();
     assert_eq!(
         languages_and_meta(&reparsed),
         languages_and_meta(document),
@@ -587,7 +536,6 @@ fn hand_built(language: &str, info: &str) -> Document<String> {
                 value: Text::Literal(""),
                 language: Some(Text::from(language.to_string())),
                 fence: None,
-                math: false,
                 unclosed: false,
             },
         )
@@ -667,7 +615,7 @@ fn tilde_at_the_start_of_a_tilde_fence_language_is_escaped() {
     assert_meta_round_trip(&document, &Options::default(), "```~x\n```\n");
 }
 
-/// Random fences, info strings and containers, parsed with and without math: every parsed code
+/// Random fences, info strings and containers, parsed with several options: every parsed code
 /// block passes the checks a hand-built one does (#144), its language and info string can be
 /// assigned again, and it reads back with the same language and metadata.
 #[test]
@@ -677,7 +625,7 @@ fn parsed_code_blocks_are_valid_and_read_back() {
         "x", "a", " ", "  ", "\t", "&#x20;", "&#x9;", "&#xA;", "&amp;", "\\~", "~", "`", "\\`",
         "\\\\", "\\", "&", "$", "\u{c}", "é", "\0", "&#0;", "&#x60;", "&#126;",
     ];
-    const OPENERS: &[&str] = &["```", "~~~", "````", "$$", "~~~~"];
+    const OPENERS: &[&str] = &["```", "~~~", "````", "~~~~"];
     const PREFIXES: &[&str] = &["", "> ", "- ", "1. ", " ", "\n"];
     let mut state = 0x9E37_79B9_7F4A_7C15_u64;
     let mut next = |bound: usize| {
@@ -686,8 +634,6 @@ fn parsed_code_blocks_are_valid_and_read_back() {
         state ^= state << 17;
         (state % bound as u64) as usize
     };
-    let mut math = ParseOptions::default();
-    math.constructs.math_flow = true;
     let mut references = ParseOptions::default();
     references.constructs.character_reference = false;
     let mut escapes = ParseOptions::default();
@@ -697,7 +643,6 @@ fn parsed_code_blocks_are_valid_and_read_back() {
     let parses = [
         (ParseOptions::default(), false),
         (ParseOptions::gfm(), false),
-        (math, false),
         (references, true),
         (escapes, true),
     ];
@@ -715,8 +660,7 @@ fn parsed_code_blocks_are_valid_and_read_back() {
             let mut copy = Document::parse(String::new(), parse).unwrap();
             let ids: Vec<_> = document.descendants(document.root()).collect();
             for &id in &ids {
-                let EventKind::CodeBlock { language, math, .. } = &document.node(id).unwrap().kind
-                else {
+                let EventKind::CodeBlock { language, .. } = &document.node(id).unwrap().kind else {
                     continue;
                 };
                 blocks += 1;
@@ -730,7 +674,6 @@ fn parsed_code_blocks_are_valid_and_read_back() {
                             value: Text::Literal(""),
                             language: language.as_ref().map(own),
                             fence: None,
-                            math: *math,
                             unclosed: false,
                         },
                     )
@@ -754,7 +697,7 @@ fn parsed_code_blocks_are_valid_and_read_back() {
                         .unwrap_or_else(|error| panic!("{:?}: {:?}", source, error));
                 }
             }
-            // Text such as `$$` without math or a `~` after a fence that did not open is not what
+            // Text such as a `~` after a fence that did not open is not what
             // this checks.
             if document.descendants(document.root()).any(|id| {
                 matches!(

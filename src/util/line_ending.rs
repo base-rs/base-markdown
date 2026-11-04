@@ -34,7 +34,7 @@ pub(crate) fn push_normalized(output: &mut String, value: &str) {
     output.push_str(rest);
 }
 
-/// Append `value` to `output` with each CRLF, lone CR and LF written as one space, which is how the parser reads a line ending in inline code or math.
+/// Append `value` to `output` with each CRLF, lone CR and LF written as one space, which is how the parser reads a line ending in inline code.
 pub(crate) fn push_spaced(output: &mut String, value: &str) {
     let mut written = 0;
     for ending in line_endings(value) {

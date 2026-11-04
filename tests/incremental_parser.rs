@@ -53,7 +53,7 @@ const CORPUS: &[&str] = &[
     "\u{feff}# bom\n\ntext\n",
     "# hello\n\n***\n",
     "tabs\tand\t\n\t- list\n\t\tcode\n",
-    "$$\nmath\n$$\n\ntext $x$\n",
+    "```math\nx\n```\n\ntext $x$\n",
     "Para\n\n    \n\nPara\n",
 ];
 
@@ -61,8 +61,6 @@ fn options() -> Vec<ParseOptions> {
     let mut frontmatter = ParseOptions::gfm();
     frontmatter.constructs = Constructs {
         frontmatter: true,
-        math_flow: true,
-        math_text: true,
         ..Constructs::gfm()
     };
     let mut blank_lines = ParseOptions::gfm();

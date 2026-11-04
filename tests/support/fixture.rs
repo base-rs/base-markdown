@@ -31,13 +31,11 @@ pub enum Node {
     List(List),
     ListItem(ListItem),
     Html(Html),
-    Math(Math),
     Definition(Definition),
     Text(Text),
     Emphasis(Emphasis),
     Strong(Strong),
     InlineCode(InlineCode),
-    InlineMath(InlineMath),
     Break(Break),
     Link(Link),
     Image(Image),
@@ -111,13 +109,6 @@ pub struct Html {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Math {
-    pub value: String,
-    pub position: Option<Position>,
-    pub meta: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Definition {
     pub position: Option<Position>,
     pub url: String,
@@ -149,12 +140,6 @@ pub struct InlineCode {
     pub value: String,
     pub position: Option<Position>,
     pub lang: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct InlineMath {
-    pub value: String,
-    pub position: Option<Position>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -316,7 +301,7 @@ fn normalize(value: &str) -> String {
         .to_uppercase()
 }
 
-/// The stored value of a code or math block whose `mdast` value is `value`: each line ends in a line ending, so an empty body is `""` and a body of one blank line is `"\n"`.
+/// The stored value of a code block whose `mdast` value is `value`: each line ends in a line ending, so an empty body is `""` and a body of one blank line is `"\n"`.
 fn block_value(value: &str) -> EventText<'static> {
     if value.is_empty() {
         self::value("")
@@ -417,19 +402,6 @@ fn append(
                 value: block_value(&n.value),
                 language: title(&n.lang),
                 fence: n.fence,
-                math: false,
-                unclosed: false,
-            }
-        }
-        Node::Math(n) => {
-            syntax = Some(NodeSyntax::Code {
-                info: value(n.meta.as_deref().unwrap_or("")),
-            });
-            EventKind::CodeBlock {
-                value: block_value(&n.value),
-                language: None,
-                fence: None,
-                math: true,
                 unclosed: false,
             }
         }
@@ -445,7 +417,6 @@ fn append(
             value: value(&n.value),
             language: title(&n.lang),
         },
-        Node::InlineMath(n) => EventKind::Math(value(&n.value)),
         Node::Break(_) => EventKind::HardBreak,
         Node::Link(n) => EventKind::Start(Tag::Link {
             destination: value(&n.url),
@@ -724,10 +695,7 @@ fn fixture_canonical<S: AsRef<str>>(document: &Document<S>) -> (Vec<String>, Vec
     let mut syntax = Vec::new();
     for id in document.descendants(document.root()) {
         let node = document.node(id).unwrap();
-        if let EventKind::CodeBlock {
-            fence, math: false, ..
-        } = &node.kind
-        {
+        if let EventKind::CodeBlock { fence, .. } = &node.kind {
             syntax.push(format!("fence:{fence:?}"));
         }
         match document.syntax(id) {
@@ -769,7 +737,7 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
     let mut pending = String::new();
     let mut after_hard_break = false;
     let mut after_task_marker = false;
-    // The signature of the last node of the document so far, when it is a code or math block without a final line ending, with that line ending added. The serializer closes every fence, so a last block that the parser stores without one, from an unclosed fence or indented code at the end of the source, reads back with one.
+    // The signature of the last node of the document so far, when it is a code block without a final line ending, with that line ending added. The serializer closes every fence, so a last block that the parser stores without one, from an unclosed fence or indented code at the end of the source, reads back with one.
     let mut last_code: Option<(usize, String)> = None;
     for event in document.events() {
         let event = event.unwrap();
@@ -823,22 +791,18 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
                 format!("Code:{:?}:{:?}", text(&value), language.as_ref().map(text))
             }
             EventKind::CodeBlock {
-                value,
-                language,
-                math,
-                ..
+                value, language, ..
             } => {
                 let body = text(&value);
                 let language = language.as_ref().map(text);
                 if !body.is_empty() && !body.ends_with('\n') {
                     last_code = Some((
                         output.len(),
-                        format!("CodeBlock:{:?}:{language:?}:{math}", format!("{body}\n")),
+                        format!("CodeBlock:{:?}:{language:?}", format!("{body}\n")),
                     ));
                 }
-                format!("CodeBlock:{body:?}:{language:?}:{math}")
+                format!("CodeBlock:{body:?}:{language:?}")
             }
-            EventKind::Math(v) => format!("Math:{:?}", text(&v)),
             EventKind::Html { value, .. } => format!("Html:{:?}", text(&value)),
             EventKind::Definition {
                 label,

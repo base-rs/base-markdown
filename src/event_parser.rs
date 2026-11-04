@@ -446,7 +446,6 @@ impl EventParser<'_> {
                         ))
                     },
                     fence: code.fence,
-                    math: code.math,
                     unclosed: code.unclosed,
                 };
                 if node.next != 0 && !code.unclosed {

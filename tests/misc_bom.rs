@@ -19,8 +19,7 @@ fn bom() {
 
 #[test]
 fn options_preserve_bom_like_unicode() {
-    let mut options = base_markdown::Options::default();
-    options.parse.constructs.math_flow = true;
+    let options = base_markdown::Options::default();
     for source in ["\u{fffd}", "\u{fec0}"] {
         assert_eq!(
             base_markdown::to_html_with_options(source, &options),

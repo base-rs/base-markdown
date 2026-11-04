@@ -7,9 +7,9 @@ use pretty_assertions::assert_eq;
 use support::fixture::{to_markdown as markdown, to_markdown_with_options};
 use support::fixture::{
     AlignKind, Blockquote, Break, Code, Definition, Delete, Emphasis, FootnoteDefinition,
-    FootnoteReference, Frontmatter, Heading, Html, Image, ImageReference, InlineCode, InlineMath,
-    Link, LinkReference, List, ListItem, Math, Node, Paragraph, ReferenceKind, Root, Table,
-    TableCell, TableRow, Text, ThematicBreak,
+    FootnoteReference, Frontmatter, Heading, Html, Image, ImageReference, InlineCode, Link,
+    LinkReference, List, ListItem, Node, Paragraph, ReferenceKind, Root, Table, TableCell,
+    TableRow, Text, ThematicBreak,
 };
 
 fn parse(
@@ -319,10 +319,6 @@ fn serializes_ast_variants_and_custom_markdown_options() {
             position: None,
             lang: Some("ruby".into()),
         }),
-        Node::InlineMath(InlineMath {
-            value: "$x$".into(),
-            position: None,
-        }),
         Node::Link(Link {
             children: vec![text("https://example.com")],
             position: None,
@@ -389,11 +385,6 @@ fn serializes_ast_variants_and_custom_markdown_options() {
             position: None,
             spread: true,
             checked: Some(false),
-        }),
-        Node::Math(Math {
-            value: "x^2".into(),
-            position: None,
-            meta: Some("latex".into()),
         }),
         Node::Table(Table {
             children: vec![
@@ -467,13 +458,11 @@ fn serializes_ast_variants_and_custom_markdown_options() {
     let custom_options = MarkdownOptions {
         fence: '~',
         fences: true,
-        setext: true,
         close_atx: true,
         rule: '_',
         rule_repetition: 4,
         rule_spaces: true,
         quote: '\'',
-        single_dollar_text_math: false,
         ..MarkdownOptions::default()
     };
     let custom = Node::Root(Root {
@@ -494,10 +483,6 @@ fn serializes_ast_variants_and_custom_markdown_options() {
                 lang: Some("rust".into()),
                 meta: Some("a ` b".into()),
             }),
-            Node::InlineMath(InlineMath {
-                value: "$x$\ny".into(),
-                position: None,
-            }),
             Node::ThematicBreak(ThematicBreak { position: None }),
         ],
     });
@@ -505,7 +490,7 @@ fn serializes_ast_variants_and_custom_markdown_options() {
         to_markdown_with_options(&custom, &custom_options).expect("custom options serialize");
     assert_eq!(
         output,
-        "*a\nb*\n--\n\n~~~~rust a ` b\n~~~\ncode\n~~~~\n\n$$ $x$ y $$\n\n_ _ _ _\n"
+        "*a\nb*\n--\n\n~~~~rust a ` b\n~~~\ncode\n~~~~\n\n_ _ _ _\n"
     );
 
     let inline_break = Node::InlineCode(InlineCode {
@@ -514,12 +499,6 @@ fn serializes_ast_variants_and_custom_markdown_options() {
         lang: None,
     });
     assert_eq!(markdown(&inline_break).unwrap(), "`a #b`\n");
-
-    let inline_math_break = Node::InlineMath(InlineMath {
-        value: "a\r\n#b".into(),
-        position: None,
-    });
-    assert_eq!(markdown(&inline_math_break).unwrap(), "$a #b$\n");
 
     let nested_heading = Node::Heading(Heading {
         children: vec![Node::Emphasis(Emphasis {
@@ -633,21 +612,17 @@ fn propagates_errors_from_nested_markdown_nodes() {
         strong: 'x',
         ..MarkdownOptions::default()
     };
-    for setext in [false, true] {
+    // A heading with a line ending is written setext, and fails the same way.
+    for children in [
+        vec![nested_strong.clone()],
+        vec![text("a\nb"), nested_strong.clone()],
+    ] {
         let heading = Node::Heading(Heading {
-            children: vec![nested_strong.clone()],
+            children,
             position: None,
             depth: 2,
         });
-        let options = MarkdownOptions {
-            setext,
-            ..invalid_strong_options.clone()
-        };
-        assert!(
-            to_markdown_with_options(&heading, &options).is_err(),
-            "expected nested strong to fail for setext={}",
-            setext
-        );
+        assert!(to_markdown_with_options(&heading, &invalid_strong_options).is_err());
     }
 
     for node in [

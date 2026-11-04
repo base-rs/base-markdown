@@ -385,7 +385,7 @@ fn tasks_preserve_markers_and_whitespace_across_options() {
     use base_markdown::{stream::EventKind, EventParser};
     let options = Options::gfm();
     let mut configured = Options::gfm();
-    configured.parse.constructs.math_flow = true;
+    configured.parse.constructs.frontmatter = true;
     for source in [
         "- [x] checked\n- [X] upper\n- [ ] unchecked",
         "- [x]   three spaces\n- [x] \t mixed spaces",

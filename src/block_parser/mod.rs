@@ -83,7 +83,6 @@ pub(super) struct Code {
     pub info: Range<usize>,
     pub fence: Option<CodeFence>,
     pub unclosed: bool,
-    pub math: bool,
 }
 
 pub(super) struct Blocks {
@@ -576,12 +575,6 @@ impl Builder<'_> {
                     return self.fenced_block(at, indent, marker, length);
                 }
             }
-            b'$' if self.options.constructs.math_flow => {
-                if let Some(length) = math_fence(&bytes[at..]) {
-                    self.finish_list(start);
-                    return self.fenced_block(at, indent, b'$', length);
-                }
-            }
             _ => {}
         }
         if self.options.constructs.table {
@@ -643,7 +636,6 @@ impl Builder<'_> {
             Some(b'[') => constructs.footnote_definition && footnote_prefix(bytes, 0).is_some(),
             Some(b'#') => constructs.heading_atx && scan_atx_heading(bytes).is_some(),
             Some(b'`' | b'~') => constructs.code_fenced && scan_code_fence(bytes).is_some(),
-            Some(b'$') => constructs.math_flow && math_fence(bytes).is_some(),
             Some(b'*' | b'_' | b'-') if constructs.thematic_break && scan_hrule(bytes).is_ok() => {
                 true
             }
@@ -977,18 +969,13 @@ impl Builder<'_> {
                 .unwrap_or(at - info);
         let code = self.blocks.codes.len();
         self.blocks.codes.push(Code {
-            info: if marker == b'$' {
-                info..info
-            } else {
-                info..info_end
-            },
+            info: info..info_end,
             fence: Some(CodeFence {
                 character: char::from(marker),
                 length,
                 indent,
             }),
             unclosed: true,
-            math: marker == b'$',
         });
         self.append(start, start, Body::Code(code));
         self.push();
@@ -1036,7 +1023,6 @@ impl Builder<'_> {
             info: start..start,
             fence: None,
             unclosed: false,
-            math: false,
         });
         self.append(start, start, Body::Code(code));
         self.push();
@@ -1161,12 +1147,6 @@ fn table_definition_header(bytes: &[u8]) -> bool {
         at += 1;
     }
     false
-}
-
-fn math_fence(bytes: &[u8]) -> Option<usize> {
-    let length = bytes.iter().take_while(|&&byte| byte == b'$').count();
-    let end = scan_nextline(bytes);
-    (length >= 2 && !bytes[length..end].contains(&b'$')).then_some(length)
 }
 
 fn footnote_prefix(bytes: &[u8], start: usize) -> Option<(Range<usize>, usize)> {

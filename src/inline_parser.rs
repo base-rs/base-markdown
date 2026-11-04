@@ -27,7 +27,7 @@ static DESTINATION_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::Ascii
 
 static MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!");
 static EXTENSION_MARKERS: crate::byte_scan::AsciiSet =
-    crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!~@.:$");
+    crate::byte_scan::AsciiSet::new(b"\0<\\\r\n&`*_[]!~@.:");
 
 // Keep fixed prefixes compact: a fat string pointer would enlarge every inline record.
 #[derive(Clone, Copy)]
@@ -54,7 +54,6 @@ enum Kind {
     NumericEntity(char),
     Code(usize),
     CodeInfo(usize),
-    Math(usize),
     Footnote(usize),
     Html,
     AngleLink(bool),
@@ -112,7 +111,6 @@ pub(crate) struct InlineParser {
     attention_stack: Vec<usize>,
     links: Vec<Link>,
     tick_heads: Vec<usize>,
-    math_heads: Vec<usize>,
     ticks: Vec<Tick>,
     reference_key: String,
     logical: String,
@@ -240,28 +238,18 @@ impl InlineParser {
         }
         self.delimiters.truncate(bottom);
     }
-    fn index_ticks(&mut self, bytes: &[u8], range: Range<usize>, math: bool) {
+    fn index_ticks(&mut self, bytes: &[u8], range: Range<usize>) {
         self.tick_heads.clear();
-        self.math_heads.clear();
         self.ticks.clear();
         let mut at = range.end;
-        while let Some(index) = if math {
-            memchr::memrchr2(b'`', b'$', &bytes[range.start..at])
-        } else {
-            memchr::memrchr(b'`', &bytes[range.start..at])
-        } {
+        while let Some(index) = memchr::memrchr(b'`', &bytes[range.start..at]) {
             let end = range.start + index + 1;
             at = end - 1;
-            let marker = bytes[at];
-            while at > range.start && bytes[at - 1] == marker {
+            while at > range.start && bytes[at - 1] == b'`' {
                 at -= 1;
             }
             let count = end - at;
-            let heads = if marker == b'$' {
-                &mut self.math_heads
-            } else {
-                &mut self.tick_heads
-            };
+            let heads = &mut self.tick_heads;
             if heads.len() <= count {
                 heads.resize(count + 1, 0);
             }
@@ -273,13 +261,9 @@ impl InlineParser {
             heads[count] = self.ticks.len();
         }
     }
-    fn closing_tick(&mut self, opening: usize, count: usize, marker: u8) -> Option<usize> {
+    fn closing_tick(&mut self, opening: usize, count: usize) -> Option<usize> {
         // Every candidate run (including an escaped run's shorter suffix) is bounded by the longest indexed raw run.
-        let heads = if marker == b'$' {
-            &mut self.math_heads
-        } else {
-            &mut self.tick_heads
-        };
+        let heads = &mut self.tick_heads;
         let mut index = heads[count];
         while index != 0 {
             let tick = &self.ticks[index - 1];
@@ -531,34 +515,19 @@ impl InlineParser {
                             at += 1;
                         }
                     }
-                    marker
-                        if (marker == b'`' && (!EXTENSIONS || options.constructs.code_text))
-                            || (EXTENSIONS && marker == b'$' && options.constructs.math_text) =>
-                    {
-                        while at < range.end && bytes[at] == marker {
+                    b'`' if !EXTENSIONS || options.constructs.code_text => {
+                        while at < range.end && bytes[at] == b'`' {
                             at += 1;
                         }
                         let count = at - start;
-                        if marker == b'$' && count == 1 && !options.math_text_single_dollar {
-                            self.append(start, at, Kind::Text);
-                            continue;
-                        }
                         if !indexed_ticks {
-                            self.index_ticks(
-                                bytes,
-                                range.clone(),
-                                EXTENSIONS && options.constructs.math_text,
-                            );
+                            self.index_ticks(bytes, range.clone());
                             indexed_ticks = true;
                         }
-                        if let Some(end) = self.closing_tick(start, count, marker) {
-                            let mut kind = if marker == b'$' {
-                                Kind::Math(count)
-                            } else {
-                                Kind::Code(count)
-                            };
+                        if let Some(end) = self.closing_tick(start, count) {
+                            let mut kind = Kind::Code(count);
                             let mut event_start = start;
-                            if marker == b'`' && options.inline_code_info {
+                            if options.inline_code_info {
                                 if let Some((prefix_start, info)) =
                                     crate::util::inline_code_info::before(bytes, start)
                                 {
@@ -1109,7 +1078,7 @@ impl InlineParser {
                     },
                     title: None,
                 }),
-                Kind::Code(_) | Kind::Math(_) | Kind::CodeInfo(_) => {
+                Kind::Code(_) | Kind::CodeInfo(_) => {
                     let (count, start, language) = match node.kind {
                         Kind::CodeInfo(index) => {
                             let info = &self.code_info[index];
@@ -1119,15 +1088,11 @@ impl InlineParser {
                                 Some(self.text(source, info.language.clone())),
                             )
                         }
-                        Kind::Code(count) | Kind::Math(count) => (count, node.start, None),
+                        Kind::Code(count) => (count, node.start, None),
                         _ => unreachable!("raw inline candidates have raw metadata"),
                     };
                     let value = self.raw_text(source, start + count..node.end - count);
-                    if matches!(node.kind, Kind::Math(_)) {
-                        EventKind::Math(value)
-                    } else {
-                        EventKind::Code { value, language }
-                    }
+                    EventKind::Code { value, language }
                 }
                 Kind::Start(tag, index) => EventKind::Start(match tag {
                     TagKind::Emphasis => Tag::Emphasis,
