@@ -96,6 +96,9 @@ pub struct Options {
     pub strong: char,
     /// Whether to join definitions without a blank line (`bool`, default:
     /// `false`).
+    /// Other blocks are joined as without it. In a spread list item whose only
+    /// blocks are definitions, they are still joined by a blank line, which
+    /// keeps the item spread.
     pub tight_definitions: bool,
 }
 

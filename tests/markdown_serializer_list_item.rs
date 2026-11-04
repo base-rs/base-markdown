@@ -615,7 +615,7 @@ fn serializing_list_items_is_linear() {
     }
     assert_serializes_linear("items after separators", 1 << 8, &default, separated_items);
     // Finding the task marker does not depend on the options. With these, definitions are joined
-    // without a blank line and other blocks with one.
+    // without a blank line.
     let both = [
         ("default", Options::default()),
         (
