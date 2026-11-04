@@ -2547,9 +2547,9 @@ fn is_normalized_finds_a_loose_list_that_reads_back_tight() {
 
 #[test]
 fn parsed_lone_loose_items_keep_their_output() {
-    // The parser infers an item's spread from a blank line between its blocks in the source, but a nested list or footnote definition takes in the blank line after it, so these items record no spread although their lists are loose. A blank line after either is written anyway before a paragraph, which could not follow it directly, so these outputs are unchanged.
+    // The parser infers an item's spread from a blank line between its blocks in the source, including one that a nested list or footnote definition takes in at its end, as CommonMark does. So an item with a blank line after a nested list records spread, as its loose list does, and is written with a blank line between each of its blocks (#157). One with no other joins is written unchanged.
     for (source, expected) in [
-        ("- a\n  - b\n\n  c\n", "- a\n  - b\n\n  c\n"),
+        ("- a\n  - b\n\n  c\n", "- a\n\n  - b\n\n  c\n"),
         ("- [^1]: x\n\n  y\n", "- [^1]: x\n\n  y\n"),
         ("- a\n\n  [x]: /u\n", "- a\n\n  [x]: /u\n"),
         ("- a\n\n  b\n", "- a\n\n  b\n"),
@@ -3019,14 +3019,14 @@ fn an_ordered_list_after_a_paragraph_in_a_tight_list_starts_at_1() {
 
 #[test]
 fn a_footnote_definition_in_a_list_item_keeps_the_blank_line_before_a_paragraph() {
-    // A footnote definition takes in the blank line after it, so a parsed item of a definition and a paragraph records no spread. With more than one item, nothing else wrote the blank line, and the paragraph read back as part of the definition (#148). The same holds when the definition ends in a block quote or list, or has several paragraphs, and before a definition or table, which cannot interrupt a paragraph either.
+    // A footnote definition takes in the blank line after it. A parsed item of a definition and a paragraph records spread for that blank line, as its loose list does (#157), but the paragraph needs it whatever spread the item records, or it would read back as part of the definition (#148). An item with other blocks is then written with a blank line between each of them. The same holds when the definition ends in a block quote or list, or has several paragraphs, and before a definition or table, which cannot interrupt a paragraph either.
     for (source, expected) in [
         ("- [^1]: a\n\n  b\n- c", "- [^1]: a\n\n  b\n\n- c\n"),
         ("- c\n- [^1]: a\n\n  b", "- c\n\n- [^1]: a\n\n  b\n"),
         ("1. [^1]: a\n\n   b\n2. c", "1. [^1]: a\n\n   b\n\n2. c\n"),
         (
             "- x\n  [^1]: a\n\n  b\n- c",
-            "- x\n  [^1]: a\n\n  b\n\n- c\n",
+            "- x\n\n  [^1]: a\n\n  b\n\n- c\n",
         ),
         (
             "- [^1]: a\n\n      b\n\n  c\n- d",
@@ -3073,7 +3073,7 @@ fn a_footnote_definition_in_a_list_item_is_written_unchanged_otherwise() {
         ("- [^1]: a\n  ```\n  x\n  ```\n\n- c\n", false),
         ("- [^1]: a\n  - b\n\n- c\n", false),
         ("- [^1]: a\n\n  b\n", false),
-        ("- a\n  - b\n\n  c\n\n- d\n", false),
+        ("- a\n\n  - b\n\n  c\n\n- d\n", false),
         ("> [^1]: a\n>\n> b\n", true),
         ("[^1]: a\n\nb\n", true),
         ("[^1]: a\n\n    b\n\nc\n", true),
@@ -4036,21 +4036,23 @@ fn a_paragraph_after_a_block_quote_in_an_item_is_written_after_a_line_of_quote_m
         "1. > a\n   >\n   p\n",
         // In a loose list, an item that does not record spread is written the same.
         "- > a\n  >\n  p\n\n- q\n",
-        "- > - a\n  >\n  p\n\n- q\n",
     ] {
         let document = Document::parse(source, &ParseOptions::default()).unwrap();
         assert!(document.is_normalized(), "{:?}", source);
         assert_eq!(reads_back(document), source);
     }
-    // A spread item and the only item of a loose list are written with a blank line instead.
+    // A spread item and the only item of a loose list are written with a blank line instead. A line of `>` alone after a list in the quote is a blank line in that list's last item, which the parser counts as a blank line between the item's blocks, so that item records spread (#157).
     for source in [
         "- > a\n\n  p\n",
+        "- > - a\n\n  p\n\n- q\n",
         "- > a\n\n  p\n\n  ```\n  x\n  ```\n\n- q\n",
     ] {
         let document = Document::parse(source, &ParseOptions::default()).unwrap();
         assert!(document.is_normalized(), "{:?}", source);
         assert_eq!(reads_back(document), source);
     }
+    let document = Document::parse("- > - a\n  >\n  p\n\n- q\n", &ParseOptions::default()).unwrap();
+    assert_eq!(reads_back(document), "- > - a\n\n  p\n\n- q\n");
     let setext = base_markdown::MarkdownOptions {
         setext: true,
         ..base_markdown::MarkdownOptions::default()

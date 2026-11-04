@@ -4,13 +4,18 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
+use base_markdown::stream::{EventKind, Tag};
 use base_markdown::{
-    message, to_html, to_html_with_options, CompileOptions, Constructs, Options, ParseOptions,
+    message, to_html, to_html_with_options, to_markdown, CompileOptions, Constructs, Document,
+    MarkdownOptions, NodeId, NodeSyntax, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
 use support::fixture::Position;
-use support::fixture::{List, ListItem, Node, Paragraph, Root, Text};
+use support::fixture::{
+    Blockquote, FootnoteDefinition, Heading, List, ListItem, Node, Paragraph, Root, Text,
+};
+use support::linear::{assert_linear, timed};
 
 #[test]
 fn list() -> Result<(), message::Message> {
@@ -711,4 +716,387 @@ fn list() -> Result<(), message::Message> {
     );
 
     Ok(())
+}
+
+// The items of `document`, in document order, and whether each records spread.
+fn item_spreads<S: AsRef<str>>(document: &Document<S>) -> Vec<bool> {
+    items(document, document.root())
+        .map(|item| spread(document, item))
+        .collect()
+}
+
+fn items<S: AsRef<str>>(document: &Document<S>, root: NodeId) -> impl Iterator<Item = NodeId> + '_ {
+    document.descendants(root).filter(move |&id| {
+        matches!(
+            document.node(id).unwrap().kind,
+            EventKind::Start(Tag::Item { .. })
+        )
+    })
+}
+
+fn spread<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> bool {
+    matches!(
+        document.syntax(item),
+        Some(NodeSyntax::ListItem { spread: true })
+    )
+}
+
+// Whether every item that records spread is in a loose list, and the only item of each loose list records spread, as the parser makes a list loose for a blank line between the blocks of an item, and otherwise only for one between items.
+fn spread_agrees_with_lists<S: AsRef<str>>(document: &Document<S>) -> bool {
+    document.descendants(document.root()).all(|list| {
+        let EventKind::Start(Tag::List { tight, .. }) = document.node(list).unwrap().kind else {
+            return true;
+        };
+        let spreads: Vec<_> = document
+            .children(list)
+            .filter(|&item| {
+                matches!(
+                    document.node(item).unwrap().kind,
+                    EventKind::Start(Tag::Item { .. })
+                )
+            })
+            .map(|item| spread(document, item))
+            .collect();
+        if tight {
+            !spreads.contains(&true)
+        } else {
+            spreads != [false]
+        }
+    })
+}
+
+#[test]
+fn item_spread_counts_a_blank_line_that_a_nested_block_takes_in() {
+    // A nested list or footnote definition takes the blank lines after its last block into its span, so they are not between it and the next block of the item, but the parser counts them as a blank line between the two, as CommonMark does, and makes the list loose. The item records spread for them too (#157).
+    for (source, spreads) in [
+        ("- - a\n\n  b\n", vec![true, false]),
+        ("- - a\n\n  b\n- c\n", vec![true, false, false]),
+        ("- 1.\n\n  ## h\n\n-\n", vec![true, false, false]),
+        ("- - - a\n\n  # h\n", vec![true, false, false]),
+        ("- - a\n\n        x\n\n  b\n", vec![true, true]),
+        ("- - | a |\n    | - |\n\n  b\n", vec![true, false]),
+        ("- [^1]: a\n\n  b\n", vec![true]),
+        ("- [^1]:\n\n  b\n", vec![true]),
+        ("- [^1]: - a\n\n  b\n", vec![true, false]),
+        ("> - - a\n>\n>   # h\n", vec![true, false]),
+        // A line of `>` alone after a nested list in a block quote is a blank line in that list's last item.
+        ("- > - a\n  >\n  b\n", vec![true, false]),
+        ("- > [^1]: a\n  >\n  b\n", vec![true]),
+        // A line of `>` alone in the block quote itself is not, and neither are lines in code.
+        ("- > a\n  >\n  b\n", vec![false]),
+        ("- - > a\n    >\n  b\n", vec![false, false]),
+        ("- - ```\n    x\n\n  b\n", vec![false, false]),
+        ("- [^1]:\n  b\n", vec![false]),
+        ("- - a\n  # h\n", vec![false, false]),
+        ("- - a\n\n    b\n  # h\n", vec![false, true]),
+    ] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert_eq!(item_spreads(&document), spreads, "{:?}", source);
+        assert!(spread_agrees_with_lists(&document), "{:?}", source);
+    }
+}
+
+#[test]
+fn item_spread_agrees_with_list_looseness() {
+    // Small generated documents of list, quote, footnote, code, table and definition starts. Tabs are left out: the span of a list after one starts before the tab, so the line before it is not counted.
+    const TOKENS: &[&str] = &[
+        "- ",
+        "1. ",
+        "> ",
+        "  ",
+        "    ",
+        "a",
+        "\n",
+        "\n\n",
+        "[^1]: ",
+        "```",
+        "# h",
+        "[x]: /u",
+        "| a |\n| - |",
+        "<div>",
+        "-",
+        "b\n",
+    ];
+    let mut state = 0x9E37_79B9_7F4A_7C15_u64;
+    let mut next = || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    for _ in 0..20_000 {
+        let length = 4 + next() % 12;
+        let source: String = (0..length)
+            .map(|_| TOKENS[(next() % TOKENS.len() as u64) as usize])
+            .collect();
+        let document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+        assert!(spread_agrees_with_lists(&document), "{:?}", source);
+    }
+}
+
+#[test]
+fn item_spread_ignores_lines_of_detached_blocks() {
+    // Once the last block of a nested item or footnote definition is detached, the lines it took up are still in the container's span, but they are not blank.
+    for source in ["- - a\n\n    b\n  # h\n", "- [^1]: a\n\n      b\n  # h\n"] {
+        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+        let outer = items(&document, document.root()).next().unwrap();
+        let nested = document.children(outer).next().unwrap();
+        let inner = items(&document, nested).next().unwrap_or(nested);
+        for block in document
+            .children(inner)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+        {
+            document.detach(block).unwrap();
+            assert!(!spread(&document, outer), "{:?}", source);
+        }
+    }
+}
+
+#[test]
+fn item_spread_counts_a_blank_line_after_a_nested_list_in_linear_time() {
+    // The blank line is found through the last blocks of nested lists, each looked through once.
+    assert_linear("blank line after nested lists", 1 << 9, |size| {
+        let source = format!("{}a\n\n  # h\n", "- ".repeat(size));
+        let document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+        timed(|| {
+            assert_eq!(
+                items(&document, document.root())
+                    .filter(|&item| spread(&document, item))
+                    .count(),
+                1
+            );
+        })
+    });
+}
+
+#[test]
+fn a_blank_line_after_a_nested_list_is_written_stably() {
+    let text = |value: &str| {
+        Node::Text(Text {
+            value: value.into(),
+            position: None,
+        })
+    };
+    let p = |value: &str| {
+        Node::Paragraph(Paragraph {
+            children: vec![text(value)],
+            position: None,
+        })
+    };
+    let item = |spread: bool, children: Vec<Node>| {
+        Node::ListItem(ListItem {
+            children,
+            position: None,
+            spread,
+            checked: None,
+        })
+    };
+    let list = |spread: bool, ordered: bool, children: Vec<Node>| {
+        Node::List(List {
+            children,
+            position: None,
+            ordered,
+            start: ordered.then_some(1),
+            spread,
+        })
+    };
+    let footnote = |children: Vec<Node>| {
+        Node::FootnoteDefinition(FootnoteDefinition {
+            children,
+            position: None,
+            identifier: "1".into(),
+            label: Some("1".into()),
+        })
+    };
+    let heading = Node::Heading(Heading {
+        children: vec![text("h")],
+        position: None,
+        depth: 2,
+    });
+    // A blank line written after a nested list or footnote definition, or between two paragraphs, reads back as spread, so an item with one is written with a blank line between each of its blocks, as it is when written again (#157).
+    for (tree, expected) in [
+        (
+            list(
+                true,
+                false,
+                vec![
+                    item(
+                        true,
+                        vec![list(false, true, vec![item(false, vec![])]), heading],
+                    ),
+                    item(false, vec![]),
+                ],
+            ),
+            "- 1.\n\n  ## h\n\n-\n",
+        ),
+        (
+            list(
+                true,
+                false,
+                vec![
+                    item(
+                        false,
+                        vec![
+                            p("b"),
+                            p("b"),
+                            list(false, false, vec![item(false, vec![p("x")])]),
+                        ],
+                    ),
+                    item(false, vec![p("c")]),
+                ],
+            ),
+            "- b\n\n  b\n\n  - x\n\n- c\n",
+        ),
+        (
+            list(
+                true,
+                false,
+                vec![
+                    item(
+                        false,
+                        vec![
+                            p("a"),
+                            list(false, false, vec![item(false, vec![p("b")])]),
+                            p("c"),
+                        ],
+                    ),
+                    item(false, vec![p("d")]),
+                ],
+            ),
+            "- a\n\n  - b\n\n  c\n\n- d\n",
+        ),
+        (
+            list(
+                true,
+                false,
+                vec![
+                    item(false, vec![p("a"), footnote(vec![p("b")]), p("c")]),
+                    item(false, vec![p("d")]),
+                ],
+            ),
+            "- a\n\n  [^1]: b\n\n  c\n\n- d\n",
+        ),
+    ] {
+        let mut document = Node::Root(Root {
+            children: vec![tree],
+            position: None,
+        })
+        .document();
+        document.normalize();
+        let written = to_markdown(&document).unwrap();
+        assert_eq!(written, expected);
+        let mut read = Document::parse(written.as_str(), &ParseOptions::default()).unwrap();
+        assert!(spread(&read, items(&read, read.root()).next().unwrap()));
+        read.normalize();
+        assert_eq!(to_markdown(&read).unwrap(), expected);
+    }
+}
+
+#[test]
+fn a_block_after_a_nested_list_in_a_block_quote_is_written_after_a_blank_line() {
+    let text = |value: &str| {
+        Node::Text(Text {
+            value: value.into(),
+            position: None,
+        })
+    };
+    let p = |value: &str| {
+        Node::Paragraph(Paragraph {
+            children: vec![text(value)],
+            position: None,
+        })
+    };
+    let item = |spread: bool, children: Vec<Node>| {
+        Node::ListItem(ListItem {
+            children,
+            position: None,
+            spread,
+            checked: None,
+        })
+    };
+    let list = |spread: bool, children: Vec<Node>| {
+        Node::List(List {
+            children,
+            position: None,
+            ordered: false,
+            start: None,
+            spread,
+        })
+    };
+    let quote = |children: Vec<Node>| {
+        Node::Blockquote(Blockquote {
+            children,
+            position: None,
+        })
+    };
+    let footnote = |children: Vec<Node>| {
+        Node::FootnoteDefinition(FootnoteDefinition {
+            children,
+            position: None,
+            identifier: "1".into(),
+            label: Some("1".into()),
+        })
+    };
+    let setext = MarkdownOptions {
+        setext: true,
+        ..MarkdownOptions::default()
+    };
+    // A line of `>` alone after a list or footnote definition that ends a block quote is a blank line in that list's last item or in the definition, which reads back as a blank line between the quote and the next block of its item (#157). So a blank line is written there instead, which the item records as spread when written again.
+    for (source, expected) in [
+        ("- > - a\n  # h\n\n- q\n", "- > - a\n\n  h\n  =\n\n- q\n"),
+        (
+            "- > [^1]: a\n  # h\n\n- q\n",
+            "- > [^1]: a\n\n  h\n  =\n\n- q\n",
+        ),
+        // A list in a nested block quote does not take the line in.
+        (
+            "- > > - a\n  # h\n\n- q\n",
+            "- > > - a\n  >\n  h\n  =\n\n- q\n",
+        ),
+    ] {
+        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+        document.normalize();
+        let written = base_markdown::to_markdown_with_options(&document, &setext).unwrap();
+        assert_eq!(written, expected, "{source:?}");
+        let mut read = Document::parse(written.as_str(), &ParseOptions::default()).unwrap();
+        read.normalize();
+        assert_eq!(
+            base_markdown::to_markdown_with_options(&read, &setext).unwrap(),
+            expected,
+            "{source:?}"
+        );
+    }
+    for (last, expected) in [
+        (
+            list(false, vec![item(false, vec![p("b")])]),
+            "- > - b\n\n  c\n\n- d\n",
+        ),
+        (footnote(vec![p("b")]), "- > [^1]: b\n\n  c\n\n- d\n"),
+    ] {
+        let mut document = Node::Root(Root {
+            children: vec![list(
+                true,
+                vec![
+                    item(false, vec![quote(vec![last]), p("c")]),
+                    item(false, vec![p("d")]),
+                ],
+            )],
+            position: None,
+        })
+        .document();
+        document.normalize();
+        for options in [MarkdownOptions::default(), setext.clone()] {
+            let written = base_markdown::to_markdown_with_options(&document, &options).unwrap();
+            assert_eq!(written, expected);
+            let mut read = Document::parse(written.as_str(), &ParseOptions::default()).unwrap();
+            assert!(spread(&read, items(&read, read.root()).next().unwrap()));
+            read.normalize();
+            assert_eq!(
+                base_markdown::to_markdown_with_options(&read, &options).unwrap(),
+                expected
+            );
+        }
+    }
 }
