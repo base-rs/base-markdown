@@ -769,8 +769,13 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
     let mut pending = String::new();
     let mut after_hard_break = false;
     let mut after_task_marker = false;
+    // The signature of the last node of the document so far, when it is a code or math block without a final line ending, with that line ending added. The serializer closes every fence, so a last block that the parser stores without one, from an unclosed fence or indented code at the end of the source, reads back with one.
+    let mut last_code: Option<(usize, String)> = None;
     for event in document.events() {
         let event = event.unwrap();
+        if !matches!(event.kind, EventKind::End(_)) {
+            last_code = None;
+        }
         match event.kind {
             EventKind::Separator { .. } => continue,
             EventKind::SoftBreak(_) if after_hard_break => {
@@ -824,14 +829,14 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
                 ..
             } => {
                 let body = text(&value);
-                let body = body
-                    .strip_suffix("\r\n")
-                    .or_else(|| body.strip_suffix(['\r', '\n']))
-                    .unwrap_or(&body);
-                format!(
-                    "CodeBlock:{body:?}:{:?}:{math}",
-                    language.as_ref().map(text)
-                )
+                let language = language.as_ref().map(text);
+                if !body.is_empty() && !body.ends_with('\n') {
+                    last_code = Some((
+                        output.len(),
+                        format!("CodeBlock:{:?}:{language:?}:{math}", format!("{body}\n")),
+                    ));
+                }
+                format!("CodeBlock:{body:?}:{language:?}:{math}")
             }
             EventKind::Math(v) => format!("Math:{:?}", text(&v)),
             EventKind::Html { value, .. } => format!("Html:{:?}", text(&value)),
@@ -867,6 +872,9 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
     }
     if !pending.is_empty() {
         output.push(format!("text:{pending:?}"));
+    }
+    if let Some((index, signature)) = last_code {
+        output[index] = signature;
     }
     output
 }
