@@ -4294,3 +4294,119 @@ fn joining_paragraphs_and_loosening_lists_in_tight_items_is_linear() {
         |_, _| {},
     );
 }
+
+fn code_block(value: &str, math: bool) -> EventKind<'static> {
+    EventKind::CodeBlock {
+        value: Text::from(value.to_owned()),
+        language: None,
+        fence: None,
+        math,
+        unclosed: false,
+    }
+}
+
+fn code_block_value<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> String {
+    let EventKind::CodeBlock { value, .. } = &document.node(id).unwrap().kind else {
+        unreachable!("the node is a code or math block");
+    };
+    value.resolve(document.source()).unwrap().to_owned()
+}
+
+#[test]
+fn code_and_math_block_values_get_the_line_endings_the_parser_stores() {
+    let mut parse = ParseOptions::default();
+    parse.constructs.math_flow = true;
+    let options = base_markdown::MarkdownOptions::default();
+    // The value, then what it normalizes to before another block, and as the last node of the document. A closed fence stores its last line with a line ending, and the parser stores every line ending as LF.
+    let values = [
+        ("a", "a\n", "a"),
+        ("\na", "\na\n", "\na"),
+        (" ", " \n", " "),
+        ("$$", "$$\n", "$$"),
+        ("```", "```\n", "```"),
+        ("\r", "\n", "\n"),
+        ("\r\n", "\n", "\n"),
+        ("a\r\n", "a\n", "a\n"),
+        ("\n\r", "\n\n", "\n\n"),
+        ("a\rb\r\nc", "a\nb\nc\n", "a\nb\nc"),
+        // An empty value is written as a fence with no lines, and one blank line as a fence with one.
+        ("", "", ""),
+        ("\n", "\n", "\n"),
+        ("a\n", "a\n", "a\n"),
+    ];
+    for (value, before, last) in values {
+        for math in [false, true] {
+            let mut document = Document::parse(String::new(), &parse).unwrap();
+            let root = document.root();
+            let code = document
+                .append_child(root, code_block(value, math))
+                .unwrap();
+            document
+                .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+                .unwrap();
+            let at_end = document.clone();
+            let paragraph = document.children(root).nth(1).unwrap();
+            document
+                .append_child(paragraph, EventKind::Text(Text::Literal("x")))
+                .unwrap();
+            assert_eq!(document.is_normalized(), value == before, "{value:?}");
+            reads_back_with(document.clone(), &parse, &options);
+            document.normalize();
+            assert_eq!(code_block_value(&document, code), before, "{value:?}");
+
+            // The paragraph is empty, so normalizing removes it, and the block is then the last node.
+            let mut document = at_end;
+            document.normalize();
+            assert_eq!(code_block_value(&document, code), last, "{value:?} last");
+            assert!(document.is_normalized());
+        }
+    }
+}
+
+#[test]
+fn code_blocks_that_end_a_parsed_document_keep_their_values() {
+    let mut parse = ParseOptions::default();
+    parse.constructs.math_flow = true;
+    // An unclosed fence or indented code at the end of the source stores its last line without a line ending.
+    for source in [
+        "```\na",
+        "    a",
+        "$$\na",
+        "- ```\n  a",
+        "> - ```\n>   a",
+        "[^a]: x\n\n        b",
+        "```\r\na\r\n```\r\n\r\n    b\r\n",
+        "```\n```",
+        "```\n\n```",
+        "```",
+    ] {
+        let document = Document::parse(source, &parse).unwrap();
+        let mut normalized = document.clone();
+        normalized.normalize();
+        assert!(normalized.is_normalized());
+        for id in document.descendants(document.root()) {
+            if let EventKind::CodeBlock { .. } = document.node(id).unwrap().kind {
+                assert_eq!(
+                    code_block_value(&normalized, id),
+                    code_block_value(&document, id),
+                    "{source:?}"
+                );
+            }
+        }
+    }
+    // Only the last node of the document keeps a value without a final line ending: a block before it, nested or detached, gets one.
+    let mut document = Document::parse("- ```\n  a", &ParseOptions::default()).unwrap();
+    let root = document.root();
+    let list = document.children(root).next().unwrap();
+    let code = document.descendants(list).last().unwrap();
+    let detached = document.append_child(root, code_block("b", false)).unwrap();
+    document.detach(detached).unwrap();
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert_eq!(code_block_value(&document, code), "a");
+    assert_eq!(code_block_value(&document, detached), "b\n");
+    document.append_child(root, code_block("c", false)).unwrap();
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert_eq!(code_block_value(&document, code), "a\n");
+}
