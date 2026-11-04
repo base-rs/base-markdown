@@ -86,6 +86,10 @@ pub struct State<'a> {
     /// Whether the flow child being written is code that needs a fence whatever the options, as
     /// from `fences_code`. Set before each flow child is written.
     fence_code: bool,
+    /// Where the definition without a title that the paragraph or setext heading being written
+    /// follows across a single line ending starts, if it does. A `"`, `'` or `(` starting the
+    /// block could read back as the definition's title. Set before each flow child is written.
+    untitled_definition: Option<usize>,
     /// The innermost item `list_item` is writing, and its task marker, if any.
     pub(super) task_item: Option<(NodeId, Option<NodeId>)>,
     /// How many nodes are open, which is the depth of the next node written: the serialized node
@@ -232,8 +236,15 @@ impl<'a> State<'a> {
             ) {
                 self.bullet_last_used = None;
             }
-            self.fence_code = fences_code(document, before);
+            // Only code reads the flag, and only code walks into the block before it. The joins are
+            // blank lines when the item records spread or is written spread.
+            self.fence_code = matches!(
+                document.node(child).unwrap().kind,
+                EventKind::CodeBlock { .. }
+            ) && fences_code(document, parent, before, records_spread || spread);
+            let start = self.output.len();
             self.write_node(document, child, &Info::new("\n", "\n"))?;
+            self.untitled_definition = None;
             if let Some(&next) = children.peek() {
                 let separator = if tight_definitions
                     && is_definition(document, child)
@@ -241,19 +252,30 @@ impl<'a> State<'a> {
                 {
                     "\n"
                 } else {
-                    match self.default_separator(
+                    // In an item written spread, each of these joins is a blank line.
+                    self.default_separator(
                         document,
                         before,
                         child,
                         next,
                         parent,
-                        records_spread,
-                    ) {
-                        separator if spread && !writes_blank_line(separator) => "\n\n",
-                        separator => separator,
-                    }
+                        records_spread || spread,
+                    )
                 };
                 self.output.push_str(separator);
+                let untitled_definition = separator == "\n"
+                    && matches!(
+                        document.node(child).unwrap().kind,
+                        EventKind::Definition { title: None, .. }
+                    )
+                    && match document.node(next).unwrap().kind {
+                        EventKind::Start(Tag::Paragraph { .. }) => true,
+                        EventKind::Start(Tag::Heading(_)) => {
+                            format_heading_as_setext(document, next, self)
+                        }
+                        _ => false,
+                    };
+                self.untitled_definition = untitled_definition.then_some(start);
             }
             before = Some(child);
         }
@@ -280,6 +302,11 @@ impl<'a> State<'a> {
             kind,
             EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_) | Tag::Document(_))
         );
+        let untitled_definition = if block {
+            self.untitled_definition.take()
+        } else {
+            None
+        };
         if block {
             self.definition_colon = None;
         }
@@ -289,6 +316,14 @@ impl<'a> State<'a> {
             if let Some(colon) = self.definition_colon.take() {
                 if crate::block_parser::starts_definition(&self.output[start..]) {
                     self.output.insert(colon, '\\');
+                }
+            }
+            // Escaped, the character reads back as text that starts the block (#173).
+            if let Some(definition) = untitled_definition {
+                if self.output[start..].starts_with(['"', '\'', '('])
+                    && crate::block_parser::definition_has_title(&self.output[definition..])
+                {
+                    self.output.insert(start, '\\');
                 }
             }
         }
@@ -754,7 +789,7 @@ impl<'a> State<'a> {
                     self.output.push_str("]:");
                     if let Some(first) = flow_children(document, id).next() {
                         // Indented code cannot start on the label's line, where it would read back as a paragraph, so it starts on the next line, indented like the lines after it.
-                        let next_line = self.indented_code(document, None, first);
+                        let next_line = self.indented_code(document, id, false, None, first);
                         self.output.push(if next_line { '\n' } else { ' ' });
                         let start = self.output.len();
                         self.container_flow(document, id)?;
@@ -1025,16 +1060,13 @@ impl<'a> State<'a> {
     ) -> &'static str {
         let left_kind = &document.node(left).unwrap().kind;
         let right_kind = &document.node(right).unwrap().kind;
-        if self.indented_code(document, Some(left), right)
+        if self.indented_code(document, parent, spread, Some(left), right)
             && (matches!(left_kind, EventKind::Start(Tag::List { .. }))
-                || self.indented_code(document, before, left))
+                || self.indented_code(document, parent, spread, before, left))
         {
             return "\n\n<!---->\n\n";
         }
-        if matches!(
-            document.node(parent).unwrap().kind,
-            EventKind::Start(Tag::Item { .. } | Tag::List { .. })
-        ) {
+        if in_list(document, parent) {
             // Without a blank line, a block that cannot interrupt a paragraph would lazily continue
             // the last paragraph of a nested list, footnote definition or block quote, through the
             // last blocks of any containers in it. That blank line makes the item read back spread,
@@ -1093,16 +1125,17 @@ impl<'a> State<'a> {
         "\n\n"
     }
 
-    /// Whether flow child `id`, after flow child `before`, if any, is code written indented.
+    /// Whether flow child `id` of `parent`, after flow child `before`, if any, is code written
+    /// indented. `spread` is whether `parent`'s blocks are joined by blank lines, as for
+    /// `fences_code`.
     fn indented_code<S: AsRef<str>>(
         &self,
         document: &Document<S>,
+        parent: NodeId,
+        spread: bool,
         before: Option<NodeId>,
         id: NodeId,
     ) -> bool {
-        if fences_code(document, before) {
-            return false;
-        }
         if let EventKind::CodeBlock {
             value,
             language,
@@ -1110,11 +1143,12 @@ impl<'a> State<'a> {
             ..
         } = &document.node(id).unwrap().kind
         {
-            format_code_as_indented(
-                trim_terminal_ending(value.resolve(document.source()).unwrap()),
-                language.is_none(),
-                self,
-            )
+            !fences_code(document, parent, before, spread)
+                && format_code_as_indented(
+                    trim_terminal_ending(value.resolve(document.source()).unwrap()),
+                    language.is_none(),
+                    self,
+                )
         } else {
             false
         }
@@ -1147,6 +1181,7 @@ impl<'a> State<'a> {
             label_end: None,
             definition_colon: None,
             fence_code: false,
+            untitled_definition: None,
             task_item: None,
             depth: 0,
         }
@@ -1632,16 +1667,40 @@ fn list_interrupts_paragraph<S: AsRef<str>>(document: &Document<S>, id: NodeId) 
         })
 }
 
-/// Whether code as a flow child after flow child `before`, if any, needs a fence whatever the
-/// options. Directly after a footnote definition, indented code would continue the definition,
-/// which takes in indented lines after a blank line.
-fn fences_code<S: AsRef<str>>(document: &Document<S>, before: Option<NodeId>) -> bool {
-    before.is_some_and(|before| {
-        matches!(
-            document.node(before).unwrap().kind,
-            EventKind::Start(Tag::FootnoteDefinition(_))
-        )
+/// Whether code as a flow child of `parent` after flow child `before`, if any, needs a fence
+/// whatever the options. Directly after a footnote definition, indented code would continue the
+/// definition, which takes in indented lines after a blank line.
+///
+/// In a list or item whose blocks are not joined by blank lines (`spread` is false: it records no
+/// blank line between them and, when it is being written, `spreads_item` does not write it
+/// spread), code after a paragraph or definition, or a container ending in one, is joined to it by
+/// a single line ending, where indented code would continue it as text, lazily through the
+/// container. A blank line or `<!---->` would make the list loose, so the code is fenced, which
+/// interrupts the paragraph and ends the containers (#173). In an item written spread, the blank
+/// line ends them and the code stays indented: that item reads back recording spread, so a fence
+/// would not be written again.
+fn fences_code<S: AsRef<str>>(
+    document: &Document<S>,
+    parent: NodeId,
+    before: Option<NodeId>,
+    spread: bool,
+) -> bool {
+    before.is_some_and(|before| match document.node(before).unwrap().kind {
+        EventKind::Start(Tag::FootnoteDefinition(_)) => true,
+        EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. } => {
+            !spread && in_list(document, parent)
+        }
+        _ => !spread && in_list(document, parent) && ends_in_paragraph(document, before),
     })
+}
+
+/// Whether `parent`, whose flow children are being joined, is a list or item, whose joins are a
+/// single line ending when it records no blank line between its blocks.
+fn in_list<S: AsRef<str>>(document: &Document<S>, parent: NodeId) -> bool {
+    matches!(
+        document.node(parent).unwrap().kind,
+        EventKind::Start(Tag::Item { .. } | Tag::List { .. })
+    )
 }
 
 /// Whether flow child `id` is a link reference definition.
