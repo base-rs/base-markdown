@@ -162,10 +162,14 @@ impl<'a> State<'a> {
     /// Two block quotes in a row need a blank line between them too, or the second would continue
     /// the first, so an item with them is written spread the same way (#154).
     ///
+    /// Any other blank line between two of its blocks, such as the one between two paragraphs or
+    /// after a nested list or footnote definition, makes it read back spread too, and an item that
+    /// records spread is written with a blank line between each of its blocks, so it is written
+    /// spread now. With `tight_definitions`, a join does not read the item's spread, so this does
+    /// not apply.
+    ///
     /// The only item of a loose list is also written spread when no blank line would be written
-    /// between its blocks. Nothing else can show the list is loose. A blank line after a footnote
-    /// definition does not count: the definition takes it in, so the item read back records no
-    /// spread for it, and the item's other blocks are written spread as before.
+    /// between its blocks. Nothing else can show the list is loose.
     ///
     /// `spread` is what `records_spread` gives for `item`.
     fn spreads_item<S: AsRef<str>>(
@@ -209,17 +213,12 @@ impl<'a> State<'a> {
                     ),
                     _ => false,
                 };
-                if apart
-                    && !writes_blank_line(self.between(document, before, left, right, item, spread))
-                {
+                let written =
+                    writes_blank_line(self.between(document, before, left, right, item, spread));
+                if apart && !written || written && !self.options.tight_definitions {
                     return true;
                 }
-                blank = blank
-                    || lone
-                        && !matches!(left_kind, EventKind::Start(Tag::FootnoteDefinition(_)))
-                        && writes_blank_line(
-                            self.between(document, before, left, right, item, spread),
-                        );
+                blank = blank || written;
                 joined = true;
             }
             before = left;
@@ -1010,9 +1009,10 @@ impl<'a> State<'a> {
         ) {
             // Without a blank line, a block that cannot interrupt a paragraph would lazily continue
             // the last paragraph of a nested list, footnote definition or block quote, through the
-            // last blocks of any containers in it. A list or footnote definition takes in a blank
-            // line after it, so the item records no spread for it. A line of `>` alone ends a block
-            // quote's paragraph without a blank line in the item, so the item stays tight:
+            // last blocks of any containers in it. That blank line makes the item read back spread,
+            // though a list or footnote definition takes it into its span (#157), so `spreads_item`
+            // writes the item's other blocks spread too. A line of `>` alone ends a block quote's
+            // paragraph without a blank line in the item, so the item stays tight:
             // `- > p\n  >\n  p` (#154). In a loose list, a blank line is written after any list.
             let continues = || {
                 matches!(

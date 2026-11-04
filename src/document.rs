@@ -589,25 +589,12 @@ impl<S: AsRef<str>> Document<S> {
         }
         if matches!(node.kind, EventKind::Start(Tag::Item { .. })) {
             let mut previous: Option<NodeId> = None;
-            for child in self
-                .children(id)
-                .filter(|id| !matches!(self.nodes[id.index()].kind, EventKind::Separator { .. }))
-            {
+            for child in self.flow_children(id) {
                 if let Some(previous) = previous {
                     let end = self.nodes[previous.index()].span.end;
                     let start = self.nodes[child.index()].span.start;
-                    if let Some(gap) = self.source().get(end..start) {
-                        let ended = self
-                            .source()
-                            .as_bytes()
-                            .get(end.wrapping_sub(1))
-                            .is_some_and(|byte| matches!(byte, b'\r' | b'\n'));
-                        if crate::util::line_ending::line_endings(gap)
-                            .nth(usize::from(!ended))
-                            .is_some()
-                        {
-                            return Some(NodeSyntax::ListItem { spread: true });
-                        }
+                    if self.blank_line_between(end, start) || self.ends_with_blank_line(previous) {
+                        return Some(NodeSyntax::ListItem { spread: true });
                     }
                 }
                 previous = Some(child);
@@ -615,6 +602,61 @@ impl<S: AsRef<str>> Document<S> {
             return Some(NodeSyntax::ListItem { spread: false });
         }
         crate::node_syntax::infer(self.source(), node.span.clone(), &node.kind)
+    }
+    // The children of `id` other than separators.
+    fn flow_children(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
+        self.children(id)
+            .filter(move |id| !matches!(self.nodes[id.index()].kind, EventKind::Separator { .. }))
+    }
+    // Whether the source from `end` to `start` holds a whole line, which between two blocks of a container is a blank line in it. A block's span ends after its last line ending, or for a table, a definition or an HTML block, just before it.
+    fn blank_line_between(&self, end: usize, start: usize) -> bool {
+        let Some(gap) = self.source().get(end..start) else {
+            return false;
+        };
+        let ended = self
+            .source()
+            .as_bytes()
+            .get(end.wrapping_sub(1))
+            .is_some_and(|byte| matches!(byte, b'\r' | b'\n'));
+        crate::util::line_ending::line_endings(gap)
+            .nth(usize::from(!ended))
+            .is_some()
+    }
+    // Whether the block `id` ends with a blank line, as the parser counts one before the next block of the item that holds it, which makes the item spread and its list loose. A list, item or footnote definition takes in the blank lines after its last block, or after its first line when it has none, so they are in its span and not between it and the next block; CommonMark looks through the last child of lists and items for them in the same way. Those lines hold only whitespace and the `>` of block quotes around them, so lines of a block detached from its end do not count. A block quote's own lines of `>` alone are not blank lines in the item, though they end its span, so a block quote ends with a blank line only through its last block, such as a list whose last item takes in a line of `>` alone. Each block is on this path of at most one block that is not the last of its item, as the path goes through last children only, so all items together take time linear in the size of the tree.
+    fn ends_with_blank_line(&self, mut id: NodeId) -> bool {
+        loop {
+            let node = &self.nodes[id.index()];
+            let quote = match node.kind {
+                EventKind::Start(Tag::BlockQuote) => true,
+                EventKind::Start(
+                    Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition(_),
+                ) => false,
+                _ => return false,
+            };
+            let last = self.flow_children(id).last();
+            if !quote {
+                let end = match last {
+                    Some(last) => Some(self.nodes[last.index()].span.end),
+                    None => self.source().get(node.span.clone()).and_then(|span| {
+                        crate::util::line_ending::line_endings(span)
+                            .next()
+                            .map(|ending| node.span.start + ending.end)
+                    }),
+                };
+                if end.is_some_and(|end| {
+                    self.blank_line_between(end, node.span.end)
+                        && self.source().as_bytes()[end..node.span.end]
+                            .iter()
+                            .all(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n' | b'>'))
+                }) {
+                    return true;
+                }
+            }
+            let Some(last) = last else {
+                return false;
+            };
+            id = last;
+        }
     }
     /// Override authored syntax. `None` disconnects the node from inferred source syntax.
     ///
