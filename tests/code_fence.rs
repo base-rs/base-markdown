@@ -10,7 +10,7 @@ fn code(source: &str, options: &ParseOptions) -> EventKind<'static> {
     document
         .nodes()
         .iter()
-        .find(|node| matches!(node.kind, EventKind::CodeBlock { math: false, .. }))
+        .find(|node| matches!(node.kind, EventKind::CodeBlock { .. }))
         .expect("code block")
         .kind
         .clone()
@@ -116,7 +116,6 @@ fn unfenced_nodes_have_no_code_fence() {
         value: "created without source".to_string().into(),
         language: None,
         fence: None,
-        math: false,
         unclosed: false,
     };
     assert_eq!(fence(&kind), None);
@@ -176,7 +175,6 @@ fn detached_and_edited_nodes_keep_fence_metadata() {
                 value: "edited\n".to_string().into(),
                 language: Some("python".to_string().into()),
                 fence,
-                math: false,
                 unclosed: false,
             },
         )

@@ -455,7 +455,7 @@ fn strikethrough_is_invariant_under_unrelated_options() {
         options.parse.strikethrough_single_tilde = single;
         let mut configured = Options::gfm();
         configured.parse.strikethrough_single_tilde = single;
-        configured.parse.constructs.math_flow = true;
+        configured.parse.constructs.frontmatter = true;
         for open in ["~", "~~", "~~~", "~~~~"] {
             for close in ["~", "~~", "~~~", "~~~~"] {
                 for content in [

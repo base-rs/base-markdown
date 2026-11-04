@@ -3,7 +3,7 @@
 // Copyright, 2024, by Titus Wormer.
 // Copyright, 2026, by Samuel Williams.
 
-//! Setext heading selection adapted from `mdast-util-to-markdown`.
+//! Which headings must be written as setext headings.
 use crate::{
     markdown::{state::State, LineWrapping},
     stream::{EventKind, Tag},
@@ -18,23 +18,21 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
     heading_as_setext(
         document,
         id,
-        state.options.setext,
         state.options.line_wrapping == LineWrapping::Unwrap,
         false,
     )
 }
 
-/// Whether heading `id` is written as a setext heading when `setext` is whether setext headings
-/// are preferred and `unwrap` whether soft breaks are written as spaces. With neither, this is
-/// whether it must be: only a setext heading can hold a line ending. `encode` is whether a line
-/// ending in text, including image text, is written in an ATX heading as `&#xA;`, which reads back
-/// as the same text, rather than making the heading setext. Only a heading that a setext heading
-/// cannot be written for without a blank line does that (#168), so that other headings are
-/// written as before.
+/// Whether heading `id` must be written as a setext heading, when `unwrap` is whether soft breaks
+/// are written as spaces. Headings are written ATX, but only a setext heading can hold a line
+/// ending, so a heading of rank 1 or 2 with text that holds one is written setext. `encode` is
+/// whether a line ending in text, including image text, is written in an ATX heading as `&#xA;`,
+/// which reads back as the same text, rather than making the heading setext. Only a heading that
+/// a setext heading cannot be written for without a blank line does that (#168), so that other
+/// headings are written as before.
 pub(crate) fn heading_as_setext<S: AsRef<str>>(
     document: &Document<S>,
     id: NodeId,
-    setext: bool,
     unwrap: bool,
     encode: bool,
 ) -> bool {
@@ -45,8 +43,8 @@ pub(crate) fn heading_as_setext<S: AsRef<str>>(
         return false;
     }
     let mut nonempty = false;
-    let mut setext = setext;
-    // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading. Line endings in inline code and math are always written as spaces, except in image text, which writes them as alt text, and a code block cannot be written in a heading.
+    let mut setext = false;
+    // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading. Line endings in inline code are always written as spaces, except in image text, which writes them as alt text, and a code block cannot be written in a heading.
     // Walk the descendants in document order, counting the images that enclose each.
     let mut images = 0;
     let mut current = document.node(id).unwrap().first_child();
@@ -57,7 +55,7 @@ pub(crate) fn heading_as_setext<S: AsRef<str>>(
             nonempty |= !value.is_empty();
             let unwrapped = unwrap && matches!(kind, EventKind::Text(_) | EventKind::SoftBreak(_));
             let literal = matches!(kind, EventKind::CodeBlock { .. })
-                || images == 0 && matches!(kind, EventKind::Code { .. } | EventKind::Math(_));
+                || images == 0 && matches!(kind, EventKind::Code { .. });
             setext = setext
                 || matches!(kind, EventKind::HardBreak)
                 || !unwrapped && matches!(kind, EventKind::SoftBreak(_))
@@ -104,7 +102,7 @@ mod tests {
         Document, LineWrapping, MarkdownOptions, ParseOptions,
     };
 
-    fn eligible(rank: u8, children: &[EventKind<'static>], setext: bool) -> bool {
+    fn setext(rank: u8, children: &[EventKind<'static>], line_wrapping: LineWrapping) -> bool {
         let mut document = Document::parse("", &ParseOptions::default()).unwrap();
         let heading = document
             .append_child(document.root(), EventKind::Start(Tag::Heading(rank)))
@@ -113,41 +111,39 @@ mod tests {
             document.append_child(heading, child.clone()).unwrap();
         }
         let options = MarkdownOptions {
-            setext,
+            line_wrapping,
             ..MarkdownOptions::default()
         };
         format_heading_as_setext(&document, heading, &State::new(&options))
     }
 
+    fn eligible(rank: u8, children: &[EventKind<'static>]) -> bool {
+        setext(rank, children, LineWrapping::Preserve)
+    }
+
     #[test]
-    fn setext_requires_nonempty_semantic_text_in_a_shallow_heading() {
+    fn setext_requires_a_line_ending_in_nonempty_text_of_a_shallow_heading() {
         for children in [
             alloc::vec![],
             alloc::vec![EventKind::Text(Text::Literal(""))],
             alloc::vec![EventKind::Start(Tag::Emphasis)],
             alloc::vec![EventKind::FootnoteReference(Text::Literal("label"))],
         ] {
-            for setext in [false, true] {
-                assert!(!eligible(1, &children, setext));
-            }
+            assert!(!eligible(1, &children));
         }
         for rank in 1..=6 {
-            for text in ["plain", " ", "line\nbreak"] {
-                assert_eq!(
-                    eligible(rank, &[EventKind::Text(Text::Literal(text))], true),
-                    rank <= 2,
-                );
+            for text in ["plain", " "] {
+                assert!(!eligible(rank, &[EventKind::Text(Text::Literal(text))]));
             }
+            assert_eq!(
+                eligible(rank, &[EventKind::Text(Text::Literal("line\nbreak"))]),
+                rank <= 2,
+            );
         }
-        assert!(!eligible(
-            1,
-            &[EventKind::Text(Text::Literal("plain"))],
-            false
-        ));
     }
 
     #[test]
-    fn inline_breaks_require_setext_but_code_and_math_breaks_do_not() {
+    fn inline_breaks_require_setext_but_code_breaks_do_not() {
         for kind in [
             EventKind::Text(Text::Literal("first\nsecond")),
             EventKind::Html {
@@ -157,53 +153,35 @@ mod tests {
             EventKind::SoftBreak(Text::Literal("\n")),
             EventKind::HardBreak,
         ] {
-            assert!(eligible(2, &[kind], false));
+            assert!(eligible(2, &[kind]));
         }
-        // Code and math write each line ending as a space.
-        for kind in [
-            EventKind::Code {
-                value: Text::Literal("first\nsecond"),
+        // Code writes each line ending as a space.
+        assert!(!eligible(
+            2,
+            &[EventKind::Code {
+                value: Text::Literal("first\r\nsecond"),
                 language: None,
-            },
-            EventKind::Math(Text::Literal("first\r\nsecond")),
-        ] {
-            assert!(!eligible(2, core::slice::from_ref(&kind), false));
-            assert!(eligible(2, &[kind], true));
-        }
+            }]
+        ));
         let block = EventKind::CodeBlock {
             value: Text::Literal("block\n"),
             language: None,
             fence: None,
-            math: false,
             unclosed: false,
         };
-        assert!(!eligible(2, core::slice::from_ref(&block), false));
-        assert!(eligible(2, &[block], true));
+        assert!(!eligible(2, &[block]));
 
         // Synthetic soft breaks still request setext, but their text may be empty.
         let empty_break = EventKind::SoftBreak(Text::Literal(""));
-        assert!(!eligible(2, core::slice::from_ref(&empty_break), false));
+        assert!(!eligible(2, core::slice::from_ref(&empty_break)));
         let text = EventKind::Text(Text::Literal("text"));
-        assert!(eligible(2, &[empty_break.clone(), text.clone()], false));
-        assert!(eligible(2, &[text, empty_break], false));
+        assert!(eligible(2, &[empty_break.clone(), text.clone()]));
+        assert!(eligible(2, &[text, empty_break]));
     }
 
     #[test]
     fn unwrapped_soft_breaks_do_not_require_setext() {
-        let unwrapped = |children: &[EventKind<'static>]| {
-            let mut document = Document::parse("", &ParseOptions::default()).unwrap();
-            let heading = document
-                .append_child(document.root(), EventKind::Start(Tag::Heading(2)))
-                .unwrap();
-            for child in children {
-                document.append_child(heading, child.clone()).unwrap();
-            }
-            let options = MarkdownOptions {
-                line_wrapping: LineWrapping::Unwrap,
-                ..MarkdownOptions::default()
-            };
-            format_heading_as_setext(&document, heading, &State::new(&options))
-        };
+        let unwrapped = |children: &[EventKind<'static>]| setext(2, children, LineWrapping::Unwrap);
         let text = EventKind::Text(Text::Literal("text"));
         assert!(!unwrapped(&[
             text.clone(),

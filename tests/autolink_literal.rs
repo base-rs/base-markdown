@@ -2906,7 +2906,7 @@ fn compact_literal_links_preserve_destinations_and_boundaries() {
     };
     let options = Options::gfm();
     let mut configured = Options::gfm();
-    configured.parse.constructs.math_flow = true;
+    configured.parse.constructs.frontmatter = true;
     for address in [
         "https://example.com",
         "HTTP://localhost",

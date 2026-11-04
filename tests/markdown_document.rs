@@ -318,41 +318,6 @@ fn structured_image_alt_and_link_text_use_their_semantic_content() {
 }
 
 #[test]
-fn synthetic_math_blocks_take_metadata_from_syntax_and_have_no_language() {
-    use base_markdown::{stream::StreamError, NodeSyntax};
-    let mut document = empty();
-    let block = |language: Option<&'static str>, math| EventKind::CodeBlock {
-        value: Text::Literal("x\n"),
-        language: language.map(Text::Literal),
-        fence: None,
-        math,
-        unclosed: false,
-    };
-    // Math has no language to write: it would read back as metadata.
-    assert!(matches!(
-        document.append_child(document.root(), block(Some("latex"), true)),
-        Err(StreamError::InvalidValue)
-    ));
-    let id = document
-        .append_child(document.root(), block(None, true))
-        .unwrap();
-    let info = |info| {
-        Some(NodeSyntax::Code {
-            info: Text::Literal(info),
-        })
-    };
-    document.set_syntax(id, info("latex")).unwrap();
-    assert_eq!(to_markdown(&document).unwrap(), "$$latex\nx\n$$\n");
-    // Code without a language has no info string to write.
-    document.set_kind(id, block(None, false)).unwrap();
-    assert!(matches!(
-        document.set_syntax(id, info("ignored metadata")),
-        Err(StreamError::InvalidValue)
-    ));
-    assert_eq!(to_markdown(&document).unwrap(), "```\nx\n```\n");
-}
-
-#[test]
 fn multiline_inline_literals_write_line_endings_as_spaces_in_atx_headings() {
     for (kind, expected) in [
         (
@@ -363,8 +328,11 @@ fn multiline_inline_literals_write_line_endings_as_spaces_in_atx_headings() {
             "# `one two`\n",
         ),
         (
-            EventKind::Math(Text::Literal("one\r\ntwo")),
-            "# $one two$\n",
+            EventKind::Code {
+                value: Text::Literal("one\r\ntwo"),
+                language: None,
+            },
+            "# `one two`\n",
         ),
     ] {
         let mut document = empty();
@@ -383,7 +351,6 @@ fn block_leaves_inside_a_heading_are_not_representable_in_markdown() {
             value: Text::Literal("code\n"),
             language: None,
             fence: None,
-            math: false,
             unclosed: false,
         },
         EventKind::Opaque {
@@ -474,7 +441,7 @@ fn table_separator_metadata_does_not_add_empty_rows_or_cells() {
 }
 
 #[test]
-fn empty_item_paragraphs_and_math_without_info_serialize() {
+fn empty_item_paragraphs_and_code_without_info_serialize() {
     let mut document = empty();
     let item = document
         .append_child(
@@ -494,12 +461,11 @@ fn empty_item_paragraphs_and_math_without_info_serialize() {
                 value: Text::Literal("x\n"),
                 language: None,
                 fence: None,
-                math: true,
                 unclosed: false,
             },
         )
         .unwrap();
-    assert_eq!(to_markdown(&document).unwrap(), "$$\nx\n$$\n");
+    assert_eq!(to_markdown(&document).unwrap(), "```\nx\n```\n");
 }
 
 #[test]

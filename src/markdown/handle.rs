@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-//! Markdown construct formatting adapted from `mdast-util-to-markdown` and `mdast-util-math`.
+//! Markdown construct formatting adapted from `mdast-util-to-markdown`.
 use super::{
     configure::IndentOptions,
     construct_name::ConstructName,
@@ -265,26 +265,8 @@ impl State<'_> {
             self.output.push_str(language);
             self.output.push(':');
         }
-        self.inline_literal(content, '`', 1);
-        Ok(())
-    }
-
-    pub(super) fn inline_math(&mut self, content: &str) -> Result<(), Message> {
-        self.inline_literal(
-            content,
-            '$',
-            if self.options.single_dollar_text_math {
-                1
-            } else {
-                2
-            },
-        );
-        Ok(())
-    }
-
-    fn inline_literal(&mut self, content: &str, marker: char, minimum: usize) {
-        let size = super::util::scan::delimiter_size(content, marker as u8, minimum);
-        self.output.extend(core::iter::repeat(marker).take(size));
+        let size = super::util::scan::delimiter_size(content, b'`');
+        self.output.extend(core::iter::repeat('`').take(size));
         // The parser reads a line ending here as a space, and strips one space from each side when the content starts and ends with one and is not only spaces, so a tab is not a space here. Other content with whitespace at both edges is padded too, which reads back the same.
         let space = |character: char| matches!(character, ' ' | '\r' | '\n');
         let pad = !content.chars().all(space)
@@ -292,13 +274,13 @@ impl State<'_> {
                 || !content.chars().all(char::is_whitespace)
                     && content.starts_with(char::is_whitespace)
                     && content.ends_with(char::is_whitespace)
-                || content.starts_with(marker)
-                || content.ends_with(marker));
+                || content.starts_with('`')
+                || content.ends_with('`'));
         if pad {
             self.output.push(' ');
         }
-        // The parser reads each line ending in code or math as a space, so it is written as one, which is stable and starts no line (#135, #136).
-        // GFM splits table cells before parsing code and math, so their pipes need escapes too.
+        // The parser reads each line ending in code as a space, so it is written as one, which is stable and starts no line (#135, #136).
+        // GFM splits table cells before parsing code, so its pipes need escapes too.
         if self.stack.contains(&ConstructName::TableCell) {
             for (index, part) in content.split('|').enumerate() {
                 if index > 0 {
@@ -312,26 +294,7 @@ impl State<'_> {
         if pad {
             self.output.push(' ');
         }
-        self.output.extend(core::iter::repeat(marker).take(size));
-    }
-
-    /// `value` is the stored value, as for [`Self::code`].
-    pub(super) fn math(&mut self, value: &str, metadata: Option<&str>) -> Result<(), Message> {
-        let content = trim_terminal_ending(value);
-        let size = (longest_run(content, b'$') + 1).max(2);
-        self.output.extend(core::iter::repeat('$').take(size));
-        if let Some(metadata) = metadata {
-            self.enter(ConstructName::MathFlowMeta);
-            // The metadata is trimmed when parsed, so it is its own context, where spaces and tabs at its edges are encoded.
-            self.write_safe(metadata, &Info::new("", ""), Some('$'));
-            self.exit();
-        }
-        self.output.push('\n');
-        if !value.is_empty() {
-            self.output.push_str(content);
-            self.output.push('\n');
-        }
-        self.output.extend(core::iter::repeat('$').take(size));
+        self.output.extend(core::iter::repeat('`').take(size));
         Ok(())
     }
 

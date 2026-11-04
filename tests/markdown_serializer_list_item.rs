@@ -622,7 +622,6 @@ fn serializing_list_items_is_linear() {
             "combination",
             Options {
                 fences: false,
-                setext: true,
                 list_item_indent: IndentOptions::Mixed,
                 tight_definitions: true,
                 ..Options::default()
@@ -836,12 +835,9 @@ fn add_block(
 fn escapes_a_title_after_an_untitled_definition_in_a_tight_item() {
     // Joined to a definition without a title by one line ending, a paragraph or setext heading
     // starting with `"`, `'` or `(` would read back as its title (#173). A blank line would make
-    // the list loose, so the character is escaped. Text that would not read as a title is not.
+    // the list loose, so the character is escaped. Text that would not read as a title is not. A
+    // heading with a line ending in its text is written setext there.
     let paragraph = Tag::Paragraph { tight: false };
-    let setext = Options {
-        setext: true,
-        ..Options::default()
-    };
     let tight_definitions = Options {
         tight_definitions: true,
         ..Options::default()
@@ -865,9 +861,9 @@ fn escapes_a_title_after_an_untitled_definition_in_a_tight_item() {
     }
     assert_tight_join(
         Before::Definition("/u"),
-        add_block(Tag::Heading(1), "\"x\""),
-        &setext,
-        "- [c]: /u\n  \\\"x\"\n  ====\n- q\n",
+        add_block(Tag::Heading(1), "\"x\ny\""),
+        &Options::default(),
+        "- [c]: /u\n  \\\"x\n  y\"\n  ==\n- q\n",
     );
 }
 
@@ -887,7 +883,6 @@ fn fences_code_joined_by_a_line_ending_to_text_in_a_tight_item() {
                     value: Value::Literal("x"),
                     language: None,
                     fence: None,
-                    math: false,
                     unclosed: false,
                 },
             )
@@ -924,7 +919,6 @@ fn indents_code_after_text_in_an_item_written_spread() {
                         value: Value::Literal(value),
                         language: None,
                         fence: None,
-                        math: false,
                         unclosed: false,
                     },
                 )

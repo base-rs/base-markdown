@@ -297,24 +297,19 @@ pub enum EventKind<'a> {
         value: Text<'a>,
         language: Option<Text<'a>>,
     },
-    /// A code/math block, including source fence provenance where available.
+    /// A code block, including source fence provenance where available.
     ///
     /// The language of code is the first word of its info string, so it cannot be empty: the
     /// parser reads a fence with no info string as code without a language. Any other language can
     /// be written, since the serializer encodes whitespace, line endings and backticks in it as
-    /// character references. Math has no language: the text after a math fence is its metadata,
-    /// held as [`NodeSyntax::Code`][crate::NodeSyntax::Code]. An empty code language, or a math
-    /// block with a language, is rejected with [`StreamError::InvalidValue`] wherever an event
-    /// enters a document or renderer.
+    /// character references. An empty language is rejected with [`StreamError::InvalidValue`]
+    /// wherever an event enters a document or renderer.
     CodeBlock {
         value: Text<'a>,
         language: Option<Text<'a>>,
         fence: Option<CodeFence>,
-        math: bool,
         unclosed: bool,
     },
-    /// Inline mathematics.
-    Math(Text<'a>),
     /// Raw HTML.
     Html { value: Text<'a>, block: bool },
     /// A task-list marker.
@@ -376,7 +371,6 @@ impl<'s> EventKind<'s> {
             Self::CodeBlock {
                 value,
                 language: Some(language),
-                math,
                 ..
             } => {
                 text(value)?;
@@ -386,7 +380,7 @@ impl<'s> EventKind<'s> {
                     Text::Literal(value) => value.is_empty(),
                     Text::Value(value) => value.is_empty(),
                 };
-                if *math || empty {
+                if empty {
                     Err(StreamError::InvalidValue)
                 } else {
                     Ok(())
@@ -395,7 +389,6 @@ impl<'s> EventKind<'s> {
             Self::Start(Tag::FootnoteDefinition(value))
             | Self::Text(value)
             | Self::SoftBreak(value)
-            | Self::Math(value)
             | Self::Separator { value, .. }
             | Self::Html { value, .. }
             | Self::Opaque { value, .. }
@@ -447,16 +440,13 @@ impl<'s> EventKind<'s> {
                 value,
                 language,
                 fence,
-                math,
                 unclosed,
             } => EventKind::CodeBlock {
                 value: map(value),
                 language: language.map(map),
                 fence,
-                math,
                 unclosed,
             },
-            Self::Math(value) => EventKind::Math(map(value)),
             Self::Html { value, block } => EventKind::Html {
                 value: map(value),
                 block,

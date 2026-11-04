@@ -443,7 +443,6 @@ fn values<'a>(kind: &'a EventKind<'a>) -> Vec<&'a Value<'a>> {
     match kind {
         EventKind::Text(value)
         | EventKind::SoftBreak(value)
-        | EventKind::Math(value)
         | EventKind::Html { value, .. }
         | EventKind::Opaque { value, .. }
         | EventKind::FootnoteReference(value)
@@ -508,10 +507,6 @@ const RICH: &[&str] = &[
     "<div>",
     "html",
     "</div>",
-    "",
-    "$$",
-    "math",
-    "$$",
     "",
     "| a |",
     "| - |",

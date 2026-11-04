@@ -323,10 +323,7 @@ fn block_quote() {
                 })],
                 position: None,
             }),
-            &Options {
-                setext: true,
-                ..Default::default()
-            }
+            &Options::default()
         )
         .unwrap(),
         "> a\n> b\n> =\n",

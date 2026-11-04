@@ -179,8 +179,6 @@ fn renders_constructed_nodes_and_subtrees() {
 fn covers_parser_html_options_and_generated_heading_ids() {
     let mut parse_options = ParseOptions::gfm();
     parse_options.inline_code_info = true;
-    parse_options.constructs.math_text = true;
-    parse_options.constructs.math_flow = true;
     let options = Options {
         parse: parse_options,
         compile: CompileOptions {
@@ -190,16 +188,16 @@ fn covers_parser_html_options_and_generated_heading_ids() {
         },
     };
     let html = to_html_with_options(
-        "# Same\n\n# Same\n\nUse ruby:`puts 1` and $x$.\n\n- [x] done\n\n$$\nx^2\n$$",
+        "# Same\n\n# Same\n\nUse ruby:`puts 1` and $x$.\n\n- [x] done\n\n```math\nx^2\n```",
         &options,
     );
 
     assert!(html.contains("<h1 id=\"same\">Same</h1>"));
     assert!(html.contains("<h1 id=\"same-2\">Same</h1>"));
     assert!(html.contains("<code class=\"language-ruby\">puts 1</code>"));
-    assert!(html.contains("<code class=\"language-math math-inline\">x</code>"));
+    assert!(html.contains("and $x$."));
     assert!(html.contains("disabled=\"\""), "{:?}", html);
-    assert!(html.contains("<code class=\"language-math math-display\">x^2"));
+    assert!(html.contains("<pre><code class=\"language-math\">x^2"));
 }
 
 #[test]

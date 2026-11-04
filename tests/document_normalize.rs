@@ -5,8 +5,7 @@ mod support;
 
 use base_markdown::{
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
-    to_markdown, AstBuilder, CompileOptions, Constructs, Document, NodeId, NodeSyntax,
-    ParseOptions,
+    to_markdown, AstBuilder, CompileOptions, Document, NodeId, NodeSyntax, ParseOptions,
 };
 use std::borrow::Cow;
 use std::time::Instant;
@@ -122,7 +121,6 @@ fn describe<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> String {
                 language.resolve(document.source()).unwrap()
             ))
         ),
-        EventKind::Math(value) => format!("math {:?}", value.resolve(document.source()).unwrap()),
         EventKind::TaskMarker(_) => "task".into(),
         EventKind::Start(Tag::Link { destination, .. }) => format!(
             "link {:?}({})",
@@ -684,7 +682,7 @@ fn random_phrasing(random: &mut Random, depth: u32) -> Vec<Result<Event<'static>
                 ["a", " "][random.below(2) as usize],
                 [None, Some("x")][random.below(2) as usize],
             )),
-            6 => events.push(math("m")),
+            6 => events.push(code("m", None)),
             7 => events.extend(emphasis(random_phrasing(random, depth - 1))),
             8 => events.extend(strong(random_phrasing(random, depth - 1))),
             9 => events.extend(link(random_phrasing(random, depth - 1))),
@@ -803,13 +801,10 @@ fn joining_text_is_linear() {
 }
 
 #[test]
-fn joining_code_and_math_is_linear() {
-    // Code and math join like text, but each takes its own arm of the join.
+fn joining_code_is_linear() {
+    // Code joins like text, but takes its own arm of the join.
     assert_normalize_linear("code", 1 << 10, |size| {
         build((0..size).map(|_| code("a", None)).collect())
-    });
-    assert_normalize_linear("math", 1 << 10, |size| {
-        build((0..size).map(|_| math("a")).collect())
     });
 }
 
@@ -1106,10 +1101,6 @@ fn code(
     )
 }
 
-fn math(value: &'static str) -> Result<Event<'static>, StreamError> {
-    event(EventKind::Math(Text::Literal(value)), 0..0)
-}
-
 fn soft() -> Result<Event<'static>, StreamError> {
     event(EventKind::SoftBreak(Text::Literal("\n")), 0..0)
 }
@@ -1184,19 +1175,17 @@ fn settled(mut document: Document<String>) -> String {
 }
 
 #[test]
-fn joins_adjacent_code_and_math() {
+fn joins_adjacent_code() {
     assert_eq!(
         settled(build(vec![
             code("a", None),
             code("b", None),
             code("c", Some("rust")),
-            math("x"),
-            math("y"),
             text("z"),
             code("d", Some("rust")),
             code("e", None),
         ])),
-        r#"paragraph(code "ab" code "c" "rust" math "xy" "z" code "de" "rust")"#
+        r#"paragraph(code "ab" code "c" "rust" "z" code "de" "rust")"#
     );
     // Code joins across what is removed between it, and once a merge brings it together.
     assert_eq!(
@@ -1768,7 +1757,6 @@ fn moved_whole_nodes_keep_their_ids() {
 fn is_normalized_finds_each_edge_shape() {
     let shapes = [
         build(vec![code("a", None), code("b", None)]),
-        build(vec![math("a"), math("b")]),
         build(emphasis(vec![text(" a")])),
         build(concat([vec![text("a")], emphasis(vec![text("b\u{a0}")])])),
         build(concat([vec![text("a")], emphasis(vec![soft(), text("b")])])),
@@ -1794,7 +1782,6 @@ fn is_normalized_finds_each_edge_shape() {
     }
     let normal = [
         build(vec![code("a", None), code("b", Some("rust"))]),
-        build(vec![code("a", None), math("b")]),
         build(concat([
             vec![text("a ")],
             emphasis(vec![hard(), text("b")]),
@@ -1958,8 +1945,8 @@ fn removing_break_chains_is_linear() {
 }
 
 #[test]
-fn serializing_code_and_math_with_many_line_endings_is_linear() {
-    // Each line ending in code or math is written as a space, and normalizing replaces it with one. Writing them once flattened only those before a block marker, rescanning the content from its start for each (#115). Runs of line endings, CRLF, CR and ordered-list digits each took a different path, and math takes the same path as code; a line ending before `-` after a blank line was never quadratic. The trees are serialized without normalizing too, which must stay linear.
+fn serializing_code_with_many_line_endings_is_linear() {
+    // Each line ending in code is written as a space, and normalizing replaces it with one. Writing them once flattened only those before a block marker, rescanning the content from its start for each (#115). Runs of line endings, CRLF, CR and ordered-list digits each took a different path; a line ending before `-` after a blank line was never quadratic. The trees are serialized without normalizing too, which must stay linear.
     let content = |unit: &str, size: usize| Text::from(unit.repeat(size) + "#");
     let check = |label: &str, tree: &dyn Fn(usize) -> Document<String>| {
         assert_normalize_linear(label, 1 << 10, tree);
@@ -1981,34 +1968,19 @@ fn serializing_code_and_math_with_many_line_endings_is_linear() {
             )])
         });
     }
-    check("math", &|size| {
-        build(vec![event(EventKind::Math(content("a\n#", size)), 0..0)])
-    });
-}
-
-fn math_text() -> ParseOptions {
-    ParseOptions {
-        constructs: Constructs {
-            math_text: true,
-            ..Constructs::default()
-        },
-        ..ParseOptions::default()
-    }
 }
 
 #[test]
-fn line_endings_in_code_and_math_become_spaces() {
-    // The parser reads each line ending in inline code or math as one space, CRLF too, so one in the value cannot be written.
+fn line_endings_in_code_become_spaces() {
+    // The parser reads each line ending in inline code as one space, CRLF too, so one in the value cannot be written.
     assert_eq!(
         settled(build(vec![
             text("x "),
             code("a\r\nb\rc\nd", Some("rust")),
             text(" "),
-            math("\n\r\n\r"),
-            text(" "),
             code("\na\n", None),
         ])),
-        r#"paragraph("x " code "a b c d" "rust" " " math "   " " " code " a ")"#
+        r#"paragraph("x " code "a b c d" "rust" " " code " a ")"#
     );
     // Code joined from parts is spaced once it is joined.
     assert_eq!(
@@ -2021,7 +1993,6 @@ fn line_endings_in_code_and_math_become_spaces() {
             value: Text::Literal("a\nb\n"),
             language: None,
             fence: None,
-            math: false,
             unclosed: false,
         },
         0..0,
@@ -2032,7 +2003,7 @@ fn line_endings_in_code_and_math_become_spaces() {
 }
 
 #[test]
-fn code_and_math_with_line_endings_read_back_and_are_stable() {
+fn code_with_line_endings_reads_back_and_is_stable() {
     let values = [
         // #136: a line ending read back as a space.
         "a\nb",
@@ -2064,16 +2035,11 @@ fn code_and_math_with_line_endings_read_back_and_are_stable() {
     ];
     let mut trees = Vec::new();
     for value in values {
-        for (prefix, literal) in [
-            ("x ", code(value, None)),
-            ("x | y ", code(value, None)),
-            ("x ", math(value)),
-            ("x | y ", math(value)),
-        ] {
+        for (prefix, literal) in [("x ", code(value, None)), ("x | y ", code(value, None))] {
             trees.push(build_blocks(paragraph(vec![text(prefix), literal])));
         }
         trees.push(build_blocks(heading(vec![code(value, None)])));
-        trees.push(build_blocks(heading(vec![text("x "), math(value)])));
+        trees.push(build_blocks(heading(vec![text("x "), code(value, None)])));
         trees.push(build_blocks(table(vec![text("x "), code(value, None)])));
     }
     for tree in trees {
@@ -2084,7 +2050,7 @@ fn code_and_math_with_line_endings_read_back_and_are_stable() {
         let markdown = to_markdown(&normal).unwrap();
         // The serializer writes each line ending as the space normalizing replaces it with.
         assert_eq!(unnormalized, markdown);
-        let mut reparsed = Document::parse(markdown.as_str(), &math_text()).unwrap();
+        let mut reparsed = Document::parse(markdown.as_str(), &ParseOptions::default()).unwrap();
         assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
         reparsed.normalize();
         let reparsed_block = reparsed.children(reparsed.root()).next().unwrap();
@@ -2113,10 +2079,10 @@ fn image(
 }
 
 #[test]
-fn code_and_math_in_image_text_keep_line_endings() {
-    // Image text writes code and math as alt text, where a line ending can be written and reads back, so normalizing leaves it, and the heading is still chosen as setext for it.
+fn code_in_image_text_keeps_line_endings() {
+    // Image text writes code as alt text, where a line ending can be written and reads back, so normalizing leaves it, and the heading is still chosen as setext for it.
     let literals: [fn() -> Result<Event<'static>, StreamError>; 2] =
-        [|| code("a\nb", None), || math("a\r\nb")];
+        [|| code("a\nb", None), || code("a\r\nb", None)];
     for (kind, literal) in literals.iter().enumerate() {
         let shapes = vec![
             build_blocks(paragraph(image(vec![literal()]))),
@@ -2145,7 +2111,7 @@ fn code_and_math_in_image_text_keep_line_endings() {
             if kind == 0 {
                 assert_eq!(markdown, expected[index]);
             }
-            // Only the code or math outside the image changes.
+            // Only the code outside the image changes.
             assert_eq!(tree.is_normalized(), index != last);
             tree.normalize();
             assert!(tree.is_normalized());
@@ -2153,14 +2119,10 @@ fn code_and_math_in_image_text_keep_line_endings() {
             if index == last {
                 let heading = tree.children(tree.root()).next().unwrap();
                 let described = describe(&tree, heading);
-                assert!(
-                    described.ends_with(r#"" " code "a b")"#)
-                        || described.ends_with(r#"" " math "a b")"#),
-                    "{}",
-                    described
-                );
+                assert!(described.ends_with(r#"" " code "a b")"#), "{}", described);
             }
-            let mut reparsed = Document::parse(markdown.as_str(), &math_text()).unwrap();
+            let mut reparsed =
+                Document::parse(markdown.as_str(), &ParseOptions::default()).unwrap();
             assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
             reparsed.normalize();
             assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
@@ -2169,16 +2131,10 @@ fn code_and_math_in_image_text_keep_line_endings() {
 }
 
 #[test]
-fn code_and_math_of_spaces_around_a_tab_are_stable() {
+fn code_of_spaces_around_a_tab_is_stable() {
     // The parser strips one space from each side of `  \t  `, as it is not only spaces, so the serializer pads it. Whitespace with a tab at an edge is not stripped, so it is written as it is.
-    for source in [
-        "x `  \t  `\n",
-        "x $  \t  $\n",
-        "x ` \t`\n",
-        "x `\t`\n",
-        "x ` \ta\t `\n",
-    ] {
-        let document = Document::parse(source, &math_text()).unwrap();
+    for source in ["x `  \t  `\n", "x ` \t`\n", "x `\t`\n", "x ` \ta\t `\n"] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
         assert_eq!(to_markdown(&document).unwrap(), source);
     }
 }
@@ -2297,7 +2253,6 @@ fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) 
                         value: Text::from("x\n".to_owned()),
                         language: None,
                         fence: None,
-                        math: false,
                         unclosed: false,
                     },
                 )
@@ -4157,17 +4112,8 @@ fn a_paragraph_after_a_block_quote_in_an_item_is_written_after_a_line_of_quote_m
     }
     let document = Document::parse("- > - a\n  >\n  p\n\n- q\n", &ParseOptions::default()).unwrap();
     assert_eq!(reads_back(document), "- > - a\n\n  p\n\n- q\n");
-    let setext = base_markdown::MarkdownOptions {
-        setext: true,
-        ..base_markdown::MarkdownOptions::default()
-    };
+    // A heading of one line is written ATX, which is not continued, so nothing is written between them.
     let source = "- > a\n  >\n  b\n  -\n";
-    let document = Document::parse(source, &ParseOptions::default()).unwrap();
-    assert_eq!(
-        reads_back_with(document, &ParseOptions::default(), &setext),
-        source
-    );
-    // Without setext headings, a heading is not continued, and nothing is written between them.
     let document = Document::parse(source, &ParseOptions::default()).unwrap();
     assert_eq!(reads_back(document), "- > a\n  ## b\n");
     // The line is indented as the item's other lines are.
@@ -4279,13 +4225,6 @@ fn tight_before_q(blocks: Vec<Block>) -> Block {
     Block::List(None, true, vec![(false, blocks), (false, vec![q])])
 }
 
-fn setext_options() -> base_markdown::MarkdownOptions {
-    base_markdown::MarkdownOptions {
-        setext: true,
-        ..base_markdown::MarkdownOptions::default()
-    }
-}
-
 #[test]
 fn tables_definitions_and_setext_headings_that_need_a_blank_line_in_a_tight_item_make_the_list_loose(
 ) {
@@ -4325,18 +4264,13 @@ fn tables_definitions_and_setext_headings_that_need_a_blank_line_in_a_tight_item
                 before,
                 after
             );
-            for options in [
-                &base_markdown::MarkdownOptions::default(),
-                &setext_options(),
-            ] {
-                let mut document = build_list(&block());
-                document.normalize();
-                assert!(!tight_of_first_list(&document));
-                assert_eq!(
-                    reads_back_with(document, &gfm, options),
-                    format!("- ***\n\n  {}\n\n  {}\n\n- q\n", before, after)
-                );
-            }
+            let mut document = build_list(&block());
+            document.normalize();
+            assert!(!tight_of_first_list(&document));
+            assert_eq!(
+                reads_back_with(document, &gfm, &base_markdown::MarkdownOptions::default()),
+                format!("- ***\n\n  {}\n\n  {}\n\n- q\n", before, after)
+            );
         }
     }
     // These can be written on the next line, so the list stays tight: a block after a list that ends in a heading, which no line continues (#157), a table after a paragraph, which it interrupts, and blocks after a block quote that ends in a paragraph, after a line of `>`, or after a definition.
@@ -4392,8 +4326,8 @@ fn tight_list_of(block: Block) -> Block {
 #[test]
 fn a_heading_is_written_atx_where_a_setext_heading_would_need_a_blank_line_in_a_tight_item() {
     use Block::{Heading, Paragraph, Quote, Separator};
-    let x = || EventKind::Text(Text::from("x".to_owned()));
-    // With `setext`, a setext heading after a block it would continue needs a blank line, which made the list read back loose and the output change on the next write (#184). An ATX heading interrupts a paragraph and ends the containers around it, so the heading is written ATX there and the list stays tight. Where no blank line is needed, after a line of `>` here, it stays setext.
+    let x = || EventKind::Text(Text::from("x\ny".to_owned()));
+    // A heading with a line ending in its text is written setext elsewhere, and a setext heading after a block it would continue needs a blank line, which would make the list read back loose and the output change on the next write (#184). An ATX heading interrupts a paragraph and ends the containers around it, so the heading is written ATX there, with the line ending written as `&#xA;`, and the list stays tight. Where no blank line is needed, after a line of `>` here, it stays setext.
     for (left, (_, before)) in blocks_before().into_iter().enumerate() {
         let block = || {
             tight_before_q(vec![
@@ -4405,8 +4339,12 @@ fn a_heading_is_written_atx_where_a_setext_heading_would_need_a_blank_line_in_a_
         let document = build_list(&block());
         assert!(document.is_normalized(), "{}", before);
         assert_eq!(
-            reads_back_with(document, &ParseOptions::gfm(), &setext_options()),
-            format!("- {}\n  # x\n- q\n", before)
+            reads_back_with(
+                document,
+                &ParseOptions::gfm(),
+                &base_markdown::MarkdownOptions::default()
+            ),
+            format!("- {}\n  # x&#xA;y\n- q\n", before)
         );
     }
     let document = build_list(&tight_before_q(vec![
@@ -4415,9 +4353,21 @@ fn a_heading_is_written_atx_where_a_setext_heading_would_need_a_blank_line_in_a_
         ))])]),
         Heading(vec![x()]),
     ]));
+    assert_eq!(reads_back(document), "- > a\n  >\n  x\n  y\n  =\n- q\n");
+    // A line ending in inline HTML cannot be written as `&#xA;`, so such a heading stays setext, and normalizing makes the list loose.
+    let document = build_list(&tight_before_q(vec![
+        Paragraph(vec![EventKind::Text(Text::from("a".to_owned()))]),
+        Heading(vec![
+            x(),
+            EventKind::Html {
+                value: Text::from("<a\nb>".to_owned()),
+                block: false,
+            },
+        ]),
+    ]));
     assert_eq!(
-        reads_back_with(document, &ParseOptions::default(), &setext_options()),
-        "- > a\n  >\n  x\n  =\n- q\n"
+        reads_back(document),
+        "- a\n\n  x\n  y<a\n  b>\n  ==\n\n- q\n"
     );
     // A parsed ATX heading holds a line ending only from a character reference, which an ATX heading writes as `&#xA;`, so there it is not made setext, as elsewhere, and the list stays tight. It was written setext after a blank line, which read back loose and was written differently the next time.
     for (source, expected) in [
@@ -4436,13 +4386,6 @@ fn a_heading_is_written_atx_where_a_setext_heading_would_need_a_blank_line_in_a_
     }
     let document = Document::parse("# x&#10;y\n", &ParseOptions::default()).unwrap();
     assert_eq!(reads_back(document), "x\ny\n=\n");
-    // With `setext`, a parsed heading there is written ATX too, here with inline HTML in it.
-    let source = "- a\n  # x <b>\n- q\n";
-    let document = Document::parse(source, &ParseOptions::default()).unwrap();
-    assert_eq!(
-        reads_back_with(document, &ParseOptions::default(), &setext_options()),
-        source
-    );
 }
 
 #[test]
@@ -4504,19 +4447,24 @@ fn joining_paragraphs_and_loosening_lists_in_tight_items_is_linear() {
             ))
         },
     );
-    // With `setext`, each heading after a paragraph is written ATX, which is linear only if each looks at the block before it alone.
+    // Each heading with a line ending in its text after a paragraph is written ATX, which is linear only if each looks at the block before it alone.
     assert_linear(
-        "serializing headings after paragraphs in a tight item with setext",
+        "serializing headings with line endings after paragraphs in a tight item",
         1 << 8,
         |size| {
             let blocks = (0..size)
-                .flat_map(|_| [Paragraph(vec![text()]), Block::Heading(vec![text()])])
+                .flat_map(|_| {
+                    [
+                        Paragraph(vec![text()]),
+                        Block::Heading(vec![EventKind::Text(Text::from("a\nb".to_owned()))]),
+                    ]
+                })
                 .collect();
             let mut document = build_list(&tight(vec![(false, blocks)]));
             timed(|| {
                 document.normalize();
                 assert!(document.is_normalized());
-                base_markdown::to_markdown_with_options(&document, &setext_options()).unwrap();
+                base_markdown::to_markdown(&document).unwrap();
             })
         },
     );
@@ -4535,19 +4483,18 @@ fn joining_paragraphs_and_loosening_lists_in_tight_items_is_linear() {
     );
 }
 
-fn code_block(value: &str, math: bool) -> EventKind<'static> {
+fn code_block(value: &str) -> EventKind<'static> {
     EventKind::CodeBlock {
         value: Text::from(value.to_owned()),
         language: None,
         fence: None,
-        math,
         unclosed: false,
     }
 }
 
 fn code_block_value<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> String {
     let EventKind::CodeBlock { value, .. } = &document.node(id).unwrap().kind else {
-        unreachable!("the node is a code or math block");
+        unreachable!("the node is a code block");
     };
     value.resolve(document.source()).unwrap().to_owned()
 }
@@ -4558,9 +4505,7 @@ fn canonical_ignores_a_missing_final_line_ending_only_on_the_last_node() {
     let build = |value: &str, after: bool| {
         let mut document = Document::parse(String::new(), &parse).unwrap();
         let root = document.root();
-        document
-            .append_child(root, code_block(value, false))
-            .unwrap();
+        document.append_child(root, code_block(value)).unwrap();
         if after {
             let paragraph = document
                 .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
@@ -4576,16 +4521,14 @@ fn canonical_ignores_a_missing_final_line_ending_only_on_the_last_node() {
 }
 
 #[test]
-fn code_and_math_block_values_get_the_line_endings_the_parser_stores() {
-    let mut parse = ParseOptions::default();
-    parse.constructs.math_flow = true;
+fn code_block_values_get_the_line_endings_the_parser_stores() {
+    let parse = ParseOptions::default();
     let options = base_markdown::MarkdownOptions::default();
     // The value, then what it normalizes to before another block, and as the last node of the document. A closed fence stores its last line with a line ending, and the parser stores every line ending as LF.
     let values = [
         ("a", "a\n", "a"),
         ("\na", "\na\n", "\na"),
         (" ", " \n", " "),
-        ("$$", "$$\n", "$$"),
         ("```", "```\n", "```"),
         ("\r", "\n", "\n"),
         ("\r\n", "\n", "\n"),
@@ -4598,12 +4541,10 @@ fn code_and_math_block_values_get_the_line_endings_the_parser_stores() {
         ("a\n", "a\n", "a\n"),
     ];
     for (value, before, last) in values {
-        for math in [false, true] {
+        {
             let mut document = Document::parse(String::new(), &parse).unwrap();
             let root = document.root();
-            let code = document
-                .append_child(root, code_block(value, math))
-                .unwrap();
+            let code = document.append_child(root, code_block(value)).unwrap();
             document
                 .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
                 .unwrap();
@@ -4628,13 +4569,11 @@ fn code_and_math_block_values_get_the_line_endings_the_parser_stores() {
 
 #[test]
 fn code_blocks_that_end_a_parsed_document_keep_their_values() {
-    let mut parse = ParseOptions::default();
-    parse.constructs.math_flow = true;
+    let parse = ParseOptions::default();
     // An unclosed fence or indented code at the end of the source stores its last line without a line ending.
     for source in [
         "```\na",
         "    a",
-        "$$\na",
         "- ```\n  a",
         "> - ```\n>   a",
         "[^a]: x\n\n        b",
@@ -4662,13 +4601,13 @@ fn code_blocks_that_end_a_parsed_document_keep_their_values() {
     let root = document.root();
     let list = document.children(root).next().unwrap();
     let code = document.descendants(list).last().unwrap();
-    let detached = document.append_child(root, code_block("b", false)).unwrap();
+    let detached = document.append_child(root, code_block("b")).unwrap();
     document.detach(detached).unwrap();
     assert!(!document.is_normalized());
     document.normalize();
     assert_eq!(code_block_value(&document, code), "a");
     assert_eq!(code_block_value(&document, detached), "b\n");
-    document.append_child(root, code_block("c", false)).unwrap();
+    document.append_child(root, code_block("c")).unwrap();
     assert!(!document.is_normalized());
     document.normalize();
     assert_eq!(code_block_value(&document, code), "a\n");

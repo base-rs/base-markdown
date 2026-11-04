@@ -517,7 +517,6 @@ fn structural_edits_refresh_list_tightness_and_item_endings() {
                 value: Text::Literal("x\n"),
                 language: None,
                 fence: None,
-                math: false,
                 unclosed: false,
             },
         )
@@ -615,7 +614,6 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
                     length: 3,
                     indent: 0,
                 }),
-                math: false,
                 unclosed: true,
             },
         );
@@ -810,7 +808,6 @@ fn custom_heading_helpers_capture_the_same_leaf_set_and_line_endings_as_html() {
                 value: Text::Literal("body\n"),
                 language: None,
                 fence: None,
-                math: false,
                 unclosed: false,
             },
         )
@@ -827,7 +824,13 @@ fn custom_heading_helpers_capture_the_same_leaf_set_and_line_endings_as_html() {
         .append_child(root, EventKind::Start(Tag::Heading(3)))
         .unwrap();
     document
-        .append_child(heading, EventKind::Math(Text::Literal("x")))
+        .append_child(
+            heading,
+            EventKind::Code {
+                value: Text::Literal("x"),
+                language: None,
+            },
+        )
         .unwrap();
     document
         .append_child(heading, EventKind::HardBreak)
@@ -1241,7 +1244,6 @@ fn inferred_code_info_of_custom_code_starts_with_its_language() {
                         length: 3,
                         indent: 0,
                     }),
-                    math: false,
                     unclosed: false,
                 },
                 span: 0..raw.len(),

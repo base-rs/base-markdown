@@ -55,7 +55,6 @@ fn presets_enable_their_extensions() {
 fn commonmark_with_an_extension_matches_the_default() {
     let constructs = Constructs {
         strikethrough: true,
-        math_text: true,
         ..Constructs::commonmark()
     };
     let with = |parse: ParseOptions| Options {
@@ -66,7 +65,7 @@ fn commonmark_with_an_extension_matches_the_default() {
         ..Options::default()
     };
     let source = "~~a~~ ~b~ $c$";
-    let expected = "<p><del>a</del> ~b~ <code class=\"language-math math-inline\">c</code></p>";
+    let expected = "<p><del>a</del> ~b~ $c$</p>";
     assert_eq!(
         to_html_with_options(source, &with(ParseOptions::commonmark())),
         expected

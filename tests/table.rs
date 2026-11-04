@@ -2027,7 +2027,7 @@ fn compact_tables_preserve_cells_spans_and_rendering_paths() {
     ];
     let options = Options::gfm();
     let mut configured = Options::gfm();
-    configured.parse.constructs.math_flow = true;
+    configured.parse.constructs.frontmatter = true;
     for case in cases {
         for ending in ["", "\n", "\n\n", "\r\n"] {
             let case = format!("{case}{ending}");
@@ -2040,7 +2040,7 @@ fn compact_tables_preserve_cells_spans_and_rendering_paths() {
             ] {
                 let direct = to_html_with_options(&source, &options);
                 let expected = to_html_with_options(&source, &configured);
-                // Enabling unrelated math must preserve table output. Full
+                // Enabling unrelated frontmatter must preserve table output. Full
                 // rendering-path parity is checked below.
                 let table_html = |html: &str| {
                     html.split("<table>")

@@ -68,76 +68,13 @@ fn heading() {
         to_md_with_opts(
             &Node::Heading(Heading {
                 children: vec![Node::Text(Text {
-                    value: String::from("a"),
-                    position: None
-                })],
-                position: None,
-                depth: 1
-            }),
-            &Options {
-                setext: true,
-                ..Default::default()
-            }
-        )
-        .unwrap(),
-        "a\n=\n",
-        "should serialize a heading w/ rank 1 as setext when `setext: true`"
-    );
-
-    assert_eq!(
-        to_md_with_opts(
-            &Node::Heading(Heading {
-                children: vec![Node::Text(Text {
-                    value: String::from("a"),
-                    position: None
-                })],
-                position: None,
-                depth: 2
-            }),
-            &Options {
-                setext: true,
-                ..Default::default()
-            }
-        )
-        .unwrap(),
-        "a\n-\n",
-        "should serialize a heading w/ rank 2 as setext when `setext: true`"
-    );
-
-    assert_eq!(
-        to_md_with_opts(
-            &Node::Heading(Heading {
-                children: vec![Node::Text(Text {
-                    value: String::from("a"),
-                    position: None
-                })],
-                position: None,
-                depth: 3
-            }),
-            &Options {
-                setext: true,
-                ..Default::default()
-            }
-        )
-        .unwrap(),
-        "### a\n",
-        "should serialize a heading w/ rank 3 as atx when `setext: true`"
-    );
-
-    assert_eq!(
-        to_md_with_opts(
-            &Node::Heading(Heading {
-                children: vec![Node::Text(Text {
                     value: String::from("aa\nb"),
                     position: None
                 })],
                 position: None,
                 depth: 2
             }),
-            &Options {
-                setext: true,
-                ..Default::default()
-            }
+            &Options::default()
         )
         .unwrap(),
         "aa\nb\n-\n",
@@ -154,48 +91,11 @@ fn heading() {
                 position: None,
                 depth: 1
             }),
-            &Options {
-                setext: true,
-                ..Default::default()
-            }
+            &Options::default()
         )
         .unwrap(),
         "a&#xD;\nbbb\n===\n",
         "should serialize a setext underline as long as the last line (2), and a CR as a reference, as output line endings are LF"
-    );
-
-    assert_eq!(
-        to_md_with_opts(
-            &Node::Heading(Heading {
-                children: vec![],
-                position: None,
-                depth: 1
-            }),
-            &Options {
-                setext: true,
-                ..Default::default()
-            }
-        )
-        .unwrap(),
-        "#\n",
-        "should serialize an empty heading w/ rank 1 as atx when `setext: true`"
-    );
-
-    assert_eq!(
-        to_md_with_opts(
-            &Node::Heading(Heading {
-                children: vec![],
-                position: None,
-                depth: 2
-            }),
-            &Options {
-                setext: true,
-                ..Default::default()
-            }
-        )
-        .unwrap(),
-        "##\n",
-        "should serialize an empty heading w/ rank 1 as atx when `setext: true`"
     );
 
     //assert_eq!(

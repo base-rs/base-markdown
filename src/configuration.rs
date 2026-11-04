@@ -30,8 +30,7 @@ use alloc::string::String;
 ///
 /// // Or, mix and match:
 /// let custom = Constructs {
-///   math_flow: true,
-///   math_text: true,
+///   frontmatter: true,
 ///   ..Constructs::gfm()
 /// };
 /// # }
@@ -272,25 +271,6 @@ pub struct Constructs {
     ///     ^^^
     /// ```
     pub list_item: bool,
-    /// Math (flow).
-    ///
-    /// ```markdown
-    /// > | $$
-    ///     ^^
-    /// > | \frac{1}{2}
-    ///     ^^^^^^^^^^^
-    /// > | $$
-    ///     ^^
-    /// ```
-    pub math_flow: bool,
-    /// Math (text).
-    ///
-    /// ```markdown
-    /// > | a $b$ c
-    ///       ^^^
-    /// ```
-    pub math_text: bool,
-
     /// Thematic break.
     ///
     /// ```markdown
@@ -303,7 +283,7 @@ pub struct Constructs {
 impl Default for Constructs {
     /// `CommonMark` with the extensions most documents expect: tables, task
     /// list items, footnotes, strikethrough, literal autolinks and
-    /// frontmatter. Math is off.
+    /// frontmatter.
     ///
     /// [`Options`] lists what each preset enables.
     fn default() -> Self {
@@ -354,8 +334,6 @@ impl Constructs {
             label_start_link: true,
             label_end: true,
             list_item: true,
-            math_flow: false,
-            math_text: false,
 
             thematic_break: true,
         }
@@ -1085,71 +1063,12 @@ pub struct ParseOptions {
     /// ```
     #[cfg_attr(feature = "serde", serde(default))]
     pub strikethrough_single_tilde: bool,
-
-    /// Whether to support math (text) with a single dollar
-    ///
-    /// This option does nothing if `math_text` is not turned on in
-    /// `constructs`.
-    /// This option does not affect math (text) with two or more dollars.
-    ///
-    /// The default is `true`, which is more close to how code (text) and
-    /// Pandoc work, as it allows math with a single dollar to form.
-    /// However, single dollars can interfere with “normal” dollars in text.
-    /// Pass `false`, to only allow math (text) to form when two or more
-    /// dollars are used.
-    /// If you pass `false`, you can still use two or more dollars for text
-    /// math.
-    ///
-    /// ## Examples
-    ///
-    /// ```
-    /// use base_markdown::{to_html_with_options, Constructs, Options, ParseOptions};
-    ///
-    /// // `markdown-rs` supports single dollars by default:
-    /// assert_eq!(
-    ///     to_html_with_options(
-    ///         "$a$",
-    ///         &Options {
-    ///             parse: ParseOptions {
-    ///               constructs: Constructs {
-    ///                 math_text: true,
-    ///                 ..Constructs::default()
-    ///               },
-    ///               ..ParseOptions::default()
-    ///             },
-    ///             ..Options::default()
-    ///         }
-    ///     ),
-    ///     "<p><code class=\"language-math math-inline\">a</code></p>"
-    /// );
-    ///
-    /// // Pass `math_text_single_dollar: false` to turn that off:
-    /// assert_eq!(
-    ///     to_html_with_options(
-    ///         "$a$",
-    ///         &Options {
-    ///             parse: ParseOptions {
-    ///               constructs: Constructs {
-    ///                 math_text: true,
-    ///                 ..Constructs::default()
-    ///               },
-    ///               math_text_single_dollar: false,
-    ///               ..ParseOptions::default()
-    ///             },
-    ///             ..Options::default()
-    ///         }
-    ///     ),
-    ///     "<p>$a$</p>"
-    /// );
-    /// ```
-    #[cfg_attr(feature = "serde", serde(default))]
-    pub math_text_single_dollar: bool,
 }
 
 impl Default for ParseOptions {
     /// `CommonMark` with the extensions most documents expect: tables, task
     /// list items, footnotes, strikethrough with two tildes, literal
-    /// autolinks and frontmatter. Math and single-tilde strikethrough are off.
+    /// autolinks and frontmatter. Single-tilde strikethrough is off.
     ///
     /// [`Options`] lists what each preset enables.
     fn default() -> Self {
@@ -1159,7 +1078,6 @@ impl Default for ParseOptions {
             html_block_blank_lines: false,
             html_tag_namespaces: false,
             strikethrough_single_tilde: false,
-            math_text_single_dollar: true,
         }
     }
 }
@@ -1170,9 +1088,7 @@ impl ParseOptions {
     /// This is the default of earlier releases. Its options other than
     /// `constructs` are those of [`ParseOptions::default`], so an extension
     /// turned on afterward behaves as it does there: strikethrough needs two
-    /// tildes unless `strikethrough_single_tilde` is also set, and math
-    /// (text) forms with a single dollar unless `math_text_single_dollar` is
-    /// cleared.
+    /// tildes unless `strikethrough_single_tilde` is also set.
     ///
     /// Parsing differs from `CommonMark` in one deliberate way, which
     /// [`Options::commonmark`](crate::Options::commonmark) describes.
@@ -1218,14 +1134,12 @@ impl ParseOptions {
 /// | `strikethrough` with `~~` | yes | yes | no |
 /// | `strikethrough_single_tilde` | no | yes | no |
 /// | `frontmatter` | yes | no | no |
-/// | `math_flow`, `math_text` | no | no | no |
-/// | `math_text_single_dollar` | yes | yes | yes |
 /// | `CompileOptions::tagfilter` | no | yes | no |
 ///
 /// * [`Options::default`] is what most documents expect: `CommonMark` and
 ///   GFM's tables, task list items, footnotes, strikethrough and literal
 ///   autolinks, with frontmatter. Single-tilde strikethrough is off, so
-///   prose such as `~5 min` stays text, and math is off, so `$` is text.
+///   prose such as `~5 min` stays text.
 /// * [`Options::gfm`] is GitHub-flavored Markdown, which differs from GitHub
 ///   in the ways it lists.
 /// * [`Options::commonmark`] is strict `CommonMark`, which differs from the
@@ -1237,7 +1151,7 @@ impl ParseOptions {
 /// ## Examples
 ///
 /// ```
-/// use base_markdown::{Constructs, Options, ParseOptions};
+/// use base_markdown::{Options, ParseOptions};
 /// # fn main() {
 ///
 /// // Use the default trait for `CommonMark` with the common extensions:
@@ -1249,10 +1163,10 @@ impl ParseOptions {
 /// // Use the `gfm` method to compile markdown to HTML according to GFM:
 /// let gfm = Options::gfm();
 ///
-/// // Or adjust a preset, here to add math:
-/// let math = Options {
+/// // Or adjust a preset, here to add single-tilde strikethrough:
+/// let single_tilde = Options {
 ///     parse: ParseOptions {
-///         constructs: Constructs { math_flow: true, math_text: true, ..Constructs::default() },
+///         strikethrough_single_tilde: true,
 ///         ..ParseOptions::default()
 ///     },
 ///     ..Options::default()

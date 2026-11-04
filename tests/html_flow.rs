@@ -1321,9 +1321,9 @@ fn compact_html_preserves_values_spans_and_rendering_paths() {
     options.compile.allow_dangerous_html = true;
     let mut configured = Options::default();
     configured.compile.allow_dangerous_html = true;
-    // None of these sources contains math. Enabling it must preserve HTML
+    // None of these sources starts with frontmatter. Enabling it must preserve HTML
     // blank-line and namespace semantics.
-    configured.parse.constructs.math_flow = true;
+    configured.parse.constructs.frontmatter = true;
     let blocks = [
         "<!-- comment -->",
         "<!-->",
@@ -1425,7 +1425,7 @@ fn unclosed_html_container_boundaries_preserve_terminal_source_endings() {
     options.compile.allow_dangerous_html = true;
     let mut configured = Options::default();
     configured.compile.allow_dangerous_html = true;
-    configured.parse.constructs.math_flow = true;
+    configured.parse.constructs.frontmatter = true;
     for opening in ["<script>", "<!--", "<?target", "<!DOCTYPE", "<![CDATA["] {
         for prefix in ["- ", "> "] {
             for between in ["", "  \n", "  \n  \n"] {

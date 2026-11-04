@@ -1075,21 +1075,22 @@ fn a_block_after_a_nested_list_in_a_block_quote_is_written_after_a_blank_line() 
             label: Some("1".into()),
         })
     };
-    let setext = MarkdownOptions {
-        setext: true,
-        ..MarkdownOptions::default()
-    };
+    // A heading with a line ending in its text can be written only as a setext heading.
+    let setext = MarkdownOptions::default();
     // A line of `>` alone after a list or footnote definition that ends a block quote is a blank line in that list's last item or in the definition, which reads back as a blank line between the quote and the next block of its item (#157). So a blank line is written there instead, which the item records as spread when written again.
     for (source, expected) in [
-        ("- > - a\n  # h\n\n- q\n", "- > - a\n\n  h\n  =\n\n- q\n"),
         (
-            "- > [^1]: a\n  # h\n\n- q\n",
-            "- > [^1]: a\n\n  h\n  =\n\n- q\n",
+            "- > - a\n  # h&#10;i\n\n- q\n",
+            "- > - a\n\n  h\n  i\n  =\n\n- q\n",
+        ),
+        (
+            "- > [^1]: a\n  # h&#10;i\n\n- q\n",
+            "- > [^1]: a\n\n  h\n  i\n  =\n\n- q\n",
         ),
         // A list in a nested block quote does not take the line in.
         (
-            "- > > - a\n  # h\n\n- q\n",
-            "- > > - a\n  >\n  h\n  =\n\n- q\n",
+            "- > > - a\n  # h&#10;i\n\n- q\n",
+            "- > > - a\n  >\n  h\n  i\n  =\n\n- q\n",
         ),
     ] {
         let mut document = Document::parse(source, &ParseOptions::default()).unwrap();

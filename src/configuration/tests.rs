@@ -22,7 +22,6 @@ fn constructs_presets_enable_their_extensions() {
             ..Constructs::gfm()
         }
     );
-    assert!(!default.math_flow && !default.math_text);
 }
 
 #[test]
@@ -30,7 +29,6 @@ fn parse_presets_and_debug_retain_markdown_options() {
     let default = ParseOptions::default();
     assert_eq!(default.constructs, Constructs::default());
     assert!(!default.strikethrough_single_tilde);
-    assert!(default.math_text_single_dollar);
     let commonmark = ParseOptions::commonmark();
     assert_eq!(commonmark.constructs, Constructs::commonmark());
     // Only the constructs differ, so an extension turned on afterward behaves as in the default.
@@ -47,7 +45,6 @@ fn parse_presets_and_debug_retain_markdown_options() {
     let gfm = ParseOptions::gfm();
     assert_eq!(gfm.constructs, Constructs::gfm());
     assert!(gfm.strikethrough_single_tilde);
-    assert!(gfm.math_text_single_dollar);
     assert!(format!("{commonmark:?}").contains("inline_code_info: false"));
 }
 

@@ -117,15 +117,6 @@ pub enum ConstructName {
     ///     ^^^^
     /// ```
     ListItem,
-    /// Math (flow) meta flag.
-    ///
-    /// ```markdown
-    /// > | $$a
-    ///       ^
-    ///   | b
-    ///   | $$
-    /// ```
-    MathFlowMeta,
     /// Phrasing (occurs in headings, paragraphs, etc).
     ///
     /// ```markdown

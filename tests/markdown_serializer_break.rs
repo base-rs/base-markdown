@@ -63,10 +63,7 @@ fn r#break() {
     assert_eq!(
         to_md_with_opts(
             &Document::parse("a  \nb\n=\n", &Default::default()).unwrap(),
-            &Options {
-                setext: true,
-                ..Default::default()
-            }
+            &Options::default()
         )
         .unwrap(),
         "a\\\nb\n=\n",

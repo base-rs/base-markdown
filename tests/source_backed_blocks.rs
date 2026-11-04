@@ -155,19 +155,14 @@ fn complete_html_ends_a_lazy_container_but_not_an_ordinary_paragraph() {
 }
 
 #[test]
-fn frontmatter_and_math_are_independent_of_code_fences() {
+fn frontmatter_is_independent_of_code_fences() {
     let mut options = Options::default();
     options.parse.constructs.code_fenced = false;
     options.parse.constructs.frontmatter = true;
-    options.parse.constructs.math_flow = true;
     for source in ["", "\u{feff}"] {
         assert_html(source, &options, "");
     }
-    assert_html(
-        "---\na: b\n---\n\n$$\nx\n$$",
-        &options,
-        "<pre><code class=\"language-math math-display\">x\n</code></pre>",
-    );
+    assert_html("---\na: b\n---\n\n$$\nx\n$$", &options, "<p>$$\nx\n$$</p>");
 }
 
 #[test]

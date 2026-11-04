@@ -66,8 +66,8 @@ fn normalizes_crlf_soft_breaks_to_lf_output() {
 }
 
 #[test]
-fn preserves_inline_code_and_math() {
-    let source = "Inline `code` and inline math $x + y$.\n";
+fn preserves_inline_code_and_dollars() {
+    let source = "Inline `code` and dollars $x + y$.\n";
 
     let normalized = normalize_markdown(source).unwrap();
 
@@ -191,19 +191,18 @@ fn normalize_markdown_parses_the_default_options() {
 
     assert!(options.constructs.table);
     assert!(options.constructs.frontmatter);
-    assert!(!options.constructs.math_flow);
-    assert!(!options.constructs.math_text);
     assert_eq!(
         normalize_markdown_with_options("~a~ $x$\n", &options).unwrap(),
         normalize_markdown("~a~ $x$\n").unwrap()
     );
 
-    let mut math = ParseOptions::default();
-    math.constructs.math_flow = true;
-    math.constructs.math_text = true;
+    let single_tilde = ParseOptions {
+        strikethrough_single_tilde: true,
+        ..ParseOptions::default()
+    };
     assert_eq!(
-        normalize_markdown_with_options("$$\nx\n$$\n", &math).unwrap(),
-        "$$\nx\n$$\n"
+        normalize_markdown_with_options("~a~ $x$\n", &single_tilde).unwrap(),
+        "~~a~~ $x$\n"
     );
 }
 

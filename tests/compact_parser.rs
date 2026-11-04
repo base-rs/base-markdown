@@ -306,8 +306,8 @@ fn ordinary_regions_preserve_extension_boundaries() {
     for source in sources {
         let options = Options::gfm();
         let mut configured = Options::gfm();
-        // Enabling math must not change these sources without math delimiters.
-        configured.parse.constructs.math_flow = true;
+        // Enabling frontmatter must not change these sources, which do not start with it.
+        configured.parse.constructs.frontmatter = true;
         let direct = base_markdown::to_html_with_options(source, &options);
         let expected = base_markdown::to_html_with_options(source, &configured);
         assert_eq!(direct, expected, "source: {source:?}");
@@ -354,7 +354,7 @@ fn preserves_the_same_literal_line_endings_as_commonmark() {
 #[test]
 fn extensions_preserve_virtual_spaces_in_code() {
     let mut options = Options::default();
-    options.parse.constructs.math_flow = true;
+    options.parse.html_tag_namespaces = true;
     for source in [
         "-\t\tcode",
         "> \t\tcode",

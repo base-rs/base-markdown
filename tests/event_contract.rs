@@ -152,7 +152,6 @@ fn all_invalid_metadata_is_rejected_before_rendering_or_editing() {
             value: Text::Literal("x"),
             language: Some(bad()),
             fence: None,
-            math: false,
             unclosed: false,
         },
         EventKind::Definition {
@@ -306,20 +305,19 @@ fn inline_code_languages_outside_the_prefix_grammar_are_rejected() {
     }
 }
 
-fn block(language: Option<Text<'static>>, math: bool) -> EventKind<'static> {
+fn block(language: Option<Text<'static>>) -> EventKind<'static> {
     EventKind::CodeBlock {
         value: Text::Literal("v\n"),
         language,
         fence: None,
-        math,
         unclosed: false,
     }
 }
 
 /// A code block language that cannot be written is rejected wherever an event enters a document or
-/// renderer (#144): an empty one, which the parser reads as no language, and any language on
-/// math, whose fence has only metadata. Every other code language is written with whitespace, line
-/// endings, backticks and a `~` at its start encoded, so it is accepted.
+/// renderer (#144): an empty one, which the parser reads as no language. Every other code language
+/// is written with whitespace, line endings, backticks and a `~` at its start encoded, so it is
+/// accepted.
 #[test]
 fn code_block_languages_that_cannot_be_written_are_rejected() {
     let options = Options::default();
@@ -362,32 +360,28 @@ fn code_block_languages_that_cannot_be_written_are_rejected() {
         Text::from(String::new()),
         Text::Source(1..1),
     ] {
-        check(&mut ast, block(Some(empty.clone()), false), false);
-        check(&mut ast, block(Some(empty), true), false);
+        check(&mut ast, block(Some(empty)), false);
     }
-    for language in ["x", "latex", " "] {
-        check(&mut ast, block(Some(Text::Literal(language)), true), false);
+    for language in [
+        "x", "~x", "`x", "a b", " x\t", "a\nb", "\r", "&amp;", "\\", "math",
+    ] {
+        check(&mut ast, block(Some(Text::Literal(language))), true);
     }
-    for language in ["x", "~x", "`x", "a b", " x\t", "a\nb", "\r", "&amp;", "\\"] {
-        check(&mut ast, block(Some(Text::Literal(language)), false), true);
-    }
-    check(&mut ast, block(Some(Text::Source(0..1)), false), true);
+    check(&mut ast, block(Some(Text::Source(0..1))), true);
     // Out-of-range text is reported as such, in the language or the value.
     let out_of_range = EventKind::CodeBlock {
         value: Text::Source(0..99),
         language: Some(Text::Literal("x")),
         fence: None,
-        math: false,
         unclosed: false,
     };
-    for kind in [block(Some(Text::Source(0..99)), false), out_of_range] {
+    for kind in [block(Some(Text::Source(0..99))), out_of_range] {
         assert!(matches!(
             ast.set_kind(code, kind),
             Err(StreamError::InvalidRange)
         ));
     }
-    check(&mut ast, block(None, false), true);
-    check(&mut ast, block(None, true), true);
+    check(&mut ast, block(None), true);
 }
 
 #[test]
@@ -488,16 +482,14 @@ fn edits_detach_every_supported_leaf_and_preserve_arena_links() {
     let kinds = vec![
         EventKind::Text(Text::Source(0..1)),
         EventKind::SoftBreak(Text::Literal("\n")),
-        EventKind::Math(Text::Value(Cow::Borrowed("x"))),
         EventKind::Code {
-            value: Text::Literal("x"),
+            value: Text::Value(Cow::Borrowed("x")),
             language: None,
         },
         EventKind::CodeBlock {
             value: Text::Literal("x"),
             language: None,
             fence: None,
-            math: false,
             unclosed: false,
         },
         EventKind::Html {
@@ -528,7 +520,6 @@ fn edits_detach_every_supported_leaf_and_preserve_arena_links() {
     for event in ast.events() {
         if let EventKind::Text(value)
         | EventKind::SoftBreak(value)
-        | EventKind::Math(value)
         | EventKind::Code { value, .. }
         | EventKind::CodeBlock { value, .. }
         | EventKind::Html { value, .. }
@@ -571,7 +562,7 @@ fn writer_failures_propagate_from_every_output_position() {
         "# A &amp; `b` <i>c</i> ![d](x \"t\")\n\n> - *a* **b** ~~c~~\n\n42. next\n\n---",
         "| a | b | c | d |\n| :- | -: | :-: | - |\n| & | < | > | x |",
         "[a](x%20y/?a=b&c=d \"t&\\\"\") ![a *b*](x \"t&\")\n\n- [x] a\n- [ ] b\n\nline  \nbreak\\\nend",
-        "ruby:`<&>` $x&y$\n\n```rust\n<&>\n```\n\n$$\nx&y\n$$\n\n<script>x\0</script>",
+        "ruby:`<&>` $x&y$\n\n```rust\n<&>\n```\n\n```math\nx&y\n```\n\n<script>x\0</script>",
         "Note[^x], again[^x], code[^y].\n\n[^x]: a &amp; b\n\n[^y]:\n    ```\n    a\n    ```",
         "1. ordinary\n\n9. numbered",
         "a [x](xé \"&\")\n\n```\nraw",
@@ -579,8 +570,6 @@ fn writer_failures_propagate_from_every_output_position() {
     for (heading_ids, checkable) in [(false, false), (false, true), (true, false), (true, true)] {
         let mut options = Options::gfm();
         options.parse.inline_code_info = true;
-        options.parse.constructs.math_text = true;
-        options.parse.constructs.math_flow = true;
         options.compile.heading_ids = heading_ids;
         options.compile.task_list_item_checkable = checkable;
         options.compile.allow_dangerous_html = true;
@@ -818,7 +807,6 @@ fn custom_block_events_inside_images_contribute_only_alt_text() {
             value: Text::Literal("code\""),
             language: None,
             fence: None,
-            math: false,
             unclosed: false,
         },
         EventKind::Rule,
@@ -893,11 +881,13 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
             value: Text::Literal("x"),
             language: None,
             fence: None,
-            math: false,
             unclosed: false,
         },
         text(),
-        EventKind::Math(Text::Literal("x")),
+        EventKind::Code {
+            value: Text::Literal("x"),
+            language: None,
+        },
         text(),
         EventKind::Html {
             value: Text::Literal("<&>"),
@@ -905,7 +895,10 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
         },
         EventKind::Start(Tag::Heading(1)),
         EventKind::SoftBreak(Text::Literal("\n")),
-        EventKind::Math(Text::Literal("x")),
+        EventKind::Code {
+            value: Text::Literal("x"),
+            language: None,
+        },
         EventKind::HardBreak,
         EventKind::End(TagKind::Heading),
         EventKind::Start(Tag::FootnoteDefinition(Text::Literal("X"))),
@@ -956,7 +949,10 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
         body.extend([EventKind::Start(tag), text(), EventKind::End(kind)]);
     }
     body.extend([
-        EventKind::Math(Text::Literal("m")),
+        EventKind::Code {
+            value: Text::Literal("m"),
+            language: None,
+        },
         EventKind::End(TagKind::Image),
     ]);
     let mut output = String::new();
