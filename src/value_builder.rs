@@ -70,8 +70,15 @@ impl<'a> ValueBuilder<'a> {
     }
 }
 
-pub(crate) fn decode_string(source: &str, range: Range<usize>) -> Text<'static> {
-    decode::<false>(source, range, true, true, false)
+/// Decode a code info string as a parser with or without escapes and references would, replacing
+/// NUL with U+FFFD.
+pub(crate) fn decode_info(
+    source: &str,
+    range: Range<usize>,
+    escapes: bool,
+    references: bool,
+) -> Text<'static> {
+    decode::<false>(source, range, escapes, references, true)
 }
 
 pub(crate) fn decode_string_with_options(
