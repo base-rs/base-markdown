@@ -236,11 +236,12 @@ impl<'a> State<'a> {
             ) {
                 self.bullet_last_used = None;
             }
-            // Only code reads the flag, and only code walks into the block before it.
+            // Only code reads the flag, and only code walks into the block before it. The joins are
+            // blank lines when the item records spread or is written spread.
             self.fence_code = matches!(
                 document.node(child).unwrap().kind,
                 EventKind::CodeBlock { .. }
-            ) && fences_code(document, parent, before, records_spread);
+            ) && fences_code(document, parent, before, records_spread || spread);
             let start = self.output.len();
             self.write_node(document, child, &Info::new("\n", "\n"))?;
             self.untitled_definition = None;
@@ -251,17 +252,15 @@ impl<'a> State<'a> {
                 {
                     "\n"
                 } else {
-                    match self.default_separator(
+                    // In an item written spread, each of these joins is a blank line.
+                    self.default_separator(
                         document,
                         before,
                         child,
                         next,
                         parent,
-                        records_spread,
-                    ) {
-                        separator if spread && !writes_blank_line(separator) => "\n\n",
-                        separator => separator,
-                    }
+                        records_spread || spread,
+                    )
                 };
                 self.output.push_str(separator);
                 let untitled_definition = separator == "\n"
@@ -1098,7 +1097,8 @@ impl<'a> State<'a> {
     }
 
     /// Whether flow child `id` of `parent`, after flow child `before`, if any, is code written
-    /// indented. `spread` is what `records_spread` gives for `parent`.
+    /// indented. `spread` is whether `parent`'s blocks are joined by blank lines, as for
+    /// `fences_code`.
     fn indented_code<S: AsRef<str>>(
         &self,
         document: &Document<S>,
@@ -1642,11 +1642,14 @@ fn list_interrupts_paragraph<S: AsRef<str>>(document: &Document<S>, id: NodeId) 
 /// whatever the options. Directly after a footnote definition, indented code would continue the
 /// definition, which takes in indented lines after a blank line.
 ///
-/// In a list or item that records no blank line between its blocks (`spread` is what
-/// `records_spread` gives for `parent`), code after a paragraph or definition, or a container
-/// ending in one, is joined to it by a single line ending, where indented code would continue it
-/// as text, lazily through the container. A blank line or `<!---->` would make the list loose, so
-/// the code is fenced, which interrupts the paragraph and ends the containers (#173).
+/// In a list or item whose blocks are not joined by blank lines (`spread` is false: it records no
+/// blank line between them and, when it is being written, `spreads_item` does not write it
+/// spread), code after a paragraph or definition, or a container ending in one, is joined to it by
+/// a single line ending, where indented code would continue it as text, lazily through the
+/// container. A blank line or `<!---->` would make the list loose, so the code is fenced, which
+/// interrupts the paragraph and ends the containers (#173). In an item written spread, the blank
+/// line ends them and the code stays indented: that item reads back recording spread, so a fence
+/// would not be written again.
 fn fences_code<S: AsRef<str>>(
     document: &Document<S>,
     parent: NodeId,

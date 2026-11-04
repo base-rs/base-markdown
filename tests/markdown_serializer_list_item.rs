@@ -734,16 +734,23 @@ fn assert_tight_join(
     options: &Options,
     expected: &str,
 ) {
+    assert_join(true, before, next, options, expected);
+}
+
+/// Writes a list whose first item holds `before` and the block `next` adds to it, then, when the
+/// list is `tight`, an item `q`. A loose list has only that first item, which is written spread.
+/// Checks the Markdown reads back as the same tree, with the same spread, and writes the same.
+fn assert_join(
+    tight: bool,
+    before: Before,
+    next: impl Fn(&mut Document<String>, base_markdown::NodeId),
+    options: &Options,
+    expected: &str,
+) {
     let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
     let root = document.root();
     let list = document
-        .append_child(
-            root,
-            EventKind::Start(Tag::List {
-                start: None,
-                tight: true,
-            }),
-        )
+        .append_child(root, EventKind::Start(Tag::List { start: None, tight }))
         .unwrap();
     let item = document
         .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
@@ -788,15 +795,17 @@ fn assert_tight_join(
         }
     }
     next(&mut document, item);
-    let item = document
-        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
-        .unwrap();
-    let paragraph = document
-        .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
-        .unwrap();
-    document
-        .append_child(paragraph, EventKind::Text(Value::Literal("q")))
-        .unwrap();
+    if tight {
+        let item = document
+            .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+            .unwrap();
+        let paragraph = document
+            .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
+            .unwrap();
+        document
+            .append_child(paragraph, EventKind::Text(Value::Literal("q")))
+            .unwrap();
+    }
     document.normalize();
     let markdown = to_markdown_with_options(&document, options).unwrap();
     assert_eq!(markdown, expected);
@@ -895,4 +904,79 @@ fn fences_code_joined_by_a_line_ending_to_text_in_a_tight_item() {
     ] {
         assert_tight_join(before, code, &options, expected);
     }
+}
+
+#[test]
+fn indents_code_after_text_in_an_item_written_spread() {
+    // The only item of a loose list is written spread, so a blank line ends the text before the
+    // code, which stays indented: fenced, it would read back as an item recording spread and be
+    // written indented the second time (#184).
+    let options = Options {
+        fences: false,
+        ..Options::default()
+    };
+    let code = |value: &'static str| {
+        move |document: &mut Document<String>, item| {
+            document
+                .append_child(
+                    item,
+                    EventKind::CodeBlock {
+                        value: Value::Literal(value),
+                        language: None,
+                        fence: None,
+                        math: false,
+                        unclosed: false,
+                    },
+                )
+                .unwrap();
+        }
+    };
+    for (before, expected) in [
+        (Before::Paragraph, "- a\n\n      x\n"),
+        (Before::Definition("/u"), "- [c]: /u\n\n      x\n"),
+        (Before::Quote, "- > [c]: /u\n\n      x\n"),
+    ] {
+        assert_join(false, before, code("x"), &options, expected);
+    }
+    // Two code blocks are written spread, with `<!---->` between them, which reads back as
+    // HTML, but the same bytes are written again.
+    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+    let root = document.root();
+    let list = document
+        .append_child(
+            root,
+            EventKind::Start(Tag::List {
+                start: None,
+                tight: false,
+            }),
+        )
+        .unwrap();
+    let item = document
+        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+        .unwrap();
+    let paragraph = document
+        .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
+    document
+        .append_child(paragraph, EventKind::Text(Value::Literal("a")))
+        .unwrap();
+    code("x")(&mut document, item);
+    code("y")(&mut document, item);
+    document.normalize();
+    let markdown = to_markdown_with_options(&document, &options).unwrap();
+    assert_eq!(markdown, "- a\n\n      x\n\n  <!---->\n\n      y\n");
+    let mut reparsed = Document::parse(markdown.clone(), &ParseOptions::default()).unwrap();
+    reparsed.normalize();
+    assert_eq!(
+        to_markdown_with_options(&reparsed, &options).unwrap(),
+        markdown
+    );
+    // A parsed loose item keeps its code indented.
+    let source = "- a\n\n      x\n\n- b\n";
+    let mut document = Document::parse(source.to_string(), &ParseOptions::default()).unwrap();
+    document.normalize();
+    assert_eq!(
+        to_markdown_with_options(&document, &options).unwrap(),
+        source
+    );
 }
