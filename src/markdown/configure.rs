@@ -61,6 +61,8 @@ pub struct Options {
     /// if the code is empty or only whitespace,
     /// if it starts or ends in blank lines,
     /// or if it directly follows a footnote definition.
+    /// Indented code that follows another indented code block or a list
+    /// is separated from it by an `<!---->` comment.
     pub fences: bool,
     /// Whether to increment the counter of ordered lists items (`bool`,
     /// default: `true`).
