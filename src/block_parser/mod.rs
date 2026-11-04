@@ -1097,6 +1097,18 @@ pub(crate) fn starts_definition(source: &str) -> bool {
     .is_some()
 }
 
+/// Whether `source`, a definition without a title on its first line and the lines of a block
+/// after it, with no container prefixes, reads back as a definition with a title from those lines.
+pub(crate) fn definition_has_title(source: &str) -> bool {
+    let lines = source.split_inclusive('\n').scan(0, |at, line| {
+        let range = *at..*at + line.len();
+        *at = range.end;
+        Some(range)
+    });
+    definition::scan(source, lines, &ParseOptions::default())
+        .is_some_and(|definition| definition.title.is_some())
+}
+
 /// Whether `bytes`, at the start of a line, starts a footnote definition, which can interrupt a
 /// paragraph.
 pub(crate) fn starts_footnote_definition(bytes: &[u8]) -> bool {

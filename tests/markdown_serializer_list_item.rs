@@ -10,8 +10,8 @@ use base_markdown::{
     to_markdown_with_options, Document, ParseOptions,
 };
 use pretty_assertions::assert_eq;
+use support::fixture::{canonical, List, ListItem, Node, Paragraph, Root, Text, ThematicBreak};
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
-use support::fixture::{List, ListItem, Node, Paragraph, Root, Text, ThematicBreak};
 use support::linear::{assert_linear, timed, SCALE};
 
 #[test]
@@ -714,4 +714,185 @@ fn writes_the_only_item_of_a_loose_list_before_separators_spread() {
         to_markdown_with_options(&document, &Options::default()).unwrap(),
         "- a\n\n  # a\n"
     );
+}
+
+/// A block of a tight item, before the block `next` builds after it and an item `q`.
+enum Before {
+    Definition(&'static str),
+    Paragraph,
+    /// A block quote holding a definition.
+    Quote,
+    /// A list of one item holding a definition.
+    List,
+}
+
+/// Writes a tight list whose first item holds `before` and the block `next` adds to it, then
+/// checks the Markdown reads back as the same tree, with the list tight, and writes the same.
+fn assert_tight_join(
+    before: Before,
+    next: impl Fn(&mut Document<String>, base_markdown::NodeId),
+    options: &Options,
+    expected: &str,
+) {
+    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+    let root = document.root();
+    let list = document
+        .append_child(
+            root,
+            EventKind::Start(Tag::List {
+                start: None,
+                tight: true,
+            }),
+        )
+        .unwrap();
+    let item = document
+        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+        .unwrap();
+    let definition = |destination| EventKind::Definition {
+        label: Value::Literal("c"),
+        destination: Value::Literal(destination),
+        title: None,
+    };
+    match before {
+        Before::Definition(destination) => {
+            document
+                .append_child(item, definition(destination))
+                .unwrap();
+        }
+        Before::Paragraph => {
+            let paragraph = document
+                .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
+                .unwrap();
+            document
+                .append_child(paragraph, EventKind::Text(Value::Literal("a")))
+                .unwrap();
+        }
+        Before::Quote | Before::List => {
+            let (tag, inner) = match before {
+                Before::Quote => (Tag::BlockQuote, None),
+                _ => (
+                    Tag::List {
+                        start: None,
+                        tight: true,
+                    },
+                    Some(Tag::Item { block_end: false }),
+                ),
+            };
+            let mut container = document.append_child(item, EventKind::Start(tag)).unwrap();
+            if let Some(inner) = inner {
+                container = document
+                    .append_child(container, EventKind::Start(inner))
+                    .unwrap();
+            }
+            document.append_child(container, definition("/u")).unwrap();
+        }
+    }
+    next(&mut document, item);
+    let item = document
+        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+        .unwrap();
+    let paragraph = document
+        .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
+    document
+        .append_child(paragraph, EventKind::Text(Value::Literal("q")))
+        .unwrap();
+    document.normalize();
+    let markdown = to_markdown_with_options(&document, options).unwrap();
+    assert_eq!(markdown, expected);
+    let mut reparsed = Document::parse(markdown.clone(), &ParseOptions::default()).unwrap();
+    reparsed.normalize();
+    assert_eq!(canonical(&reparsed), canonical(&document), "{markdown:?}");
+    assert_eq!(
+        to_markdown_with_options(&reparsed, options).unwrap(),
+        markdown
+    );
+}
+
+fn add_block(
+    tag: Tag<'static>,
+    text: &'static str,
+) -> impl Fn(&mut Document<String>, base_markdown::NodeId) {
+    move |document, item| {
+        let block = document
+            .append_child(item, EventKind::Start(tag.clone()))
+            .unwrap();
+        document
+            .append_child(block, EventKind::Text(Value::Literal(text)))
+            .unwrap();
+    }
+}
+
+#[test]
+fn escapes_a_title_after_an_untitled_definition_in_a_tight_item() {
+    // Joined to a definition without a title by one line ending, a paragraph or setext heading
+    // starting with `"`, `'` or `(` would read back as its title (#173). A blank line would make
+    // the list loose, so the character is escaped. Text that would not read as a title is not.
+    let paragraph = Tag::Paragraph { tight: false };
+    let setext = Options {
+        setext: true,
+        ..Options::default()
+    };
+    let tight_definitions = Options {
+        tight_definitions: true,
+        ..Options::default()
+    };
+    for (destination, text, expected) in [
+        ("/u", "\"x\"", "- [c]: /u\n  \\\"x\"\n- q\n"),
+        ("/u", "'x'", "- [c]: /u\n  \\'x'\n- q\n"),
+        ("/u", "(x)", "- [c]: /u\n  \\(x)\n- q\n"),
+        ("/u", "\"x\ny\"", "- [c]: /u\n  \\\"x\n  y\"\n- q\n"),
+        ("", "\"x\"", "- [c]: <>\n  \\\"x\"\n- q\n"),
+        ("/u", "\"x\" y", "- [c]: /u\n  \"x\" y\n- q\n"),
+    ] {
+        for options in [&Options::default(), &tight_definitions] {
+            assert_tight_join(
+                Before::Definition(destination),
+                add_block(paragraph.clone(), text),
+                options,
+                expected,
+            );
+        }
+    }
+    assert_tight_join(
+        Before::Definition("/u"),
+        add_block(Tag::Heading(1), "\"x\""),
+        &setext,
+        "- [c]: /u\n  \\\"x\"\n  ====\n- q\n",
+    );
+}
+
+#[test]
+fn fences_code_joined_by_a_line_ending_to_text_in_a_tight_item() {
+    // Indented code after a definition or paragraph, or a container ending in one, would continue
+    // it, lazily through the container, and `<!---->` would make the list loose (#173).
+    let options = Options {
+        fences: false,
+        ..Options::default()
+    };
+    let code = |document: &mut Document<String>, item| {
+        document
+            .append_child(
+                item,
+                EventKind::CodeBlock {
+                    value: Value::Literal("x"),
+                    language: None,
+                    fence: None,
+                    math: false,
+                    unclosed: false,
+                },
+            )
+            .unwrap();
+    };
+    for (before, expected) in [
+        (
+            Before::Definition("/u"),
+            "- [c]: /u\n  ```\n  x\n  ```\n- q\n",
+        ),
+        (Before::Paragraph, "- a\n  ```\n  x\n  ```\n- q\n"),
+        (Before::Quote, "- > [c]: /u\n  ```\n  x\n  ```\n- q\n"),
+        (Before::List, "- - [c]: /u\n  ```\n  x\n  ```\n- q\n"),
+    ] {
+        assert_tight_join(before, code, &options, expected);
+    }
 }
