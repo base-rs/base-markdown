@@ -426,6 +426,26 @@ impl<'a> State<'a> {
         self.output.push_str(&tail);
     }
 
+    /// End text written at `output[start..]` so that a language prefix written after it reads
+    /// back alone. The parser reads a language as the longest run of language characters before
+    /// its `:`, so a last character that is one would join it, and it is encoded as a reference,
+    /// which ends the run. An escaped one is encoded instead of its escape: the escape would
+    /// start the run with punctuation, which no language starts with, so none would be read.
+    fn separate_language(&mut self, start: usize) {
+        let Some(last) = self.output[start..]
+            .bytes()
+            .next_back()
+            .filter(|&byte| crate::util::inline_code_info::is_info_char(byte))
+        else {
+            return;
+        };
+        let end = self.output.len() - 1;
+        if last.is_ascii_punctuation() && attention::escapes_next(&self.output[start..end]) {
+            self.output.remove(end - 1);
+        }
+        self.encode_end(start, char::from(last));
+    }
+
     /// Apply `edge` to text written at `output[start..]`, as `attention::edit_start` does. When
     /// the first character becomes a reference, which is punctuation, tildes after it that were
     /// judged against the character could now pair, and they are escaped.
@@ -553,6 +573,15 @@ impl<'a> State<'a> {
                     self.attention(document, child, sequences, &info, &previous, next.is_none())?;
                 previous = Previous::Attention;
             } else {
+                if let (
+                    Previous::Text(start),
+                    EventKind::Code {
+                        language: Some(_), ..
+                    },
+                ) = (&previous, kind)
+                {
+                    self.separate_language(*start);
+                }
                 // Attention can encode the first character of text, which ends a literal
                 // there, so literals are escaped once it has.
                 self.defer_literals = text;

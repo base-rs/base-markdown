@@ -219,11 +219,26 @@ fn invalid_serialized_arena_links_ranges_and_metadata_are_rejected() {
         json!({"Text":{"Source":{"start":0,"end":999}}}),
     );
     alter(text, "kind", json!({"Start":{"Heading":2}}));
+    // An inline code language the prefix grammar rejects, owned or from the source `#` (#138).
+    for language in [
+        json!({"Value":"a\nb"}),
+        json!({"Source":{"start":0,"end":1}}),
+    ] {
+        alter(
+            text,
+            "kind",
+            json!({"Code":{"value":{"Value":"v"},"language":language}}),
+        );
+    }
     alter(
         text,
         "kind",
         json!({"Start":{"FootnoteDefinition":{"Literal":"x"}}}),
     );
+    let mut valid = base.clone();
+    valid["nodes"][text]["kind"] =
+        json!({"Code":{"value":{"Value":"v"},"language":{"Value":"c++"}}});
+    serde_json::from_value::<Document>(valid).unwrap();
     let mut unseen = base.clone();
     unseen["nodes"][0]["first_child"] = Value::Null;
     cases.push(unseen);

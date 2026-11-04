@@ -140,6 +140,14 @@ fn all_invalid_metadata_is_rejected_before_rendering_or_editing() {
             value: bad(),
             language: None,
         },
+        EventKind::Code {
+            value: bad(),
+            language: Some(Text::Literal("rust")),
+        },
+        EventKind::Code {
+            value: Text::Literal("x"),
+            language: Some(bad()),
+        },
         EventKind::CodeBlock {
             value: Text::Literal("x"),
             language: Some(bad()),
@@ -164,6 +172,9 @@ fn all_invalid_metadata_is_rejected_before_rendering_or_editing() {
         },
         EventKind::Start(Tag::Heading(7)),
     ];
+    let kinds = kinds
+        .into_iter()
+        .chain(INVALID_LANGUAGES.iter().map(|&language| code(language)));
     let options = Options::default();
     let mut ast = Document::parse("x", &options.parse).unwrap();
     let leaf = ast.events().count();
@@ -198,6 +209,101 @@ fn all_invalid_metadata_is_rejected_before_rendering_or_editing() {
         render_events("x", input, &options.compile, &mut String::new()),
         Err(StreamError::InvalidRange)
     ));
+}
+
+/// Inline code languages the prefix grammar of `inline_code_info` rejects (#138).
+const INVALID_LANGUAGES: [&str; 7] = ["a\nb", "a`b", "", "-a", "a b", "a:b", "é"];
+const VALID_LANGUAGES: [&str; 5] = ["rust", "c++", "c#", "objective-c", "a.b_c"];
+
+fn code(language: &'static str) -> EventKind<'static> {
+    EventKind::Code {
+        value: Text::Literal("v"),
+        language: Some(Text::Literal(language)),
+    }
+}
+
+fn paragraph(kind: EventKind<'static>) -> Vec<Result<Event<'static>, StreamError>> {
+    document(vec![
+        EventKind::Start(Tag::Paragraph { tight: false }),
+        kind,
+        EventKind::End(TagKind::Paragraph),
+    ])
+}
+
+fn build(source: &str, kind: EventKind<'static>) -> Result<(), StreamError> {
+    let mut builder = AstBuilder::new();
+    builder.consume(&mut paragraph(kind).into_iter(), usize::MAX)?;
+    builder.finish(source).map(drop)
+}
+
+/// An inline code language that would not read back as one is rejected wherever an event enters
+/// a document or renderer, whether its text is a literal, an owned value or a source range (#138).
+#[test]
+fn inline_code_languages_outside_the_prefix_grammar_are_rejected() {
+    let options = Options::default();
+    let mut ast = Document::parse("x", &options.parse).unwrap();
+    let paragraph_id = ast.node(ast.root()).unwrap().first_child().unwrap();
+    let text = ast.node(paragraph_id).unwrap().first_child().unwrap();
+    let invalid = |result: Result<(), StreamError>| {
+        assert!(
+            matches!(result, Err(StreamError::InvalidValue)),
+            "{:?}",
+            result
+        );
+    };
+    for language in INVALID_LANGUAGES {
+        let owned = EventKind::Code {
+            value: Text::Literal("v"),
+            language: Some(Text::from(String::from(language))),
+        };
+        for kind in [code(language), owned] {
+            invalid(ast.set_kind(text, kind.clone()));
+            invalid(ast.append_child(paragraph_id, kind.clone()).map(drop));
+            invalid(render_events(
+                "x",
+                paragraph(kind.clone()),
+                &options.compile,
+                &mut String::new(),
+            ));
+            // A literal or owned language is checked as it is consumed.
+            let mut builder = AstBuilder::new();
+            invalid(
+                builder
+                    .consume(&mut paragraph(kind).into_iter(), usize::MAX)
+                    .map(drop),
+            );
+        }
+        // A source-backed one is checked once the source is known.
+        let source = format!("{language}:`v`");
+        let kind = EventKind::Code {
+            value: Text::Literal("v"),
+            language: Some(Text::Source(0..language.len())),
+        };
+        invalid(build(&source, kind.clone()));
+        invalid(render_events(
+            &source,
+            paragraph(kind),
+            &options.compile,
+            &mut String::new(),
+        ));
+    }
+    assert_eq!(StreamError::InvalidValue.to_string(), "invalid event value");
+    for language in VALID_LANGUAGES {
+        ast.set_kind(text, code(language)).unwrap();
+        ast.append_child(paragraph_id, code(language)).unwrap();
+        let mut html = String::new();
+        render_events("x", paragraph(code(language)), &options.compile, &mut html).unwrap();
+        assert_eq!(
+            html,
+            format!("<p><code class=\"language-{language}\">v</code></p>")
+        );
+        let source = format!("{language}:`v`");
+        let kind = EventKind::Code {
+            value: Text::Literal("v"),
+            language: Some(Text::Source(0..language.len())),
+        };
+        build(&source, kind).unwrap();
+    }
 }
 
 #[test]
