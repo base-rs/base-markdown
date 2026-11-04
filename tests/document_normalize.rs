@@ -3508,6 +3508,29 @@ fn tight_definitions_joins_other_blocks_as_without_it() {
             source
         );
     }
+    // An item of a loose list that records no spread is written spread when it writes a blank line between two of its blocks, here two paragraphs, so the join after a definition is a blank line too and the item is written the same again (#157).
+    use Block::{Leaf, List, Paragraph};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let definition = Leaf(EventKind::Definition {
+        label: Text::from("c".to_owned()),
+        destination: Text::from("/u".to_owned()),
+        title: None,
+    });
+    let nested = List(None, true, vec![(false, vec![p("x")])]);
+    for (blocks, expected) in [
+        (
+            vec![definition, p("p"), p("r")],
+            "- [c]: /u\n\n  p\n\n  r\n\n- q\n",
+        ),
+        (vec![p("b"), p("b"), nested], "- b\n\n  b\n\n  - x\n\n- q\n"),
+    ] {
+        let list = List(None, false, vec![(false, blocks), (false, vec![p("q")])]);
+        assert_eq!(
+            reads_back_with(build_list(&list), &ParseOptions::default(), &tight),
+            expected
+        );
+    }
     let source = "- p\n  - a\n\n  ```\n  x\n  ```\n";
     let document = Document::parse(source, &ParseOptions::default()).unwrap();
     for options in [without_fences(), tight] {
