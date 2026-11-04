@@ -2191,6 +2191,10 @@ enum Block {
     Code,
     Quote(Vec<Block>),
     Footnote(Vec<Block>),
+    /// A heading of rank 1 and its phrasing.
+    Heading(Vec<EventKind<'static>>),
+    /// A table of a head row of one cell, `x`.
+    Table,
     Leaf(EventKind<'static>),
     Separator,
 }
@@ -2245,6 +2249,31 @@ fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) 
             for block in blocks {
                 append_block(document, definition, block);
             }
+        }
+        Block::Heading(phrasing) => {
+            let id = document
+                .append_child(parent, EventKind::Start(Tag::Heading(1)))
+                .unwrap();
+            for kind in phrasing {
+                document.append_child(id, kind.clone()).unwrap();
+            }
+        }
+        Block::Table => {
+            let mut id = parent;
+            for tag in [
+                Tag::Table,
+                Tag::TableHead,
+                Tag::TableRow,
+                Tag::TableCell {
+                    alignment: base_markdown::AlignKind::None,
+                    header: true,
+                },
+            ] {
+                id = document.append_child(id, EventKind::Start(tag)).unwrap();
+            }
+            document
+                .append_child(id, EventKind::Text(Text::from("x".to_owned())))
+                .unwrap();
         }
         Block::Leaf(kind) => {
             document.append_child(parent, kind.clone()).unwrap();
@@ -4221,6 +4250,201 @@ fn a_link_reference_definition_ending_a_block_in_a_tight_item_is_continued_like_
     }
 }
 
+/// The blocks before a block in a tight item for the tests of #168, each with how it is written there.
+fn blocks_before() -> Vec<(Block, &'static str)> {
+    use Block::{Footnote, List, Paragraph, Quote};
+    let p = || Paragraph(vec![EventKind::Text(Text::from("a".to_owned()))]);
+    let tight = |blocks: Vec<Block>| List(None, true, vec![(false, blocks)]);
+    vec![
+        (p(), "a"),
+        (tight(vec![p()]), "- a"),
+        (tight(vec![definition_block()]), "- [d]: u"),
+        (Footnote(vec![p()]), "[^1]: a"),
+        (Quote(vec![tight(vec![p()])]), "> - a"),
+        (Quote(vec![Footnote(vec![p()])]), "> [^1]: a"),
+    ]
+}
+
+fn definition_block() -> Block {
+    Block::Leaf(EventKind::Definition {
+        label: Text::from("d".to_owned()),
+        destination: Text::from("u".to_owned()),
+        title: None,
+    })
+}
+
+/// A tight list of an item of `blocks` and an item `q`.
+fn tight_before_q(blocks: Vec<Block>) -> Block {
+    let q = Block::Paragraph(vec![EventKind::Text(Text::from("q".to_owned()))]);
+    Block::List(None, true, vec![(false, blocks), (false, vec![q])])
+}
+
+fn setext_options() -> base_markdown::MarkdownOptions {
+    base_markdown::MarkdownOptions {
+        setext: true,
+        ..base_markdown::MarkdownOptions::default()
+    }
+}
+
+#[test]
+fn tables_definitions_and_setext_headings_that_need_a_blank_line_in_a_tight_item_make_the_list_loose(
+) {
+    use Block::{Heading, Leaf, Paragraph, Quote, Separator, Table};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    // Only a setext heading can hold a line ending.
+    let setext_only = || {
+        Heading(vec![
+            text("x"),
+            EventKind::SoftBreak(Text::Literal("\n")),
+            text("y"),
+        ])
+    };
+    let gfm = ParseOptions::gfm();
+    // A definition or setext heading cannot interrupt a paragraph, and after a nested list or footnote definition that ends in one, through a block quote around it, a table, definition or setext heading would continue it lazily, as a paragraph would (#154). Without a blank line, which makes the item read back spread, each would read back as part of that paragraph, so the serializer writes one, and normalizing makes the list loose, as it does for a paragraph there, whatever the serializer's options (#168). The rule leads each item, so that one of only a footnote definition and a definition renders the same once read back.
+    let afters = || {
+        vec![
+            (definition_block(), "[d]: u"),
+            (setext_only(), "x\n  y\n  ="),
+            (Table, "| x |\n  | --- |"),
+        ]
+    };
+    for (left, (_, before)) in blocks_before().into_iter().enumerate() {
+        // A table interrupts a paragraph.
+        for (right, (_, after)) in afters().into_iter().enumerate() {
+            if left == 0 && right == 2 {
+                continue;
+            }
+            let block = || {
+                let left = blocks_before().swap_remove(left).0;
+                let right = afters().swap_remove(right).0;
+                tight_before_q(vec![Leaf(EventKind::Rule), left, Separator, right])
+            };
+            assert!(
+                !build_list(&block()).is_normalized(),
+                "{} {}",
+                before,
+                after
+            );
+            for options in [
+                &base_markdown::MarkdownOptions::default(),
+                &setext_options(),
+            ] {
+                let mut document = build_list(&block());
+                document.normalize();
+                assert!(!tight_of_first_list(&document));
+                assert_eq!(
+                    reads_back_with(document, &gfm, options),
+                    format!("- ***\n\n  {}\n\n  {}\n\n- q\n", before, after)
+                );
+            }
+        }
+    }
+    // These can be written on the next line, so the list stays tight: a block after a list that ends in a heading, which no line continues (#157), a table after a paragraph, which it interrupts, and blocks after a block quote that ends in a paragraph, after a line of `>`, or after a definition.
+    let h = || Heading(vec![text("h")]);
+    for (blocks, expected) in [
+        (
+            vec![tight_list_of(h()), Separator, Paragraph(vec![text("b")])],
+            "- - # h\n  b\n- q\n",
+        ),
+        (
+            vec![tight_list_of(h()), Table],
+            "- - # h\n  | x |\n  | --- |\n- q\n",
+        ),
+        (
+            vec![tight_list_of(h()), definition_block()],
+            "- - # h\n  [d]: u\n- q\n",
+        ),
+        (
+            vec![Paragraph(vec![text("a")]), Table],
+            "- a\n  | x |\n  | --- |\n- q\n",
+        ),
+        (
+            vec![Quote(vec![Paragraph(vec![text("a")])]), Table],
+            "- > a\n  >\n  | x |\n  | --- |\n- q\n",
+        ),
+        (
+            vec![Quote(vec![Paragraph(vec![text("a")])]), setext_only()],
+            "- > a\n  >\n  x\n  y\n  =\n- q\n",
+        ),
+        (
+            vec![definition_block(), setext_only()],
+            "- [d]: u\n  x\n  y\n  =\n- q\n",
+        ),
+    ] {
+        let document = build_list(&tight_before_q(blocks));
+        assert!(document.is_normalized(), "{:?}", expected);
+        assert!(tight_of_first_list(&document));
+        assert_eq!(
+            reads_back_with(document, &gfm, &base_markdown::MarkdownOptions::default()),
+            expected
+        );
+    }
+    let source = "- a\n  - # h\n  b\n- c\n";
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    assert!(document.is_normalized());
+    assert_eq!(reads_back(document), source);
+}
+
+fn tight_list_of(block: Block) -> Block {
+    Block::List(None, true, vec![(false, vec![block])])
+}
+
+#[test]
+fn a_heading_is_written_atx_where_a_setext_heading_would_need_a_blank_line_in_a_tight_item() {
+    use Block::{Heading, Paragraph, Quote, Separator};
+    let x = || EventKind::Text(Text::from("x".to_owned()));
+    // With `setext`, a setext heading after a block it would continue needs a blank line, which made the list read back loose and the output change on the next write (#184). An ATX heading interrupts a paragraph and ends the containers around it, so the heading is written ATX there and the list stays tight. Where no blank line is needed, after a line of `>` here, it stays setext.
+    for (left, (_, before)) in blocks_before().into_iter().enumerate() {
+        let block = || {
+            tight_before_q(vec![
+                blocks_before().swap_remove(left).0,
+                Separator,
+                Heading(vec![x()]),
+            ])
+        };
+        let document = build_list(&block());
+        assert!(document.is_normalized(), "{}", before);
+        assert_eq!(
+            reads_back_with(document, &ParseOptions::gfm(), &setext_options()),
+            format!("- {}\n  # x\n- q\n", before)
+        );
+    }
+    let document = build_list(&tight_before_q(vec![
+        Quote(vec![Paragraph(vec![EventKind::Text(Text::from(
+            "a".to_owned(),
+        ))])]),
+        Heading(vec![x()]),
+    ]));
+    assert_eq!(
+        reads_back_with(document, &ParseOptions::default(), &setext_options()),
+        "- > a\n  >\n  x\n  =\n- q\n"
+    );
+    // A parsed ATX heading holds a line ending only from a character reference, which an ATX heading writes as `&#xA;`, so there it is not made setext, as elsewhere, and the list stays tight. It was written setext after a blank line, which read back loose and was written differently the next time.
+    for (source, expected) in [
+        ("- a\n  # x&#10;y\n- q\n", "- a\n  # x&#xA;y\n- q\n"),
+        ("- - a\n  # x&#10;y\n- q\n", "- - a\n  # x&#xA;y\n- q\n"),
+        ("- > - a\n  # x&#10;y\n- q\n", "- > - a\n  # x&#xA;y\n- q\n"),
+        (
+            "- a\n  # ![x&#10;y](u)\n- q\n",
+            "- a\n  # ![x&#xA;y](u)\n- q\n",
+        ),
+    ] {
+        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+        document.normalize();
+        assert!(tight_of_first_list(&document), "{:?}", source);
+        assert_eq!(reads_back(document), expected);
+    }
+    let document = Document::parse("# x&#10;y\n", &ParseOptions::default()).unwrap();
+    assert_eq!(reads_back(document), "x\ny\n=\n");
+    // With `setext`, a parsed heading there is written ATX too, here with inline HTML in it.
+    let source = "- a\n  # x <b>\n- q\n";
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    assert_eq!(
+        reads_back_with(document, &ParseOptions::default(), &setext_options()),
+        source
+    );
+}
+
 #[test]
 fn joining_paragraphs_and_loosening_lists_in_tight_items_is_linear() {
     use Block::{List, Paragraph, Quote, Separator};
@@ -4278,6 +4502,22 @@ fn joining_paragraphs_and_loosening_lists_in_tight_items_is_linear() {
                 false,
                 vec![(true, blocks), (false, vec![Paragraph(vec![text()])])],
             ))
+        },
+    );
+    // With `setext`, each heading after a paragraph is written ATX, which is linear only if each looks at the block before it alone.
+    assert_linear(
+        "serializing headings after paragraphs in a tight item with setext",
+        1 << 8,
+        |size| {
+            let blocks = (0..size)
+                .flat_map(|_| [Paragraph(vec![text()]), Block::Heading(vec![text()])])
+                .collect();
+            let mut document = build_list(&tight(vec![(false, blocks)]));
+            timed(|| {
+                document.normalize();
+                assert!(document.is_normalized());
+                base_markdown::to_markdown_with_options(&document, &setext_options()).unwrap();
+            })
         },
     );
     // A tight list of many items, of which only the last needs it to be loose.
@@ -4638,6 +4878,8 @@ fn without_unwritable(block: &Block) -> Option<Block> {
         ),
         Block::Quote(children) => Block::Quote(blocks(children)),
         Block::Footnote(children) => Block::Footnote(blocks(children)),
+        Block::Heading(phrasing) => Block::Heading(phrasing.clone()),
+        Block::Table => Block::Table,
         Block::Leaf(EventKind::Html { value, .. })
             if value.resolve("").unwrap().trim_matches([' ', '\t', '\r', '\n']).is_empty() =>
         {
