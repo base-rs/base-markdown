@@ -11,11 +11,11 @@ use crate::markdown::{
     construct_name::ConstructName,
     util::{
         format_code_as_indented::format_code_as_indented,
-        format_heading_as_setext::format_heading_as_setext,
+        format_heading_as_setext::{format_heading_as_setext, heading_as_setext},
         format_link_as_auto_link::{ends_at_boundary, written_link, WrittenLink},
         safe::EscapeInfos,
     },
-    Options,
+    LineWrapping, Options,
 };
 use crate::{
     message::Message,
@@ -86,6 +86,9 @@ pub struct State<'a> {
     /// Whether the flow child being written is code that needs a fence whatever the options, as
     /// from `fences_code`. Set before each flow child is written.
     fence_code: bool,
+    /// Whether the flow child being written is a heading written ATX whatever the options, as
+    /// `setext_heading` decides. Set before each flow child is written.
+    pub(super) atx_heading: bool,
     /// Where the definition without a title that the paragraph or setext heading being written
     /// follows across a single line ending starts, if it does. A `"`, `'` or `(` starting the
     /// block could read back as the definition's title. Set before each flow child is written.
@@ -144,11 +147,9 @@ impl<'a> State<'a> {
     /// would be a single line ending is written as a blank line too, which the list being loose
     /// already renders.
     ///
-    /// Two block quotes in a row need a blank line between them too, or the second would continue
-    /// the first, so an item with them is written spread the same way (#154).
-    ///
-    /// Any other blank line between two of its blocks, such as the one between two paragraphs or
-    /// after a nested list or footnote definition, makes it read back spread too, and an item that
+    /// Any other blank line between two of its blocks, such as one that `needs_blank_line` asks
+    /// for, between two paragraphs, two block quotes or after a nested list or footnote
+    /// definition ending in a paragraph, makes it read back spread too, and an item that
     /// records spread is written with a blank line between each of its blocks, so it is written
     /// spread now.
     ///
@@ -185,17 +186,10 @@ impl<'a> State<'a> {
         let mut left = None;
         for right in flow_children(document, item) {
             if let Some(left) = left {
-                let left_kind = &document.node(left).unwrap().kind;
-                let apart = match left_kind {
-                    EventKind::Start(Tag::Paragraph { .. }) => {
-                        !list_interrupts_paragraph(document, right)
-                    }
-                    EventKind::Start(Tag::BlockQuote) => matches!(
-                        document.node(right).unwrap().kind,
-                        EventKind::Start(Tag::BlockQuote)
-                    ),
-                    _ => false,
-                };
+                let apart = matches!(
+                    document.node(left).unwrap().kind,
+                    EventKind::Start(Tag::Paragraph { .. })
+                ) && !list_interrupts_paragraph(document, right);
                 let written = writes_blank_line(
                     self.default_separator(document, before, left, right, item, spread),
                 );
@@ -242,6 +236,10 @@ impl<'a> State<'a> {
                 document.node(child).unwrap().kind,
                 EventKind::CodeBlock { .. }
             ) && fences_code(document, parent, before, records_spread || spread);
+            self.atx_heading = matches!(
+                document.node(child).unwrap().kind,
+                EventKind::Start(Tag::Heading(_))
+            ) && !self.setext_heading(document, parent, before, child);
             let start = self.output.len();
             self.write_node(document, child, &Info::new("\n", "\n"))?;
             self.untitled_definition = None;
@@ -271,7 +269,7 @@ impl<'a> State<'a> {
                     && match document.node(next).unwrap().kind {
                         EventKind::Start(Tag::Paragraph { .. }) => true,
                         EventKind::Start(Tag::Heading(_)) => {
-                            format_heading_as_setext(document, next, self)
+                            self.setext_heading(document, parent, Some(child), next)
                         }
                         _ => false,
                     };
@@ -1067,62 +1065,67 @@ impl<'a> State<'a> {
             return "\n\n<!---->\n\n";
         }
         if in_list(document, parent) {
-            // Without a blank line, a block that cannot interrupt a paragraph would lazily continue
-            // the last paragraph of a nested list, footnote definition or block quote, through the
-            // last blocks of any containers in it. That blank line makes the item read back spread,
-            // though a list or footnote definition takes it into its span (#157), so `spreads_item`
-            // writes the item's other blocks spread too. A line of `>` alone ends a block quote's
-            // paragraph without a blank line in the item, so the item stays tight:
-            // `- > p\n  >\n  p` (#154). After a list or footnote definition ending the quote, that
-            // line is a blank line in it, which reads back as spread, so a blank line is written
-            // instead. In a loose list, a blank line is written after any list.
+            // A block that would otherwise continue the one before it, or a block quote after
+            // another, needs a blank line. That blank line makes the item read back spread, though
+            // a list or footnote definition takes it into its span (#157), so `spreads_item`
+            // writes the item's other blocks spread too, and `Document::normalize` makes a tight
+            // list with such an item loose (#168).
+            let setext = |heading| self.setext_heading(document, parent, Some(left), heading);
+            if needs_blank_line(document, left, right, setext) {
+                return "\n\n";
+            }
+            // A line of `>` alone ends a block quote's last paragraph without a blank line in the
+            // item, so the item stays tight: `- > p\n  >\n  p` (#154). In a loose list, a blank
+            // line is written after any list that a block which cannot interrupt a paragraph
+            // follows.
             let continues = || {
-                matches!(
-                    right_kind,
-                    EventKind::Start(Tag::Paragraph { .. } | Tag::Table)
-                        | EventKind::Definition { .. }
-                ) || matches!(right_kind, EventKind::Start(Tag::Heading(_)))
-                    && format_heading_as_setext(document, right, self)
+                continues_text(document, right, setext)
+                    || matches!(right_kind, EventKind::Start(Tag::Table))
             };
             match left_kind {
                 EventKind::Start(Tag::List { .. })
-                    if (!in_tight_list(document, parent) || ends_in_paragraph(document, left))
-                        && continues() =>
-                {
-                    return "\n\n";
-                }
-                EventKind::Start(Tag::FootnoteDefinition(_))
-                    if ends_in_paragraph(document, left) && continues() =>
+                    if !in_tight_list(document, parent) && continues() =>
                 {
                     return "\n\n";
                 }
                 EventKind::Start(Tag::BlockQuote)
                     if !spread && ends_in_paragraph(document, left) && continues() =>
                 {
-                    return if ends_in_list_or_footnote_definition(document, left) {
-                        "\n\n"
-                    } else {
-                        QUOTE_END
-                    };
+                    return QUOTE_END;
                 }
                 _ => {}
-            }
-            if matches!(left_kind, EventKind::Start(Tag::Paragraph { .. })) {
-                if matches!(
-                    right_kind,
-                    EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. }
-                ) {
-                    return "\n\n";
-                }
-                if matches!(right_kind, EventKind::Start(Tag::Heading(_)))
-                    && format_heading_as_setext(document, right, self)
-                {
-                    return "\n\n";
-                }
             }
             return if spread { "\n\n" } else { "\n" };
         }
         "\n\n"
+    }
+
+    /// Whether heading `heading`, a flow child of `parent` after flow child `before`, if any, is
+    /// written as a setext heading. In an item of a tight list, a setext heading after a block it
+    /// would otherwise continue, as `needs_blank_line` finds, could be written only after a blank
+    /// line, which would make the list loose. An ATX heading interrupts a paragraph and ends the
+    /// containers it would lazily continue, so a heading is written ATX there, with a line ending
+    /// in its text written as `&#xA;`, unless it holds a soft or hard break, which only a setext
+    /// heading can write, and for which `Document::normalize` makes the list loose instead:
+    /// `- a\n  # h\n- q` with `setext` too (#168).
+    fn setext_heading<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        parent: NodeId,
+        before: Option<NodeId>,
+        heading: NodeId,
+    ) -> bool {
+        format_heading_as_setext(document, heading, self)
+            && !(in_tight_list(document, parent)
+                && before
+                    .is_some_and(|before| needs_blank_line(document, before, heading, |_| true))
+                && !heading_as_setext(
+                    document,
+                    heading,
+                    false,
+                    self.options.line_wrapping == LineWrapping::Unwrap,
+                    true,
+                ))
     }
 
     /// Whether flow child `id` of `parent`, after flow child `before`, if any, is code written
@@ -1181,6 +1184,7 @@ impl<'a> State<'a> {
             label_end: None,
             definition_colon: None,
             fence_code: false,
+            atx_heading: false,
             untitled_definition: None,
             task_item: None,
             depth: 0,
@@ -1763,6 +1767,62 @@ fn ends_in_list_or_footnote_definition<S: AsRef<str>>(
             EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition(_))
         )
     })
+}
+
+/// Whether flow children `left` and `right` of an item, in a row, can be kept apart only by a blank
+/// line between them, which makes the item read back spread and so its list loose. `setext` is
+/// whether a heading is written as a setext heading after `left`.
+///
+/// This is the one rule for these joins: the serializer writes a blank line for them, and
+/// `Document::normalize` makes a tight list loose when one of its items holds such a pair, other
+/// than two paragraphs, which it joins (#154, #168). So the two cannot disagree.
+///
+/// - Two block quotes in a row would read back as one.
+/// - A paragraph, link reference definition or setext heading cannot interrupt a paragraph: after
+///   one, it would continue it, as text, a title or the heading's content.
+/// - After a nested list or footnote definition that ends in a paragraph or definition, through
+///   the last blocks of any containers in it, any of those or a table would continue that
+///   paragraph lazily, as a table's rows cannot interrupt a lazy paragraph. So would one after a
+///   block quote whose last block is such a list or definition, where the line of `>` alone that
+///   ends a quote's paragraph (`QUOTE_END`) is a blank line in that list or definition.
+///
+/// A list or definition that ends in anything else, such as a heading, is ended by the next line,
+/// so the block after it is written on that line: `- a\n  - # h\n  b` (#157).
+pub(crate) fn needs_blank_line<S: AsRef<str>>(
+    document: &Document<S>,
+    left: NodeId,
+    right: NodeId,
+    setext: impl Fn(NodeId) -> bool,
+) -> bool {
+    let right_kind = &document.node(right).unwrap().kind;
+    let lazy = || {
+        (continues_text(document, right, &setext)
+            || matches!(right_kind, EventKind::Start(Tag::Table)))
+            && ends_in_paragraph(document, left)
+    };
+    match document.node(left).unwrap().kind {
+        EventKind::Start(Tag::Paragraph { .. }) => continues_text(document, right, &setext),
+        EventKind::Start(Tag::BlockQuote) => {
+            matches!(right_kind, EventKind::Start(Tag::BlockQuote))
+                || ends_in_list_or_footnote_definition(document, left) && lazy()
+        }
+        EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition(_)) => lazy(),
+        _ => false,
+    }
+}
+
+/// Whether flow child `right` is a paragraph, link reference definition or a heading written as a
+/// setext heading, as `setext` says, none of which can interrupt a paragraph.
+fn continues_text<S: AsRef<str>>(
+    document: &Document<S>,
+    right: NodeId,
+    setext: impl Fn(NodeId) -> bool,
+) -> bool {
+    match document.node(right).unwrap().kind {
+        EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. } => true,
+        EventKind::Start(Tag::Heading(_)) => setext(right),
+        _ => false,
+    }
 }
 
 /// Whether a flow child, not a separator, follows `id` among its siblings.

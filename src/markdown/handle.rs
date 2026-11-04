@@ -194,7 +194,8 @@ impl State<'_> {
         rank: u8,
     ) -> Result<(), Message> {
         let start = self.output.len();
-        if format_heading_as_setext(document, node, self) {
+        if !core::mem::take(&mut self.atx_heading) && format_heading_as_setext(document, node, self)
+        {
             self.enter(ConstructName::Phrasing);
             self.container_phrasing(document, node, &Info::new("\n", "\n"))?;
             self.exit();

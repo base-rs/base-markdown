@@ -4,6 +4,7 @@
 //! A source-backed arena document and its incremental pull consumer.
 use crate::stream::{Event, EventKind, StreamError, Text};
 use crate::{
+    markdown::{heading_as_setext, needs_blank_line},
     stream::{Tag, TagKind},
     NodeSyntax,
 };
@@ -1337,49 +1338,13 @@ fn misnumbered_after_paragraph(nodes: &[Node], node: &Node) -> bool {
     list_after_paragraph(nodes, node, misnumbered)
 }
 
-// Whether, in an item of a tight list, blocks `left` and `right` cannot be written apart, though a blank line between them, which makes the list loose, would keep them apart. Two block quotes in a row read back as one. A paragraph after a list or footnote definition that ends in a paragraph, through the last blocks of any containers in it, would continue that paragraph lazily, and so would one after a block quote whose last block is such a list or definition, as the line of `>` alone that ends a quote's paragraph is a blank line in that list or definition. Two paragraphs in a row are not counted: normalizing joins them instead.
-fn apart_only_when_loose(nodes: &[Node], left: &Node, right: &Node) -> bool {
-    let lazy = |node: &Node| {
-        matches!(
-            node.kind,
-            EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition(_))
-        ) && ends_in_paragraph(nodes, node)
-    };
-    match (&left.kind, &right.kind) {
-        (EventKind::Start(Tag::BlockQuote), EventKind::Start(Tag::BlockQuote)) => true,
-        (EventKind::Start(Tag::BlockQuote), EventKind::Start(Tag::Paragraph { .. })) => {
-            blocks(nodes, left.first_child)
-                .last()
-                .is_some_and(|last| lazy(&nodes[last.index()]))
-        }
-        (_, EventKind::Start(Tag::Paragraph { .. })) => lazy(left),
-        _ => false,
-    }
-}
-
-// Whether the last block of `node`, through the last blocks of any containers in it, is a paragraph or a link reference definition, which a following line could lazily continue. Only last blocks are visited, which come before no other block, so each node is visited for at most one container.
-fn ends_in_paragraph<'a>(nodes: &'a [Node], mut node: &'a Node) -> bool {
-    while let Some(last) = blocks(nodes, node.first_child).last() {
-        node = &nodes[last.index()];
-        match node.kind {
-            EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. } => return true,
-            EventKind::Start(
-                Tag::BlockQuote | Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition(_),
-            ) => {}
-            _ => return false,
-        }
-    }
-    false
-}
-
 // Whether the item at `node` is of a tight list and holds two blocks in a row, not counting separators, for which `pair` holds.
-fn tight_item_pair(nodes: &[Node], node: &Node, pair: impl Fn(&Node, &Node) -> bool) -> bool {
+fn tight_item_pair(nodes: &[Node], node: &Node, pair: impl Fn(NodeId, NodeId) -> bool) -> bool {
     if !tight_item(nodes, node) {
         return false;
     }
-    let mut left: Option<&Node> = None;
-    for id in blocks(nodes, node.first_child) {
-        let right = &nodes[id.index()];
+    let mut left = None;
+    for right in blocks(nodes, node.first_child) {
         if left.is_some_and(|left| pair(left, right)) {
             return true;
         }
@@ -1388,10 +1353,20 @@ fn tight_item_pair(nodes: &[Node], node: &Node, pair: impl Fn(&Node, &Node) -> b
     false
 }
 
-// Whether the item at `node` is of a tight list and holds two blocks in a row, not counting separators, that can be written apart only in a loose list.
-fn loosens(nodes: &[Node], node: &Node) -> bool {
-    tight_item_pair(nodes, node, |left, right| {
-        apart_only_when_loose(nodes, left, right)
+// Whether the item `item` is of a tight list and holds two blocks in a row, not counting separators, that can be written apart only with a blank line between them, which makes the list loose, as the serializer decides with `needs_blank_line`, other than two paragraphs, which normalizing joins instead. A heading counts as written setext only when it holds a soft or hard break: the serializer writes any other heading there ATX, whatever its options, and options that write one with a break ATX too, such as unwrapping, write the list loose once it is.
+fn loosens<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> bool {
+    let nodes = &document.nodes;
+    let paragraph = |id: NodeId| {
+        matches!(
+            nodes[id.index()].kind,
+            EventKind::Start(Tag::Paragraph { .. })
+        )
+    };
+    tight_item_pair(nodes, &nodes[item.index()], |left, right| {
+        !(paragraph(left) && paragraph(right))
+            && needs_blank_line(document, left, right, |heading| {
+                heading_as_setext(document, heading, false, false, true)
+            })
     })
 }
 
@@ -1399,7 +1374,7 @@ fn loosens(nodes: &[Node], node: &Node) -> bool {
 fn adjacent_paragraphs(nodes: &[Node], node: &Node) -> bool {
     let paragraph = |node: &Node| matches!(node.kind, EventKind::Start(Tag::Paragraph { .. }));
     tight_item_pair(nodes, node, |left, right| {
-        paragraph(left) && paragraph(right)
+        paragraph(&nodes[left.index()]) && paragraph(&nodes[right.index()])
     })
 }
 
@@ -1949,7 +1924,7 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// Markdown cannot write whitespace at the edges of emphasis, strong or strikethrough, so it moves out: Unicode whitespace in text and soft breaks at either edge, and hard breaks at the end, move out through any attention nested at that edge to just before or after the outermost attention whose edge they are. Attention left empty is removed, and what moved out takes its place. A hard break at the start of attention stays, and links and images keep whitespace at their edges. The parser reads no break at the edges of a paragraph, heading or table cell, so soft breaks at either edge of its phrasing are removed, and so are hard breaks at the end of a paragraph or heading, including those that moved out of attention; a hard break at the start stays. Markdown cannot write a hard break in a table cell, so one there, at any depth and at its end too, becomes a space, which the serializer encodes where it is at the edge of the cell, so `| a&#x20; |` is written for a cell of `a` and a hard break.
     ///
-    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code, math or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. Inline HTML without a value writes nothing, so it is removed, before anything above, and what was on either side meets: text joins, attention merges, and attention or a paragraph it leaves empty is removed, so a link reference after it starts its paragraph and is escaped as such, `[r]\: /u` rather than `[r]: /u`, which reads back as a definition. Inline HTML of whitespace alone stays, as it can be written between text. An HTML block whose value is empty or holds only spaces, tabs and line endings is written as blank lines, as no HTML block starts with whitespace alone, and a list without items, not counting separators, is written as nothing, or as a lone `-` where it is the only block of an item, so each is removed with one separator beside it, like an empty paragraph, and also before anything above, so the rules below see the items they leave empty: an item of `p` and a list whose only item holds a list without items is written `- p`, where `- p\n  -` read back as a heading. The parser produces none of these. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. An empty item cannot interrupt a paragraph, and a `-` alone under one is a setext underline, so in an item of a tight list, where no blank line can come between them, a list directly after a paragraph, not counting separators, cannot start with an empty item, one with no blocks once its empty paragraphs are removed: such a list's leading empty items are removed, as each next one becomes the first, so items of `p` and a list of an empty item and `a` are written `- p\n  - a`, where `- p\n  -` read back as a heading. Later empty items stay. A list left with no item is removed with one separator beside it, the one after it if there is one, and a list after it then follows the paragraph in turn. Only an ordered list that starts at 1 can interrupt a paragraph, so in an item of a tight list, an ordered list directly after a paragraph, not counting separators, that starts at another number, including one whose leading empty items were removed, is made to start at 1: `- p\n  3. a` reads back as text, so it is written `- p\n  1. a`. Its items and text stay; only its numbering changes. In an item of a tight list, two paragraphs in a row, not counting separators, cannot be written either, as the blank line between them would make the list loose, so once the rules above have run, each run of them is joined into its first paragraph, with a soft break between each, and the separators between them are removed: a tight list has no `<p>`, so this renders almost the same, and items of `a` and `b` are written `- a\n  b`. Some blocks in a row in an item of a tight list can be written apart only with a blank line between them, which makes the list loose: two block quotes, which would otherwise read back as one, a paragraph after a list or footnote definition that ends in a paragraph, through the last blocks of any containers in it, which would otherwise continue that paragraph lazily, and a paragraph after a block quote whose last block is such a list or definition, where the line of `>` that would end the quote's paragraph is a blank line in that list or definition. Such a list is made loose, with the paragraphs of all its items, and its paragraphs in a row are then left apart. A paragraph after a list that does not end in a paragraph, such as one whose last item is empty, is written on the next line, and one after a block quote that ends in a paragraph in any other way after a line of `>`, so both stay in a tight list. The parser keeps the space or tab that separates a task marker from its text at the start of that text, and Markdown cannot write a marker with nothing after its separator, so when the phrasing of a paragraph, heading or table cell starts with a task marker followed only by breaks and at most one text that is a single space or tab, the marker is removed, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a marker alone, or of a marker and a hard break, is left empty, and removed if it starts a list after a paragraph as above, and one of a marker and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the marker keeps it, including whitespace after the separator, which the serializer encodes, so a marker and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. The parser reads each line ending in inline code or math as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. Code and math in image text are written as alt text, where line endings can be written, so they keep theirs. The parser stores each line ending in a code or math block as LF, and the last line of a closed fence with its line ending, so in the value of such a block each CRLF and lone CR becomes LF, and a value that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty value stays, as `` ```\n``` `` reads back as one. The last node of the document, attached, keeps a value without a final line ending, as the parser stores one for an unclosed fence or indented code that ends the source without a line ending, such as `` ```\na ``, so normalizing a parsed document leaves it as it is. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
+    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code, math or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. Inline HTML without a value writes nothing, so it is removed, before anything above, and what was on either side meets: text joins, attention merges, and attention or a paragraph it leaves empty is removed, so a link reference after it starts its paragraph and is escaped as such, `[r]\: /u` rather than `[r]: /u`, which reads back as a definition. Inline HTML of whitespace alone stays, as it can be written between text. An HTML block whose value is empty or holds only spaces, tabs and line endings is written as blank lines, as no HTML block starts with whitespace alone, and a list without items, not counting separators, is written as nothing, or as a lone `-` where it is the only block of an item, so each is removed with one separator beside it, like an empty paragraph, and also before anything above, so the rules below see the items they leave empty: an item of `p` and a list whose only item holds a list without items is written `- p`, where `- p\n  -` read back as a heading. The parser produces none of these. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. An empty item cannot interrupt a paragraph, and a `-` alone under one is a setext underline, so in an item of a tight list, where no blank line can come between them, a list directly after a paragraph, not counting separators, cannot start with an empty item, one with no blocks once its empty paragraphs are removed: such a list's leading empty items are removed, as each next one becomes the first, so items of `p` and a list of an empty item and `a` are written `- p\n  - a`, where `- p\n  -` read back as a heading. Later empty items stay. A list left with no item is removed with one separator beside it, the one after it if there is one, and a list after it then follows the paragraph in turn. Only an ordered list that starts at 1 can interrupt a paragraph, so in an item of a tight list, an ordered list directly after a paragraph, not counting separators, that starts at another number, including one whose leading empty items were removed, is made to start at 1: `- p\n  3. a` reads back as text, so it is written `- p\n  1. a`. Its items and text stay; only its numbering changes. In an item of a tight list, two paragraphs in a row, not counting separators, cannot be written either, as the blank line between them would make the list loose, so once the rules above have run, each run of them is joined into its first paragraph, with a soft break between each, and the separators between them are removed: a tight list has no `<p>`, so this renders almost the same, and items of `a` and `b` are written `- a\n  b`. Some blocks in a row in an item of a tight list can be written apart only with a blank line between them, which makes the list loose, and the serializer decides which with the same rule: two block quotes, which would otherwise read back as one; a link reference definition or a heading that only a setext heading can write, as it holds a soft or hard break, after a paragraph, which neither can interrupt; and a paragraph, table, link reference definition or such a heading after a list or footnote definition that ends in a paragraph or link reference definition, through the last blocks of any containers in it, which would otherwise continue it lazily, or after a block quote whose last block is such a list or definition, where the line of `>` that would end the quote's paragraph is a blank line in that list or definition. Such a list is made loose, with the paragraphs of all its items, and its paragraphs in a row are then left apart. Any other heading there is written as an ATX heading, which interrupts a paragraph and ends the containers around it, even when the serializer is asked for setext headings, with a line ending in its text written as `&#xA;`, so it leaves the list tight, as a parsed heading there always does; the serializer's options are not known here, so a heading with a soft break makes the list loose even when unwrapping would write it as a space. A block after a list that does not end in a paragraph or definition, such as one whose last item is empty or a heading, is written on the next line, a table after a paragraph interrupts it, and a block after a block quote that ends in a paragraph in any other way is written after a line of `>`, so these stay in a tight list. The parser keeps the space or tab that separates a task marker from its text at the start of that text, and Markdown cannot write a marker with nothing after its separator, so when the phrasing of a paragraph, heading or table cell starts with a task marker followed only by breaks and at most one text that is a single space or tab, the marker is removed, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a marker alone, or of a marker and a hard break, is left empty, and removed if it starts a list after a paragraph as above, and one of a marker and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the marker keeps it, including whitespace after the separator, which the serializer encodes, so a marker and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. The parser reads each line ending in inline code or math as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. Code and math in image text are written as alt text, where line endings can be written, so they keep theirs. The parser stores each line ending in a code or math block as LF, and the last line of a closed fence with its line ending, so in the value of such a block each CRLF and lone CR becomes LF, and a value that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty value stays, as `` ```\n``` `` reads back as one. The last node of the document, attached, keeps a value without a final line ending, as the parser stores one for an unclosed fence or indented code that ends the source without a line ending, such as `` ```\na ``, so normalizing a parsed document leaves it as it is. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
     ///
     /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, adjacent attention of the same kind, such as `*a*_b_`, stays separate, and strikethrough inside strikethrough, such as `~a~~b~~c~`, stays nested. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
     ///
@@ -1990,7 +1965,7 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent inline math, adjacent attention of the same kind, a separator or HTML without a value in phrasing, or, outside phrasing, an HTML block that is empty or holds only spaces, tabs and line endings, or a list without items, not counting separators; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, ends with a hard break, or starts with a task marker followed only by breaks and at most one text that is a single space or tab; no inline code or math outside image text has a line ending in its value; no code or math block has a carriage return in its value, or a value that is not empty and has no final line ending unless it is the last node of the document; no attached paragraph is empty; no loose list has only one item with fewer than two blocks; no item of a tight list holds a list that starts with an empty item, or an ordered list that starts at a number other than 1, directly after a paragraph; and no item of a tight list holds two paragraphs in a row, two block quotes in a row, or a paragraph after a list or footnote definition that ends in a paragraph or after a block quote whose last block is one, not counting separators. This takes time linear in the size of the arena.
+    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent inline math, adjacent attention of the same kind, a separator or HTML without a value in phrasing, or, outside phrasing, an HTML block that is empty or holds only spaces, tabs and line endings, or a list without items, not counting separators; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, ends with a hard break, or starts with a task marker followed only by breaks and at most one text that is a single space or tab; no inline code or math outside image text has a line ending in its value; no code or math block has a carriage return in its value, or a value that is not empty and has no final line ending unless it is the last node of the document; no attached paragraph is empty; no loose list has only one item with fewer than two blocks; no item of a tight list holds a list that starts with an empty item, or an ordered list that starts at a number other than 1, directly after a paragraph; and no item of a tight list holds two blocks in a row, not counting separators, that can be written apart only with a blank line between them, as [`Document::normalize`] lists, or two paragraphs in a row. This takes time linear in the size of the arena.
     pub fn is_normalized(&self) -> bool {
         let source = self.source.as_ref();
         let nodes = &self.nodes;
@@ -2043,7 +2018,7 @@ impl<S: AsRef<str>> Document<S> {
                     if reads_back_tight(nodes, node)
                         || empty_item_after_paragraph(nodes, node)
                         || misnumbered_after_paragraph(nodes, node)
-                        || loosens(nodes, node)
+                        || loosens(self, id)
                         || adjacent_paragraphs(nodes, node)
                     {
                         return false;
@@ -2121,7 +2096,7 @@ impl<S: AsRef<str>> Document<S> {
                         self.nodes[id.index()].next_sibling
                     })
                 };
-                if items().any(|item| loosens(&self.nodes, &self.nodes[item.index()])) {
+                if items().any(|item| loosens(self, item)) {
                     self.set_tight(id, false);
                 } else {
                     let mut item = self.nodes[id.index()].first_child;
