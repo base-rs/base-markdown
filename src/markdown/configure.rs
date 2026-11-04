@@ -56,9 +56,11 @@ pub struct Options {
     /// Marker to use for fenced code (``'`'`` or `'~'`, default: ``'`'``).
     pub fence: char,
     /// Whether to use fenced code always (`bool`, default: `true`).
-    /// The default is to use fenced code if there is a language defined,
-    /// if the code is empty,
-    /// or if it starts or ends in blank lines.
+    /// When `false`, indented code is used where possible,
+    /// and fenced code is still used if there is a language defined,
+    /// if the code is empty or only whitespace,
+    /// if it starts or ends in blank lines,
+    /// or if it directly follows a footnote definition.
     pub fences: bool,
     /// Whether to increment the counter of ordered lists items (`bool`,
     /// default: `true`).
