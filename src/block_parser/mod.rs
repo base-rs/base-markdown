@@ -759,22 +759,9 @@ impl Builder<'_> {
         }
         let end = at + scan_nextline(&bytes[at..]);
         let delimiter_end = terminal_ending_start(bytes, end);
-        let delimiter = &bytes[at..delimiter_end];
-        if !delimiter.contains(&b'|') && !delimiter.contains(&b':') {
-            return None;
-        }
-        let mut columns = 0;
-        for (_, content) in table::Cells::new(bytes, at..delimiter_end) {
-            table::alignment(&bytes[content])?;
-            columns += 1;
-        }
         let header_end = terminal_ending_start(bytes, next);
-        if &bytes[table::trim(bytes, start..header_end)] == b"|"
-            || table::Cells::new(bytes, start..header_end).count() != columns
-        {
-            return None;
-        }
-        Some((end, at..delimiter_end))
+        table_start(&bytes[start..header_end], &bytes[at..delimiter_end])
+            .then_some((end, at..delimiter_end))
     }
     fn table_head(&mut self, start: usize) -> Option<usize> {
         let (end, delimiter) = self.table_delimiter(start)?;
@@ -1113,6 +1100,44 @@ pub(crate) fn definition_has_title(source: &str) -> bool {
 /// paragraph.
 pub(crate) fn starts_footnote_definition(bytes: &[u8]) -> bool {
     footnote_prefix(bytes, 0).is_some()
+}
+
+/// Whether `delimiter`, the content of a line after its indentation that starts with `|`, `-` or
+/// `:` and is not a list item, is a delimiter row with as many cells as the row `header` on the
+/// line before it, so that the two lines start a table. Neither includes its line ending.
+fn table_start(header: &[u8], delimiter: &[u8]) -> bool {
+    if !delimiter.contains(&b'|') && !delimiter.contains(&b':') {
+        return false;
+    }
+    let mut columns = 0;
+    for (_, content) in table::Cells::new(delimiter, 0..delimiter.len()) {
+        if table::alignment(&delimiter[content]).is_none() {
+            return false;
+        }
+        columns += 1;
+    }
+    &header[table::trim(header, 0..header.len())] != b"|"
+        && table::Cells::new(header, 0..header.len()).count() == columns
+}
+
+/// Whether the line `delimiter` after the line `header`, both without container prefixes or line
+/// endings, would make the two lines start a table, which can interrupt a paragraph.
+pub(crate) fn starts_table(header: &str, delimiter: &str) -> bool {
+    let delimiter = delimiter.as_bytes();
+    matches!(delimiter.first(), Some(b'|' | b'-' | b':'))
+        && LineStart::new(delimiter)
+            .scan_list_marker_with_indent(0, true)
+            .is_none()
+        && table_start(header.as_bytes(), delimiter)
+}
+
+/// Whether `bytes`, at the start of a block, would start an HTML block only because the rest
+/// of its first line is blank (kind 7), so that a line ending written as a character reference
+/// keeps it from starting one.
+pub(crate) fn complete_tag_starts_html_block(bytes: &[u8]) -> bool {
+    bytes.first() == Some(&b'<')
+        && html::Html::start(bytes, false, false).is_none()
+        && html::Html::start(bytes, false, true).is_some()
 }
 
 /// Whether HTML at the start of a line would start an HTML block inside a paragraph (kinds 1–6).

@@ -61,6 +61,14 @@ impl EventParser<'_> {
     pub(crate) fn set_definition_limit(&mut self, limit: Option<usize>) {
         self.definitions.set_limit(limit);
     }
+    /// The labels of the references and footnote calls yielded so far whose source span also
+    /// holds container prefixes, such as a block quote's `>` on a line the label continues on,
+    /// as the parser read them, by the span of their event. Others are their span's label.
+    pub(crate) fn take_read_labels(
+        &mut self,
+    ) -> alloc::vec::Vec<(core::ops::Range<usize>, alloc::string::String)> {
+        self.inline.take_read_labels()
+    }
 }
 impl Iterator for EventParser<'_> {
     type Item = Result<Event<'static>, StreamError>;

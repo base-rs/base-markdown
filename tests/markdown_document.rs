@@ -163,6 +163,60 @@ fn synthetic_references_cannot_override_a_present_definition() {
     }
 }
 
+/// A reference or footnote label longer than the parser reads would be written as text, so
+/// assigning one is rejected (#146).
+#[test]
+fn syntax_labels_longer_than_the_parser_reads_are_rejected() {
+    use base_markdown::{stream::StreamError, NodeSyntax, ReferenceKind};
+    let mut document = empty();
+    let root = document.root();
+    let link = document
+        .append_child(
+            root,
+            EventKind::Start(Tag::Link {
+                destination: Text::Literal("/u"),
+                title: None,
+            }),
+        )
+        .unwrap();
+    let footnote = document
+        .append_child(root, EventKind::FootnoteReference(Text::Literal("1")))
+        .unwrap();
+    let reference = |label: &str| {
+        Some(NodeSyntax::Reference {
+            kind: ReferenceKind::Full,
+            label: Text::from(label.to_string()),
+        })
+    };
+    let footnote_label = |label: &str| {
+        Some(NodeSyntax::Footnote {
+            label: Text::from(label.to_string()),
+        })
+    };
+    for (label, valid) in [
+        ("a".repeat(999), true),
+        (format!("{}\n  {}", "a".repeat(499), "a".repeat(500)), true),
+        ("a".repeat(1000), false),
+        (format!("{}[", "a".repeat(998)), false),
+    ] {
+        for (id, syntax) in [
+            (link, reference(&label)),
+            (footnote, footnote_label(&label)),
+        ] {
+            let result = document.set_syntax(id, syntax);
+            if valid {
+                assert!(result.is_ok(), "{:?}", result);
+            } else {
+                assert!(
+                    matches!(result, Err(StreamError::InvalidValue)),
+                    "{:?}",
+                    result
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn detached_nodes_and_invalid_subtree_indices_are_handled() {
     let mut document = Document::parse("a\n\n- item\n", &ParseOptions::default()).unwrap();

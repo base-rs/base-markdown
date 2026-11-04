@@ -89,10 +89,12 @@ pub struct State<'a> {
     /// Whether the flow child being written is a heading written ATX whatever the options, as
     /// `setext_heading` decides. Set before each flow child is written.
     pub(super) atx_heading: bool,
-    /// Where the definition without a title that the paragraph or setext heading being written
-    /// follows across a single line ending starts, if it does. A `"`, `'` or `(` starting the
-    /// block could read back as the definition's title. Set before each flow child is written.
-    untitled_definition: Option<usize>,
+    /// Where the definition that the paragraph or setext heading being written follows across a
+    /// single line ending starts, if it does, and whether it has no title. Without a title, a
+    /// `"`, `'` or `(` starting the block could read back as the definition's title, and with or
+    /// without one, a delimiter row starting the block could make the definition's last line a
+    /// table's head. Set before each flow child is written.
+    joined_definition: Option<(usize, bool)>,
     /// The innermost item `list_item` is writing, and its task marker, if any.
     pub(super) task_item: Option<(NodeId, Option<NodeId>)>,
     /// How many nodes are open, which is the depth of the next node written: the serialized node
@@ -242,7 +244,7 @@ impl<'a> State<'a> {
             ) && !self.setext_heading(document, parent, before, child);
             let start = self.output.len();
             self.write_node(document, child, &Info::new("\n", "\n"))?;
-            self.untitled_definition = None;
+            self.joined_definition = None;
             if let Some(&next) = children.peek() {
                 let separator = if tight_definitions
                     && is_definition(document, child)
@@ -261,19 +263,17 @@ impl<'a> State<'a> {
                     )
                 };
                 self.output.push_str(separator);
-                let untitled_definition = separator == "\n"
-                    && matches!(
-                        document.node(child).unwrap().kind,
-                        EventKind::Definition { title: None, .. }
-                    )
-                    && match document.node(next).unwrap().kind {
-                        EventKind::Start(Tag::Paragraph { .. }) => true,
-                        EventKind::Start(Tag::Heading(_)) => {
-                            self.setext_heading(document, parent, Some(child), next)
-                        }
-                        _ => false,
-                    };
-                self.untitled_definition = untitled_definition.then_some(start);
+                if let EventKind::Definition { title, .. } = &document.node(child).unwrap().kind {
+                    let joined = separator == "\n"
+                        && match document.node(next).unwrap().kind {
+                            EventKind::Start(Tag::Paragraph { .. }) => true,
+                            EventKind::Start(Tag::Heading(_)) => {
+                                self.setext_heading(document, parent, Some(child), next)
+                            }
+                            _ => false,
+                        };
+                    self.joined_definition = joined.then_some((start, title.is_none()));
+                }
             }
             before = Some(child);
         }
@@ -300,8 +300,8 @@ impl<'a> State<'a> {
             kind,
             EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_) | Tag::Document(_))
         );
-        let untitled_definition = if block {
-            self.untitled_definition.take()
+        let joined_definition = if block {
+            self.joined_definition.take()
         } else {
             None
         };
@@ -317,15 +317,97 @@ impl<'a> State<'a> {
                 }
             }
             // Escaped, the character reads back as text that starts the block (#173).
-            if let Some(definition) = untitled_definition {
+            if let Some((definition, true)) = joined_definition {
                 if self.output[start..].starts_with(['"', '\'', '('])
                     && crate::block_parser::definition_has_title(&self.output[definition..])
                 {
                     self.output.insert(start, '\\');
                 }
             }
+            if !self.stack.contains(&ConstructName::HeadingAtx) {
+                if let Some(&first) = children.first() {
+                    self.separate_html_start(document, first, start);
+                }
+                self.escape_delimiter_rows(start, joined_definition.is_some());
+            }
         }
         Ok(())
+    }
+
+    /// Write the line ending after inline HTML that starts the block written at `output[start..]`
+    /// as a character reference if the block would otherwise start with an HTML block: a complete
+    /// tag alone on its first line starts one (#146).
+    fn separate_html_start<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        first: NodeId,
+        start: usize,
+    ) {
+        let EventKind::Html { value, .. } = &document.node(first).unwrap().kind else {
+            return;
+        };
+        let end = start + value.resolve(document.source()).unwrap().len();
+        if self.output.as_bytes().get(end) == Some(&b'\n')
+            && crate::block_parser::complete_tag_starts_html_block(&self.output.as_bytes()[start..])
+        {
+            self.output.replace_range(end..end + 1, "&#xA;");
+        }
+    }
+
+    /// Escape the first character of each line of the block written at `output[start..]` that
+    /// would read back as a table's delimiter row under the line before it, which can be the
+    /// last line of a definition the block follows across a line ending when `after_definition`.
+    /// Text writes such a line as it is, and it reads back as text where it is a lazy line in
+    /// the source, but not where a container prefix is written before it (#146). An escaped
+    /// line is the head the next line is judged under.
+    fn escape_delimiter_rows(&mut self, start: usize, after_definition: bool) {
+        if !after_definition && !self.output[start..].contains('\n') {
+            return;
+        }
+        let mut header = after_definition.then(|| {
+            let end = start - 1;
+            self.output[..end].rfind('\n').map_or(0, |index| index + 1)..end
+        });
+        let mut header_escaped = false;
+        let mut escapes = Vec::new();
+        let mut at = start;
+        loop {
+            let end = self.output[at..]
+                .find('\n')
+                .map_or(self.output.len(), |index| at + index);
+            let line = &self.output[at..end];
+            header_escaped = header.is_some_and(|header| {
+                let header = &self.output[header];
+                if header_escaped {
+                    let mut written = String::with_capacity(header.len() + 1);
+                    written.push('\\');
+                    written.push_str(header);
+                    crate::block_parser::starts_table(&written, line)
+                } else {
+                    crate::block_parser::starts_table(header, line)
+                }
+            });
+            if header_escaped {
+                escapes.push(at);
+            }
+            if end == self.output.len() {
+                break;
+            }
+            header = Some(at..end);
+            at = end + 1;
+        }
+        if escapes.is_empty() {
+            return;
+        }
+        let tail = self.output.split_off(escapes[0]);
+        let mut cursor = escapes[0];
+        for &position in &escapes {
+            self.output
+                .push_str(&tail[cursor - escapes[0]..position - escapes[0]]);
+            self.output.push('\\');
+            cursor = position;
+        }
+        self.output.push_str(&tail[cursor - escapes[0]..]);
     }
 
     fn attention_sequences(
@@ -625,25 +707,28 @@ impl<'a> State<'a> {
                     if super::escape::autolink_literals(&self.stack) {
                         self.escape_literals(length, &info);
                     }
-                    if self.output[length..].starts_with(':') {
-                        match definition_label {
-                            // `[^1]:` starts a footnote definition whatever follows, when its
-                            // label is one a footnote definition can have.
-                            Some((start, true, _))
-                                if crate::block_parser::starts_footnote_definition(
-                                    &self.output.as_bytes()[start..],
-                                ) =>
-                            {
-                                self.output.insert(length, '\\');
-                            }
-                            // `[r]:` starts a definition only if a destination follows, which
-                            // can be in later children, so the paragraph is judged once written.
-                            // So does a footnote reference whose label, such as `^ 1`, only a
-                            // definition can have.
-                            Some((_, _, true)) => self.definition_colon = Some(length),
-                            _ => {}
+                }
+                // Any node can write the `:`, such as inline HTML (#146).
+                if self.output[length..].starts_with(':') {
+                    match definition_label {
+                        // `[^1]:` starts a footnote definition whatever follows, when its
+                        // label is one a footnote definition can have.
+                        Some((start, true, _))
+                            if crate::block_parser::starts_footnote_definition(
+                                &self.output.as_bytes()[start..],
+                            ) =>
+                        {
+                            self.output.insert(length, '\\');
                         }
+                        // `[r]:` starts a definition only if a destination follows, which
+                        // can be in later children, so the paragraph is judged once written.
+                        // So does a footnote reference whose label, such as `^ 1`, only a
+                        // definition can have.
+                        Some((_, _, true)) => self.definition_colon = Some(length),
+                        _ => {}
                     }
+                }
+                if text {
                     pending = Edge::default();
                     previous = Previous::Text(length);
                 } else if self.output.len() != length {
@@ -762,7 +847,8 @@ impl<'a> State<'a> {
                     if let Some(NodeSyntax::Reference { kind, label }) = document.syntax(id) {
                         let label = label.resolve(source).unwrap();
                         if self.reference_matches(document, id, label, destination, title) {
-                            let result = self.reference(document, id, kind, label, image);
+                            let result =
+                                self.reference(document, id, kind, label, image, info.after);
                             self.depth -= 1;
                             return result;
                         }
@@ -1177,7 +1263,7 @@ impl<'a> State<'a> {
             definition_colon: None,
             fence_code: false,
             atx_heading: false,
-            untitled_definition: None,
+            joined_definition: None,
             task_item: None,
             depth: 0,
         }

@@ -405,6 +405,7 @@ impl State<'_> {
         kind: ReferenceKind,
         label: &str,
         image: bool,
+        after: &str,
     ) -> Result<(), Message> {
         let start = self.output.len();
         let text = self.link_label(document, node, image, "]")?;
@@ -425,7 +426,9 @@ impl State<'_> {
             self.output.push(']');
         } else {
             self.output.truncate(reference_start);
-            if matches!(kind, ReferenceKind::Shortcut) {
+            // A shortcut reference followed by `[`, such as another reference, would read back
+            // as a full reference with what follows as its label, so it is written collapsed.
+            if matches!(kind, ReferenceKind::Shortcut) && !after.starts_with('[') {
                 self.output.pop();
                 if !image {
                     self.label_end = Some((self.output.len(), false));

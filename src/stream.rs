@@ -320,6 +320,10 @@ pub enum EventKind<'a> {
     /// A task-list marker.
     TaskMarker(bool),
     /// A resolved definition, retained in the AST but omitted from HTML.
+    ///
+    /// A label longer than the parser reads, 999 bytes not counting line endings and the spaces
+    /// and tabs after them, would be written as text, so it is rejected with
+    /// [`StreamError::InvalidValue`] wherever an event enters a document or renderer.
     Definition {
         label: Text<'a>,
         destination: Text<'a>,
@@ -405,7 +409,19 @@ impl<'s> EventKind<'s> {
             } => {
                 text(label)?;
                 text(destination)?;
-                optional(title)
+                optional(title)?;
+                // A source-backed label is checked once its source is known.
+                if source.is_none() && matches!(label, Text::Source(_)) {
+                    return Ok(());
+                }
+                let label = label
+                    .resolve(source.unwrap_or(""))
+                    .expect("a literal or owned label, or one checked by `text`");
+                if crate::node_syntax::label_fits(label) {
+                    Ok(())
+                } else {
+                    Err(StreamError::InvalidValue)
+                }
             }
             _ => Ok(()),
         }
