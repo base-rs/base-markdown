@@ -118,24 +118,6 @@ impl<'a> Info<'a> {
 }
 
 impl<'a> State<'a> {
-    /// The separator between flow children `left` and `right` of `parent`, where `before` is the
-    /// flow child before `left`, if any, and `spread` is what `records_spread` gives for `parent`.
-    fn between<S: AsRef<str>>(
-        &self,
-        document: &Document<S>,
-        before: Option<NodeId>,
-        left: NodeId,
-        right: NodeId,
-        parent: NodeId,
-        spread: bool,
-    ) -> &'static str {
-        if self.options.tight_definitions {
-            self.definition_separator(document, left, right)
-        } else {
-            self.default_separator(document, before, left, right, parent, spread)
-        }
-    }
-
     /// Whether `parent`, if it is a list or item, records a blank line between its blocks. An
     /// item's spread is read from its syntax, which scans its blocks, so it is read once for all
     /// its joins (#161). Other parents give `false`, which their joins do not read.
@@ -156,8 +138,7 @@ impl<'a> State<'a> {
     /// `-`, as a setext heading. When the join would otherwise be a single line ending, the item is
     /// written spread: that blank line makes it read back spread, so each of its other joins that
     /// would be a single line ending is written as a blank line too, which the list being loose
-    /// already renders. A join that is already a blank line, as with `tight_definitions`, needs
-    /// nothing, and the item is written as before.
+    /// already renders.
     ///
     /// Two block quotes in a row need a blank line between them too, or the second would continue
     /// the first, so an item with them is written spread the same way (#154).
@@ -165,8 +146,7 @@ impl<'a> State<'a> {
     /// Any other blank line between two of its blocks, such as the one between two paragraphs or
     /// after a nested list or footnote definition, makes it read back spread too, and an item that
     /// records spread is written with a blank line between each of its blocks, so it is written
-    /// spread now. With `tight_definitions`, a join does not read the item's spread, so this does
-    /// not apply.
+    /// spread now.
     ///
     /// The only item of a loose list is also written spread when no blank line would be written
     /// between its blocks. Nothing else can show the list is loose.
@@ -197,7 +177,6 @@ impl<'a> State<'a> {
         let lone = !flow_siblings_after(document, item)
             && flow_children(document, list).next() == Some(item);
         let mut joined = false;
-        let mut blank = false;
         let mut before = None;
         let mut left = None;
         for right in flow_children(document, item) {
@@ -213,18 +192,18 @@ impl<'a> State<'a> {
                     ),
                     _ => false,
                 };
-                let written =
-                    writes_blank_line(self.between(document, before, left, right, item, spread));
-                if apart && !written || written && !self.options.tight_definitions {
+                let written = writes_blank_line(
+                    self.default_separator(document, before, left, right, item, spread),
+                );
+                if apart || written {
                     return true;
                 }
-                blank = blank || written;
                 joined = true;
             }
             before = left;
             left = Some(right);
         }
-        lone && joined && !blank
+        lone && joined
     }
 
     pub fn container_flow<S: AsRef<str>>(
@@ -235,6 +214,13 @@ impl<'a> State<'a> {
         let mut children = flow_children(document, parent).peekable();
         let records_spread = self.records_spread(document, parent);
         let spread = self.spreads_item(document, parent, records_spread);
+        // With `tight_definitions`, adjacent definitions are joined by a line ending, and other
+        // blocks as without it. In an item written spread, the other joins are blank lines, which
+        // show its spread. When definitions are its only blocks, nothing else would, so they are
+        // written spread too.
+        let tight_definitions = self.options.tight_definitions
+            && !((records_spread || spread)
+                && flow_children(document, parent).all(|child| is_definition(document, child)));
         self.index_stack.push(0);
         let mut before = None;
         for index in 0.. {
@@ -249,11 +235,24 @@ impl<'a> State<'a> {
             self.fence_code = fences_code(document, before);
             self.write_node(document, child, &Info::new("\n", "\n"))?;
             if let Some(&next) = children.peek() {
-                let separator =
-                    match self.between(document, before, child, next, parent, records_spread) {
+                let separator = if tight_definitions
+                    && is_definition(document, child)
+                    && is_definition(document, next)
+                {
+                    "\n"
+                } else {
+                    match self.default_separator(
+                        document,
+                        before,
+                        child,
+                        next,
+                        parent,
+                        records_spread,
+                    ) {
                         separator if spread && !writes_blank_line(separator) => "\n\n",
                         separator => separator,
-                    };
+                    }
+                };
                 self.output.push_str(separator);
             }
             before = Some(child);
@@ -1513,25 +1512,6 @@ impl<'a> State<'a> {
             self.output.push('\\');
         }
     }
-
-    fn definition_separator<S: AsRef<str>>(
-        &self,
-        document: &Document<S>,
-        left: NodeId,
-        right: NodeId,
-    ) -> &'static str {
-        if matches!(
-            document.node(left).unwrap().kind,
-            EventKind::Definition { .. }
-        ) && matches!(
-            document.node(right).unwrap().kind,
-            EventKind::Definition { .. }
-        ) {
-            "\n"
-        } else {
-            "\n\n"
-        }
-    }
 }
 
 /// Whether the `<` that starts `rest`, at output `position`, opens an email autolink within this
@@ -1633,6 +1613,14 @@ fn fences_code<S: AsRef<str>>(document: &Document<S>, before: Option<NodeId>) ->
             EventKind::Start(Tag::FootnoteDefinition(_))
         )
     })
+}
+
+/// Whether flow child `id` is a link reference definition.
+fn is_definition<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
+    matches!(
+        document.node(id).unwrap().kind,
+        EventKind::Definition { .. }
+    )
 }
 
 /// The join after a block quote whose last paragraph the next block would lazily continue, in an

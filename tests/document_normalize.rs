@@ -3413,20 +3413,26 @@ fn a_tight_list_after_a_paragraph_in_a_tight_item_stays_tight() {
 #[test]
 fn a_spread_item_keeps_the_comment_before_indented_code() {
     // An item written spread because of a list that cannot interrupt a paragraph, here an ordered list that starts at 3, still writes `<!---->` between the list and indented code after it, so the code is not read back as part of the list's last item.
-    let options = base_markdown::MarkdownOptions {
-        fences: false,
-        ..base_markdown::MarkdownOptions::default()
-    };
-    for (source, expected) in [
-        (
-            "- p\n\n  3. a\n\n  ```\n  x\n  ```\n\n- q\n",
-            "- p\n\n  3. a\n\n  <!---->\n\n      x\n\n- q\n",
-        ),
-        (
-            "- p\n\n  3. a\n\n  ```\n  x\n  ```\n",
-            "- p\n\n  3. a\n\n  <!---->\n\n      x\n",
-        ),
-    ] {
+    // With `tight_definitions`, which does not change this join, it is the same (#160).
+    for (source, expected, tight_definitions) in [false, true].iter().flat_map(|&tight| {
+        [
+            (
+                "- p\n\n  3. a\n\n  ```\n  x\n  ```\n\n- q\n",
+                "- p\n\n  3. a\n\n  <!---->\n\n      x\n\n- q\n",
+                tight,
+            ),
+            (
+                "- p\n\n  3. a\n\n  ```\n  x\n  ```\n",
+                "- p\n\n  3. a\n\n  <!---->\n\n      x\n",
+                tight,
+            ),
+        ]
+    }) {
+        let options = base_markdown::MarkdownOptions {
+            fences: false,
+            tight_definitions,
+            ..base_markdown::MarkdownOptions::default()
+        };
         let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
         document.normalize();
         let markdown = base_markdown::to_markdown_with_options(&document, &options).unwrap();
@@ -3444,7 +3450,7 @@ fn a_spread_item_keeps_the_comment_before_indented_code() {
 
 #[test]
 fn a_spread_item_keeps_tight_definitions() {
-    // With `tight_definitions`, a paragraph and a list after it are already joined by a blank line, so the item is not forced spread and adjacent definitions in it stay tight.
+    // With `tight_definitions`, adjacent definitions in a spread item are joined by a line ending, and its other blocks by blank lines, which show its spread. When definitions are its only blocks, nothing else would, so they are joined by blank lines too.
     let options = base_markdown::MarkdownOptions {
         tight_definitions: true,
         ..base_markdown::MarkdownOptions::default()
@@ -3458,17 +3464,86 @@ fn a_spread_item_keeps_tight_definitions() {
             "- p\n\n    -\n  [r]: /u\n  [s]: /v",
             "- p\n\n  -\n\n  [r]: /u\n  [s]: /v\n",
         ),
+        (
+            "- [r]: /u\n\n  [s]: /v\n\n  p\n- q\n",
+            "- [r]: /u\n  [s]: /v\n\n  p\n\n- q\n",
+        ),
+        (
+            "- [r]: /u\n\n  [s]: /v\n- q\n",
+            "- [r]: /u\n\n  [s]: /v\n\n- q\n",
+        ),
+        ("- [r]: /u\n\n  [s]: /v\n", "- [r]: /u\n\n  [s]: /v\n"),
+        (
+            "- [r]: /u\n  [s]: /v\n\n- q\n",
+            "- [r]: /u\n  [s]: /v\n\n- q\n",
+        ),
     ] {
-        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
-        document.normalize();
-        let markdown = base_markdown::to_markdown_with_options(&document, &options).unwrap();
-        assert_eq!(markdown, expected, "{:?}", source);
-        let mut reparsed = Document::parse(markdown.as_str(), &ParseOptions::default()).unwrap();
-        reparsed.normalize();
-        assert_eq!(rendered(&reparsed), rendered(&document), "{:?}", source);
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
         assert_eq!(
-            base_markdown::to_markdown_with_options(&reparsed, &options).unwrap(),
-            markdown
+            reads_back_with(document, &ParseOptions::default(), &options),
+            expected,
+            "{:?}",
+            source
+        );
+    }
+}
+
+#[test]
+fn tight_definitions_joins_other_blocks_as_without_it() {
+    // Only adjacent definitions are joined differently, so a tight list stays tight, and with `fences = false`, `<!---->` is still written before indented code after a list (#160).
+    let tight = base_markdown::MarkdownOptions {
+        tight_definitions: true,
+        ..base_markdown::MarkdownOptions::default()
+    };
+    for source in [
+        "- c\n- c\n",
+        "1. a\n2. b\n",
+        "- a\n  # h\n",
+        "- [r]: /u\n  [s]: /v\n- q\n",
+        "> [r]: /u\n> [s]: /v\n\np\n",
+    ] {
+        let document = Document::parse(source, &ParseOptions::default()).unwrap();
+        assert_eq!(
+            reads_back_with(document, &ParseOptions::default(), &tight),
+            source
+        );
+    }
+    // An item of a loose list that records no spread is written spread when it writes a blank line between two of its blocks, here two paragraphs, so the join after a definition is a blank line too and the item is written the same again (#157).
+    use Block::{Leaf, List, Paragraph};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let definition = Leaf(EventKind::Definition {
+        label: Text::from("c".to_owned()),
+        destination: Text::from("/u".to_owned()),
+        title: None,
+    });
+    let nested = List(None, true, vec![(false, vec![p("x")])]);
+    for (blocks, expected) in [
+        (
+            vec![definition, p("p"), p("r")],
+            "- [c]: /u\n\n  p\n\n  r\n\n- q\n",
+        ),
+        (vec![p("b"), p("b"), nested], "- b\n\n  b\n\n  - x\n\n- q\n"),
+    ] {
+        let list = List(None, false, vec![(false, blocks), (false, vec![p("q")])]);
+        assert_eq!(
+            reads_back_with(build_list(&list), &ParseOptions::default(), &tight),
+            expected
+        );
+    }
+    let source = "- p\n  - a\n\n  ```\n  x\n  ```\n";
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    for options in [without_fences(), tight] {
+        assert_eq!(
+            base_markdown::to_markdown_with_options(
+                &document,
+                &base_markdown::MarkdownOptions {
+                    fences: false,
+                    ..options
+                }
+            )
+            .unwrap(),
+            "- p\n\n  - a\n\n  <!---->\n\n      x\n"
         );
     }
 }
@@ -4081,7 +4156,7 @@ fn a_paragraph_after_a_block_quote_in_an_item_is_written_after_a_line_of_quote_m
             expected
         );
     }
-    // With `tight_definitions`, a blank line is written between them, as between any blocks but definitions.
+    // With `tight_definitions`, blocks other than adjacent definitions are joined as without it, here by a blank line, since the item is spread.
     let options = base_markdown::MarkdownOptions {
         tight_definitions: true,
         ..base_markdown::MarkdownOptions::default()
