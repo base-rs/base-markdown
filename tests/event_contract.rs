@@ -306,6 +306,90 @@ fn inline_code_languages_outside_the_prefix_grammar_are_rejected() {
     }
 }
 
+fn block(language: Option<Text<'static>>, math: bool) -> EventKind<'static> {
+    EventKind::CodeBlock {
+        value: Text::Literal("v\n"),
+        language,
+        fence: None,
+        math,
+        unclosed: false,
+    }
+}
+
+/// A code block language that cannot be written is rejected wherever an event enters a document or
+/// renderer (#144): an empty one, which the parser reads as no language, and any language on
+/// math, whose fence has only metadata. Every other code language is written with whitespace, line
+/// endings, backticks and a `~` at its start encoded, so it is accepted.
+#[test]
+fn code_block_languages_that_cannot_be_written_are_rejected() {
+    let options = Options::default();
+    let source = "x\n\n```\n```\n";
+    let mut ast = Document::parse(source, &options.parse).unwrap();
+    let root = ast.root();
+    let code = ast
+        .descendants(root)
+        .find(|&id| matches!(ast.node(id).unwrap().kind, EventKind::CodeBlock { .. }))
+        .unwrap();
+    let check = |ast: &mut Document<&str>, kind: EventKind<'static>, valid: bool| {
+        let results = [
+            ast.set_kind(code, kind.clone()),
+            ast.append_child(root, kind.clone()).map(drop),
+            render_events(
+                source,
+                document(vec![kind.clone()]),
+                &options.compile,
+                &mut String::new(),
+            ),
+            AstBuilder::new()
+                .consume(&mut document(vec![kind.clone()]).into_iter(), usize::MAX)
+                .map(drop),
+        ];
+        for result in results {
+            if valid {
+                assert!(result.is_ok(), "{:?}: {:?}", kind, result);
+            } else {
+                assert!(
+                    matches!(result, Err(StreamError::InvalidValue)),
+                    "{:?}: {:?}",
+                    kind,
+                    result
+                );
+            }
+        }
+    };
+    for empty in [
+        Text::Literal(""),
+        Text::from(String::new()),
+        Text::Source(1..1),
+    ] {
+        check(&mut ast, block(Some(empty.clone()), false), false);
+        check(&mut ast, block(Some(empty), true), false);
+    }
+    for language in ["x", "latex", " "] {
+        check(&mut ast, block(Some(Text::Literal(language)), true), false);
+    }
+    for language in ["x", "~x", "`x", "a b", " x\t", "a\nb", "\r", "&amp;", "\\"] {
+        check(&mut ast, block(Some(Text::Literal(language)), false), true);
+    }
+    check(&mut ast, block(Some(Text::Source(0..1)), false), true);
+    // Out-of-range text is reported as such, in the language or the value.
+    let out_of_range = EventKind::CodeBlock {
+        value: Text::Source(0..99),
+        language: Some(Text::Literal("x")),
+        fence: None,
+        math: false,
+        unclosed: false,
+    };
+    for kind in [block(Some(Text::Source(0..99)), false), out_of_range] {
+        assert!(matches!(
+            ast.set_kind(code, kind),
+            Err(StreamError::InvalidRange)
+        ));
+    }
+    check(&mut ast, block(None, false), true);
+    check(&mut ast, block(None, true), true);
+}
+
 #[test]
 fn builder_failures_are_permanent_and_completion_does_not_pull_again() {
     let cases = vec![

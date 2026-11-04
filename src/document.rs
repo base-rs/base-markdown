@@ -672,18 +672,20 @@ impl<S: AsRef<str>> Document<S> {
     /// Override authored syntax. `None` disconnects the node from inferred source syntax.
     ///
     /// # Errors
-    /// Rejects invalid node IDs, source ranges and metadata for an incompatible node kind.
+    /// Rejects invalid node IDs, source ranges and metadata for an incompatible node kind with
+    /// [`StreamError::InvalidRange`]. Rejects a [`NodeSyntax::Code`] info string that the parser
+    /// would not read back with the code's language with [`StreamError::InvalidValue`]: code
+    /// without a language has an empty info string, and code with one has an info string that is
+    /// the language, alone or followed by a space or tab and the metadata. Math has no language,
+    /// so its info string, the metadata after the fence, can be anything.
     pub fn set_syntax(
         &mut self,
         id: NodeId,
         syntax: Option<NodeSyntax<'static>>,
     ) -> Result<(), StreamError> {
         let node = self.node(id).ok_or(StreamError::InvalidRange)?;
-        if syntax
-            .as_ref()
-            .is_some_and(|value| !value.valid_for(&node.kind, self.source()))
-        {
-            return Err(StreamError::InvalidRange);
+        if let Some(value) = &syntax {
+            value.validate(&node.kind, self.source())?;
         }
         self.syntax.insert(id, syntax);
         Ok(())
@@ -2627,11 +2629,8 @@ impl<S: AsRef<str>> Document<S> {
         }
         for (&id, value) in &self.syntax {
             let node = self.node(id).ok_or(StreamError::InvalidRange)?;
-            if value
-                .as_ref()
-                .is_some_and(|value| !value.valid_for(&node.kind, self.source()))
-            {
-                return Err(StreamError::InvalidRange);
+            if let Some(value) = value {
+                value.validate(&node.kind, self.source())?;
             }
         }
         Ok(())

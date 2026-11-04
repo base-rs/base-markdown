@@ -3,7 +3,7 @@
 
 //! Optional authored syntax, kept outside the semantic event and node layouts.
 use crate::{
-    stream::{EventKind, Tag, Text},
+    stream::{EventKind, StreamError, Tag, Text},
     CodeFence, ReferenceKind,
 };
 
@@ -21,6 +21,14 @@ pub enum NodeSyntax<'a> {
     /// The authored spelling of a normalized footnote identifier.
     Footnote { label: Text<'a> },
     /// The decoded complete code info string, or the metadata after a math fence.
+    ///
+    /// The info string of code starts with its language, as the parser reads it: it is empty for
+    /// code without a language, and otherwise it is the language, alone or followed by a space or
+    /// tab and the metadata. [`Document::set_syntax`][crate::Document::set_syntax] rejects any
+    /// other info string with [`StreamError::InvalidValue`]. The spaces and tabs between the
+    /// language and the metadata are written as one space, and whitespace at the end of the
+    /// metadata, or metadata of only whitespace after the first space or tab, is encoded so it
+    /// reads back.
     Code { info: Text<'a> },
     /// Frontmatter's raw info and original opening and closing fences.
     Frontmatter {
@@ -101,7 +109,35 @@ impl NodeSyntax<'_> {
         })
     }
 
-    pub(crate) fn valid_for(&self, kind: &EventKind<'_>, source: &str) -> bool {
+    /// Whether this syntax can belong to a node of `kind`: an error for syntax of another kind of
+    /// node or an invalid source range, as [`StreamError::InvalidRange`], and for a code info
+    /// string that does not start with the code's language, as [`StreamError::InvalidValue`].
+    pub(crate) fn validate(&self, kind: &EventKind<'_>, source: &str) -> Result<(), StreamError> {
+        if !self.valid_for(kind, source) {
+            return Err(StreamError::InvalidRange);
+        }
+        if let (
+            Self::Code { info },
+            EventKind::CodeBlock {
+                language,
+                math: false,
+                ..
+            },
+        ) = (self, kind)
+        {
+            // The info string is checked above, and the language when the kind was assigned.
+            let info = info.resolve(source).expect("checked by `valid_for`");
+            let language = language
+                .as_ref()
+                .map(|value| value.resolve(source).expect("document text is validated"));
+            if !code_info_starts_with(info, language) {
+                return Err(StreamError::InvalidValue);
+            }
+        }
+        Ok(())
+    }
+
+    fn valid_for(&self, kind: &EventKind<'_>, source: &str) -> bool {
         match (self, kind) {
             (
                 Self::Reference { label, .. },
@@ -129,6 +165,20 @@ impl NodeSyntax<'_> {
             | (Self::Link { .. }, EventKind::Start(Tag::Link { .. })) => true,
             _ => false,
         }
+    }
+}
+
+/// Whether `info` is a code info string whose first word is `language`, as the parser reads it:
+/// empty without a language, and otherwise the language, alone or followed by a space or tab and
+/// the metadata. The parser splits the language off at the first raw space or tab, so a language
+/// that does not end where the info string does or before a space or tab would read back
+/// different, and code without a language has no info string.
+fn code_info_starts_with(info: &str, language: Option<&str>) -> bool {
+    match language {
+        None => info.is_empty(),
+        Some(language) => info
+            .strip_prefix(language)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with([' ', '\t'])),
     }
 }
 
@@ -212,7 +262,10 @@ pub(crate) fn infer(
             })
         }
         EventKind::CodeBlock {
-            fence: Some(fence), ..
+            fence: Some(fence),
+            language,
+            math,
+            ..
         } => {
             let first = &raw[..raw.find(['\r', '\n']).unwrap_or(raw.len())];
             let sequence = &first[first.find(fence.character)?..];
@@ -225,8 +278,29 @@ pub(crate) fn infer(
             }
             let info = info.trim_matches([' ', '\t']);
             let start = span.start + (info.as_ptr() as usize - first.as_ptr() as usize);
-            let text = crate::value_builder::decode_string(source, start..start + info.len());
-            Some(NodeSyntax::Code { info: text })
+            let range = start..start + info.len();
+            // The document does not keep the options it was parsed with, which decide whether
+            // escapes and references in the info string were decoded, so keep the first decoding
+            // that starts with the language as the parser split it off: the info string the
+            // parser read. Code from caller events may have a language its source does not
+            // start with, and then has no inferred info string. Math has no language, so any
+            // metadata is valid, decoded as by default.
+            let language = language
+                .as_ref()
+                .map(|value| value.resolve(source).expect("document text is validated"));
+            [(true, true), (false, false), (true, false), (false, true)]
+                .iter()
+                .map(|&(escapes, references)| {
+                    crate::value_builder::decode_info(source, range.clone(), escapes, references)
+                })
+                .find(|info| {
+                    *math
+                        || code_info_starts_with(
+                            info.resolve(source).expect("decoded from the source"),
+                            language,
+                        )
+                })
+                .map(|info| NodeSyntax::Code { info })
         }
         EventKind::Opaque { block: true, .. } => frontmatter(raw).map(
             |(info, fence, closing_fence_length, _)| NodeSyntax::Frontmatter {
