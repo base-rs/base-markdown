@@ -28,17 +28,26 @@ pub(crate) fn before(bytes: &[u8], code_start: usize) -> Option<(usize, &str)> {
     Some((start, info))
 }
 
+/// Whether `language` is a language the prefix can hold: a nonempty ASCII token whose first
+/// character is alphanumeric and whose other characters are alphanumeric or `_`, `-`, `+`, `#` or
+/// `.`.
+pub(crate) fn is_valid(language: &str) -> bool {
+    let bytes = language.as_bytes();
+    bytes.first().copied().is_some_and(is_info_start_char)
+        && bytes[1..].iter().copied().all(is_info_char)
+}
+
 fn is_info_start_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric()
 }
 
-fn is_info_char(byte: u8) -> bool {
+pub(crate) fn is_info_char(byte: u8) -> bool {
     is_info_start_char(byte) || matches!(byte, b'_' | b'-' | b'+' | b'#' | b'.')
 }
 
 #[cfg(test)]
 mod tests {
-    use super::before;
+    use super::{before, is_valid};
 
     #[test]
     fn recognizes_only_prefixed_info_tokens() {
@@ -46,5 +55,15 @@ mod tests {
         assert_eq!(before(b"-:`code`", 2), None);
         assert_eq!(before(b"code", 4), None);
         assert_eq!(before(b":code", 0), None);
+    }
+
+    #[test]
+    fn accepts_only_prefix_tokens() {
+        for language in ["rust", "c++", "c#", "objective-c", "a.b_c", "0"] {
+            assert!(is_valid(language), "{:?}", language);
+        }
+        for language in ["", "-a", "a b", "a\nb", "a`b", "a:b", "é"] {
+            assert!(!is_valid(language), "{:?}", language);
+        }
     }
 }

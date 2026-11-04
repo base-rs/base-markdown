@@ -1020,7 +1020,7 @@ pub struct ParseOptions {
 
     /// Whether to parse a language prefix, such as `ruby:`, before inline code.
     ///
-    /// When enabled, the prefix is removed from the surrounding text and stored as the inline code's `language`, and HTML rendering emits a `language-*` class. The default is `false`, which retains `CommonMark` behavior.
+    /// When enabled, the prefix is removed from the surrounding text and stored as the inline code's `language`, and HTML rendering emits a `language-*` class. A language starts with an ASCII letter or digit, followed by any number of ASCII letters, digits, `_`, `-`, `+`, `#` and `.`, and is the longest such run that ends at the `:` directly before the opening backtick, so `xrust:` names `xrust`; a run that starts with another character, such as `-rust:`, is text. The default is `false`, which retains `CommonMark` behavior.
     ///
     /// ```
     /// use base_markdown::{to_html_with_options, Options, ParseOptions};

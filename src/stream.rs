@@ -287,6 +287,12 @@ pub enum EventKind<'a> {
     /// A thematic break.
     Rule,
     /// An inline code span; optional language metadata is an extension.
+    ///
+    /// The language is what [`ParseOptions::inline_code_info`][crate::ParseOptions::inline_code_info]
+    /// reads before the span: a nonempty ASCII token whose first character is a letter or digit
+    /// and whose other characters are letters, digits, `_`, `-`, `+`, `#` or `.`. Any other
+    /// language, including an empty one, cannot be written and is rejected with
+    /// [`StreamError::InvalidValue`] wherever an event enters a document or renderer.
     Code {
         value: Text<'a>,
         language: Option<Text<'a>>,
@@ -347,6 +353,22 @@ impl<'s> EventKind<'s> {
             | Self::Html { value, .. }
             | Self::Opaque { value, .. }
             | Self::FootnoteReference(value) => text(value),
+            Self::Code {
+                value,
+                language: Some(language),
+            } => {
+                text(value)?;
+                // A source-backed language is checked once its source is known.
+                if source.is_none() && matches!(language, Text::Source(_)) {
+                    return Ok(());
+                }
+                if crate::util::inline_code_info::is_valid(language.resolve(source.unwrap_or(""))?)
+                {
+                    Ok(())
+                } else {
+                    Err(StreamError::InvalidValue)
+                }
+            }
             Self::Code { value, language }
             | Self::CodeBlock {
                 value, language, ..
@@ -451,6 +473,10 @@ pub enum StreamError {
     InvalidRange,
     /// Start and end events do not form a balanced document.
     Unbalanced,
+    /// A value has a form its event cannot hold, such as an inline code language that
+    /// [`ParseOptions::inline_code_info`][crate::ParseOptions::inline_code_info] would not read
+    /// back.
+    InvalidValue,
     /// The caller's output writer failed.
     Write(fmt::Error),
 }
@@ -461,6 +487,7 @@ impl fmt::Display for StreamError {
             Self::Parse(error) => write!(f, "{error}"),
             Self::InvalidRange => f.write_str("invalid source range"),
             Self::Unbalanced => f.write_str("unbalanced semantic event stream"),
+            Self::InvalidValue => f.write_str("invalid event value"),
             Self::Write(error) => write!(f, "{error}"),
         }
     }

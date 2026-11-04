@@ -4,9 +4,10 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
+use base_markdown::{to_markdown, Document, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::to_markdown as to;
-use support::fixture::{InlineCode, Node};
+use support::fixture::{canonical, InlineCode, Node, Paragraph, Text};
 
 #[test]
 fn text() {
@@ -219,4 +220,53 @@ fn text() {
         format!("`{} - b`\n", prefix),
         "should prevent breaking out of code (long crlf)"
     );
+}
+
+/// The parser reads a language as the longest run of language characters before its `:`, so the
+/// character of text directly before one is encoded when it would join the run, and an escaped one
+/// is encoded instead of its escape, which would start the run with punctuation (#138).
+#[test]
+fn language_after_text_reads_back_alone() {
+    let options = ParseOptions {
+        inline_code_info: true,
+        ..ParseOptions::default()
+    };
+    for (before, expected) in [
+        ("x ", "x rust:`v`\n"),
+        ("x*", "x\\*rust:`v`\n"),
+        ("xa", "x&#x61;rust:`v`\n"),
+        ("x-", "x&#x2D;rust:`v`\n"),
+        ("x.", "x&#x2E;rust:`v`\n"),
+        ("x_", "x&#x5F;rust:`v`\n"),
+        ("a__b", "a\\_\\_&#x62;rust:`v`\n"),
+        ("1.", "1&#x2E;rust:`v`\n"),
+        ("x\\a", "x\\\\&#x61;rust:`v`\n"),
+        ("x\\", "x\\\\rust:`v`\n"),
+        ("~~a", "\\~\\~&#x61;rust:`v`\n"),
+    ] {
+        let node = Node::Paragraph(Paragraph {
+            children: vec![
+                Node::Text(Text {
+                    value: before.into(),
+                    position: None,
+                }),
+                Node::InlineCode(InlineCode {
+                    value: "v".into(),
+                    position: None,
+                    lang: Some("rust".into()),
+                }),
+            ],
+            position: None,
+        });
+        let markdown = to(&node).unwrap();
+        assert_eq!(markdown, expected, "{before:?}");
+        let mut document = Document::parse(markdown.as_str(), &options).unwrap();
+        document.normalize();
+        assert_eq!(
+            canonical(&document),
+            canonical(&node.document()),
+            "{before:?}"
+        );
+        assert_eq!(to_markdown(&document).unwrap(), markdown, "{before:?}");
+    }
 }
