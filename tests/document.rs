@@ -1144,3 +1144,128 @@ fn reference_syntax_distinguishes_escaped_brackets_after_backslash_runs() {
         }
     }
 }
+
+#[test]
+fn inferred_code_info_is_the_one_its_parse_options_read() {
+    let mut references = ParseOptions::default();
+    references.constructs.character_reference = false;
+    let mut escapes = ParseOptions::default();
+    escapes.constructs.character_escape = false;
+    let mut neither = ParseOptions::default();
+    neither.constructs.character_escape = false;
+    neither.constructs.character_reference = false;
+    // The serializer writes the language and metadata for a parser with escapes and references.
+    for (source, options, info, markdown) in [
+        (
+            "```&amp; y\nv\n```\n",
+            &references,
+            "&amp; y",
+            "```\\&amp; y\nv\n```\n",
+        ),
+        (
+            "```\\~x y\nv\n```\n",
+            &escapes,
+            "\\~x y",
+            "```\\\\~x y\nv\n```\n",
+        ),
+        (
+            "```\\~&amp; y\nv\n```\n",
+            &references,
+            "~&amp; y",
+            "```~\\&amp; y\nv\n```\n",
+        ),
+        (
+            "```\\~&amp; y\nv\n```\n",
+            &escapes,
+            "\\~& y",
+            "```\\\\~& y\nv\n```\n",
+        ),
+        (
+            "```\\~&amp; y\nv\n```\n",
+            &neither,
+            "\\~&amp; y",
+            "```\\\\~\\&amp; y\nv\n```\n",
+        ),
+    ] {
+        let mut document = Document::parse(source.to_string(), options).unwrap();
+        let id = document.children(document.root()).next().unwrap();
+        let Some(NodeSyntax::Code { info: inferred }) = document.syntax(id) else {
+            panic!("{:?}", source);
+        };
+        let inferred = inferred.resolve(document.source()).unwrap().to_string();
+        assert_eq!(inferred, info, "{:?}", source);
+        assert_eq!(
+            base_markdown::markdown::to_markdown(&document).unwrap(),
+            markdown,
+            "{:?}",
+            source
+        );
+        // Copying the block materializes its inferred syntax, which must describe it.
+        let mut target =
+            Document::parse("# a\n\nb\n".to_string(), &ParseOptions::default()).unwrap();
+        let root = target.root();
+        assert!(target
+            .replace_heading_section(root, 0, &document, false, false)
+            .unwrap());
+        let syntax = NodeSyntax::Code {
+            info: Text::from(inferred),
+        };
+        document.set_syntax(id, Some(syntax)).unwrap();
+    }
+}
+
+#[test]
+fn inferred_code_info_of_custom_code_starts_with_its_language() {
+    use base_markdown::{
+        stream::{Event, TagKind},
+        AstBuilder,
+    };
+    let raw = "```y z\nv\n```\n";
+    for (language, info) in [
+        (None, None),
+        (Some("x"), None),
+        (Some("yy"), None),
+        (Some("y"), Some("y z")),
+    ] {
+        let mut events = vec![
+            Ok(Event {
+                kind: EventKind::Start(Tag::Document(None)),
+                span: 0..raw.len(),
+            }),
+            Ok(Event {
+                kind: EventKind::CodeBlock {
+                    value: Text::Literal("v"),
+                    language: language.map(Text::Literal),
+                    fence: Some(base_markdown::CodeFence {
+                        character: '`',
+                        length: 3,
+                        indent: 0,
+                    }),
+                    math: false,
+                    unclosed: false,
+                },
+                span: 0..raw.len(),
+            }),
+            Ok(Event {
+                kind: EventKind::End(TagKind::Document),
+                span: raw.len()..raw.len(),
+            }),
+        ]
+        .into_iter();
+        let mut builder = AstBuilder::new();
+        builder.consume(&mut events, usize::MAX).unwrap();
+        let document = builder.finish(raw.to_owned()).unwrap();
+        let id = document.children(document.root()).next().unwrap();
+        let inferred = document.syntax(id).map(|syntax| match syntax {
+            NodeSyntax::Code { info } => info.resolve(document.source()).unwrap().to_string(),
+            _ => panic!("{:?}", syntax),
+        });
+        assert_eq!(inferred.as_deref(), info, "{:?}", language);
+        let mut target =
+            Document::parse("# a\n\nb\n".to_string(), &ParseOptions::default()).unwrap();
+        let root = target.root();
+        assert!(target
+            .replace_heading_section(root, 0, &document, false, false)
+            .unwrap());
+    }
+}

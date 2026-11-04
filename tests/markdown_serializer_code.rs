@@ -643,13 +643,12 @@ fn code_meta_edges_round_trip() {
         to_markdown(&hand_built("a\0", "a\0 b\0")).unwrap(),
         "```a\u{FFFD} b\u{FFFD}\n```\n"
     );
-    // With character references off, the parsed language is the raw first word while the info
-    // string is decoded, so the info does not start with the language and the metadata is not
-    // written, as before.
+    // With character references off, the language and metadata are the raw words, and are written
+    // for a parser with references.
     let mut raw = ParseOptions::default();
     raw.constructs.character_reference = false;
     let document = Document::parse("```x&amp; y\n```".to_string(), &raw).unwrap();
-    assert_eq!(to_markdown(&document).unwrap(), "```x\\&amp;\n```\n");
+    assert_eq!(to_markdown(&document).unwrap(), "```x\\&amp; y\n```\n");
 }
 
 /// A `~` at the start of the language of a tilde fence is escaped, as it would lengthen the fence
@@ -689,7 +688,19 @@ fn parsed_code_blocks_are_valid_and_read_back() {
     };
     let mut math = ParseOptions::default();
     math.constructs.math_flow = true;
-    let parses = [ParseOptions::default(), ParseOptions::gfm(), math];
+    let mut references = ParseOptions::default();
+    references.constructs.character_reference = false;
+    let mut escapes = ParseOptions::default();
+    escapes.constructs.character_escape = false;
+    // The serializer writes for a parser with escapes and references, so blocks parsed without
+    // them read back with the default options.
+    let parses = [
+        (ParseOptions::default(), false),
+        (ParseOptions::gfm(), false),
+        (math, false),
+        (references, true),
+        (escapes, true),
+    ];
     let (mut blocks, mut written) = (0, 0);
     for _ in 0..3000 {
         let mut source = String::from(PREFIXES[next(PREFIXES.len())]);
@@ -699,10 +710,11 @@ fn parsed_code_blocks_are_valid_and_read_back() {
         }
         source.push_str("\nv\n");
         source.push_str(OPENERS[next(OPENERS.len())]);
-        for parse in &parses {
-            let document = Document::parse(source.clone(), parse).unwrap();
+        for (parse, default) in &parses {
+            let mut document = Document::parse(source.clone(), parse).unwrap();
             let mut copy = Document::parse(String::new(), parse).unwrap();
-            for id in document.descendants(document.root()) {
+            let ids: Vec<_> = document.descendants(document.root()).collect();
+            for &id in &ids {
                 let EventKind::CodeBlock { language, math, .. } = &document.node(id).unwrap().kind
                 else {
                     continue;
@@ -728,6 +740,20 @@ fn parsed_code_blocks_are_valid_and_read_back() {
                         .unwrap_or_else(|error| panic!("{:?}: {:?}", source, error));
                 }
             }
+            // The inferred syntax describes the block it was inferred for.
+            for id in ids {
+                let syntax = document.syntax(id).and_then(|syntax| match syntax {
+                    NodeSyntax::Code { info } => Some(NodeSyntax::Code {
+                        info: Text::from(info.resolve(document.source()).unwrap().to_string()),
+                    }),
+                    _ => None,
+                });
+                if syntax.is_some() {
+                    document
+                        .set_syntax(id, syntax)
+                        .unwrap_or_else(|error| panic!("{:?}: {:?}", source, error));
+                }
+            }
             // Text such as `$$` without math or a `~` after a fence that did not open is not what
             // this checks.
             if document.descendants(document.root()).any(|id| {
@@ -740,7 +766,12 @@ fn parsed_code_blocks_are_valid_and_read_back() {
             }
             written += 1;
             let markdown = to_markdown(&document).unwrap();
-            let reparsed = Document::parse(markdown.clone(), parse).unwrap();
+            let reparsed = if *default {
+                Document::parse(markdown.clone(), &ParseOptions::default())
+            } else {
+                Document::parse(markdown.clone(), parse)
+            }
+            .unwrap();
             assert_eq!(
                 languages_and_meta(&reparsed),
                 languages_and_meta(&document),

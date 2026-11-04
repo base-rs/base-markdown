@@ -262,7 +262,10 @@ pub(crate) fn infer(
             })
         }
         EventKind::CodeBlock {
-            fence: Some(fence), ..
+            fence: Some(fence),
+            language,
+            math,
+            ..
         } => {
             let first = &raw[..raw.find(['\r', '\n']).unwrap_or(raw.len())];
             let sequence = &first[first.find(fence.character)?..];
@@ -275,8 +278,29 @@ pub(crate) fn infer(
             }
             let info = info.trim_matches([' ', '\t']);
             let start = span.start + (info.as_ptr() as usize - first.as_ptr() as usize);
-            let text = crate::value_builder::decode_string(source, start..start + info.len());
-            Some(NodeSyntax::Code { info: text })
+            let range = start..start + info.len();
+            // The document does not keep the options it was parsed with, which decide whether
+            // escapes and references in the info string were decoded, so keep the first decoding
+            // that starts with the language as the parser split it off: the info string the
+            // parser read. Code from caller events may have a language its source does not
+            // start with, and then has no inferred info string. Math has no language, so any
+            // metadata is valid, decoded as by default.
+            let language = language
+                .as_ref()
+                .map(|value| value.resolve(source).expect("document text is validated"));
+            [(true, true), (false, false), (true, false), (false, true)]
+                .iter()
+                .map(|&(escapes, references)| {
+                    crate::value_builder::decode_info(source, range.clone(), escapes, references)
+                })
+                .find(|info| {
+                    *math
+                        || code_info_starts_with(
+                            info.resolve(source).expect("decoded from the source"),
+                            language,
+                        )
+                })
+                .map(|info| NodeSyntax::Code { info })
         }
         EventKind::Opaque { block: true, .. } => frontmatter(raw).map(
             |(info, fence, closing_fence_length, _)| NodeSyntax::Frontmatter {
