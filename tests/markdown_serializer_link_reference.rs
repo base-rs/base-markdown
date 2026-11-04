@@ -548,6 +548,8 @@ fn multiline_labels_in_containers_round_trip() {
         ),
         ("> [a][r\n> s]\n\n[r s]: /u", "> [a][r\n> s]\n\n[r s]: /u\n"),
         ("> [r\n> s]\n\n[r s]: /u", "> [r\n> s]\n\n[r s]: /u\n"),
+        // The paragraph's span is the reference's.
+        ("[r s]: /u\n\n> [a][r\n> s]", "[r s]: /u\n\n> [a][r\n> s]\n"),
         ("> [a][r\ns]\n\n[r s]: /u", "> [a][r\n> s]\n\n[r s]: /u\n"),
         (
             ">\t[a][r\n>\ts]\n\n[r s]: /u",

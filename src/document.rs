@@ -269,9 +269,10 @@ impl<S: AsRef<str>> Document<S> {
             }
             events.take_read_labels()
         };
-        let mut document = builder.finish(source)?;
-        document.record_read_labels(labels);
-        Ok(document)
+        builder.finish(source).map(|mut document| {
+            document.record_read_labels(labels);
+            document
+        })
     }
 
     // A reference or footnote label is inferred from its source span, which in a container also
