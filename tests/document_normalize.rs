@@ -4433,3 +4433,314 @@ fn code_blocks_that_end_a_parsed_document_keep_their_values() {
     document.normalize();
     assert_eq!(code_block_value(&document, code), "a\n");
 }
+
+fn html_block(value: &'static str) -> Result<Event<'static>, StreamError> {
+    event(
+        EventKind::Html {
+            value: Text::Literal(value),
+            block: true,
+        },
+        0..0,
+    )
+}
+
+#[test]
+fn removes_html_that_cannot_be_written() {
+    // Inline HTML without a value writes nothing, so it is removed and what was on either side meets: text joins, attention merges, and attention or a paragraph left empty is removed.
+    assert_eq!(
+        settled(build(vec![
+            html(""),
+            text("a"),
+            html(""),
+            text("b"),
+            html("")
+        ])),
+        r#"paragraph("ab")"#
+    );
+    assert_eq!(
+        settled(build(concat([
+            emphasis(vec![text("a")]),
+            vec![html("")],
+            emphasis(vec![text("b")]),
+            strong(vec![html("")]),
+        ]))),
+        r#"paragraph(emphasis("ab"))"#
+    );
+    assert_eq!(
+        settled(build_blocks(concat([
+            paragraph(vec![text("a")]),
+            vec![separator()],
+            paragraph(vec![html("")]),
+            vec![separator()],
+            heading(vec![html("")]),
+        ]))),
+        r#"paragraph("a") separator heading()"#
+    );
+    // A reference after inline HTML without a value is the first thing written in its paragraph, so it is escaped as one, and does not read back as a definition (#146).
+    let mut document =
+        Document::parse("[r]\n\n[r]: /u\n".to_owned(), &ParseOptions::default()).unwrap();
+    let first = document.children(document.root()).next().unwrap();
+    let reference = document.children(first).next();
+    let empty = document
+        .append_child(
+            first,
+            EventKind::Html {
+                value: Text::Literal(""),
+                block: false,
+            },
+        )
+        .unwrap();
+    document.attach(first, empty, reference).unwrap();
+    document
+        .append_child(first, EventKind::Text(Text::Literal(": /u")))
+        .unwrap();
+    assert!(!document.is_normalized());
+    assert_eq!(reads_back(document), "[r]\\: /u\n\n[r]: /u\n");
+    // An HTML block of only spaces, tabs and line endings is written as blank lines, so it is removed with one separator beside it, like an empty paragraph.
+    for value in ["", "\n", " ", "\t", "\r\n", " \n\t\n"] {
+        assert_eq!(
+            settled(build_blocks(concat([
+                vec![html_block(value), separator()],
+                paragraph(vec![text("a")]),
+                vec![separator(), html_block(value), separator()],
+                paragraph(vec![text("b")]),
+                vec![separator(), html_block(value)],
+            ]))),
+            r#"paragraph("a") separator paragraph("b")"#,
+            "{value:?}"
+        );
+    }
+    // HTML that can be written stays: an HTML block that is not blank, and inline HTML with a value, even of whitespace alone, which is written as it is between text.
+    for document in [
+        build_blocks(concat([
+            vec![html_block("<div>"), separator(), html_block(" <b>\n")],
+            vec![separator(), html_block("x")],
+        ])),
+        build(vec![text("a"), html(" "), text("b"), html("\n"), text("c")]),
+        build(vec![text("a"), html("<b>")]),
+    ] {
+        assert!(document.is_normalized());
+    }
+}
+
+#[test]
+fn removes_lists_without_items() {
+    use Block::{List, Paragraph, Quote, Separator};
+    let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
+    let p = |value: &str| Paragraph(vec![text(value)]);
+    let tight = |items: Vec<Vec<Block>>| {
+        List(
+            None,
+            true,
+            items.into_iter().map(|blocks| (false, blocks)).collect(),
+        )
+    };
+    let empty = || List(None, true, vec![]);
+    let blank = || {
+        Block::Leaf(EventKind::Html {
+            value: Text::Literal(""),
+            block: true,
+        })
+    };
+    // A list without items is written as nothing, or as a lone `-` in an item, so it is removed, and the rules for what that leaves apply in turn: `- p\n  -` read back as a heading (#149).
+    for (block, expected) in [
+        (empty(), ""),
+        (Quote(vec![empty()]), ">\n"),
+        (
+            Quote(vec![p("a"), Separator, empty(), Separator, p("b")]),
+            "> a\n>\n> b\n",
+        ),
+        (tight(vec![vec![empty()]]), "-\n"),
+        (
+            tight(vec![vec![p("p"), tight(vec![vec![empty()]])]]),
+            "- p\n",
+        ),
+        (
+            tight(vec![vec![p("p"), tight(vec![vec![blank()]])]]),
+            "- p\n",
+        ),
+        (
+            tight(vec![vec![p("p"), tight(vec![vec![empty()], vec![p("a")]])]]),
+            "- p\n  - a\n",
+        ),
+        (
+            tight(vec![vec![
+                p("p"),
+                tight(vec![vec![p("q"), tight(vec![vec![empty()]])]]),
+            ]]),
+            "- p\n  - q\n",
+        ),
+        (tight(vec![vec![p("p"), Separator, empty()]]), "- p\n"),
+        // Paragraphs that meet where it was are joined, and blocks that can be written apart only with a blank line make the list loose.
+        (tight(vec![vec![p("a"), empty(), p("b")]]), "- a\n  b\n"),
+        (tight(vec![vec![p("a"), blank(), p("b")]]), "- a\n  b\n"),
+        (
+            tight(vec![vec![
+                Quote(vec![p("a")]),
+                empty(),
+                Quote(vec![p("b")]),
+            ]]),
+            "- > a\n\n  > b\n",
+        ),
+        // A loose list whose only item is left with one block is made tight.
+        (
+            List(None, false, vec![(true, vec![p("a"), Separator, empty()])]),
+            "- a\n",
+        ),
+        (
+            List(None, false, vec![(true, vec![blank(), Separator, p("a")])]),
+            "- a\n",
+        ),
+    ] {
+        let document = build_list(&block);
+        assert!(!document.is_normalized(), "{:?}", expected);
+        assert_eq!(reads_back(document), expected);
+    }
+    // The root of a detached subtree is never removed.
+    let mut document = build_list(&tight(vec![vec![p("p")]]));
+    let list = document.children(document.root()).next().unwrap();
+    let detached = document
+        .append_child(
+            list,
+            EventKind::Start(Tag::List {
+                start: None,
+                tight: true,
+            }),
+        )
+        .unwrap();
+    document.detach(detached).unwrap();
+    document.normalize();
+    assert!(document.is_normalized());
+    assert!(document.node(detached).unwrap().first_child().is_none());
+}
+
+/// The tree of `block` with what normalizing removes as unwritable taken out by hand: inline HTML without a value, and blank HTML blocks and lists without items.
+fn without_unwritable(block: &Block) -> Option<Block> {
+    let blocks = |blocks: &[Block]| blocks.iter().filter_map(without_unwritable).collect();
+    Some(match block {
+        Block::Paragraph(phrasing) => Block::Paragraph(
+            phrasing
+                .iter()
+                .filter(|kind| {
+                    !matches!(kind, EventKind::Html { value, .. } if value.resolve("").unwrap().is_empty())
+                })
+                .cloned()
+                .collect(),
+        ),
+        Block::List(_, _, items) if items.is_empty() => return None,
+        Block::List(start, tight, items) => Block::List(
+            *start,
+            *tight,
+            items
+                .iter()
+                .map(|(spread, children)| (*spread, blocks(children)))
+                .collect(),
+        ),
+        Block::Quote(children) => Block::Quote(blocks(children)),
+        Block::Footnote(children) => Block::Footnote(blocks(children)),
+        Block::Leaf(EventKind::Html { value, .. })
+            if value.resolve("").unwrap().trim_matches([' ', '\t', '\r', '\n']).is_empty() =>
+        {
+            return None
+        }
+        Block::Leaf(kind) => Block::Leaf(kind.clone()),
+        Block::Code => Block::Code,
+        Block::Separator => Block::Separator,
+    })
+}
+
+fn random_flow(random: &mut Random, depth: u32) -> Vec<Block> {
+    let html = |random: &mut Random, block: bool| EventKind::Html {
+        value: Text::Literal(["", "", " ", "\n", "<b>", "x"][random.below(6) as usize]),
+        block,
+    };
+    (0..random.below(4))
+        .map(|_| match random.below(if depth == 0 { 2 } else { 5 }) {
+            0 => Block::Paragraph(
+                (0..1 + random.below(3))
+                    .map(|_| match random.below(3) {
+                        0 => html(random, false),
+                        _ => EventKind::Text(Text::from(
+                            ["a", " ", "b"][random.below(3) as usize].to_owned(),
+                        )),
+                    })
+                    .collect(),
+            ),
+            1 => Block::Leaf(html(random, true)),
+            2 => Block::Quote(random_flow(random, depth - 1)),
+            _ => {
+                let tight = random.below(2) == 0;
+                Block::List(
+                    None,
+                    tight,
+                    (0..random.below(3))
+                        .map(|_| (!tight, random_flow(random, depth - 1)))
+                        .collect(),
+                )
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn removing_unwritable_html_and_lists_is_removing_them_by_hand() {
+    // Normalizing a tree gives the same tree as normalizing it with the unwritable nodes taken out first, so one pass removes them and everything their removal leaves to remove. Serializing the tree before normalizing must not panic.
+    let mut random = Random(0x6A09_E667_F3BC_C908);
+    let mut removed = 0;
+    for _ in 0..5_000 {
+        let blocks = Block::Quote(random_flow(&mut random, 3));
+        let mut document = build_list(&blocks);
+        to_markdown(&document).unwrap();
+        let mut expected = build_list(&without_unwritable(&blocks).unwrap());
+        let normal = document.is_normalized();
+        let before = describe(&document, document.root());
+        document.normalize();
+        expected.normalize();
+        let once = describe(&document, document.root());
+        assert!(document.is_normalized(), "{}", before);
+        assert_eq!(normal, once == before, "{before}");
+        assert_eq!(once, describe(&expected, expected.root()), "{before}");
+        removed += usize::from(once != describe(&build_list(&blocks), document.root()));
+        document.normalize();
+        assert_eq!(describe(&document, document.root()), once);
+    }
+    assert!(removed > 1_000, "{}", removed);
+}
+
+#[test]
+fn serializing_html_without_a_value_after_a_line_ending_does_not_panic() {
+    // Inline HTML at the start of a line is checked for whether it would start an HTML block, which only a value that starts with `<` can.
+    for value in ["", "xdiv>"] {
+        let document = build(vec![text("a"), soft(), html(value), text("b")]);
+        assert_eq!(to_markdown(&document).unwrap(), format!("a\n{value}b\n"));
+    }
+}
+
+#[test]
+fn removing_unwritable_html_and_lists_is_linear() {
+    // Each is removed with one separator in one pass over its parent's children, and inline HTML in the pass over its paragraph's.
+    assert_linear("unwritable blocks", 1 << 10, |size| {
+        let mut events = Vec::new();
+        for _ in 0..size / 4 {
+            events.extend([html_block(" \n"), separator()]);
+            events.extend(attention(
+                Tag::List {
+                    start: None,
+                    tight: true,
+                },
+                TagKind::List,
+                vec![separator()],
+            ));
+            events.push(separator());
+            events.extend(paragraph(vec![html(""), text("a"), html("")]));
+        }
+        let mut document = build_blocks(events);
+        let elapsed = timed(|| {
+            document.normalize();
+            assert!(document.is_normalized());
+            to_markdown(&document).unwrap();
+        });
+        assert_eq!(document.children(document.root()).count(), size / 4);
+        elapsed
+    });
+}

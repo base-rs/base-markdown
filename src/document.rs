@@ -1183,10 +1183,35 @@ fn same_attention(left: &EventKind<'_>, right: &EventKind<'_>) -> bool {
 }
 
 fn empty_text(kind: &EventKind<'_>) -> bool {
-    match kind {
-        EventKind::Text(Text::Source(range)) => range.is_empty(),
-        EventKind::Text(Text::Literal(value)) => value.is_empty(),
-        EventKind::Text(Text::Value(value)) => value.is_empty(),
+    matches!(kind, EventKind::Text(value) if empty_value(value))
+}
+
+// Whether a value is empty, without resolving it against the source.
+fn empty_value(value: &Text<'_>) -> bool {
+    match value {
+        Text::Source(range) => range.is_empty(),
+        Text::Literal(value) => value.is_empty(),
+        Text::Value(value) => value.is_empty(),
+    }
+}
+
+// Whether a node is HTML without a value. In phrasing it writes nothing, so the nodes on either side meet as if it were not there, and a reference after it is written at the start of the line as if it came first.
+fn empty_html(kind: &EventKind<'_>) -> bool {
+    matches!(kind, EventKind::Html { value, .. } if empty_value(value))
+}
+
+// Whether a child of a container that does not hold phrasing is a block that Markdown cannot write: HTML whose value is empty or holds only spaces, tabs and line endings, which is written as blank lines, as an HTML block cannot start with whitespace alone, and a list without items, not counting separators, which is written as nothing, or as a lone `-` where it is the only block of an item.
+fn unwritable_block(nodes: &[Node], node: &Node, source: &str) -> bool {
+    match &node.kind {
+        EventKind::Html { value, .. } => value
+            .resolve(source)
+            .expect("document text is validated")
+            .bytes()
+            .all(|byte| matches!(byte, b' ' | b'\t' | b'\n' | b'\r')),
+        EventKind::Start(Tag::List { .. }) => {
+            core::iter::successors(node.first_child, |id| nodes[id.index()].next_sibling)
+                .all(|id| matches!(nodes[id.index()].kind, EventKind::Separator { .. }))
+        }
         _ => false,
     }
 }
@@ -1221,10 +1246,11 @@ fn delete(kind: &EventKind<'_>) -> bool {
     matches!(kind, EventKind::Start(Tag::Delete))
 }
 
-// Whether normalization removes a child, in a container that holds phrasing or not, without joining it into another: empty text, a separator in phrasing, and attention without children.
+// Whether normalization removes a child, in a container that holds phrasing or not, without joining it into another: empty text, a separator or HTML without a value in phrasing, and attention without children.
 fn removed(node: &Node, phrasing: bool) -> bool {
     empty_text(&node.kind)
-        || (phrasing && matches!(node.kind, EventKind::Separator { .. }))
+        || (phrasing
+            && (matches!(node.kind, EventKind::Separator { .. }) || empty_html(&node.kind)))
         || (attention(&node.kind) && node.first_child.is_none())
 }
 
@@ -1923,17 +1949,17 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// Markdown cannot write whitespace at the edges of emphasis, strong or strikethrough, so it moves out: Unicode whitespace in text and soft breaks at either edge, and hard breaks at the end, move out through any attention nested at that edge to just before or after the outermost attention whose edge they are. Attention left empty is removed, and what moved out takes its place. A hard break at the start of attention stays, and links and images keep whitespace at their edges. The parser reads no break at the edges of a paragraph, heading or table cell, so soft breaks at either edge of its phrasing are removed, and so are hard breaks at the end of a paragraph or heading, including those that moved out of attention; a hard break at the start stays. Markdown cannot write a hard break in a table cell, so one there, at any depth and at its end too, becomes a space, which the serializer encodes where it is at the edge of the cell, so `| a&#x20; |` is written for a cell of `a` and a hard break.
     ///
-    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code, math or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. An empty item cannot interrupt a paragraph, and a `-` alone under one is a setext underline, so in an item of a tight list, where no blank line can come between them, a list directly after a paragraph, not counting separators, cannot start with an empty item, one with no blocks once its empty paragraphs are removed: such a list's leading empty items are removed, as each next one becomes the first, so items of `p` and a list of an empty item and `a` are written `- p\n  - a`, where `- p\n  -` read back as a heading. Later empty items stay. A list left with no item is removed with one separator beside it, the one after it if there is one, and a list after it then follows the paragraph in turn. Only an ordered list that starts at 1 can interrupt a paragraph, so in an item of a tight list, an ordered list directly after a paragraph, not counting separators, that starts at another number, including one whose leading empty items were removed, is made to start at 1: `- p\n  3. a` reads back as text, so it is written `- p\n  1. a`. Its items and text stay; only its numbering changes. In an item of a tight list, two paragraphs in a row, not counting separators, cannot be written either, as the blank line between them would make the list loose, so once the rules above have run, each run of them is joined into its first paragraph, with a soft break between each, and the separators between them are removed: a tight list has no `<p>`, so this renders almost the same, and items of `a` and `b` are written `- a\n  b`. Some blocks in a row in an item of a tight list can be written apart only with a blank line between them, which makes the list loose: two block quotes, which would otherwise read back as one, a paragraph after a list or footnote definition that ends in a paragraph, through the last blocks of any containers in it, which would otherwise continue that paragraph lazily, and a paragraph after a block quote whose last block is such a list or definition, where the line of `>` that would end the quote's paragraph is a blank line in that list or definition. Such a list is made loose, with the paragraphs of all its items, and its paragraphs in a row are then left apart. A paragraph after a list that does not end in a paragraph, such as one whose last item is empty, is written on the next line, and one after a block quote that ends in a paragraph in any other way after a line of `>`, so both stay in a tight list. The parser keeps the space or tab that separates a task marker from its text at the start of that text, and Markdown cannot write a marker with nothing after its separator, so when the phrasing of a paragraph, heading or table cell starts with a task marker followed only by breaks and at most one text that is a single space or tab, the marker is removed, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a marker alone, or of a marker and a hard break, is left empty, and removed if it starts a list after a paragraph as above, and one of a marker and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the marker keeps it, including whitespace after the separator, which the serializer encodes, so a marker and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. The parser reads each line ending in inline code or math as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. Code and math in image text are written as alt text, where line endings can be written, so they keep theirs. The parser stores each line ending in a code or math block as LF, and the last line of a closed fence with its line ending, so in the value of such a block each CRLF and lone CR becomes LF, and a value that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty value stays, as `` ```\n``` `` reads back as one. The last node of the document, attached, keeps a value without a final line ending, as the parser stores one for an unclosed fence or indented code that ends the source without a line ending, such as `` ```\na ``, so normalizing a parsed document leaves it as it is. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
+    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code, math or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. Inline HTML without a value writes nothing, so it is removed, before anything above, and what was on either side meets: text joins, attention merges, and attention or a paragraph it leaves empty is removed, so a link reference after it starts its paragraph and is escaped as such, `[r]\: /u` rather than `[r]: /u`, which reads back as a definition. Inline HTML of whitespace alone stays, as it can be written between text. An HTML block whose value is empty or holds only spaces, tabs and line endings is written as blank lines, as no HTML block starts with whitespace alone, and a list without items, not counting separators, is written as nothing, or as a lone `-` where it is the only block of an item, so each is removed with one separator beside it, like an empty paragraph, and also before anything above, so the rules below see the items they leave empty: an item of `p` and a list whose only item holds a list without items is written `- p`, where `- p\n  -` read back as a heading. The parser produces none of these. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. An empty item cannot interrupt a paragraph, and a `-` alone under one is a setext underline, so in an item of a tight list, where no blank line can come between them, a list directly after a paragraph, not counting separators, cannot start with an empty item, one with no blocks once its empty paragraphs are removed: such a list's leading empty items are removed, as each next one becomes the first, so items of `p` and a list of an empty item and `a` are written `- p\n  - a`, where `- p\n  -` read back as a heading. Later empty items stay. A list left with no item is removed with one separator beside it, the one after it if there is one, and a list after it then follows the paragraph in turn. Only an ordered list that starts at 1 can interrupt a paragraph, so in an item of a tight list, an ordered list directly after a paragraph, not counting separators, that starts at another number, including one whose leading empty items were removed, is made to start at 1: `- p\n  3. a` reads back as text, so it is written `- p\n  1. a`. Its items and text stay; only its numbering changes. In an item of a tight list, two paragraphs in a row, not counting separators, cannot be written either, as the blank line between them would make the list loose, so once the rules above have run, each run of them is joined into its first paragraph, with a soft break between each, and the separators between them are removed: a tight list has no `<p>`, so this renders almost the same, and items of `a` and `b` are written `- a\n  b`. Some blocks in a row in an item of a tight list can be written apart only with a blank line between them, which makes the list loose: two block quotes, which would otherwise read back as one, a paragraph after a list or footnote definition that ends in a paragraph, through the last blocks of any containers in it, which would otherwise continue that paragraph lazily, and a paragraph after a block quote whose last block is such a list or definition, where the line of `>` that would end the quote's paragraph is a blank line in that list or definition. Such a list is made loose, with the paragraphs of all its items, and its paragraphs in a row are then left apart. A paragraph after a list that does not end in a paragraph, such as one whose last item is empty, is written on the next line, and one after a block quote that ends in a paragraph in any other way after a line of `>`, so both stay in a tight list. The parser keeps the space or tab that separates a task marker from its text at the start of that text, and Markdown cannot write a marker with nothing after its separator, so when the phrasing of a paragraph, heading or table cell starts with a task marker followed only by breaks and at most one text that is a single space or tab, the marker is removed, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a marker alone, or of a marker and a hard break, is left empty, and removed if it starts a list after a paragraph as above, and one of a marker and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the marker keeps it, including whitespace after the separator, which the serializer encodes, so a marker and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. The parser reads each line ending in inline code or math as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. Code and math in image text are written as alt text, where line endings can be written, so they keep theirs. The parser stores each line ending in a code or math block as LF, and the last line of a closed fence with its line ending, so in the value of such a block each CRLF and lone CR becomes LF, and a value that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty value stays, as `` ```\n``` `` reads back as one. The last node of the document, attached, keeps a value without a final line ending, as the parser stores one for an unclosed fence or indented code that ends the source without a line ending, such as `` ```\na ``, so normalizing a parsed document leaves it as it is. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
     ///
     /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, adjacent attention of the same kind, such as `*a*_b_`, stays separate, and strikethrough inside strikethrough, such as `~a~~b~~c~`, stays nested. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
     ///
-    /// The IDs of removed text, breaks, task markers, attention, paragraphs, items, lists and separators, joined text, code, math and paragraphs, merged attention and unwrapped strikethrough no longer refer to nodes in the tree. Their arena slots remain, detached, but their contents are unspecified. Whitespace split off the edge of a text node is a new node with an empty span, and the text node keeps its ID and span with the rest of its value. The soft break between joined paragraphs is a new node with an empty span too, and the first paragraph keeps its ID. Whitespace and breaks that move whole, and a hard break that becomes a space, keep their IDs, code or math whose line endings become spaces keeps its ID and span, and so does a code or math block whose value is rewritten. Other IDs stay valid.
+    /// The IDs of removed text, HTML, breaks, task markers, attention, paragraphs, items, lists and separators, joined text, code, math and paragraphs, merged attention and unwrapped strikethrough no longer refer to nodes in the tree. Their arena slots remain, detached, but their contents are unspecified. Whitespace split off the edge of a text node is a new node with an empty span, and the text node keeps its ID and span with the rest of its value. The soft break between joined paragraphs is a new node with an empty span too, and the first paragraph keeps its ID. Whitespace and breaks that move whole, and a hard break that becomes a space, keep their IDs, code or math whose line endings become spaces keeps its ID and span, and so does a code or math block whose value is rewritten. Other IDs stay valid.
     pub fn normalize(&mut self) {
         let mut scratch = Trailing::default();
         let mut blocks = Vec::new();
         for index in 0..self.nodes.len() {
             if self.nodes[index].parent.is_none() {
-                self.remove_subtree(NodeId::new(index));
+                self.remove_subtree(NodeId::new(index), &mut blocks);
                 self.normalize_subtree(NodeId::new(index), &mut scratch);
                 self.remove_empty_paragraphs(NodeId::new(index), &mut blocks);
                 self.join_tight_items(NodeId::new(index));
@@ -1964,7 +1990,7 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent inline math, adjacent attention of the same kind, or a separator in phrasing; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, ends with a hard break, or starts with a task marker followed only by breaks and at most one text that is a single space or tab; no inline code or math outside image text has a line ending in its value; no code or math block has a carriage return in its value, or a value that is not empty and has no final line ending unless it is the last node of the document; no attached paragraph is empty; no loose list has only one item with fewer than two blocks; no item of a tight list holds a list that starts with an empty item, or an ordered list that starts at a number other than 1, directly after a paragraph; and no item of a tight list holds two paragraphs in a row, two block quotes in a row, or a paragraph after a list or footnote definition that ends in a paragraph or after a block quote whose last block is one, not counting separators. This takes time linear in the size of the arena.
+    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent inline math, adjacent attention of the same kind, a separator or HTML without a value in phrasing, or, outside phrasing, an HTML block that is empty or holds only spaces, tabs and line endings, or a list without items, not counting separators; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, ends with a hard break, or starts with a task marker followed only by breaks and at most one text that is a single space or tab; no inline code or math outside image text has a line ending in its value; no code or math block has a carriage return in its value, or a value that is not empty and has no final line ending unless it is the last node of the document; no attached paragraph is empty; no loose list has only one item with fewer than two blocks; no item of a tight list holds a list that starts with an empty item, or an ordered list that starts at a number other than 1, directly after a paragraph; and no item of a tight list holds two paragraphs in a row, two block quotes in a row, or a paragraph after a list or footnote definition that ends in a paragraph or after a block quote whose last block is one, not counting separators. This takes time linear in the size of the arena.
     pub fn is_normalized(&self) -> bool {
         let source = self.source.as_ref();
         let nodes = &self.nodes;
@@ -2002,6 +2028,7 @@ impl<S: AsRef<str>> Document<S> {
                         if removed(node, phrasing)
                             || joined(kept, &node.kind)
                             || empty_paragraph(node)
+                            || (!phrasing && unwritable_block(nodes, node, source))
                         {
                             return false;
                         }
@@ -2038,12 +2065,15 @@ impl<S: AsRef<str>> Document<S> {
             })
     }
 
-    // Remove the children that are dropped without joining from each child list, from the bottom up, so that attention whose children are all removed is removed in turn. Each removed node has no children left, so it stays detached and normalized.
-    fn remove_subtree(&mut self, root: NodeId) {
+    // Remove the children that are dropped without joining from each child list, from the bottom up, so that attention whose children are all removed is removed in turn, and the blocks that Markdown cannot write from each child list that does not hold phrasing, each with one separator beside it, so that an item left empty is empty before the rules that look at items run. No later rule makes a list empty without removing it, or makes HTML blank, so nothing removed here is left to remove again. Each removed node has no children left, so it stays detached and normalized. `kept` is scratch storage for the children kept so far in a list.
+    fn remove_subtree(&mut self, root: NodeId, kept: &mut Vec<NodeId>) {
         let mut id = first_leaf(&self.nodes, root);
         loop {
             if self.nodes[id.index()].first_child.is_some() {
                 self.remove_children(id);
+                if !phrasing_container(&self.nodes[id.index()].kind) {
+                    self.remove_empty_children(id, kept, unwritable_block);
+                }
             }
             if id == root {
                 return;
@@ -2066,7 +2096,7 @@ impl<S: AsRef<str>> Document<S> {
                 self.set_tight(id, true);
             }
             if self.nodes[id.index()].first_child.is_some() {
-                self.remove_empty_children(id, kept);
+                self.remove_empty_children(id, kept, |_, node, _| empty_paragraph(node));
                 if empty_item_after_paragraph(&self.nodes, &self.nodes[id.index()]) {
                     self.remove_empty_items_after_paragraphs(id, kept);
                 }
@@ -2260,21 +2290,32 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    // Unlink each paragraph of `parent` without children, with one separator next to it, the one after it if there is one, so that the blocks on either side stay separated once.
-    fn remove_empty_children(&mut self, parent: NodeId, kept: &mut Vec<NodeId>) {
+    // Unlink each child of `parent` for which `unwritable` holds, with one separator next to it, the one after it if there is one, so that the blocks on either side stay separated once. The children of a removed child, which are separators of a list without items, are unlinked from it too.
+    fn remove_empty_children(
+        &mut self,
+        parent: NodeId,
+        kept: &mut Vec<NodeId>,
+        unwritable: fn(&[Node], &Node, &str) -> bool,
+    ) {
+        let source = self.source.as_ref();
         let nodes = &mut self.nodes;
         kept.clear();
         let mut changed = false;
         let mut current = nodes[parent.index()].first_child;
         while let Some(id) = current {
             current = nodes[id.index()].next_sibling.take();
-            if !empty_paragraph(&nodes[id.index()]) {
+            if !unwritable(nodes, &nodes[id.index()], source) {
                 nodes[id.index()].next_sibling = current;
                 kept.push(id);
                 continue;
             }
             changed = true;
             nodes[id.index()].parent = None;
+            let mut child = nodes[id.index()].first_child.take();
+            while let Some(child_id) = child {
+                child = nodes[child_id.index()].next_sibling.take();
+                nodes[child_id.index()].parent = None;
+            }
             let removed = if separator(nodes, current) {
                 current
             } else if separator(nodes, kept.last().copied()) {

@@ -1104,8 +1104,10 @@ pub(crate) fn starts_footnote_definition(bytes: &[u8]) -> bool {
 }
 
 /// Whether HTML at the start of a line would start an HTML block inside a paragraph (kinds 1–6).
+/// Only a value that starts with `<` can: a hand-built value need not, and an empty one has no
+/// name to read.
 pub(crate) fn html_interrupts_paragraph(bytes: &[u8]) -> bool {
-    html::Html::start(bytes, false, false).is_some()
+    bytes.first() == Some(&b'<') && html::Html::start(bytes, false, false).is_some()
 }
 
 /// Definition-looking table headers take precedence over definitions; other headers follow ordinary paragraph indentation rules.
