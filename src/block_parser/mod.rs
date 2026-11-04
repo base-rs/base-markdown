@@ -464,8 +464,9 @@ impl Builder<'_> {
             };
             if let Some((marker, number, width)) = marker {
                 let content = start + line.bytes_scanned();
-                self.list(at - indent, marker, number, start);
-                self.append(at - indent, content, Body::Item(width));
+                // The item starts where its indent does, at `definition_start`: `indent` counts columns, and a tab is one byte of up to four.
+                self.list(definition_start, marker, number, start);
+                self.append(definition_start, content, Body::Item(width));
                 self.push();
                 if let Some(length) = scan_blank_line(&bytes[content..]) {
                     self.empty_item = Some(content + length);

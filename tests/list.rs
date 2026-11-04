@@ -789,6 +789,9 @@ fn item_spread_counts_a_blank_line_that_a_nested_block_takes_in() {
         ("- [^1]:\n  b\n", vec![false]),
         ("- - a\n  # h\n", vec![false, false]),
         ("- - a\n\n    b\n  # h\n", vec![false, true]),
+        // A nested list after a tab starts at the tab, so the blank line before it counts (#171).
+        ("- a\n\n\t-\n", vec![true, false]),
+        ("- a\n\n\t - b\n", vec![true, false]),
     ] {
         let document = Document::parse(source, &ParseOptions::default()).unwrap();
         assert_eq!(item_spreads(&document), spreads, "{:?}", source);
@@ -798,9 +801,10 @@ fn item_spread_counts_a_blank_line_that_a_nested_block_takes_in() {
 
 #[test]
 fn item_spread_agrees_with_list_looseness() {
-    // Small generated documents of list, quote, footnote, code, table and definition starts. Tabs are left out: the span of a list after one starts before the tab, so the line before it is not counted.
+    // Small generated documents of list, quote, footnote, code, table and definition starts, and tabs.
     const TOKENS: &[&str] = &[
         "- ",
+        "\t",
         "1. ",
         "> ",
         "  ",
@@ -831,6 +835,38 @@ fn item_spread_agrees_with_list_looseness() {
             .collect();
         let document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
         assert!(spread_agrees_with_lists(&document), "{:?}", source);
+    }
+}
+
+#[test]
+fn a_list_after_a_tab_starts_at_the_tab() {
+    // The indent before a list marker is counted in columns, and a tab is one byte of up to four, so a list starts at the byte where its indent does (#171). Without indented code, a tab at the start of the document used to start the list before it, which panicked.
+    for (source, code_indented, start) in [
+        ("- a\n\n\t-", true, 5),
+        ("- a\n\n\t - b", true, 5),
+        ("\t- a", false, 0),
+        ("x\n\n\t\t- a", false, 3),
+    ] {
+        let options = ParseOptions {
+            constructs: Constructs {
+                code_indented,
+                ..Constructs::default()
+            },
+            ..ParseOptions::default()
+        };
+        let document = Document::parse(source, &options).unwrap();
+        let item = items(&document, document.root()).last().unwrap();
+        let list = document.node(item).unwrap().parent().unwrap();
+        let starts = [list, item].map(|id| document.node(id).unwrap().span.start);
+        assert_eq!(starts, [start, start], "{:?}", source);
+        assert!(spread_agrees_with_lists(&document), "{:?}", source);
+        to_html_with_options(
+            source,
+            &Options {
+                parse: options,
+                ..Options::default()
+            },
+        );
     }
 }
 
