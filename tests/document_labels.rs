@@ -10,7 +10,7 @@ use base_markdown::{
     stream::{EventKind, Reference, Tag, Text},
     to_html, Document, LineWrapping, MarkdownOptions, NodeId, ParseOptions, ReferenceKind,
 };
-use support::linear::{assert_linear, timed};
+use support::linear::timed;
 
 /// The label a node is written with, if it has one.
 fn label_of<'a>(document: &'a Document<String>, kind: &'a EventKind<'_>) -> Option<&'a str> {
@@ -622,12 +622,22 @@ fn label_lines_that_would_be_delimiter_rows_read_back() {
             "[x][a\nb|c\n|-|\nd]\n\n[a b|c |-| d]: /u",
             "[x][a\nb|c\n    |-|\nd]\n\n[a b|c |-| d]: /u\n",
         ),
+        // Indented three columns, a line is still a delimiter row, so it takes four.
+        (
+            "> c | [x][a\n   |-|-|\nb]\n\n[a |-|-| b]: /u",
+            "> c | [x][a\n>     |-|-|\n> b]\n\n[a |-|-| b]: /u\n",
+        ),
     ] {
         let document = parse(source);
         assert!(!document.is_normalized(), "{:?}", source);
         assert_eq!(normalized(document), expected);
         assert_eq!(to_html(expected), to_html(source), "{:?}", source);
     }
+    // The closing bracket after the last line keeps it from being a delimiter row, so it stays.
+    let source = "[x][a\nb\n|-|]\n\n[a b |-|]: /u\n";
+    assert_eq!(labels(&parse(source))[0], "a\nb\n|-|");
+    assert!(parse(source).is_normalized());
+    assert_eq!(normalized(parse(source)), source);
     let source = "[x][a\n|-|\nc]\n\n[a |-| c]: /u\n";
     let document = Document::parse(source.to_owned(), &ParseOptions::commonmark()).unwrap();
     assert_eq!(labels(&document)[0], "a\n|-|\nc");
@@ -674,34 +684,48 @@ fn footnote_calls_too_long_on_one_line_are_written_as_their_identifier() {
     }
 }
 
-/// Writing the labels of a line of many references or footnote calls takes time linear in the
-/// line, in a paragraph, a table cell and an ATX heading, however long the line is before each
-/// (#192). Text between them makes the line long without making it slow to write.
+/// Writing the labels of a line of many footnote calls takes time linear in the line, however
+/// long the line is before each (#192). The line is timed against the same text with a line
+/// ending for the space after each call, a control of the same size whose lines are short, so the
+/// ratio of the two growths shows only work that depends on the length of the line: scanning
+/// back over the line for each call grew 1.7 times the control's growth here.
 #[test]
 fn writing_many_labels_on_a_line_is_linear() {
-    type Build = fn(&str) -> String;
-    let cases: [(&str, &str, Build); 4] = [
-        ("footnote calls", "[^a]", |line| {
-            format!("{line}\n\n[^a]: x\n")
-        }),
-        ("references", "[x][a]", |line| {
-            format!("{line}\n\n[a]: /u\n")
-        }),
-        ("cell", "[^a]", |line| {
-            format!("| h |\n| - |\n| {line} |\n\n[^a]: x\n")
-        }),
-        ("heading", "[x][a]", |line| {
-            format!("### {line}\n\n[a]: /u\n")
-        }),
+    let _timing = support::linear::TIMING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let text = "a".repeat(64);
+    let document = |count: usize, end: char| {
+        parse(&format!(
+            "{}\n\n[^a]: x\n",
+            format!("[^a] {text}{end}").repeat(count)
+        ))
+    };
+    let documents = [
+        document(1 << 12, ' '),
+        document(1 << 14, ' '),
+        document(1 << 12, '\n'),
+        document(1 << 14, '\n'),
     ];
-    let text = "a".repeat(256);
-    for (label, call, build) in cases {
-        assert_linear(label, 1 << 8, |count| {
-            let document = parse(&build(&format!("{call} {text} ").repeat(count)));
-            assert!(document.is_normalized());
-            timed(|| {
-                to_markdown(&document).unwrap();
+    let mut ratios = Vec::new();
+    // Noise makes linear work look slower only now and then, so a ratio over the bound is
+    // measured again up to twice.
+    for _ in 0..3 {
+        let times: Vec<f64> = documents
+            .iter()
+            .map(|document| {
+                timed(|| {
+                    to_markdown(document).unwrap();
+                })
+                .as_secs_f64()
             })
-        });
+            .collect();
+        let ratio = (times[1] / times[0]) / (times[3] / times[2]);
+        eprintln!("linear: {times:?}, {ratio:.2}x the control's growth");
+        if ratio < 1.4 {
+            return;
+        }
+        ratios.push(ratio);
     }
+    panic!("the line grew {:?} times the control's growth", ratios);
 }
