@@ -236,10 +236,14 @@ fn soft_breaks(mut document: Document) -> Document {
         }
         pending.extend(document.children(id));
     }
+    // A text cannot become a soft break in place, so a soft break takes its place.
     for id in soft {
-        document
-            .set_kind(id, EventKind::SoftBreak(EventText::Literal("\n")))
+        let parent = document.node(id).unwrap().parent().unwrap();
+        let soft = document
+            .append_child(parent, EventKind::SoftBreak(EventText::Literal("\n")))
             .unwrap();
+        document.attach(parent, soft, Some(id)).unwrap();
+        document.detach(id).unwrap();
     }
     document
 }

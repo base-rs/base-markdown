@@ -283,9 +283,63 @@ impl Node {
         let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
         let root = document.root();
         if matches!(self, Self::Root(_) | Self::Fragment(_)) {
-            for child in self.children().unwrap() {
-                append(&mut document, root, child, &definitions, false, false, &[]);
+            let children = self.children().unwrap();
+            // Phrasing among blocks is put in paragraphs, as in any container of blocks.
+            let blocks = !children.iter().all(phrasing);
+            for child in children {
+                let parent = if blocks && phrasing(child) {
+                    document
+                        .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+                        .unwrap()
+                } else {
+                    root
+                };
+                append(
+                    &mut document,
+                    parent,
+                    child,
+                    &definitions,
+                    false,
+                    false,
+                    &[],
+                );
             }
+        } else if let Self::ListItem(n) = self {
+            // An item is only ever in a list, so a lone item is the only item of one, which is
+            // tight unless the item records spread.
+            let list = document
+                .append_child(
+                    root,
+                    EventKind::Start(Tag::List {
+                        start: None,
+                        tight: !n.spread,
+                    }),
+                )
+                .unwrap();
+            append(
+                &mut document,
+                list,
+                self,
+                &definitions,
+                !n.spread,
+                false,
+                &[],
+            );
+        } else if matches!(self, Self::TableRow(_) | Self::TableCell(_)) {
+            // A row is only ever in a table, so a lone row is a table's head row, and a lone cell
+            // its only cell.
+            let mut parent = root;
+            for tag in [Tag::Table, Tag::TableHead] {
+                parent = document
+                    .append_child(parent, EventKind::Start(tag))
+                    .unwrap();
+            }
+            if matches!(self, Self::TableCell(_)) {
+                parent = document
+                    .append_child(parent, EventKind::Start(Tag::TableRow))
+                    .unwrap();
+            }
+            append(&mut document, parent, self, &definitions, false, true, &[]);
         } else {
             append(&mut document, root, self, &definitions, false, false, &[]);
         }
@@ -343,6 +397,24 @@ fn list_spread(list: &List) -> bool {
             .any(|child| matches!(child,Node::ListItem(item) if item.spread))
 }
 
+/// Whether `node` is phrasing, which in a tree of this crate is only ever in phrasing.
+fn phrasing(node: &Node) -> bool {
+    matches!(
+        node,
+        Node::Text(_)
+            | Node::Emphasis(_)
+            | Node::Strong(_)
+            | Node::Delete(_)
+            | Node::InlineCode(_)
+            | Node::Break(_)
+            | Node::Link(_)
+            | Node::Image(_)
+            | Node::LinkReference(_)
+            | Node::ImageReference(_)
+            | Node::FootnoteReference(_)
+    )
+}
+
 fn append(
     document: &mut Document,
     parent: NodeId,
@@ -367,6 +439,9 @@ fn append(
             syntax = Some(NodeSyntax::ListItem { spread: n.spread });
             EventKind::Start(Tag::Item {
                 block_end: !tight && matches!(n.children.last(), Some(Node::Paragraph(_))),
+                checked: n
+                    .checked
+                    .filter(|_| matches!(n.children.first(), Some(Node::Paragraph(_)))),
             })
         }
         Node::Html(n) => EventKind::Html {
@@ -459,22 +534,45 @@ fn append(
             header,
         }),
         Node::Frontmatter(n) => {
-            syntax = Some(NodeSyntax::Frontmatter {
-                info: value(&n.info),
-                fence: CodeFence {
-                    character: n.fence,
-                    length: n.fence_length,
-                    indent: 0,
-                },
-                closing_fence_length: n.closing_fence_length,
-            });
-            EventKind::Opaque {
-                value: value(&n.value),
-                block: true,
-            }
+            let root = document.root();
+            let line_ending = match &document.node(root).unwrap().kind {
+                EventKind::Start(Tag::Document { line_ending, .. }) => line_ending.clone(),
+                _ => unreachable!("the root is a document"),
+            };
+            document
+                .set_kind(
+                    root,
+                    EventKind::Start(Tag::Document {
+                        line_ending,
+                        frontmatter: Some(value(&n.value)),
+                    }),
+                )
+                .unwrap();
+            document
+                .set_syntax(
+                    root,
+                    Some(NodeSyntax::Frontmatter {
+                        info: value(&n.info),
+                        fence: CodeFence {
+                            character: n.fence,
+                            length: n.fence_length,
+                            indent: 0,
+                        },
+                        closing_fence_length: n.closing_fence_length,
+                    }),
+                )
+                .unwrap();
+            return root;
         }
     };
-    let id = document.append_child(parent, kind).unwrap();
+    let id = document
+        .append_child(parent, kind.clone())
+        .unwrap_or_else(|e| {
+            panic!(
+                "{e:?} {kind:?} in {:?}",
+                document.node(parent).unwrap().kind
+            )
+        });
     if let Some(syntax) = syntax {
         document.set_syntax(id, Some(syntax)).unwrap();
     }
@@ -509,10 +607,24 @@ fn append(
         } else {
             tight
         };
+        // mdast lets phrasing stand among blocks, where it is written as a block of its own, so
+        // each such child is put in a paragraph of its own, as phrasing and blocks cannot share a
+        // parent.
+        let blocks = matches!(
+            node,
+            Node::Blockquote(_) | Node::ListItem(_) | Node::FootnoteDefinition(_)
+        );
         for (index, child) in children.iter().enumerate() {
+            let parent = if blocks && phrasing(child) {
+                document
+                    .append_child(id, EventKind::Start(Tag::Paragraph { tight: child_tight }))
+                    .unwrap()
+            } else {
+                id
+            };
             let child_id = append(
                 document,
-                id,
+                parent,
                 child,
                 definitions,
                 child_tight,
@@ -525,18 +637,12 @@ fn append(
             );
             if index == 0 {
                 if let Node::ListItem(n) = node {
-                    if let Some(checked) = n.checked {
-                        if matches!(child, Node::Paragraph(_)) {
-                            let before = document.children(child_id).next();
-                            let marker = document
-                                .append_child(child_id, EventKind::TaskMarker(checked))
-                                .unwrap();
-                            document.attach(child_id, marker, before).unwrap();
-                            let space = document
-                                .append_child(child_id, EventKind::Text(EventText::Literal(" ")))
-                                .unwrap();
-                            document.attach(child_id, space, before).unwrap();
-                        }
+                    if n.checked.is_some() && matches!(child, Node::Paragraph(_)) {
+                        let before = document.children(child_id).next();
+                        let space = document
+                            .append_child(child_id, EventKind::Text(EventText::Literal(" ")))
+                            .unwrap();
+                        document.attach(child_id, space, before).unwrap();
                     }
                 }
             }
@@ -722,7 +828,8 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
     let text = |v: &EventText<'_>| v.resolve(source).unwrap().to_string();
     let mut pending = String::new();
     let mut after_hard_break = false;
-    let mut after_task_marker = false;
+    // Whether the last events start a task item, and then its first paragraph.
+    let mut after_task: Option<bool> = None;
     // The signature of the last node of the document so far, when it is a code block without a final line ending, with that line ending added. The serializer closes every fence, so a last block that the parser stores without one, from an unclosed fence or indented code at the end of the source, reads back with one.
     let mut last_code: Option<(usize, String)> = None;
     for event in document.events() {
@@ -730,35 +837,51 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
         if !matches!(event.kind, EventKind::End(_)) {
             last_code = None;
         }
+        // A task's checkbox is followed by a space or tab, or by a line ending that a soft break
+        // holds; mdast keeps neither, and a written task item reads back with a space.
+        let task_paragraph = after_task == Some(true);
         match event.kind {
             EventKind::Separator { .. } => continue,
             EventKind::SoftBreak(_) if after_hard_break => {
                 after_hard_break = false;
                 continue;
             }
-            EventKind::SoftBreak(_) if after_task_marker => {
+            EventKind::SoftBreak(_) if task_paragraph => {
+                after_task = None;
                 pending.push(' ');
-                after_task_marker = false;
                 continue;
             }
             EventKind::Text(v) | EventKind::SoftBreak(v) => {
                 after_hard_break = false;
-                after_task_marker = false;
+                after_task = None;
                 pending.push_str(&text(&v));
                 continue;
             }
             _ => {}
         }
         after_hard_break = matches!(event.kind, EventKind::HardBreak);
-        after_task_marker = matches!(event.kind, EventKind::TaskMarker(_));
+        after_task = match event.kind {
+            EventKind::Start(Tag::Item {
+                checked: Some(_), ..
+            }) => Some(false),
+            EventKind::Definition { .. } if after_task == Some(false) => Some(false),
+            EventKind::Start(Tag::Paragraph { .. }) if after_task == Some(false) => Some(true),
+            _ => None,
+        };
         if !pending.is_empty() {
             output.push(format!("text:{pending:?}"));
             pending.clear();
         }
         let signature = match event.kind {
-            EventKind::Start(Tag::Document(_)) => "Document".into(),
             EventKind::Start(Tag::Paragraph { .. }) => "Paragraph".into(),
-            EventKind::Start(Tag::Item { .. }) => "Item".into(),
+            EventKind::Start(Tag::Item { checked, .. }) => match checked {
+                Some(checked) => format!("Item:{checked}"),
+                None => "Item".into(),
+            },
+            EventKind::Start(Tag::Document { frontmatter, .. }) => match frontmatter {
+                Some(value) => format!("Document:{:?}", text(&value)),
+                None => "Document".into(),
+            },
             EventKind::Start(Tag::Link { destination, title }) => format!(
                 "Link:{:?}:{:?}",
                 text(&destination),
@@ -798,19 +921,6 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
                 text(&destination),
                 title.as_ref().map(text)
             ),
-            EventKind::Opaque { ref value, .. } => {
-                let body = document
-                    .descendants(document.root())
-                    .find(|id| {
-                        document.node(*id).unwrap().span == event.span
-                            && matches!(document.node(*id).unwrap().kind, EventKind::Opaque { .. })
-                    })
-                    .and_then(|id| document.frontmatter_value(id));
-                format!(
-                    "Opaque:{:?}",
-                    body.map_or_else(|| text(value), str::to_owned)
-                )
-            }
             EventKind::FootnoteReference(v) => {
                 format!("FootnoteReference:{:?}", normalize(&text(&v)))
             }

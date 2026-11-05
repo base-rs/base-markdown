@@ -154,34 +154,148 @@ pub enum TagKind {
     FootnoteDefinition,
 }
 
+/// The content class of a node, which decides the containers it can be a child of. See
+/// [`TagKind::holds`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Class {
+    /// The document root, which is never a child.
+    Root,
+    /// A block: a paragraph, heading, block quote, list, table, footnote definition, code block,
+    /// HTML block, thematic break or definition.
+    Flow,
+    /// Inline content: attention, links, images, text, breaks, inline code, inline HTML and
+    /// footnote references.
+    Phrasing,
+    /// A separator between blocks or table rows.
+    Separator,
+    /// A list item.
+    Item,
+    /// A table head or body.
+    Section,
+    /// A table row.
+    Row,
+    /// A table cell.
+    Cell,
+}
+
 impl TagKind {
-    // Capture containers cannot occur inside heading capture or image alt text.
-    // Ordinary inline nesting remains unrestricted by the rendering contract.
-    pub(crate) fn allows_descendant(self, child: Self) -> bool {
-        !self.captures() || !matches!(child, Self::Heading | Self::FootnoteDefinition)
+    pub(crate) fn class(self) -> Class {
+        match self {
+            Self::Document => Class::Root,
+            Self::Paragraph
+            | Self::Heading
+            | Self::BlockQuote
+            | Self::List
+            | Self::Table
+            | Self::FootnoteDefinition => Class::Flow,
+            Self::Item => Class::Item,
+            Self::Emphasis | Self::Strong | Self::Delete | Self::Link | Self::Image => {
+                Class::Phrasing
+            }
+            Self::TableHead | Self::TableBody => Class::Section,
+            Self::TableRow => Class::Row,
+            Self::TableCell => Class::Cell,
+        }
     }
-    // Whether this container captures its content as text, so that it cannot hold a heading or footnote definition.
-    pub(crate) fn captures(self) -> bool {
-        matches!(self, Self::Heading | Self::Image)
+
+    /// The one content model: whether a container of this kind can hold a child of class `child`,
+    /// when its first child, if it has one, is of class `first`. The root holds blocks and
+    /// separators, or only phrasing, for an inline document; which one is decided by its first
+    /// child, so phrasing and flow never share a parent. Separators sit where the parser writes
+    /// them: between blocks in a container of blocks, and between the parts and rows of a table.
+    ///
+    /// A footnote reference also cannot be inside a link at any depth, as a link's text cannot
+    /// hold one. That rule is on ancestors rather than the parent, so each path that adds nodes
+    /// checks it alongside this one.
+    pub(crate) fn holds(self, child: Class, first: Option<Class>) -> bool {
+        match self.content() {
+            Content::Root => match first {
+                Some(Class::Phrasing) => child == Class::Phrasing,
+                None => matches!(child, Class::Flow | Class::Separator | Class::Phrasing),
+                Some(_) => matches!(child, Class::Flow | Class::Separator),
+            },
+            Content::Blocks => matches!(child, Class::Flow | Class::Separator),
+            Content::Phrasing => child == Class::Phrasing,
+            Content::Items => child == Class::Item,
+            Content::Sections => matches!(child, Class::Section | Class::Separator),
+            Content::Rows => matches!(child, Class::Row | Class::Separator),
+            Content::Cells => child == Class::Cell,
+        }
     }
+
+    /// What a container of this kind holds; two kinds with the same content hold the same
+    /// children.
+    pub(crate) fn content(self) -> Content {
+        match self {
+            Self::Document => Content::Root,
+            Self::BlockQuote | Self::Item | Self::FootnoteDefinition => Content::Blocks,
+            Self::Paragraph
+            | Self::Heading
+            | Self::TableCell
+            | Self::Emphasis
+            | Self::Strong
+            | Self::Delete
+            | Self::Link
+            | Self::Image => Content::Phrasing,
+            Self::List => Content::Items,
+            Self::Table => Content::Sections,
+            Self::TableHead | Self::TableBody => Content::Rows,
+            Self::TableRow => Content::Cells,
+        }
+    }
+}
+
+/// What a container holds. See [`TagKind::holds`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Content {
+    /// Blocks and separators, or only phrasing.
+    Root,
+    /// Blocks and separators.
+    Blocks,
+    /// Phrasing.
+    Phrasing,
+    /// List items.
+    Items,
+    /// Table parts and separators.
+    Sections,
+    /// Table rows and separators.
+    Rows,
+    /// Table cells.
+    Cells,
 }
 
 /// A container whose metadata is resolved before its start is yielded.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Tag<'a> {
-    /// The output line ending: LF when the source has a line ending, since parsed values store every line ending as LF, or `None` when it has none.
-    Document(Option<LineEnding>),
+    /// The document root.
+    Document {
+        /// The output line ending: LF when the source has a line ending, since parsed values
+        /// store every line ending as LF, or `None` when it has none.
+        line_ending: Option<LineEnding>,
+        /// The body of the document's frontmatter, without its fences, or `None` when it has
+        /// none. It is omitted from HTML. See [`Constructs::frontmatter`][crate::Constructs::frontmatter].
+        frontmatter: Option<Text<'a>>,
+    },
     /// Whether the containing list suppresses paragraph tags.
     Paragraph { tight: bool },
-    /// A heading level from one through six.
+    /// A heading level from one through six. Any other level is rejected with
+    /// [`StreamError::InvalidValue`] wherever an event enters a document or renderer.
     Heading(u8),
     /// A block quote.
     BlockQuote,
     /// A list, its starting number (if ordered), and tightness.
     List { start: Option<u32>, tight: bool },
-    /// A list item; whether its closing tag needs a preceding line break.
-    Item { block_end: bool },
+    /// A list item.
+    Item {
+        /// Whether its closing tag needs a preceding line break.
+        block_end: bool,
+        /// Whether it is a task item, checked or not, or `None` for an ordinary item. The checkbox
+        /// is written before the item's first paragraph, which must be its first child other than
+        /// definitions and separators; [`Document::normalize`][crate::Document::normalize] clears
+        /// it on an item without one.
+        checked: Option<bool>,
+    },
     /// Emphasized inline content.
     Emphasis,
     /// Strong inline content.
@@ -219,7 +333,7 @@ impl<'s> Tag<'s> {
     /// Identify the matching end event.
     pub fn kind(&self) -> TagKind {
         match self {
-            Self::Document(_) => TagKind::Document,
+            Self::Document { .. } => TagKind::Document,
             Self::Paragraph { .. } => TagKind::Paragraph,
             Self::Heading(_) => TagKind::Heading,
             Self::BlockQuote => TagKind::BlockQuote,
@@ -241,12 +355,18 @@ impl<'s> Tag<'s> {
 
     pub(crate) fn map_text<'a>(self, mut map: impl FnMut(Text<'s>) -> Text<'a>) -> Tag<'a> {
         match self {
-            Self::Document(value) => Tag::Document(value),
+            Self::Document {
+                line_ending,
+                frontmatter,
+            } => Tag::Document {
+                line_ending,
+                frontmatter: frontmatter.map(&mut map),
+            },
             Self::Paragraph { tight } => Tag::Paragraph { tight },
             Self::Heading(value) => Tag::Heading(value),
             Self::BlockQuote => Tag::BlockQuote,
             Self::List { start, tight } => Tag::List { start, tight },
-            Self::Item { block_end } => Tag::Item { block_end },
+            Self::Item { block_end, checked } => Tag::Item { block_end, checked },
             Self::Emphasis => Tag::Emphasis,
             Self::Strong => Tag::Strong,
             Self::Delete => Tag::Delete,
@@ -319,8 +439,6 @@ pub enum EventKind<'a> {
     },
     /// Raw HTML.
     Html { value: Text<'a>, block: bool },
-    /// A task-list marker.
-    TaskMarker(bool),
     /// A resolved definition, retained in the AST but omitted from HTML.
     ///
     /// A label longer than the parser reads, 999 bytes not counting line endings and the spaces
@@ -331,8 +449,6 @@ pub enum EventKind<'a> {
         destination: Text<'a>,
         title: Option<Text<'a>>,
     },
-    /// Frontmatter retained verbatim and omitted from HTML.
-    Opaque { value: Text<'a>, block: bool },
     /// A call to a footnote definition.
     FootnoteReference(Text<'a>),
 }
@@ -353,7 +469,7 @@ impl<'s> EventKind<'s> {
         };
         match self {
             Self::Start(Tag::Heading(level)) if !(1..=6).contains(level) => {
-                Err(StreamError::Unbalanced)
+                Err(StreamError::InvalidValue)
             }
             Self::Start(Tag::Link { destination, title } | Tag::Image { destination, title }) => {
                 text(destination)?;
@@ -393,12 +509,17 @@ impl<'s> EventKind<'s> {
                     Ok(())
                 }
             }
-            Self::Start(Tag::FootnoteDefinition(value))
+            Self::Start(
+                Tag::FootnoteDefinition(value)
+                | Tag::Document {
+                    frontmatter: Some(value),
+                    ..
+                },
+            )
             | Self::Text(value)
             | Self::SoftBreak(value)
             | Self::Separator { value, .. }
             | Self::Html { value, .. }
-            | Self::Opaque { value, .. }
             | Self::FootnoteReference(value)
             | Self::Code { value, .. }
             | Self::CodeBlock { value, .. } => text(value),
@@ -425,6 +546,34 @@ impl<'s> EventKind<'s> {
             }
             _ => Ok(()),
         }
+    }
+
+    /// The content class of this node, which is not an end event. See [`TagKind::holds`].
+    // The wildcard is the end event, which no caller passes.
+    #[allow(clippy::match_wildcard_for_single_variants)]
+    pub(crate) fn class(&self) -> Class {
+        match self {
+            Self::Start(tag) => tag.kind().class(),
+            Self::Separator { .. } => Class::Separator,
+            Self::Rule
+            | Self::CodeBlock { .. }
+            | Self::Definition { .. }
+            | Self::Html { block: true, .. } => Class::Flow,
+            Self::Text(_)
+            | Self::SoftBreak(_)
+            | Self::HardBreak
+            | Self::Code { .. }
+            | Self::Html { block: false, .. }
+            | Self::FootnoteReference(_) => Class::Phrasing,
+            // An end event is not a node.
+            _ => unreachable!("an end event is not a node"),
+        }
+    }
+
+    /// Whether this node can be a child of a container of kind `parent` whose first child, if it
+    /// has one, is `first`. See [`TagKind::holds`].
+    pub(crate) fn nests_in(&self, parent: TagKind, first: Option<&EventKind<'_>>) -> bool {
+        parent.holds(self.class(), first.map(EventKind::class))
     }
 
     pub(crate) fn map_text<'a>(self, mut map: impl FnMut(Text<'s>) -> Text<'a>) -> EventKind<'a> {
@@ -458,7 +607,6 @@ impl<'s> EventKind<'s> {
                 value: map(value),
                 block,
             },
-            Self::TaskMarker(value) => EventKind::TaskMarker(value),
             Self::Definition {
                 label,
                 destination,
@@ -467,10 +615,6 @@ impl<'s> EventKind<'s> {
                 label: map(label),
                 destination: map(destination),
                 title: title.map(map),
-            },
-            Self::Opaque { value, block } => EventKind::Opaque {
-                value: map(value),
-                block,
             },
             Self::FootnoteReference(value) => EventKind::FootnoteReference(map(value)),
         }
@@ -526,9 +670,15 @@ pub enum StreamError {
     Parse(crate::message::Message),
     /// A source range is out of bounds or splits a UTF-8 character.
     InvalidRange,
-    /// Start and end events do not form a balanced document.
+    /// Start and end events do not form a balanced document, or an operation needs a node that
+    /// is not where it expects, such as a container to append to.
     Unbalanced,
-    /// A value has a form its event or syntax cannot hold, such as an inline code language that
+    /// A node cannot be where it was put: a child that its parent's content model does not hold,
+    /// such as a block inside a paragraph, an item outside a list or a row directly inside a
+    /// table, phrasing and blocks under one parent, or a footnote reference inside a link.
+    InvalidNesting,
+    /// A value has a form its event or syntax cannot hold, such as a heading level outside one
+    /// through six, an inline code language that
     /// [`ParseOptions::inline_code_info`][crate::ParseOptions::inline_code_info] would not read
     /// back, or an empty code block info string.
     InvalidValue,
@@ -542,6 +692,7 @@ impl fmt::Display for StreamError {
             Self::Parse(error) => write!(f, "{error}"),
             Self::InvalidRange => f.write_str("invalid source range"),
             Self::Unbalanced => f.write_str("unbalanced semantic event stream"),
+            Self::InvalidNesting => f.write_str("invalid nesting"),
             Self::InvalidValue => f.write_str("invalid event value"),
             Self::Write(error) => write!(f, "{error}"),
         }

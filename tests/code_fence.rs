@@ -142,7 +142,12 @@ fn frontmatter_exposes_its_existing_opening_fence() {
         assert_eq!(
             document_fence(
                 &document,
-                document.children(document.root()).next().unwrap()
+                // Frontmatter belongs to the root; a code block is its first child.
+                if document.frontmatter().is_some() {
+                    document.root()
+                } else {
+                    document.children(document.root()).next().unwrap()
+                }
             ),
             Some(CodeFence {
                 character,

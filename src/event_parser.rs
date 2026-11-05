@@ -179,14 +179,31 @@ impl EventParser<'_> {
         match self.phase {
             Phase::Start => {
                 self.phase = Phase::Body;
-                self.cursor = self.blocks.nodes[0].child;
+                // Frontmatter is the first block when there is any. It is carried on the root
+                // rather than written as a child, so delivery starts after it.
+                let mut first = self.blocks.nodes[0].child;
+                let mut frontmatter = None;
+                if first != 0 && self.blocks.nodes[first].body == Body::Opaque {
+                    let node = self.blocks.nodes[first];
+                    let (_, _, _, body) =
+                        crate::node_syntax::frontmatter(&self.source[node.start..node.end]);
+                    frontmatter = Some(
+                        Text::Source(node.start + body.start..node.start + body.end)
+                            .normalized(self.source),
+                    );
+                    first = node.next;
+                }
+                self.cursor = first;
                 self.closing = self.cursor == 0;
                 // Parsed values store every line ending as LF, so the output line ending is LF too, and
                 // only a document without line endings leaves it to the renderer's default.
                 let line_ending = memchr::memchr2(b'\r', b'\n', self.source.as_bytes())
                     .map(|_| LineEnding::LineFeed);
                 Some(Ok(Event {
-                    kind: EventKind::Start(Tag::Document(line_ending)),
+                    kind: EventKind::Start(Tag::Document {
+                        line_ending,
+                        frontmatter,
+                    }),
                     span: 0..self.source.len(),
                 }))
             }
@@ -366,13 +383,7 @@ impl EventParser<'_> {
             Body::Footnote(index) => EventKind::Start(Tag::FootnoteDefinition(Text::from(
                 self.definitions.footnote_key(index).to_string(),
             ))),
-            Body::Opaque => {
-                self.advance();
-                EventKind::Opaque {
-                    value: Text::Source(node.start..node.end),
-                    block: true,
-                }
-            }
+            Body::Opaque => unreachable!("frontmatter is delivered on the document start"),
             Body::Table => EventKind::Start(Tag::Table),
             Body::TableHead => EventKind::Start(Tag::TableHead),
             Body::TableBody => EventKind::Start(Tag::TableBody),
@@ -394,7 +405,30 @@ impl EventParser<'_> {
                     })
                     .last()
                     .is_some_and(|(_, child)| !self.blocks.tight_paragraph(child));
-                EventKind::Start(Tag::Item { block_end })
+                // A task item's checkbox starts its first paragraph, after any definitions.
+                let checked = self
+                    .options
+                    .constructs
+                    .task_list_item
+                    .then(|| {
+                        self.blocks
+                            .children(index)
+                            .find(|(_, child)| !matches!(child.body, Body::Definition(_)))
+                    })
+                    .flatten()
+                    .filter(|(_, child)| {
+                        matches!(child.body, Body::Paragraph)
+                            && self.source[child.start..child.end].starts_with('[')
+                    })
+                    .and_then(|(paragraph, _)| {
+                        crate::inline_parser::task_checked(
+                            self.source,
+                            self.blocks
+                                .children(paragraph)
+                                .map(|(_, node)| node.start..node.end),
+                        )
+                    });
+                EventKind::Start(Tag::Item { block_end, checked })
             }
             Body::Rule => {
                 if node.next != 0 {

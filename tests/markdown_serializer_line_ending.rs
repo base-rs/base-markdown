@@ -362,7 +362,10 @@ fn line_starts_after_an_encoded_soft_break_are_escaped() {
         start: None,
         tight: true,
     };
-    let item = Tag::Item { block_end: false };
+    let item = Tag::Item {
+        block_end: false,
+        checked: None,
+    };
     let blocks: [(&[Tag<'static>], &str, &str); 4] = [
         (&[], "", ""),
         (&[Tag::Heading(1)], "# ", ""),
@@ -444,7 +447,6 @@ fn values<'a>(kind: &'a EventKind<'a>) -> Vec<&'a Value<'a>> {
         EventKind::Text(value)
         | EventKind::SoftBreak(value)
         | EventKind::Html { value, .. }
-        | EventKind::Opaque { value, .. }
         | EventKind::FootnoteReference(value)
         | EventKind::Start(Tag::FootnoteDefinition(value)) => vec![value],
         EventKind::Code { value, language }

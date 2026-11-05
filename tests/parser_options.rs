@@ -129,7 +129,7 @@ fn mixed_inline_regions_preserve_one_document_lifecycle() {
         assert_eq!(
             events
                 .iter()
-                .filter(|event| matches!(event.kind, EventKind::Start(Tag::Document(_))))
+                .filter(|event| matches!(event.kind, EventKind::Start(Tag::Document { .. })))
                 .count(),
             1
         );

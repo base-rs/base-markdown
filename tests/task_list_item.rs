@@ -406,7 +406,11 @@ fn tasks_preserve_markers_and_whitespace_across_options() {
             EventParser::new(source, parse)
                 .filter_map(|event| {
                     let event = event.unwrap();
-                    matches!(event.kind, EventKind::TaskMarker(_)).then_some(event)
+                    matches!(
+                        event.kind,
+                        EventKind::Start(base_markdown::stream::Tag::Item { .. })
+                    )
+                    .then_some(event)
                 })
                 .collect::<Vec<_>>()
         };

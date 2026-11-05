@@ -146,9 +146,12 @@ fn renders_constructed_nodes_and_subtrees() {
     let text = document
         .append_child(paragraph, EventKind::Text("quoted".to_string().into()))
         .unwrap();
+    let images = document
+        .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
     let image = document
         .append_child(
-            root,
+            images,
             EventKind::Start(Tag::Image {
                 destination: "javascript:bad()".to_string().into(),
                 title: None,

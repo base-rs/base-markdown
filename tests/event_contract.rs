@@ -11,7 +11,10 @@ fn event(kind: EventKind<'static>) -> Result<Event<'static>, StreamError> {
     Ok(Event { kind, span: 0..0 })
 }
 fn document(body: Vec<EventKind<'static>>) -> Vec<Result<Event<'static>, StreamError>> {
-    let mut events = vec![event(EventKind::Start(Tag::Document(None)))];
+    let mut events = vec![event(EventKind::Start(Tag::Document {
+        line_ending: None,
+        frontmatter: None,
+    }))];
     events.extend(body.into_iter().map(event));
     events.push(event(EventKind::End(TagKind::Document)));
     events
@@ -21,29 +24,34 @@ fn document(body: Vec<EventKind<'static>>) -> Vec<Result<Event<'static>, StreamE
 fn footnotes_keep_call_order_and_the_first_completed_definition() {
     let definition = |key| EventKind::Start(Tag::FootnoteDefinition(Text::Literal(key)));
     let end = || EventKind::End(TagKind::FootnoteDefinition);
-    let body = vec![
-        definition("unused"),
-        EventKind::Text(Text::Literal("hidden")),
-        end(),
-        EventKind::FootnoteReference(Text::Literal("B")),
-        EventKind::FootnoteReference(Text::Literal("Z")),
-        EventKind::FootnoteReference(Text::Literal("ΟΣ")),
-        EventKind::FootnoteReference(Text::Literal("B")),
-        definition("Z"),
-        end(),
-        definition("Z"),
-        EventKind::Text(Text::Literal("ignored")),
-        end(),
-        definition("B"),
-        EventKind::Text(Text::Literal("outer")),
-        definition("B"),
-        EventKind::Text(Text::Literal("inner")),
-        end(),
-        end(),
-        definition("ΟΣ"),
-        EventKind::Text(Text::Literal("unicode")),
-        end(),
-    ];
+    let paragraph = |inner: Vec<EventKind<'static>>| {
+        let mut events = vec![EventKind::Start(Tag::Paragraph { tight: false })];
+        events.extend(inner);
+        events.push(EventKind::End(TagKind::Paragraph));
+        events
+    };
+    let text = |value| vec![EventKind::Text(Text::Literal(value))];
+    let body = [
+        vec![definition("unused")],
+        paragraph(text("hidden")),
+        vec![end()],
+        paragraph(vec![
+            EventKind::FootnoteReference(Text::Literal("B")),
+            EventKind::FootnoteReference(Text::Literal("Z")),
+            EventKind::FootnoteReference(Text::Literal("ΟΣ")),
+            EventKind::FootnoteReference(Text::Literal("B")),
+        ]),
+        vec![definition("Z"), end(), definition("Z")],
+        paragraph(text("ignored")),
+        vec![end(), definition("B")],
+        paragraph(text("outer")),
+        vec![definition("B")],
+        paragraph(text("inner")),
+        vec![end(), end(), definition("ΟΣ")],
+        paragraph(text("unicode")),
+        vec![end()],
+    ]
+    .concat();
     let mut output = String::new();
     render_events("", document(body), &Options::default().compile, &mut output).unwrap();
     assert!(output.contains("id=\"user-content-fnref-b-2\""));
@@ -79,40 +87,55 @@ fn footnote_ids_survive_a_call_writer_failure() {
             Ok(())
         }
     }
-    let mut writer = Writer {
-        calls: 0,
-        fail_at: usize::MAX,
-        output: String::new(),
-    };
     let options = Options::default();
-    {
+    let start = [
+        EventKind::Start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        }),
+        EventKind::Start(Tag::Paragraph { tight: false }),
+    ];
+    // The calls the start makes, and the calls up to the end of the reference.
+    let calls = |reference: bool| {
+        let mut writer = Writer {
+            calls: 0,
+            fail_at: usize::MAX,
+            output: String::new(),
+        };
         let mut renderer = base_markdown::EventHtmlRenderer::new("", &options.compile, &mut writer);
-        renderer
-            .event(event(EventKind::Start(Tag::Document(None))).unwrap())
-            .unwrap();
-        renderer
-            .event(event(EventKind::FootnoteReference(Text::Literal("É"))).unwrap())
-            .unwrap();
-    }
-    let writes = writer.calls;
-    for fail_at in 0..writes {
+        for kind in start.clone() {
+            renderer.event(event(kind).unwrap()).unwrap();
+        }
+        if reference {
+            renderer
+                .event(event(EventKind::FootnoteReference(Text::Literal("É"))).unwrap())
+                .unwrap();
+        }
+        drop(renderer);
+        writer.calls
+    };
+    let (before, writes) = (calls(false), calls(true));
+    for fail_at in before..writes {
         let mut writer = Writer {
             calls: 0,
             fail_at,
             output: String::new(),
         };
         let mut renderer = base_markdown::EventHtmlRenderer::new("", &options.compile, &mut writer);
-        renderer
-            .event(event(EventKind::Start(Tag::Document(None))).unwrap())
-            .unwrap();
+        for kind in start.clone() {
+            renderer.event(event(kind).unwrap()).unwrap();
+        }
         assert!(matches!(
             renderer.event(event(EventKind::FootnoteReference(Text::Literal("É"))).unwrap()),
             Err(StreamError::Write(_))
         ));
         for kind in [
             EventKind::FootnoteReference(Text::Literal("É")),
+            EventKind::End(TagKind::Paragraph),
             EventKind::Start(Tag::FootnoteDefinition(Text::Literal("É"))),
+            EventKind::Start(Tag::Paragraph { tight: false }),
             EventKind::Text(Text::Literal("body")),
+            EventKind::End(TagKind::Paragraph),
             EventKind::End(TagKind::FootnoteDefinition),
             EventKind::End(TagKind::Document),
         ] {
@@ -192,14 +215,20 @@ fn all_invalid_metadata_is_rejected_before_rendering_or_editing() {
     }
     for span in [2..2, std::ops::Range { start: 1, end: 0 }] {
         let input = vec![Ok(Event {
-            kind: EventKind::Start(Tag::Document(None)),
+            kind: EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            }),
             span,
         })];
         assert!(render_events("x", input, &options.compile, &mut String::new()).is_err());
     }
     let input = vec![
         Ok(Event {
-            kind: EventKind::Start(Tag::Document(None)),
+            kind: EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            }),
             span: 0..1,
         }),
         event(EventKind::End(TagKind::Document)),
@@ -240,7 +269,7 @@ fn build(source: &str, kind: EventKind<'static>) -> Result<(), StreamError> {
 #[test]
 fn inline_code_languages_outside_the_prefix_grammar_are_rejected() {
     let options = Options::default();
-    let mut ast = Document::parse("x", &options.parse).unwrap();
+    let mut ast = Document::parse("`x`", &options.parse).unwrap();
     let paragraph_id = ast.node(ast.root()).unwrap().first_child().unwrap();
     let text = ast.node(paragraph_id).unwrap().first_child().unwrap();
     let invalid = |result: Result<(), StreamError>| {
@@ -389,22 +418,43 @@ fn builder_failures_are_permanent_and_completion_does_not_pull_again() {
     let cases = vec![
         vec![],
         vec![event(EventKind::Text(Text::Literal("x")))],
-        vec![event(EventKind::Start(Tag::Document(None)))],
+        vec![event(EventKind::Start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        }))],
         vec![
-            event(EventKind::Start(Tag::Document(None))),
-            event(EventKind::Start(Tag::Document(None))),
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })),
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })),
         ],
         vec![
-            event(EventKind::Start(Tag::Document(None))),
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })),
             event(EventKind::End(TagKind::Paragraph)),
         ],
         vec![
-            event(EventKind::Start(Tag::Document(None))),
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })),
             event(EventKind::End(TagKind::Document)),
-            event(EventKind::Start(Tag::Document(None))),
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })),
         ],
         vec![Ok(Event {
-            kind: EventKind::Start(Tag::Document(None)),
+            kind: EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            }),
             span: std::ops::Range { start: 1, end: 0 },
         })],
         vec![Err(StreamError::InvalidRange)],
@@ -479,53 +529,59 @@ fn builder_links_siblings_across_nested_and_empty_containers() {
 #[test]
 fn edits_detach_every_supported_leaf_and_preserve_arena_links() {
     use std::borrow::Cow;
-    let kinds = vec![
-        EventKind::Text(Text::Source(0..1)),
-        EventKind::SoftBreak(Text::Literal("\n")),
-        EventKind::Code {
-            value: Text::Value(Cow::Borrowed("x")),
-            language: None,
-        },
-        EventKind::CodeBlock {
-            value: Text::Literal("x"),
-            info: None,
-            fence: None,
-            unclosed: false,
-        },
-        EventKind::Html {
-            value: Text::Literal("x"),
-            block: false,
-        },
-        EventKind::Opaque {
-            value: Text::Literal("x"),
-            block: false,
-        },
+    // Phrasing and flow cannot share a parent, so each group is a document of its own.
+    let groups = vec![
+        vec![
+            EventKind::Text(Text::Source(0..1)),
+            EventKind::SoftBreak(Text::Literal("\n")),
+            EventKind::Code {
+                value: Text::Value(Cow::Borrowed("x")),
+                language: None,
+            },
+            EventKind::Html {
+                value: Text::Literal("x"),
+                block: false,
+            },
+        ],
+        vec![
+            EventKind::CodeBlock {
+                value: Text::Literal("x"),
+                info: None,
+                fence: None,
+                unclosed: false,
+            },
+            EventKind::Html {
+                value: Text::Literal("x"),
+                block: true,
+            },
+        ],
     ];
-    let mut builder = AstBuilder::new();
-    builder
-        .consume(&mut document(kinds).into_iter(), usize::MAX)
-        .unwrap();
-    let mut ast = builder.finish("x").unwrap();
-    let root = ast.root();
-    assert!(ast.node(root).unwrap().parent().is_none());
-    assert!(ast.text_mut(root).is_err());
-    let mut id = ast.node(root).unwrap().first_child();
-    while let Some(current) = id {
-        let node = ast.node(current).unwrap();
-        assert_eq!(node.parent(), Some(root));
-        id = node.next_sibling();
-        ast.text_mut(current).unwrap().push('!');
-        ast.text_mut(current).unwrap().push('?');
-    }
-    for event in ast.events() {
-        if let EventKind::Text(value)
-        | EventKind::SoftBreak(value)
-        | EventKind::Code { value, .. }
-        | EventKind::CodeBlock { value, .. }
-        | EventKind::Html { value, .. }
-        | EventKind::Opaque { value, .. } = event.unwrap().kind
-        {
-            assert!(value.resolve(ast.source()).unwrap().ends_with("!?"));
+    for kinds in groups {
+        let mut builder = AstBuilder::new();
+        builder
+            .consume(&mut document(kinds).into_iter(), usize::MAX)
+            .unwrap();
+        let mut ast = builder.finish("x").unwrap();
+        let root = ast.root();
+        assert!(ast.node(root).unwrap().parent().is_none());
+        assert!(ast.text_mut(root).is_err());
+        let mut id = ast.node(root).unwrap().first_child();
+        while let Some(current) = id {
+            let node = ast.node(current).unwrap();
+            assert_eq!(node.parent(), Some(root));
+            id = node.next_sibling();
+            ast.text_mut(current).unwrap().push('!');
+            ast.text_mut(current).unwrap().push('?');
+        }
+        for event in ast.events() {
+            if let EventKind::Text(value)
+            | EventKind::SoftBreak(value)
+            | EventKind::Code { value, .. }
+            | EventKind::CodeBlock { value, .. }
+            | EventKind::Html { value, .. } = event.unwrap().kind
+            {
+                assert!(value.resolve(ast.source()).unwrap().ends_with("!?"));
+            }
         }
     }
     // IDs from another arena are checked before indexing.
@@ -659,7 +715,7 @@ fn document_completion_yields_one_terminal_separator_and_end() {
         let mut parser = base_markdown::EventParser::new(source, &options.parse);
         assert!(matches!(
             parser.next().unwrap().unwrap().kind,
-            EventKind::Start(Tag::Document(_))
+            EventKind::Start(Tag::Document { .. })
         ));
         let mut terminal_separator = None;
         loop {
@@ -766,58 +822,65 @@ fn capture_nesting_is_checked_during_construction_rendering_and_edits() {
     assert!(ast
         .set_kind(text, EventKind::Start(Tag::Heading(2)))
         .is_err());
-    // Editing one subtree must not treat its following sibling as a descendant.
+    // A block cannot become phrasing, which its place and its children could not hold.
     let mut ast = Document::parse("> a\n\n# h", &options.parse).unwrap();
     let quote = ast.node(ast.root()).unwrap().first_child().unwrap();
-    ast.set_kind(
-        quote,
-        EventKind::Start(Tag::Image {
-            destination: Text::Literal("x"),
-            title: None,
-        }),
-    )
-    .unwrap();
-    let mut output = String::new();
-    render_events(ast.source(), ast.events(), &options.compile, &mut output).unwrap();
-    assert_eq!(output, "<img src=\"x\" alt=\"a\" />\n<h1>h</h1>");
+    assert!(matches!(
+        ast.set_kind(
+            quote,
+            EventKind::Start(Tag::Image {
+                destination: Text::Literal("x"),
+                title: None,
+            }),
+        ),
+        Err(StreamError::InvalidNesting)
+    ));
 }
 
 #[test]
-fn custom_block_events_inside_images_contribute_only_alt_text() {
-    let input = document(vec![
-        EventKind::Start(Tag::Image {
+fn custom_phrasing_inside_images_contributes_only_alt_text() {
+    let image = |inner: Vec<EventKind<'static>>| {
+        let mut events = vec![EventKind::Start(Tag::Image {
             destination: Text::Literal("x"),
             title: None,
-        }),
-        EventKind::Start(Tag::Table),
-        EventKind::Start(Tag::TableHead),
-        EventKind::Start(Tag::TableRow),
-        EventKind::Start(Tag::TableCell {
-            alignment: base_markdown::AlignKind::Left,
-            header: true,
-        }),
-        EventKind::Text(Text::Literal("<&")),
-        EventKind::End(TagKind::TableCell),
-        EventKind::End(TagKind::TableRow),
-        EventKind::End(TagKind::TableHead),
-        EventKind::Start(Tag::TableBody),
-        EventKind::End(TagKind::TableBody),
-        EventKind::End(TagKind::Table),
-        EventKind::CodeBlock {
-            value: Text::Literal("code\""),
-            info: None,
-            fence: None,
-            unclosed: false,
-        },
-        EventKind::Rule,
-        EventKind::HardBreak,
-        EventKind::TaskMarker(false),
-        EventKind::End(TagKind::Image),
-    ]);
+        })];
+        events.extend(inner);
+        events.push(EventKind::End(TagKind::Image));
+        document(events)
+    };
     let options = Options::default();
     let mut output = String::new();
-    render_events("", input, &options.compile, &mut output).unwrap();
+    render_events(
+        "",
+        image(vec![
+            EventKind::Text(Text::Literal("<&")),
+            EventKind::Code {
+                value: Text::Literal("code\""),
+                language: None,
+            },
+            EventKind::HardBreak,
+        ]),
+        &options.compile,
+        &mut output,
+    )
+    .unwrap();
     assert_eq!(output, "<img src=\"x\" alt=\"&lt;&amp;code&quot;\" />");
+    // Blocks inside an image are rejected, as by the builder.
+    for block in [
+        vec![EventKind::Start(Tag::Table), EventKind::End(TagKind::Table)],
+        vec![EventKind::Rule],
+    ] {
+        let mut output = String::new();
+        assert!(matches!(
+            render_events("", image(block.clone()), &options.compile, &mut output),
+            Err(StreamError::InvalidNesting)
+        ));
+        let mut builder = AstBuilder::new();
+        assert!(matches!(
+            builder.consume(&mut image(block).into_iter(), usize::MAX),
+            Err(StreamError::InvalidNesting)
+        ));
+    }
 }
 
 #[test]
@@ -858,54 +921,86 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
         }
     }
     let text = || EventKind::Text(Text::Literal("x"));
-    let mut body = vec![text()];
-    for tag in [
-        Tag::Heading(2),
-        Tag::BlockQuote,
-        Tag::List {
-            start: None,
-            tight: false,
-        },
-        Tag::Item { block_end: true },
-        Tag::Table,
-        Tag::TableHead,
-    ] {
-        let kind = tag.kind();
-        body.push(EventKind::Start(tag));
-        body.push(text());
-        body.push(EventKind::End(kind));
-        body.push(text());
-    }
-    body.extend([
-        EventKind::CodeBlock {
+    // Each container, holding text in a paragraph where it holds blocks.
+    let wrap = |tags: &[Tag<'static>], inner: Vec<EventKind<'static>>| {
+        let mut events: Vec<_> = tags.iter().cloned().map(EventKind::Start).collect();
+        events.extend(inner);
+        events.extend(tags.iter().rev().map(|tag| EventKind::End(tag.kind())));
+        events
+    };
+    let paragraph = || Tag::Paragraph { tight: false };
+    let body = [
+        wrap(&[paragraph()], vec![text()]),
+        wrap(&[Tag::Heading(2)], vec![text()]),
+        wrap(&[Tag::BlockQuote, paragraph()], vec![text()]),
+        wrap(
+            &[
+                Tag::List {
+                    start: None,
+                    tight: false,
+                },
+                Tag::Item {
+                    block_end: true,
+                    checked: None,
+                },
+                paragraph(),
+            ],
+            vec![text()],
+        ),
+        wrap(
+            &[
+                Tag::Table,
+                Tag::TableHead,
+                Tag::TableRow,
+                Tag::TableCell {
+                    alignment: base_markdown::AlignKind::None,
+                    header: true,
+                },
+            ],
+            vec![text()],
+        ),
+        vec![EventKind::CodeBlock {
             value: Text::Literal("x"),
             info: None,
             fence: None,
             unclosed: false,
-        },
-        text(),
-        EventKind::Code {
-            value: Text::Literal("x"),
-            language: None,
-        },
-        text(),
-        EventKind::Html {
+        }],
+        wrap(
+            &[paragraph()],
+            vec![
+                text(),
+                EventKind::Code {
+                    value: Text::Literal("x"),
+                    language: None,
+                },
+                text(),
+            ],
+        ),
+        vec![EventKind::Html {
             value: Text::Literal("<&>"),
             block: true,
-        },
-        EventKind::Start(Tag::Heading(1)),
-        EventKind::SoftBreak(Text::Literal("\n")),
-        EventKind::Code {
-            value: Text::Literal("x"),
-            language: None,
-        },
-        EventKind::HardBreak,
-        EventKind::End(TagKind::Heading),
-        EventKind::Start(Tag::FootnoteDefinition(Text::Literal("X"))),
-        text(),
-        EventKind::End(TagKind::FootnoteDefinition),
-        EventKind::FootnoteReference(Text::Literal("X")),
-    ]);
+        }],
+        wrap(
+            &[Tag::Heading(1)],
+            vec![
+                EventKind::SoftBreak(Text::Literal("\n")),
+                EventKind::Code {
+                    value: Text::Literal("x"),
+                    language: None,
+                },
+                EventKind::HardBreak,
+            ],
+        ),
+        wrap(
+            &[Tag::FootnoteDefinition(Text::Literal("X")), paragraph()],
+            vec![text()],
+        ),
+        wrap(
+            &[paragraph()],
+            vec![EventKind::FootnoteReference(Text::Literal("X"))],
+        ),
+    ]
+    .concat();
     let mut options = Options::default();
     options.compile.heading_ids = true;
     let input = document(body);
@@ -929,21 +1024,19 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
             Err(StreamError::Write(_))
         ));
     }
-    // Every ordinary container in an image contributes only its textual children.
+    // Every container that an image can hold contributes only its textual children.
     let mut body = vec![EventKind::Start(Tag::Image {
         destination: Text::Literal("x"),
         title: None,
     })];
     for tag in [
-        Tag::BlockQuote,
-        Tag::List {
-            start: None,
-            tight: true,
-        },
-        Tag::Item { block_end: false },
         Tag::Emphasis,
         Tag::Strong,
         Tag::Delete,
+        Tag::Link {
+            destination: Text::Literal("y"),
+            title: None,
+        },
     ] {
         let kind = tag.kind();
         body.extend([EventKind::Start(tag), text(), EventKind::End(kind)]);
@@ -957,7 +1050,7 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
     ]);
     let mut output = String::new();
     render_events("", document(body), &options.compile, &mut output).unwrap();
-    assert_eq!(output, "<img src=\"x\" alt=\"xxxxxxm\" />");
+    assert_eq!(output, "<img src=\"x\" alt=\"xxxxm\" />");
     assert!(render_events(
         "",
         vec![event(EventKind::Start(Tag::Paragraph { tight: false }))],
@@ -1015,7 +1108,10 @@ fn individual_event_delivery_matches_whole_stream_rendering() {
     let mut renderer = EventHtmlRenderer::new(source, &options.compile, &mut output);
     assert!(renderer
         .event(Event {
-            kind: EventKind::Start(Tag::Document(None)),
+            kind: EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None
+            }),
             span: 0..source.len() + 1,
         })
         .is_err());
@@ -1057,7 +1153,13 @@ fn deferred_image_titles_retain_values_until_the_image_closes() {
     let mut output = String::new();
     let mut renderer = base_markdown::EventHtmlRenderer::new("", &options.compile, &mut output);
     renderer
-        .event(event(EventKind::Start(Tag::Document(None))).unwrap())
+        .event(
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            }))
+            .unwrap(),
+        )
         .unwrap();
     {
         // A custom producer may discard the borrowed title immediately after this call.
@@ -1092,7 +1194,13 @@ fn a_mismatched_end_still_closes_a_capturing_frame() {
     let mut output = String::new();
     let mut renderer = EventHtmlRenderer::new("", &options.compile, &mut output);
     renderer
-        .event(event(EventKind::Start(Tag::Document(None))).unwrap())
+        .event(
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            }))
+            .unwrap(),
+        )
         .unwrap();
     renderer
         .event(event(EventKind::Start(Tag::Heading(1))).unwrap())

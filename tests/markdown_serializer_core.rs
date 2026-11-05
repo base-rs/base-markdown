@@ -313,8 +313,10 @@ fn core() {
             checked: None
         }))
         .unwrap(),
-        "- a\n\n  b\n",
-        "should not honour `spread: false` for two paragraphs"
+        "- a\n  b\n",
+        // An item is always in a list, here a tight one, where normalizing joins two paragraphs
+        // in a row, as they cannot be written apart without making the list loose.
+        "should join two paragraphs of an item of a tight list"
     );
 
     assert_eq!(

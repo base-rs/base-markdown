@@ -163,13 +163,6 @@ mod tests {
                 language: None,
             }]
         ));
-        let block = EventKind::CodeBlock {
-            value: Text::Literal("block\n"),
-            info: None,
-            fence: None,
-            unclosed: false,
-        };
-        assert!(!eligible(2, &[block]));
 
         // Synthetic soft breaks still request setext, but their text may be empty.
         let empty_break = EventKind::SoftBreak(Text::Literal(""));

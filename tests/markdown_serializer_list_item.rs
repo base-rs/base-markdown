@@ -512,44 +512,6 @@ fn assert_serializes_linear(
     }
 }
 
-/// A loose list of `4 * size` separators and then `size` items of a paragraph.
-fn separated_items(size: usize) -> Document<String> {
-    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
-    let root = document.root();
-    let list = document
-        .append_child(
-            root,
-            EventKind::Start(Tag::List {
-                start: None,
-                tight: false,
-            }),
-        )
-        .unwrap();
-    for _ in 0..4 * size {
-        document
-            .append_child(
-                list,
-                EventKind::Separator {
-                    value: Value::Literal("\n"),
-                    conditional: false,
-                },
-            )
-            .unwrap();
-    }
-    for _ in 0..size {
-        let item = document
-            .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
-            .unwrap();
-        let paragraph = document
-            .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
-            .unwrap();
-        document
-            .append_child(paragraph, EventKind::Text(Value::Literal("a")))
-            .unwrap();
-    }
-    document
-}
-
 /// A task item of `size` definitions and then `4 * size` paragraphs, each holding a task marker.
 fn task_item_after_definitions(size: usize) -> Document<String> {
     let mut document = Document::parse(String::new(), &ParseOptions::gfm()).unwrap();
@@ -564,7 +526,13 @@ fn task_item_after_definitions(size: usize) -> Document<String> {
         )
         .unwrap();
     let item = document
-        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+        .append_child(
+            list,
+            EventKind::Start(Tag::Item {
+                block_end: false,
+                checked: Some(true),
+            }),
+        )
         .unwrap();
     for _ in 0..size {
         document
@@ -583,7 +551,7 @@ fn task_item_after_definitions(size: usize) -> Document<String> {
             .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
             .unwrap();
         document
-            .append_child(paragraph, EventKind::TaskMarker(true))
+            .append_child(paragraph, EventKind::Text(Value::Literal(" a")))
             .unwrap();
     }
     document
@@ -613,7 +581,6 @@ fn serializing_list_items_is_linear() {
             Document::parse(build(size), &parse).unwrap()
         });
     }
-    assert_serializes_linear("items after separators", 1 << 8, &default, separated_items);
     // Finding the task marker does not depend on the options. With these, definitions are joined
     // without a blank line.
     let both = [
@@ -656,30 +623,10 @@ fn writes_task_markers_outside_the_item_being_written() {
         base_markdown::to_markdown_node(&document, paragraph, &options).unwrap(),
         "a\n"
     );
-    // A marker in a paragraph that is not in an item is written as text.
-    let mut document = Document::parse(String::new(), &parse).unwrap();
-    let root = document.root();
-    let quote = document
-        .append_child(root, EventKind::Start(Tag::BlockQuote))
-        .unwrap();
-    let paragraph = document
-        .append_child(quote, EventKind::Start(Tag::Paragraph { tight: false }))
-        .unwrap();
-    document
-        .append_child(paragraph, EventKind::TaskMarker(true))
-        .unwrap();
-    document
-        .append_child(paragraph, EventKind::Text(Value::Literal(" a")))
-        .unwrap();
-    assert_eq!(
-        to_markdown_with_options(&document, &options).unwrap(),
-        "> [x] a\n"
-    );
 }
 
 #[test]
-fn writes_the_only_item_of_a_loose_list_before_separators_spread() {
-    // The separator after the item is not a block, so the item is still the list's only one.
+fn writes_the_only_item_of_a_loose_list_spread() {
     let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
     let root = document.root();
     let list = document
@@ -692,7 +639,13 @@ fn writes_the_only_item_of_a_loose_list_before_separators_spread() {
         )
         .unwrap();
     let item = document
-        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+        .append_child(
+            list,
+            EventKind::Start(Tag::Item {
+                block_end: false,
+                checked: None,
+            }),
+        )
         .unwrap();
     for tag in [Tag::Paragraph { tight: false }, Tag::Heading(1)] {
         let block = document.append_child(item, EventKind::Start(tag)).unwrap();
@@ -700,7 +653,8 @@ fn writes_the_only_item_of_a_loose_list_before_separators_spread() {
             .append_child(block, EventKind::Text(Value::Literal("a")))
             .unwrap();
     }
-    document
+    // A list holds only items, so no separator can follow the item.
+    assert!(document
         .append_child(
             list,
             EventKind::Separator {
@@ -708,7 +662,7 @@ fn writes_the_only_item_of_a_loose_list_before_separators_spread() {
                 conditional: false,
             },
         )
-        .unwrap();
+        .is_err());
     assert_eq!(
         to_markdown_with_options(&document, &Options::default()).unwrap(),
         "- a\n\n  # a\n"
@@ -752,7 +706,13 @@ fn assert_join(
         .append_child(root, EventKind::Start(Tag::List { start: None, tight }))
         .unwrap();
     let item = document
-        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+        .append_child(
+            list,
+            EventKind::Start(Tag::Item {
+                block_end: false,
+                checked: None,
+            }),
+        )
         .unwrap();
     let definition = |destination| EventKind::Definition {
         label: Value::Literal("c"),
@@ -781,7 +741,10 @@ fn assert_join(
                         start: None,
                         tight: true,
                     },
-                    Some(Tag::Item { block_end: false }),
+                    Some(Tag::Item {
+                        block_end: false,
+                        checked: None,
+                    }),
                 ),
             };
             let mut container = document.append_child(item, EventKind::Start(tag)).unwrap();
@@ -796,7 +759,13 @@ fn assert_join(
     next(&mut document, item);
     if tight {
         let item = document
-            .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+            .append_child(
+                list,
+                EventKind::Start(Tag::Item {
+                    block_end: false,
+                    checked: None,
+                }),
+            )
             .unwrap();
         let paragraph = document
             .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
@@ -946,7 +915,13 @@ fn indents_code_after_text_in_an_item_written_spread() {
         )
         .unwrap();
     let item = document
-        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+        .append_child(
+            list,
+            EventKind::Start(Tag::Item {
+                block_end: false,
+                checked: None,
+            }),
+        )
         .unwrap();
     let paragraph = document
         .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))

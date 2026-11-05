@@ -44,7 +44,10 @@ fn separator() -> Result<Event<'static>, StreamError> {
 /// Wrap phrasing events in a document and paragraph, and build a document over `source`.
 fn build_in(source: &str, phrasing: Vec<Result<Event<'static>, StreamError>>) -> Document<String> {
     let mut events = vec![
-        start(Tag::Document(None)),
+        start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        }),
         start(Tag::Paragraph { tight: false }),
     ];
     events.extend(phrasing);
@@ -108,8 +111,12 @@ fn describe<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> String {
         EventKind::Start(Tag::Strong) => format!("strong({})", children()),
         EventKind::Start(Tag::Delete) => format!("delete({})", children()),
         EventKind::Start(Tag::Paragraph { .. }) => format!("paragraph({})", children()),
-        EventKind::Start(Tag::Item { block_end }) => format!("item {block_end}({})", children()),
-        EventKind::Start(Tag::Document(_)) => children(),
+        EventKind::Start(Tag::Item { block_end, checked }) => format!(
+            "item {block_end}{}({})",
+            if checked.is_some() { " task" } else { "" },
+            children()
+        ),
+        EventKind::Start(Tag::Document { .. }) => children(),
         EventKind::Start(Tag::Heading(_)) => format!("heading({})", children()),
         EventKind::Start(Tag::TableCell { .. }) => format!("cell({})", children()),
         EventKind::SoftBreak(_) => "soft".into(),
@@ -121,7 +128,6 @@ fn describe<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> String {
                 language.resolve(document.source()).unwrap()
             ))
         ),
-        EventKind::TaskMarker(_) => "task".into(),
         EventKind::Start(Tag::Link { destination, .. }) => format!(
             "link {:?}({})",
             destination.resolve(document.source()).unwrap(),
@@ -169,7 +175,7 @@ fn removes_empty_attention() {
         normalized(build(concat([
             vec![text("a")],
             strong(vec![text("")]),
-            delete(vec![text(""), separator()]),
+            delete(vec![text("")]),
             vec![text("b")],
         ]))),
         r#"paragraph("ab")"#
@@ -355,6 +361,96 @@ fn unwraps_strikethrough_in_detached_subtrees() {
 }
 
 #[test]
+fn unwraps_links_in_links_that_are_not_autolinks() {
+    // A link in a link's text is written as an autolink or not at all, so any other is unwrapped, at any depth, and an empty one removed.
+    assert_eq!(
+        normalized(build(link(concat([
+            vec![text("a")],
+            link(vec![text("b")]),
+            emphasis(link(vec![text("c")])),
+            link(vec![]),
+            vec![text("d")],
+        ])))),
+        r#"paragraph(link "http://a.b"("ab" emphasis("c") "d"))"#
+    );
+    assert!(!build(link(link(vec![text("x")]))).is_normalized());
+    // A parsed autolink in a link stays, and reads back.
+    for source in ["[<http://a.b>](m)\n", "[x <a@b.c> y](m)\n"] {
+        let mut document = Document::parse(source, &ParseOptions::gfm()).unwrap();
+        assert!(document.is_normalized(), "{:?}", source);
+        document.normalize();
+        assert_eq!(to_markdown(&document).unwrap(), source);
+    }
+    // Text that no longer reads back as its autolink is unwrapped, and so is a title, as an autolink cannot hold one.
+    let mut document = Document::parse("[<http://a.b>](m)", &ParseOptions::gfm()).unwrap();
+    let paragraph = document.children(document.root()).next().unwrap();
+    let outer = document.children(paragraph).next().unwrap();
+    let inner = document.children(outer).next().unwrap();
+    let text_id = document.children(inner).next().unwrap();
+    document.text_mut(text_id).unwrap().push('x');
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert_eq!(to_markdown(&document).unwrap(), "[http://a.bx](m)\n");
+    let mut document = Document::parse("[<http://a.b>](m)", &ParseOptions::gfm()).unwrap();
+    let paragraph = document.children(document.root()).next().unwrap();
+    let outer = document.children(paragraph).next().unwrap();
+    let inner = document.children(outer).next().unwrap();
+    document
+        .set_kind(
+            inner,
+            EventKind::Start(Tag::Link {
+                destination: Text::Literal("http://a.b"),
+                title: Some(Text::Literal("t")),
+            }),
+        )
+        .unwrap();
+    document.normalize();
+    assert_eq!(to_markdown(&document).unwrap(), "[http://a.b](m)\n");
+    // An inner link whose recorded form is cleared is no longer an autolink, and one recorded as
+    // an autolink is kept.
+    let mut document = Document::parse("[<http://a.b>](m)", &ParseOptions::gfm()).unwrap();
+    let paragraph = document.children(document.root()).next().unwrap();
+    let outer = document.children(paragraph).next().unwrap();
+    let inner = document.children(outer).next().unwrap();
+    document.set_syntax(inner, None).unwrap();
+    document.normalize();
+    assert_eq!(to_markdown(&document).unwrap(), "[http://a.b](m)\n");
+    let mut document = build(link(link(vec![text("http://a.b")])));
+    let paragraph = document.children(document.root()).next().unwrap();
+    let outer = document.children(paragraph).next().unwrap();
+    let inner = document.children(outer).next().unwrap();
+    document
+        .set_syntax(
+            inner,
+            Some(NodeSyntax::Link {
+                form: base_markdown::LinkForm::Angle,
+            }),
+        )
+        .unwrap();
+    assert!(document.is_normalized());
+    assert_eq!(
+        to_markdown(&document).unwrap(),
+        "[<http://a.b>](http://a.b)\n"
+    );
+    // In a table cell, an autolink with a pipe is written as a resource, so it is unwrapped too.
+    let mut document =
+        Document::parse("|[<http://a.b/\\|>](m)|\n|-|\n", &ParseOptions::gfm()).unwrap();
+    document.normalize();
+    assert!(document.is_normalized());
+    let markdown = to_markdown(&document).unwrap();
+    let mut reparsed = Document::parse(markdown.as_str(), &ParseOptions::gfm()).unwrap();
+    reparsed.normalize();
+    assert_eq!(canonical(&reparsed), canonical(&document), "{markdown:?}");
+    // A link in a detached link is unwrapped too, though the detached link stays.
+    let mut document = build(link(link(vec![text("b")])));
+    let paragraph = document.children(document.root()).next().unwrap();
+    let outer = document.children(paragraph).next().unwrap();
+    document.detach(outer).unwrap();
+    document.normalize();
+    assert_eq!(describe(&document, outer), r#"link "http://a.b"("b")"#);
+}
+
+#[test]
 fn nested_strikethrough_from_markdown_reads_back() {
     for (source, expected, tree) in [
         ("~a~~b~~c~", "~~abc~~\n", r#"paragraph(delete("abc"))"#),
@@ -511,19 +607,36 @@ fn merging_applies_the_rules_again_at_the_join() {
 }
 
 #[test]
-fn removes_separators_from_phrasing() {
-    assert!(!build(vec![text("a"), separator()]).is_normalized());
-    assert_eq!(
-        normalized(build(vec![text("a"), separator(), text("b")])),
-        r#"paragraph("ab")"#
-    );
-    let document = build(concat([
-        emphasis(vec![text("a")]),
-        vec![separator()],
-        emphasis(vec![separator(), text("b")]),
-    ]));
-    assert!(!document.is_normalized());
-    assert_eq!(normalized(document), r#"paragraph(emphasis("ab"))"#);
+fn rejects_separators_in_phrasing() {
+    let mut builder = AstBuilder::new();
+    let events = vec![
+        start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        }),
+        start(Tag::Paragraph { tight: false }),
+        text("a"),
+        separator(),
+    ];
+    assert!(matches!(
+        builder.consume(&mut events.into_iter(), usize::MAX),
+        Err(StreamError::InvalidNesting)
+    ));
+    let mut document = build(concat([emphasis(vec![text("a")])]));
+    let paragraph = document.children(document.root()).next().unwrap();
+    let emphasis = document.children(paragraph).next().unwrap();
+    for parent in [paragraph, emphasis] {
+        assert!(matches!(
+            document.append_child(
+                parent,
+                EventKind::Separator {
+                    value: Text::Literal("\n"),
+                    conditional: false,
+                },
+            ),
+            Err(StreamError::InvalidNesting)
+        ));
+    }
 }
 
 #[test]
@@ -548,29 +661,15 @@ b
     assert!(before.iter().any(|event| event.contains("Separator")));
     document.normalize();
     assert_eq!(events(&document), before);
-    // A separator between blocks does not stop text on either side from joining.
+    // Text cannot sit beside a separator directly in a quote.
     let mut document = build(vec![]);
-    let paragraph = document.children(document.root()).next().unwrap();
     let quote = document
         .append_child(document.root(), EventKind::Start(Tag::BlockQuote))
         .unwrap();
-    document.detach(paragraph).unwrap();
-    for kind in [
-        EventKind::Text(Text::Literal("a")),
-        EventKind::Separator {
-            value: Text::Literal("\n"),
-            conditional: false,
-        },
-        EventKind::Text(Text::Literal("b")),
-    ] {
-        document.append_child(quote, kind).unwrap();
-    }
-    assert!(!document.is_normalized());
-    document.normalize();
-    assert_eq!(
-        describe(&document, document.root()),
-        r#"Start(BlockQuote)("ab" separator)"#
-    );
+    assert!(matches!(
+        document.append_child(quote, EventKind::Text(Text::Literal("a"))),
+        Err(StreamError::InvalidNesting)
+    ));
 }
 
 #[test]
@@ -587,16 +686,23 @@ fn normalizes_detached_subtrees() {
 #[test]
 fn refreshes_the_item_it_changes() {
     let events = vec![
-        start(Tag::Document(None)),
+        start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        }),
         start(Tag::List {
             start: None,
             tight: true,
         }),
-        start(Tag::Item { block_end: true }),
+        start(Tag::Item {
+            block_end: true,
+            checked: None,
+        }),
         start(Tag::Paragraph { tight: true }),
         text("a"),
         end(TagKind::Paragraph),
-        text(""),
+        start(Tag::Paragraph { tight: true }),
+        end(TagKind::Paragraph),
         end(TagKind::Item),
         end(TagKind::List),
         end(TagKind::Document),
@@ -610,12 +716,18 @@ fn refreshes_the_item_it_changes() {
     let item = document.children(list).next().unwrap();
     assert!(matches!(
         document.node(item).unwrap().kind,
-        EventKind::Start(Tag::Item { block_end: true })
+        EventKind::Start(Tag::Item {
+            block_end: true,
+            checked: None
+        })
     ));
     document.normalize();
     assert!(matches!(
         document.node(item).unwrap().kind,
-        EventKind::Start(Tag::Item { block_end: false })
+        EventKind::Start(Tag::Item {
+            block_end: false,
+            checked: None
+        })
     ));
 }
 
@@ -675,7 +787,7 @@ fn random_phrasing(random: &mut Random, depth: u32) -> Vec<Result<Event<'static>
                 ["a", "*", " ", "_", "\u{a0}", "\t", "\n", " a\t", "b\n "]
                     [random.below(9) as usize],
             )),
-            2 => events.push(separator()),
+            2 => events.push(text("~")),
             3 => events.push(hard()),
             4 => events.push(soft()),
             5 => events.push(code(
@@ -707,12 +819,12 @@ fn random_document(random: &mut Random) -> Document<String> {
                 },
                 TagKind::List,
                 attention(
-                    Tag::Item { block_end: false },
+                    Tag::Item {
+                        block_end: false,
+                        checked: Some(false),
+                    },
                     TagKind::Item,
-                    paragraph(concat([
-                        vec![event(EventKind::TaskMarker(false), 0..0)],
-                        phrasing,
-                    ])),
+                    paragraph(phrasing),
                 ),
             ),
             3 => attention(Tag::BlockQuote, TagKind::BlockQuote, paragraph(phrasing)),
@@ -943,7 +1055,7 @@ fn appending_to_an_item_is_linear() {
 fn appending_to_an_item_refreshes_how_it_ends() {
     let block_end =
         |document: &Document<&str>, item: NodeId| match document.node(item).unwrap().kind {
-            EventKind::Start(Tag::Item { block_end }) => block_end,
+            EventKind::Start(Tag::Item { block_end, .. }) => block_end,
             _ => unreachable!("the node is an item"),
         };
     let mut document = Document::parse("- a\n", &ParseOptions::default()).unwrap();
@@ -1111,7 +1223,10 @@ fn hard() -> Result<Event<'static>, StreamError> {
 
 /// Build a document of block events.
 fn build_blocks(blocks: Vec<Result<Event<'static>, StreamError>>) -> Document<String> {
-    let mut events = vec![start(Tag::Document(None))];
+    let mut events = vec![start(Tag::Document {
+        line_ending: None,
+        frontmatter: None,
+    })];
     events.extend(blocks);
     events.push(end(TagKind::Document));
     let mut builder = AstBuilder::new();
@@ -1438,7 +1553,6 @@ fn removes_empty_paragraphs_with_one_separator() {
 
 #[test]
 fn removes_task_markers_with_nothing_written_after_them() {
-    let task = || event(EventKind::TaskMarker(false), 0..0);
     let item = |children| {
         attention(
             Tag::List {
@@ -1447,7 +1561,10 @@ fn removes_task_markers_with_nothing_written_after_them() {
             },
             TagKind::List,
             attention(
-                Tag::Item { block_end: false },
+                Tag::Item {
+                    block_end: false,
+                    checked: Some(false),
+                },
                 TagKind::Item,
                 paragraph(children),
             ),
@@ -1456,18 +1573,23 @@ fn removes_task_markers_with_nothing_written_after_them() {
     let list = |inner: &str| {
         format!(r#"Start(List {{ start: None, tight: true }})(item false(paragraph({inner})))"#)
     };
+    let task = |inner: &str| {
+        format!(
+            r#"Start(List {{ start: None, tight: true }})(item false task(paragraph({inner})))"#
+        )
+    };
     // Breaks after text are trimmed, as after any paragraph's phrasing.
     assert_eq!(
-        settled(build_blocks(item(vec![task(), text(" a"), hard(), soft()]))),
-        list(r#"task " a""#)
+        settled(build_blocks(item(vec![text(" a"), hard(), soft()]))),
+        task(r#"" a""#)
     );
     // So is a hard break that moves out of attention at the end.
     assert_eq!(
         settled(build_blocks(item(concat([
-            vec![task(), text(" a")],
+            vec![text(" a")],
             emphasis(vec![text("b"), hard()]),
         ])))),
-        list(r#"task " a" emphasis("b")"#)
+        task(r#"" a" emphasis("b")"#)
     );
     // A marker followed by nothing but breaks and the one space or tab that separates it from its text, which the parser keeps in that text, cannot be written, so it is removed. Its breaks are then removed as at the edges of any paragraph, the separator stays as whitespace text, and a paragraph left empty is removed.
     for (after, expected) in [
@@ -1491,7 +1613,7 @@ fn removes_task_markers_with_nothing_written_after_them() {
             r#"item false(paragraph(break " "))"#,
         ),
     ] {
-        let mut children = vec![task()];
+        let mut children = vec![];
         children.extend(after);
         assert_eq!(
             settled(build_blocks(item(children))),
@@ -1505,30 +1627,31 @@ fn removes_task_markers_with_nothing_written_after_them() {
         describe(&document, document.root())
     };
     for (after, expected) in [
-        (vec![text("  ")], r#"task "  ""#),
-        (vec![text(" \t")], r#"task " \t""#),
-        (vec![text(" \u{a0}"), hard()], r#"task " \u{a0}""#),
-        (vec![text(" \u{3000}"), soft()], r#"task " \u{3000}""#),
-        (vec![text(" \n")], r#"task " \n""#),
-        (vec![text(" "), soft(), text(" ")], r#"task " " soft " ""#),
-        (vec![text(" "), text(" ")], r#"task "  ""#),
-        (vec![text("\u{a0}"), hard()], r#"task "\u{a0}""#),
+        (vec![text("  ")], r#""  ""#),
+        (vec![text(" \t")], r#"" \t""#),
+        (vec![text(" \u{a0}"), hard()], r#"" \u{a0}""#),
+        (vec![text(" \u{3000}"), soft()], r#"" \u{3000}""#),
+        (vec![text(" \n")], r#"" \n""#),
+        (vec![text(" "), soft(), text(" ")], r#"" " soft " ""#),
+        (vec![text(" "), text(" ")], r#""  ""#),
+        // The separator space the parser leaves after a marker is put back.
+        (vec![text("\u{a0}"), hard()], r#"" \u{a0}""#),
     ] {
-        let mut children = vec![task()];
+        let mut children = vec![];
         children.extend(after);
-        assert_eq!(normal(build_blocks(item(children))), list(expected));
+        assert_eq!(normal(build_blocks(item(children))), task(expected));
     }
     // Whitespace moved out of attention counts as text, and attention of breaks alone is removed.
     assert_eq!(
         settled(build_blocks(item(concat([
-            vec![task(), text(" ")],
+            vec![text(" ")],
             emphasis(vec![soft()]),
         ])))),
         list(r#"" ""#)
     );
     assert_eq!(
         settled(build_blocks(item(concat([
-            vec![task()],
+            vec![],
             emphasis(vec![text(" ")]),
             vec![soft()],
         ])))),
@@ -1536,55 +1659,33 @@ fn removes_task_markers_with_nothing_written_after_them() {
     );
     assert_eq!(
         settled(build_blocks(item(concat([
-            vec![task(), text(" ")],
+            vec![text(" ")],
             emphasis(vec![text(" ")]),
         ])))),
-        list(r#"task "  ""#)
+        task(r#""  ""#)
     );
     assert_eq!(
-        settled(build_blocks(item(concat([
-            vec![task()],
-            emphasis(vec![hard()]),
-        ])))),
+        settled(build_blocks(item(concat(
+            [vec![], emphasis(vec![hard()]),]
+        )))),
         "Start(List { start: None, tight: true })(item false())"
     );
-    // The rule is the same in any block phrasing that starts with a marker.
-    assert!(!build_blocks(heading(vec![task(), hard()])).is_normalized());
-    assert_eq!(
-        settled(build_blocks(heading(vec![task(), hard()]))),
-        "heading()"
-    );
-    let cell = build_blocks(table(vec![text(" ")]));
-    assert_eq!(
-        settled(build_blocks(table(vec![task(), text(" ")]))),
-        describe(&cell, cell.root())
-    );
-    assert_eq!(
-        settled(build_blocks(heading(vec![task(), text(" a"), hard()]))),
-        r#"heading(task " a")"#
-    );
-    // A marker followed by anything else stays, such as a marker, code or a link.
+    // A marker followed by anything else stays, such as code or a link.
     for after in [
-        vec![task()],
         vec![text(" "), code("c", None)],
         concat([vec![text(" ")], link(vec![text(" ")])]),
     ] {
-        let mut children = vec![task()];
+        let mut children = vec![];
         children.extend(after);
         assert!(build_blocks(item(children)).is_normalized());
     }
-    // A marker that does not start the paragraph stays.
-    assert_eq!(
-        settled(build_blocks(item(vec![text("a"), task(), hard()]))),
-        list(r#""a" task"#)
-    );
     // Attention in it still moves its whitespace out.
     assert_eq!(
         settled(build_blocks(item(concat([
-            vec![task(), text(" ")],
+            vec![text(" ")],
             emphasis(vec![text("a ")]),
         ])))),
-        list(r#"task " " emphasis("a") " ""#)
+        task(r#"" " emphasis("a") " ""#)
     );
 }
 
@@ -1618,20 +1719,19 @@ fn trimmed_shapes_serialize_stably() {
             },
             TagKind::List,
             attention(
-                Tag::Item { block_end: false },
+                Tag::Item {
+                    block_end: false,
+                    checked: Some(false),
+                },
                 TagKind::Item,
                 paragraph(children),
             ),
         )
     };
-    let task = || event(EventKind::TaskMarker(false), 0..0);
-    serializes_stably(
-        build_blocks(item(vec![task(), text(" a"), hard()])),
-        "- [ ] a\n",
-    );
+    serializes_stably(build_blocks(item(vec![text(" a"), hard()])), "- [ ] a\n");
     serializes_stably(
         build_blocks(item(concat([
-            vec![task(), text(" a")],
+            vec![text(" a")],
             emphasis(vec![text("b"), hard()]),
         ]))),
         "- [ ] a*b*\n",
@@ -1645,9 +1745,7 @@ fn trimmed_shapes_serialize_stably() {
         (vec![text(" "), hard()], "- &#x20;\n"),
         (vec![text("\t"), hard()], "- &#x9;\n"),
     ] {
-        let mut children = vec![task()];
-        children.extend(after);
-        serializes_stably(build_blocks(item(children)), expected);
+        serializes_stably(build_blocks(item(after)), expected);
     }
     // Anything else after the separator keeps the marker, and is encoded where it would be trimmed. A tab separator is written as one.
     for (after, expected) in [
@@ -1660,9 +1758,7 @@ fn trimmed_shapes_serialize_stably() {
         (vec![text("\t ")], "- [ ]\t&#x20;\n"),
         (vec![text("\ta")], "- [ ]\ta\n"),
     ] {
-        let mut children = vec![task()];
-        children.extend(after);
-        serializes_stably(build_blocks(item(children)), expected);
+        serializes_stably(build_blocks(item(after)), expected);
     }
     serializes_stably(
         build(concat([
@@ -2142,6 +2238,8 @@ fn code_of_spaces_around_a_tab_is_stable() {
 /// A block of a list tree built through the document API, which keeps paragraph and item rendering hints in step with the list.
 enum Block {
     Paragraph(Vec<EventKind<'static>>),
+    /// A paragraph that, first in an item, makes it an unchecked task.
+    Task(Vec<EventKind<'static>>),
     /// A list's start and tightness, and each item's recorded spread and blocks.
     List(Option<u32>, bool, Vec<(bool, Vec<Block>)>),
     Code,
@@ -2157,7 +2255,7 @@ enum Block {
 
 fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) {
     match block {
-        Block::Paragraph(phrasing) => {
+        Block::Paragraph(phrasing) | Block::Task(phrasing) => {
             let id = document
                 .append_child(parent, EventKind::Start(Tag::Paragraph { tight: false }))
                 .unwrap();
@@ -2176,8 +2274,15 @@ fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) 
                 )
                 .unwrap();
             for (spread, blocks) in items {
+                let checked = matches!(blocks.first(), Some(Block::Task(_))).then_some(false);
                 let item = document
-                    .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+                    .append_child(
+                        list,
+                        EventKind::Start(Tag::Item {
+                            block_end: false,
+                            checked,
+                        }),
+                    )
                     .unwrap();
                 document
                     .set_syntax(item, Some(NodeSyntax::ListItem { spread: *spread }))
@@ -2300,14 +2405,14 @@ fn tight_of_first_list<S: AsRef<str>>(document: &Document<S>) -> bool {
 
 #[test]
 fn a_loose_list_reads_back_loose_after_empty_paragraphs_are_removed() {
-    use Block::{Code, List, Paragraph};
+    use Block::{Code, List, Paragraph, Task};
     let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
     let p = |value: &str| Paragraph(vec![text(value)]);
     let empties = || {
         [
             Paragraph(vec![]),
             Paragraph(vec![EventKind::SoftBreak(Text::Literal("\n"))]),
-            Paragraph(vec![EventKind::TaskMarker(false)]),
+            Task(vec![]),
             Paragraph(vec![EventKind::HardBreak]),
         ]
     };
@@ -2316,10 +2421,16 @@ fn a_loose_list_reads_back_loose_after_empty_paragraphs_are_removed() {
     for spread in [false, true] {
         let lone = |blocks: Vec<Block>| List(None, false, vec![(spread, blocks)]);
         for empty in empties() {
+            // A task item keeps its checkbox, which moves to the paragraph that is now its first.
+            let expected = if matches!(empty, Task(_)) {
+                "- [ ] b\n"
+            } else {
+                "- b\n"
+            };
             // The only item of a loose list, left with one paragraph, cannot be written loose: no blank line can separate items or blocks, so normalizing makes the list tight (#128).
             let mut document = build_list(&lone(vec![empty, p("b")]));
             assert!(!document.is_normalized());
-            assert_eq!(reads_back(document.clone()), "- b\n");
+            assert_eq!(reads_back(document.clone()), expected);
             document.normalize();
             assert!(tight_of_first_list(&document));
         }
@@ -2329,20 +2440,8 @@ fn a_loose_list_reads_back_loose_after_empty_paragraphs_are_removed() {
             (vec![Paragraph(vec![]), Code], "- ```\n  x\n  ```\n"),
             (vec![Paragraph(vec![]), nested()], "- - c\n"),
             // A task marker with text after it stays.
-            (
-                vec![
-                    Paragraph(vec![EventKind::TaskMarker(false), text(" x")]),
-                    Paragraph(vec![]),
-                ],
-                "- [ ] x\n",
-            ),
-            (
-                vec![
-                    Paragraph(vec![EventKind::TaskMarker(false)]),
-                    Paragraph(vec![EventKind::TaskMarker(true), text(" x")]),
-                ],
-                "- [x] x\n",
-            ),
+            (vec![Task(vec![text(" x")]), Paragraph(vec![])], "- [ ] x\n"),
+            (vec![Task(vec![]), p(" x")], "- [ ] x\n"),
             // So is a lone item that was never emptied.
             (vec![p("b")], "- b\n"),
             (vec![], "-\n"),
@@ -2372,11 +2471,7 @@ fn a_loose_list_reads_back_loose_after_empty_paragraphs_are_removed() {
             ),
             (vec![Paragraph(vec![]), nested(), p("b")], "- - c\n\n  b\n"),
             (
-                vec![
-                    Paragraph(vec![EventKind::TaskMarker(false), text(" x")]),
-                    Paragraph(vec![]),
-                    p("b"),
-                ],
+                vec![Task(vec![text(" x")]), Paragraph(vec![]), p("b")],
                 "- [ ] x\n\n  b\n",
             ),
             (vec![p("a"), nested()], "- a\n\n  - c\n"),
@@ -2486,32 +2581,34 @@ fn is_normalized_finds_a_loose_list_that_reads_back_tight() {
     ))
     .is_normalized());
     assert!(build_list(&List(None, true, vec![(false, vec![p()])])).is_normalized());
-    // A list whose one child is not an item is another shape, which is left as it is.
+    // A list holds only items, and separators sit between blocks, never between items.
     let mut document = build_list(&List(None, false, vec![]));
     let list = document.children(document.root()).next().unwrap();
-    document
-        .append_child(list, EventKind::Start(Tag::Paragraph { tight: false }))
-        .unwrap();
-    let paragraph = document.children(list).next().unwrap();
-    document
-        .append_child(paragraph, EventKind::Text(Text::from("a".to_owned())))
-        .unwrap();
-    assert!(document.is_normalized());
-    // Separators between items and blocks are not counted.
+    for kind in [
+        EventKind::Start(Tag::Paragraph { tight: false }),
+        EventKind::Separator {
+            value: Text::Literal("\n"),
+            conditional: false,
+        },
+    ] {
+        assert!(matches!(
+            document.append_child(list, kind),
+            Err(StreamError::InvalidNesting)
+        ));
+    }
+    // Separators between the blocks of an item are not counted.
     let mut document = build_list(&lone(vec![p()]));
     let list = document.children(document.root()).next().unwrap();
     let item = document.children(list).next().unwrap();
-    for parent in [list, item] {
-        document
-            .append_child(
-                parent,
-                EventKind::Separator {
-                    value: Text::Literal("\n"),
-                    conditional: false,
-                },
-            )
-            .unwrap();
-    }
+    document
+        .append_child(
+            item,
+            EventKind::Separator {
+                value: Text::Literal("\n"),
+                conditional: false,
+            },
+        )
+        .unwrap();
     assert!(!document.is_normalized());
     document.normalize();
     assert!(document.is_normalized());
@@ -2556,7 +2653,10 @@ fn tightening_lone_loose_items_is_linear() {
                     start: None,
                     tight: false,
                 }),
-                start(Tag::Item { block_end: false }),
+                start(Tag::Item {
+                    block_end: false,
+                    checked: None,
+                }),
             ]);
             events.extend(paragraph(vec![]));
         }
@@ -2590,10 +2690,9 @@ fn tightening_lone_loose_items_is_linear() {
 
 #[test]
 fn an_empty_item_after_a_paragraph_in_a_tight_list_is_removed() {
-    use Block::{List, Paragraph, Quote, Separator};
+    use Block::{List, Paragraph, Quote, Separator, Task};
     let text = |value: &str| EventKind::Text(Text::from(value.to_owned()));
     let p = |value: &str| Paragraph(vec![text(value)]);
-    let task = || EventKind::TaskMarker(false);
     let tight = |items: Vec<Vec<Block>>| {
         List(
             None,
@@ -2628,23 +2727,19 @@ fn an_empty_item_after_a_paragraph_in_a_tight_list_is_removed() {
             "- p\n  - a\n  -\n",
         ),
         // A task marker with nothing after it is removed, which leaves its item empty (#126).
-        (after_p(tight(vec![vec![Paragraph(vec![task()])]])), "- p\n"),
+        (after_p(tight(vec![vec![Task(vec![])]])), "- p\n"),
         (
-            after_p(tight(vec![vec![Paragraph(vec![
-                task(),
-                EventKind::HardBreak,
-            ])]])),
+            after_p(tight(vec![vec![Task(vec![EventKind::HardBreak])]])),
             "- p\n",
         ),
         (
-            after_p(tight(vec![vec![Paragraph(vec![
-                task(),
-                EventKind::SoftBreak(Text::Literal("\n")),
-            ])]])),
+            after_p(tight(vec![vec![Task(vec![EventKind::SoftBreak(
+                Text::Literal("\n"),
+            )])]])),
             "- p\n",
         ),
         (
-            after_p(tight(vec![vec![Paragraph(vec![task()])], vec![p("a")]])),
+            after_p(tight(vec![vec![Task(vec![])], vec![p("a")]])),
             "- p\n  - a\n",
         ),
         // An empty paragraph between them is removed first.
@@ -2748,7 +2843,7 @@ fn an_empty_item_after_a_paragraph_in_a_tight_list_is_removed() {
         assert_eq!(reads_back(document), expected);
     }
     for (phrasing, expected) in [(" ", "- p\n  - &#x20;\n"), ("\t", "- p\n  - &#x9;\n")] {
-        let block = after_p(tight(vec![vec![Paragraph(vec![task(), text(phrasing)])]]));
+        let block = after_p(tight(vec![vec![Task(vec![text(phrasing)])]]));
         assert_eq!(reads_back(build_list(&block)), expected);
     }
     let mut document = build_list(&p("p"));
@@ -2771,36 +2866,6 @@ fn an_empty_item_after_a_paragraph_in_a_tight_list_is_removed() {
         })
     ));
     assert_eq!(document.children(list).count(), 1);
-    // Separators between the items of the list are not counted either.
-    let mut document = build_list(&after_p(tight(vec![])));
-    let outer = document.children(document.root()).next().unwrap();
-    let item = document.children(outer).next().unwrap();
-    let list = document.children(item).nth(1).unwrap();
-    let separator = || EventKind::Separator {
-        value: Text::Literal("\n"),
-        conditional: false,
-    };
-    document.append_child(list, separator()).unwrap();
-    document
-        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
-        .unwrap();
-    document.append_child(list, separator()).unwrap();
-    let nested = document
-        .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
-        .unwrap();
-    append_block(&mut document, nested, &p("a"));
-    assert!(!document.is_normalized());
-    assert_eq!(reads_back(document), "- p\n  - a\n");
-    // A list whose first child is not an item is another shape, which the serializer rejects, and is left as it is.
-    let mut document = build_list(&after_p(tight(vec![])));
-    let outer = document.children(document.root()).next().unwrap();
-    let item = document.children(outer).next().unwrap();
-    let list = document.children(item).nth(1).unwrap();
-    append_block(&mut document, list, &p("a"));
-    assert!(document.is_normalized());
-    let before = canonical(&document);
-    document.normalize();
-    assert_eq!(canonical(&document), before);
     // A detached list is normalized too.
     let mut document = build_list(&tight(vec![vec![after_p(tight(vec![vec![]]))]]));
     let outer = document.children(document.root()).next().unwrap();
@@ -4777,10 +4842,10 @@ fn removes_lists_without_items() {
     }
     // The root of a detached subtree is never removed.
     let mut document = build_list(&tight(vec![vec![p("p")]]));
-    let list = document.children(document.root()).next().unwrap();
+    let root = document.root();
     let detached = document
         .append_child(
-            list,
+            root,
             EventKind::Start(Tag::List {
                 start: None,
                 tight: true,
@@ -4797,6 +4862,7 @@ fn removes_lists_without_items() {
 fn without_unwritable(block: &Block) -> Option<Block> {
     let blocks = |blocks: &[Block]| blocks.iter().filter_map(without_unwritable).collect();
     Some(match block {
+        Block::Task(phrasing) => Block::Task(phrasing.clone()),
         Block::Paragraph(phrasing) => Block::Paragraph(
             phrasing
                 .iter()
@@ -4910,7 +4976,7 @@ fn removing_unwritable_html_and_lists_is_linear() {
                     tight: true,
                 },
                 TagKind::List,
-                vec![separator()],
+                vec![],
             ));
             events.push(separator());
             events.extend(paragraph(vec![html(""), text("a"), html("")]));
@@ -4923,5 +4989,157 @@ fn removing_unwritable_html_and_lists_is_linear() {
         });
         assert_eq!(document.children(document.root()).count(), size / 4);
         elapsed
+    });
+}
+
+/// The cells of a row, each with its alignment, whether it is a header cell, and its text.
+type Row = Vec<(base_markdown::AlignKind, bool, &'static str)>;
+
+/// A table of `groups`, each a head or body of rows of cells, each with its alignment, whether it is a header cell, and its text.
+fn shaped_table(groups: Vec<(TagKind, Vec<Row>)>) -> Document<String> {
+    let mut events = Vec::new();
+    for (kind, rows) in groups {
+        let tag = match kind {
+            TagKind::TableHead => Tag::TableHead,
+            _ => Tag::TableBody,
+        };
+        let mut group = Vec::new();
+        for row in rows {
+            let mut cells = Vec::new();
+            for (alignment, header, value) in row {
+                let children = if value.is_empty() {
+                    vec![]
+                } else {
+                    vec![text(value)]
+                };
+                cells.extend(attention(
+                    Tag::TableCell { alignment, header },
+                    TagKind::TableCell,
+                    children,
+                ));
+            }
+            group.extend(attention(Tag::TableRow, TagKind::TableRow, cells));
+            group.push(separator());
+        }
+        events.extend(attention(tag, kind, group));
+        events.push(separator());
+    }
+    build_blocks(attention(Tag::Table, TagKind::Table, events))
+}
+
+#[test]
+fn shapes_tables_as_the_parser_does() {
+    use base_markdown::AlignKind::{Center, Left, None as Plain, Right};
+    use TagKind::{TableBody as Body, TableHead as Head};
+    // A parsed table is shaped already.
+    let parsed = Document::parse(
+        "| a | b |\n| :- | -: |\n| c |\n| d | e | f |\n",
+        &ParseOptions::gfm(),
+    )
+    .unwrap();
+    assert!(parsed.is_normalized());
+    for (table, expected) in [
+        // Rows get empty cells up to the widest row, which an empty head cell is added for, unaligned.
+        (
+            vec![
+                (Head, vec![vec![(Left, true, "a")]]),
+                (
+                    Body,
+                    vec![vec![(Left, false, "b"), (Right, false, "c")], vec![]],
+                ),
+            ],
+            "| a |  |\n| :--- | --- |\n| b | c |\n|  |  |\n",
+        ),
+        // Header flags and alignments follow the head.
+        (
+            vec![
+                (Head, vec![vec![(Center, false, "a"), (Plain, true, "b")]]),
+                (Body, vec![vec![(Right, true, "c"), (Left, false, "d")]]),
+            ],
+            "| a | b |\n| :---: | --- |\n| c | d |\n",
+        ),
+        // A head of two rows keeps the first, and the second starts the body.
+        (
+            vec![
+                (
+                    Head,
+                    vec![vec![(Plain, true, "a")], vec![(Plain, true, "b")]],
+                ),
+                (Body, vec![vec![(Plain, false, "c")]]),
+            ],
+            "| a |\n| --- |\n| b |\n| c |\n",
+        ),
+        // A body before the head, several bodies and empty parts: rows are taken in order.
+        (
+            vec![
+                (Body, vec![vec![(Plain, false, "a")]]),
+                (Head, vec![]),
+                (Head, vec![vec![(Right, true, "b")]]),
+                (Body, vec![]),
+                (Body, vec![vec![(Plain, false, "c")]]),
+            ],
+            "| a |\n| --- |\n| b |\n| c |\n",
+        ),
+        // A head of two rows without a body, and two heads: a body is made for the rest.
+        (
+            vec![(
+                Head,
+                vec![vec![(Plain, true, "a")], vec![(Plain, true, "b")]],
+            )],
+            "| a |\n| --- |\n| b |\n",
+        ),
+        (
+            vec![
+                (Head, vec![vec![(Plain, true, "a")]]),
+                (Head, vec![vec![(Plain, true, "b")]]),
+            ],
+            "| a |\n| --- |\n| b |\n",
+        ),
+        // A body alone becomes the head.
+        (
+            vec![(Body, vec![vec![(Plain, false, "a")]])],
+            "| a |\n| --- |\n",
+        ),
+        // A head without a body loses an empty body.
+        (
+            vec![(Head, vec![vec![(Plain, true, "a")]]), (Body, vec![])],
+            "| a |\n| --- |\n",
+        ),
+        // A table without a cell cannot be written, so it is removed.
+        (vec![], ""),
+        (vec![(Head, vec![vec![]]), (Body, vec![vec![], vec![]])], ""),
+    ] {
+        let document = shaped_table(table);
+        assert!(!document.is_normalized(), "{:?}", expected);
+        assert_eq!(reads_back(document), expected);
+    }
+    // A detached table is shaped too, and one without a cell is left as it is.
+    for (table, expected) in [
+        (
+            vec![(Body, vec![vec![(Plain, false, "a")]])],
+            r#"Start(Table)(Start(TableHead)(Start(TableRow)(cell("a")) separator))"#,
+        ),
+        (
+            vec![(Head, vec![])],
+            r#"Start(Table)(Start(TableHead)() separator)"#,
+        ),
+    ] {
+        let mut document = shaped_table(table);
+        let table = document.children(document.root()).next().unwrap();
+        document.detach(table).unwrap();
+        document.normalize();
+        assert!(document.is_normalized());
+        assert_eq!(describe(&document, table), expected);
+    }
+}
+
+#[test]
+fn shaping_tables_is_linear() {
+    use base_markdown::AlignKind::None as Plain;
+    assert_normalize_linear("unshaped tables", 1 << 10, |size| {
+        let rows = (0..size)
+            .map(|index| vec![(Plain, true, "a"); index % 3])
+            .collect();
+        shaped_table(vec![(TagKind::TableBody, rows)])
     });
 }

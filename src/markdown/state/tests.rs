@@ -64,11 +64,14 @@ fn handles_adjacent_text_nodes_and_phrasing_lookahead_errors() {
         .unwrap();
     assert_eq!(core::mem::take(&mut state.output), "firstsecond");
 
+    let emphasis = document
+        .append_child(node, EventKind::Start(Tag::Emphasis))
+        .unwrap();
     document
-        .append_child(node, EventKind::Start(Tag::Item { block_end: false }))
+        .append_child(emphasis, EventKind::Text(Text::Literal("third")))
         .unwrap();
     let options = Options {
-        bullet: 'x',
+        emphasis: 'x',
         ..Options::default()
     };
     let error = State::new(&options)
@@ -147,13 +150,26 @@ fn joins_code_and_spread_items_consistently() {
         state.default_separator(&document, None, code, code, root, false),
         "\n\n<!---->\n\n"
     ));
+    let list = document
+        .append_child(
+            root,
+            EventKind::Start(Tag::List {
+                start: None,
+                tight: true,
+            }),
+        )
+        .unwrap();
     let item = document
-        .append_child(root, EventKind::Start(Tag::Item { block_end: false }))
+        .append_child(
+            list,
+            EventKind::Start(Tag::Item {
+                block_end: false,
+                checked: None,
+            }),
+        )
         .unwrap();
     let left = paragraph(&mut document, item, "one");
-    let right = document
-        .append_child(item, EventKind::Text(Text::Literal("other")))
-        .unwrap();
+    let right = document.append_child(item, EventKind::Rule).unwrap();
     assert!(matches!(
         state.default_separator(
             &document,
@@ -225,9 +241,10 @@ fn inline_literals_write_each_line_ending_as_a_space() {
 #[test]
 fn serializes_table_cells_with_escaped_pipes() {
     let mut document = empty();
-    let row = document
-        .append_child(document.root(), EventKind::Start(Tag::TableRow))
-        .unwrap();
+    let mut row = document.root();
+    for tag in [Tag::Table, Tag::TableHead, Tag::TableRow] {
+        row = document.append_child(row, EventKind::Start(tag)).unwrap();
+    }
     for kind in [
         EventKind::Text(Text::Literal("plain α")),
         EventKind::Code {

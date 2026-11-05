@@ -45,23 +45,6 @@ pub(crate) fn push_spaced(output: &mut String, value: &str) {
     output.push_str(&value[written..]);
 }
 
-/// Whether `value` is `raw` with each CRLF and lone CR written as LF.
-pub(crate) fn normalizes_to(raw: &str, mut value: &str) -> bool {
-    let mut raw = raw;
-    while let Some(index) = memchr::memchr(b'\r', raw.as_bytes()) {
-        if value.get(..index) != Some(&raw[..index]) || value.as_bytes().get(index) != Some(&b'\n')
-        {
-            return false;
-        }
-        value = &value[index + 1..];
-        raw = &raw[index + 1..];
-        if let Some(after) = raw.strip_prefix('\n') {
-            raw = after;
-        }
-    }
-    value == raw
-}
-
 /// Start of one terminal physical line ending before `end`, or `end` itself.
 #[inline]
 pub(crate) fn terminal_ending_start(bytes: &[u8], mut end: usize) -> usize {
@@ -186,16 +169,6 @@ mod tests {
             let mut output = String::from(">");
             push_normalized(&mut output, value);
             assert_eq!(output, alloc::format!(">{expected}"));
-            assert!(normalizes_to(value, expected));
-            assert!(!normalizes_to(value, &alloc::format!("{expected}x")));
-        }
-        for (raw, value) in [
-            ("a\r", "a\r"),
-            ("a\rb", "a\nc"),
-            ("a\rb", "a"),
-            ("ab", "a\n"),
-        ] {
-            assert!(!normalizes_to(raw, value));
         }
     }
 

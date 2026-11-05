@@ -2,7 +2,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 use base_markdown::{
-    stream::{EventKind, Tag, Text},
+    stream::{EventKind, StreamError, Tag, Text},
     to_markdown, to_markdown_node, Document, ParseOptions,
 };
 
@@ -119,9 +119,12 @@ fn synthetic_references_cannot_override_a_present_definition() {
     for target in ["/original", "/changed"] {
         let mut document = empty();
         let root = document.root();
+        let paragraph = document
+            .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+            .unwrap();
         let link = document
             .append_child(
-                root,
+                paragraph,
                 EventKind::Start(Tag::Link {
                     destination: Text::Literal("/original"),
                     title: None,
@@ -272,24 +275,7 @@ fn serialized_fragments_support_table_sections_and_nonrendered_metadata() {
             expected
         );
     }
-    let mut document = empty();
     for (kind, expected) in [
-        (EventKind::TaskMarker(true), "[x]"),
-        (EventKind::TaskMarker(false), "[ ]"),
-        (
-            EventKind::Opaque {
-                value: Text::Literal("raw metadata"),
-                block: true,
-            },
-            "raw metadata\n",
-        ),
-        (
-            EventKind::Opaque {
-                value: Text::Literal("inline metadata"),
-                block: false,
-            },
-            "inline metadata",
-        ),
         (
             EventKind::FootnoteReference(Text::Literal("NOTE")),
             "[^NOTE]",
@@ -302,6 +288,7 @@ fn serialized_fragments_support_table_sections_and_nonrendered_metadata() {
             "",
         ),
     ] {
+        let mut document = empty();
         let id = document.append_child(document.root(), kind).unwrap();
         assert_eq!(
             to_markdown_node(&document, id, &Default::default()).unwrap(),
@@ -345,45 +332,44 @@ fn multiline_inline_literals_write_line_endings_as_spaces_in_atx_headings() {
 }
 
 #[test]
-fn block_leaves_inside_a_heading_are_not_representable_in_markdown() {
-    for kind in [
-        EventKind::CodeBlock {
-            value: Text::Literal("code\n"),
-            info: None,
-            fence: None,
-            unclosed: false,
-        },
-        EventKind::Opaque {
-            value: Text::Literal("metadata"),
-            block: true,
-        },
-    ] {
-        let mut document = empty();
-        let heading = document
-            .append_child(document.root(), EventKind::Start(Tag::Heading(1)))
-            .unwrap();
-        document.append_child(heading, kind).unwrap();
-        assert_eq!(
-            to_markdown(&document).unwrap_err().rule_id,
-            "unsupported-node"
-        );
-    }
+fn block_leaves_inside_a_heading_are_rejected() {
+    let mut document = empty();
+    let heading = document
+        .append_child(document.root(), EventKind::Start(Tag::Heading(1)))
+        .unwrap();
+    assert!(matches!(
+        document.append_child(
+            heading,
+            EventKind::CodeBlock {
+                value: Text::Literal("code\n"),
+                info: None,
+                fence: None,
+                unclosed: false,
+            },
+        ),
+        Err(StreamError::InvalidNesting)
+    ));
 }
 
 #[test]
-fn table_serialization_rejects_unrepresentable_structure() {
-    for parent in [Tag::Table, Tag::TableHead, Tag::TableBody, Tag::TableRow] {
+fn table_parts_hold_only_their_own_parts() {
+    for chain in [
+        &[Tag::Table][..],
+        &[Tag::Table, Tag::TableHead],
+        &[Tag::Table, Tag::TableBody],
+        &[Tag::Table, Tag::TableBody, Tag::TableRow],
+    ] {
         let mut document = empty();
-        let container = document
-            .append_child(document.root(), EventKind::Start(parent))
-            .unwrap();
-        document
-            .append_child(container, EventKind::Text(Text::Literal("unexpected")))
-            .unwrap();
-        assert_eq!(
-            to_markdown(&document).unwrap_err().rule_id,
-            "unsupported-node"
-        );
+        let mut container = document.root();
+        for tag in chain {
+            container = document
+                .append_child(container, EventKind::Start(tag.clone()))
+                .unwrap();
+        }
+        assert!(matches!(
+            document.append_child(container, EventKind::Text(Text::Literal("unexpected"))),
+            Err(StreamError::InvalidNesting)
+        ));
     }
     let mut document = empty();
     let table = document
@@ -392,13 +378,15 @@ fn table_serialization_rejects_unrepresentable_structure() {
     let group = document
         .append_child(table, EventKind::Start(Tag::TableBody))
         .unwrap();
-    document
-        .append_child(group, EventKind::Start(Tag::Paragraph { tight: false }))
-        .unwrap();
-    assert_eq!(
-        to_markdown(&document).unwrap_err().rule_id,
-        "unsupported-node"
-    );
+    assert!(matches!(
+        document.append_child(group, EventKind::Start(Tag::Paragraph { tight: false })),
+        Err(StreamError::InvalidNesting)
+    ));
+    // A row directly in a table is rejected too: it is in a head or body.
+    assert!(matches!(
+        document.append_child(table, EventKind::Start(Tag::TableRow)),
+        Err(StreamError::InvalidNesting)
+    ));
 }
 
 #[test]
@@ -426,16 +414,20 @@ fn table_separator_metadata_does_not_add_empty_rows_or_cells() {
     document
         .append_child(cell, EventKind::Text(Text::Literal("value")))
         .unwrap();
-    for parent in [table, group, row, cell] {
-        document
-            .append_child(
-                parent,
-                EventKind::Separator {
-                    value: Text::Literal("\n"),
-                    conditional: false,
-                },
-            )
-            .unwrap();
+    let separator = || EventKind::Separator {
+        value: Text::Literal("\n"),
+        conditional: false,
+    };
+    // Separators sit between a table's parts and rows, where the parser writes them, and not in a
+    // row or cell.
+    for parent in [table, group] {
+        document.append_child(parent, separator()).unwrap();
+    }
+    for parent in [row, cell] {
+        assert!(matches!(
+            document.append_child(parent, separator()),
+            Err(StreamError::InvalidNesting)
+        ));
     }
     assert_eq!(to_markdown(&document).unwrap(), "| value |\n| :--- |\n");
 }
@@ -443,10 +435,22 @@ fn table_separator_metadata_does_not_add_empty_rows_or_cells() {
 #[test]
 fn empty_item_paragraphs_and_code_without_info_serialize() {
     let mut document = empty();
-    let item = document
+    let list = document
         .append_child(
             document.root(),
-            EventKind::Start(Tag::Item { block_end: false }),
+            EventKind::Start(Tag::List {
+                start: None,
+                tight: true,
+            }),
+        )
+        .unwrap();
+    let item = document
+        .append_child(
+            list,
+            EventKind::Start(Tag::Item {
+                block_end: false,
+                checked: None,
+            }),
         )
         .unwrap();
     document
@@ -480,13 +484,21 @@ fn list_children_must_be_items() {
             }),
         )
         .unwrap();
-    document
-        .append_child(list, EventKind::Text(Text::Literal("missing an item")))
-        .unwrap();
-    assert_eq!(
-        to_markdown(&document).unwrap_err().rule_id,
-        "unsupported-node"
-    );
+    assert!(matches!(
+        document.append_child(list, EventKind::Text(Text::Literal("missing an item"))),
+        Err(StreamError::InvalidNesting)
+    ));
+    // And an item is only ever in a list.
+    assert!(matches!(
+        document.append_child(
+            document.root(),
+            EventKind::Start(Tag::Item {
+                block_end: false,
+                checked: None,
+            }),
+        ),
+        Err(StreamError::InvalidNesting)
+    ));
 }
 
 #[test]
