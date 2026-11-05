@@ -623,6 +623,30 @@ fn code_language_is_the_first_word_of_the_info_string() {
         )
         .unwrap();
     assert_written(&document, &options, "```&#x20;x\nv\n```\n");
+    // So no `<!---->` is written before it after a list or indented code, as it is fenced.
+    for (source, expected) in [
+        ("- a\n\n```x\nv\n```\n", "- a\n\n```&#x20;x\nv\n```\n"),
+        ("    i\n\n```x\nv\n```\n", "    i\n\n```&#x20;x\nv\n```\n"),
+    ] {
+        let mut document = Document::parse(source.to_string(), &ParseOptions::default()).unwrap();
+        let code = document
+            .children(document.root())
+            .filter(|&id| matches!(document.node(id).unwrap().kind, EventKind::CodeBlock { .. }))
+            .last()
+            .unwrap();
+        document
+            .set_kind(
+                code,
+                EventKind::CodeBlock {
+                    value: base_markdown::stream::Text::Literal("v\n"),
+                    info: Some(base_markdown::stream::Text::Literal(" x")),
+                    fence: None,
+                    unclosed: false,
+                },
+            )
+            .unwrap();
+        assert_written(&document, &options, expected);
+    }
 }
 
 /// A `~` at the start of the info string of a tilde fence is escaped, as it would lengthen the
