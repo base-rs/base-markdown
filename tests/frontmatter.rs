@@ -160,7 +160,7 @@ fn frontmatter() -> Result<(), message::Message> {
                 fence: '-',
                 fence_length: 3,
                 closing_fence_length: 3,
-                value: "a: b".into(),
+                value: "a: b\n".into(),
                 position: Some(Position::new(1, 1, 0, 3, 4, 12))
             })],
             position: Some(Position::new(1, 1, 0, 3, 4, 12))
@@ -176,7 +176,7 @@ fn frontmatter() -> Result<(), message::Message> {
                 fence: '+',
                 fence_length: 3,
                 closing_fence_length: 3,
-                value: "title = \"Jupyter\"".into(),
+                value: "title = \"Jupyter\"\n".into(),
                 position: Some(Position::new(1, 1, 0, 3, 4, 25))
             })],
             position: Some(Position::new(1, 1, 0, 3, 4, 25))
@@ -225,16 +225,21 @@ fn parse_frontmatter(source: &str) -> Frontmatter {
 #[test]
 fn delimiter_defaults_keep_the_authored_info_and_body() {
     for (source, language, info, body) in [
-        ("---\nname: Neptune\n---", "yaml", "", "name: Neptune"),
-        ("+++\nname = 'Neptune'\n+++", "toml", "", "name = 'Neptune'"),
+        ("---\nname: Neptune\n---", "yaml", "", "name: Neptune\n"),
+        (
+            "+++\nname = 'Neptune'\n+++",
+            "toml",
+            "",
+            "name = 'Neptune'\n",
+        ),
         ("--- \t\n---", "yaml", "", ""),
         ("+++\n+++", "toml", "", ""),
-        ("---\r\na: b\r\n---", "yaml", "", "a: b"),
-        ("+++\r\na = 1\r\n+++", "toml", "", "a = 1"),
-        ("+++\ra = 1\r+++", "toml", "", "a = 1"),
-        ("---\n\na: b\n\n---", "yaml", "", "\na: b\n"),
-        ("--- json title=x\n{}\n---", "json", "json title=x", "{}"),
-        ("+++ yaml\na: b\n+++", "yaml", "yaml", "a: b"),
+        ("---\r\na: b\r\n---", "yaml", "", "a: b\n"),
+        ("+++\r\na = 1\r\n+++", "toml", "", "a = 1\n"),
+        ("+++\ra = 1\r+++", "toml", "", "a = 1\n"),
+        ("---\n\na: b\n\n---", "yaml", "", "\na: b\n\n"),
+        ("--- json title=x\n{}\n---", "json", "json title=x", "{}\n"),
+        ("+++ yaml\na: b\n+++", "yaml", "yaml", "a: b\n"),
     ] {
         let node = parse_frontmatter(source);
         assert_eq!(node.language(), Some(language), "{source:?}");
@@ -260,32 +265,37 @@ fn delimiter_defaults_keep_the_authored_info_and_body() {
 #[test]
 fn tagged_frontmatter_keeps_opaque_info_and_literal_body() {
     for (source, fence, info, body) in [
-        ("---yaml\nname: Neptune\n---", '-', "yaml", "name: Neptune"),
-        ("--- json\n{}\n---", '-', "json", "{}"),
+        (
+            "---yaml\nname: Neptune\n---",
+            '-',
+            "yaml",
+            "name: Neptune\n",
+        ),
+        ("--- json\n{}\n---", '-', "json", "{}\n"),
         (
             "+++ custom\nraw &amp; \\* text\n+++",
             '+',
             "custom",
-            "raw &amp; \\* text",
+            "raw &amp; \\* text\n",
         ),
         (
             "--- \tjson\\+ &amp; title=planet \t\n\na\n\n \t\n---",
             '-',
             "json\\+ &amp; title=planet",
-            "\na\n\n \t",
+            "\na\n\n \t\n",
         ),
-        ("---\u{a0}\nraw\n---", '-', "\u{a0}", "raw"),
-        ("\u{feff}--- json\n{}\n---", '-', "json", "{}"),
-        ("+++\u{c}\nraw\n+++", '+', "\u{c}", "raw"),
+        ("---\u{a0}\nraw\n---", '-', "\u{a0}", "raw\n"),
+        ("\u{feff}--- json\n{}\n---", '-', "json", "{}\n"),
+        ("+++\u{c}\nraw\n+++", '+', "\u{c}", "raw\n"),
         (
             "--- ~format `metadata`\nraw\n---",
             '-',
             "~format `metadata`",
-            "raw",
+            "raw\n",
         ),
         ("+++json\n+++", '+', "json", ""),
-        ("--- json\r\n{}\r\n---", '-', "json", "{}"),
-        ("+++json\r{}\r+++ \t", '+', "json", "{}"),
+        ("--- json\r\n{}\r\n---", '-', "json", "{}\n"),
+        ("+++json\r{}\r+++ \t", '+', "json", "{}\n"),
     ] {
         let node = parse_frontmatter(source);
         assert_eq!(node.info, info, "{source:?}");
@@ -380,15 +390,15 @@ fn nonclosing_fence_lines_remain_in_the_body() {
     let source = "+++ json\n```\n~~~~\n++++\n+++ suffix\n +++\n+++";
     assert_eq!(
         parse_frontmatter(source).value,
-        "```\n~~~~\n++++\n+++ suffix\n +++"
+        "```\n~~~~\n++++\n+++ suffix\n +++\n"
     );
     assert_eq!(
         parse_frontmatter("---custom\n----\n--- suffix\n---").value,
-        "----\n--- suffix"
+        "----\n--- suffix\n"
     );
     assert_eq!(
         parse_frontmatter("---json\nbody\n---\n\n```rust\ncode\n```").value,
-        "body"
+        "body\n"
     );
 }
 
@@ -428,7 +438,7 @@ fn frontmatter_belongs_to_the_root() {
     let mut document = parse_document(source, &parse_options());
     let root = document.root();
     assert_eq!(document.node(root).unwrap().span, 0..23);
-    assert_eq!(document.frontmatter(), Some("{}"));
+    assert_eq!(document.frontmatter(), Some("{}\n"));
     assert_eq!(document.children(root).count(), 0);
     assert!(matches!(
         document.syntax(root),
@@ -465,7 +475,7 @@ fn an_edited_body_equal_to_the_whole_block_stays_an_edit() {
     for ending in ["\n", "\r\n", "\r"] {
         let source = "---\na\n---\n\nx\n".replace('\n', ending);
         let mut document = parse_document(source.as_str(), &parse_options());
-        assert_eq!(document.frontmatter(), Some("a"), "{source:?}");
+        assert_eq!(document.frontmatter(), Some("a\n"), "{source:?}");
         *document.frontmatter_mut().unwrap() = "---\na\n---".into();
         assert_eq!(document.frontmatter(), Some("---\na\n---"), "{source:?}");
         assert_eq!(
@@ -524,20 +534,20 @@ fn an_edited_body_equal_to_the_whole_block_stays_an_edit() {
 #[test]
 fn serialization_protects_edited_frontmatter_bodies() {
     for (source, body, expected) in [
-        ("--- json\n---", "--- \t", "+++ json\n--- \t\n+++\n"),
-        ("+++ json\n+++", "+++\nbody", "--- json\n+++\nbody\n---\n"),
+        ("--- json\n---", "--- \t\n", "+++ json\n--- \t\n+++\n"),
+        ("+++ json\n+++", "+++\nbody\n", "--- json\n+++\nbody\n---\n"),
         ("--- json\n---", "value", "--- json\nvalue\n---\n"),
         (
             "--- json\n---",
-            "----\n+++ x\n --- ",
+            "----\n+++ x\n --- \n",
             "--- json\n----\n+++ x\n --- \n---\n",
         ),
-        ("---\n---", "---", "+++ yaml\n---\n+++\n"),
-        ("+++\n+++", "+++", "--- toml\n+++\n---\n"),
+        ("---\n---", "---\n", "+++ yaml\n---\n+++\n"),
+        ("+++\n+++", "+++\n", "--- toml\n+++\n---\n"),
         ("---\n---", "value", "---\nvalue\n---\n"),
         ("+++\n+++", "value", "+++\nvalue\n+++\n"),
         ("+++\n+++", "", "+++\n+++\n"),
-        ("---\u{c}\n---", "---", "+++ yaml\n---\n+++\n"),
+        ("---\u{c}\n---", "---\n", "+++ yaml\n---\n+++\n"),
     ] {
         let mut frontmatter = parse_frontmatter(source);
         let language = frontmatter.language().map(str::to_owned);
@@ -545,8 +555,14 @@ fn serialization_protects_edited_frontmatter_bodies() {
         let output = Node::Frontmatter(frontmatter).to_markdown();
         assert_eq!(output, expected);
         assert_eq!(parse_frontmatter(&output).language(), language.as_deref());
-        // The writer adds the line ending before the closing fence, which the parser drops.
-        assert_eq!(parse_frontmatter(&output).value, body);
+        assert_eq!(
+            parse_frontmatter(&output).value,
+            if body.is_empty() || body.ends_with('\n') {
+                body.to_string()
+            } else {
+                format!("{body}\n")
+            }
+        );
     }
 }
 
@@ -558,20 +574,20 @@ fn serialization_finds_closing_lines_at_every_line_ending() {
             "---\n---",
             "a\r---\rb",
             "+++ yaml\na\n---\nb\n+++\n",
-            "a\n---\nb",
+            "a\n---\nb\n",
         ),
         (
             "---\n---",
-            "a\r\n--- \t\r\nb",
+            "a\r\n--- \t\r\nb\r\n",
             "+++ yaml\na\n--- \t\nb\n+++\n",
-            "a\n--- \t\nb",
+            "a\n--- \t\nb\n",
         ),
-        ("+++\n+++", "a\r+++", "--- toml\na\n+++\n---\n", "a\n+++"),
+        ("+++\n+++", "+++\r", "--- toml\n+++\n---\n", "+++\n"),
         (
             "--- json\n---",
-            "a\r----",
+            "a\r----\r",
             "--- json\na\n----\n---\n",
-            "a\n----",
+            "a\n----\n",
         ),
     ] {
         let mut frontmatter = parse_frontmatter(source);
@@ -599,7 +615,7 @@ fn serialization_finds_closing_lines_at_every_line_ending() {
 fn code_fence_frontmatter_syntax_is_written_with_delimiters() {
     // A hand-built node with a code-fence character, which no parsed node has any more, keeps its info as the format hint.
     for (fence, info, body, expected, language) in [
-        ('`', "json", "{}", "--- json\n{}\n---\n", "json"),
+        ('`', "json", "{}\n", "--- json\n{}\n---\n", "json"),
         (
             '~',
             "toml title=x",
@@ -607,8 +623,8 @@ fn code_fence_frontmatter_syntax_is_written_with_delimiters() {
             "--- toml title=x\na = 1\n---\n",
             "toml",
         ),
-        ('`', "", "a: b", "---\na: b\n---\n", "yaml"),
-        ('~', "json", "---", "+++ json\n---\n+++\n", "json"),
+        ('`', "", "a: b\n", "---\na: b\n---\n", "yaml"),
+        ('~', "json", "---\n", "+++ json\n---\n+++\n", "json"),
     ] {
         let output = Node::Frontmatter(Frontmatter {
             value: body.into(),
@@ -623,7 +639,14 @@ fn code_fence_frontmatter_syntax_is_written_with_delimiters() {
         let reparsed = parse_frontmatter(&output);
         assert_eq!(reparsed.language(), Some(language));
         assert_eq!(reparsed.info, info);
-        assert_eq!(reparsed.value, body);
+        assert_eq!(
+            reparsed.value,
+            if body.ends_with('\n') {
+                body.to_string()
+            } else {
+                format!("{body}\n")
+            }
+        );
     }
 }
 
@@ -672,7 +695,7 @@ fn frontmatter_serde_roundtrip_preserves_body_and_fences() {
     let json = serde_json::to_string(&document).unwrap();
     let restored: Document = serde_json::from_str(&json).unwrap();
     let id = restored.root();
-    assert_eq!(restored.frontmatter(), Some("raw"));
+    assert_eq!(restored.frontmatter(), Some("raw\n"));
     let NodeSyntax::Frontmatter {
         info,
         fence,
@@ -710,5 +733,38 @@ fn rejected_multiline_frontmatter_restores_line_positions() {
         base_markdown::render_events(source, document.events(), &options.compile, &mut output)
             .unwrap();
         assert_eq!(output, expected);
+    }
+}
+
+#[test]
+fn parsed_bodies_of_blank_lines_are_written_as_they_were() {
+    // Each line of the body keeps its line ending, so no lines and one blank line differ.
+    for (fence, written) in [
+        ("---", "---"),
+        ("+++", "+++"),
+        ("--- yaml", "--- yaml"),
+        ("+++toml", "+++ toml"),
+    ] {
+        let close = &fence[..3];
+        for body in ["", "\n", "\n\n", "a\n", "\na\n\n"] {
+            let expected = format!("{written}\n{body}{close}\n\n# h\n");
+            for ending in ["\n", "\r\n", "\r"] {
+                for bom in ["", "\u{feff}"] {
+                    let source =
+                        format!("{bom}{fence}\n{body}{close}\n# h\n").replace('\n', ending);
+                    let mut document = parse_document(&source, &parse_options());
+                    assert_eq!(document.frontmatter(), Some(body), "{:?}", source);
+                    assert!(document.is_normalized(), "{:?}", source);
+                    assert_eq!(base_markdown::to_markdown(&document).unwrap(), expected);
+                    document.normalize();
+                    assert_eq!(base_markdown::to_markdown(&document).unwrap(), expected);
+                    assert_eq!(
+                        base_markdown::normalize_markdown_with_options(&source, &parse_options())
+                            .unwrap(),
+                        expected
+                    );
+                }
+            }
+        }
     }
 }

@@ -222,7 +222,7 @@ fn frontmatter_holds_output_until_it_closes() {
     // Frontmatter is the root's, not an event, so it is read once it closes.
     assert_eq!(parser.frontmatter(), None);
     assert_eq!(parser.push("---\n\n").count(), 0);
-    assert_eq!(parser.frontmatter(), Some("title: x\n\nbody\n"));
+    assert_eq!(parser.frontmatter(), Some("title: x\n\nbody\n\n"));
     // The closing fence alone does not show the block is complete: the frontmatter is read once
     // the next complete line arrives, or at the end.
     for (rest, read) in [("\n", true), ("# a\n", true), ("a\n", true), ("a", false)] {
@@ -232,7 +232,7 @@ fn frontmatter_holds_output_until_it_closes() {
         parser.push(rest).count();
         assert_eq!(parser.frontmatter().is_some(), read, "{:?}", rest);
         parser.finish().count();
-        assert_eq!(parser.frontmatter(), Some("a"));
+        assert_eq!(parser.frontmatter(), Some("a\n"));
     }
     // Fences that cannot open frontmatter are ordinary blocks.
     for opening in ["```\n", "~~~\n", "```a`b\n"] {

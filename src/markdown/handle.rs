@@ -652,9 +652,9 @@ impl State<'_> {
             self.output.push_str(info);
         }
         self.output.push('\n');
-        // The body holds the lines between the fences without the line ending before the closing
-        // fence, so one is written there, except after an empty body.
-        let needs_line_ending = !body.is_empty();
+        // A parsed body ends each of its lines with a line ending, so one is written before the
+        // closing fence only after a body that is not empty and has none, which normalizing adds.
+        let needs_line_ending = !body.is_empty() && !body.ends_with(['\r', '\n']);
         self.output
             .reserve(body.len() + fence.len() + usize::from(needs_line_ending) + 1);
         self.output.push_str(body);

@@ -22,6 +22,7 @@ A panic fails the test whatever the baseline.
 | `soup` | Single characters from `*_~a. \n\`. |
 | `edge` | Markers next to `&#x20;`, `&#xA;`, `&#x9;`, encoded letters and escaped markers, sometimes in a heading, table cell, item or quote. |
 | `strike` | Tilde runs of every length among letters, digits, attention, escapes, code and links. |
+| `frontmatter` | Frontmatter of zero to three body lines, blank or not, after `---` or `+++` with or without a format hint, with LF, CRLF or CR line endings and an optional byte order mark, and a little Markdown after it. The generator knows the body the parser should store, each line with its line ending as LF, and a parsed body that differs fails as `tree`, as a body read wrongly may read back as itself. |
 | `tree-asterisk`, `tree-underscore` | The same hand-built paragraphs, headings and table cells of nested emphasis, strong, strikethrough, links, code and breaks, serialized with `*` and with `_` as the emphasis and strong marker. Hard breaks also fall at the end of a block or attention and in table cells, where Markdown cannot write them, so normalizing moves them out of attention, removes them at the end of a paragraph or heading, and turns them into a space in a table cell. Soft breaks fall anywhere in phrasing, next to whitespace text and other breaks; the generator builds each as text `\n`, which the reference HTML renders the same, and the harness turns it into a soft break before normalizing. |
 
 Each corpus has its own seed and a small xorshift generator, so the inputs and counts are the same on every platform, and the first inputs of a larger run are the inputs of a smaller one.
@@ -57,7 +58,7 @@ git worktree add /tmp/fuzz-main origin/main
 FUZZ_INPUTS=1000000 FUZZ_OUTPUT=/tmp/fuzz/branch cargo test --release --test roundtrip_fuzz round_trip_fuzz -- --nocapture
 
 export LC_ALL=C # The lists are sorted bytewise.
-for corpus in realistic soup edge strike tree-asterisk tree-underscore; do
+for corpus in realistic soup edge strike frontmatter tree-asterisk tree-underscore; do
 	echo "$corpus: $(comm -13 /tmp/fuzz/main/$corpus.txt /tmp/fuzz/branch/$corpus.txt | wc -l) new, $(comm -23 /tmp/fuzz/main/$corpus.txt /tmp/fuzz/branch/$corpus.txt | wc -l) fixed"
 done
 comm -13 /tmp/fuzz/main/edge.txt /tmp/fuzz/branch/edge.txt | head

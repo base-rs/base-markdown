@@ -273,8 +273,8 @@ pub enum Tag<'a> {
         /// The output line ending: LF when the source has a line ending, since parsed values
         /// store every line ending as LF, or `None` when it has none.
         line_ending: Option<LineEnding>,
-        /// The body of the document's frontmatter, without its fences or the line ending before
-        /// the closing fence, or `None` when it has none. A root with frontmatter holds blocks, so an
+        /// The body of the document's frontmatter, the lines between its fences, each with its
+        /// line ending, or `None` when it has none. A root with frontmatter holds blocks, so an
         /// inline root has none. It is omitted from HTML. See [`Constructs::frontmatter`][crate::Constructs::frontmatter].
         frontmatter: Option<Text<'a>>,
     },

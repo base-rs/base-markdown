@@ -474,8 +474,15 @@ fn a_serialized_document_starts_inside_no_other() {
 }
 
 #[test]
-fn frontmatter_is_written_with_one_final_line_ending() {
-    for (body, written) in [("a", "---\na\n---\n\nb\n"), ("", "---\n---\n\nb\n")] {
+fn normalizing_ends_frontmatter_with_a_line_ending() {
+    // The parser stores each line of the body with its line ending, so a body without a final one
+    // gets one, and an empty body stays.
+    for (body, normal, written) in [
+        ("a", "a\n", "---\na\n---\n\nb\n"),
+        ("a\n", "a\n", "---\na\n---\n\nb\n"),
+        ("\n", "\n", "---\n\n---\n\nb\n"),
+        ("", "", "---\n---\n\nb\n"),
+    ] {
         let mut document = empty();
         let root = document.root();
         document.set_kind(root, document_start(Some(body))).unwrap();
@@ -485,29 +492,31 @@ fn frontmatter_is_written_with_one_final_line_ending() {
         document
             .append_child(paragraph, EventKind::Text(Text::Literal("b")))
             .unwrap();
+        assert_eq!(document.is_normalized(), body == normal, "{:?}", body);
+        document.normalize();
         assert!(document.is_normalized());
+        assert_eq!(document.frontmatter(), Some(normal));
         let markdown = to_markdown(&document).unwrap();
         assert_eq!(markdown, written);
         let reparsed = Document::parse(markdown, &ParseOptions::default()).unwrap();
-        assert_eq!(reparsed.frontmatter(), Some(body));
+        assert_eq!(reparsed.frontmatter(), Some(normal));
     }
 }
 
 #[test]
 fn frontmatter_line_endings_are_normalized_to_line_feeds() {
-    for body in ["a\rb", "a\r\nb", "a\r"] {
+    for (body, normal) in [("a\rb", "a\nb\n"), ("a\r\nb", "a\nb\n"), ("a\r", "a\n")] {
         let mut document = empty();
         let root = document.root();
         document.set_kind(root, document_start(Some(body))).unwrap();
         assert!(!document.is_normalized());
         document.normalize();
         assert!(document.is_normalized());
-        let normalized = document.frontmatter().unwrap().to_owned();
-        assert!(!normalized.contains('\r'), "{:?}", normalized);
+        assert_eq!(document.frontmatter(), Some(normal));
         document.normalize();
-        assert_eq!(document.frontmatter(), Some(normalized.as_str()));
+        assert_eq!(document.frontmatter(), Some(normal));
         let reparsed =
             Document::parse(to_markdown(&document).unwrap(), &ParseOptions::default()).unwrap();
-        assert_eq!(reparsed.frontmatter(), Some(normalized.as_str()));
+        assert_eq!(reparsed.frontmatter(), Some(normal));
     }
 }

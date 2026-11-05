@@ -319,9 +319,10 @@ fn frontmatter_edits_detach_the_body_and_keep_fence_metadata() {
         assert_eq!(html(&document), "");
         let output = base_markdown::to_markdown(&document).unwrap();
         let reparsed = Document::parse(output.as_str(), &options).unwrap();
-        // The body has no line ending before the closing fence, which the writer adds, so the
-        // edit reads back as it is.
-        assert_eq!(reparsed.frontmatter(), document.frontmatter());
+        assert_eq!(
+            reparsed.frontmatter(),
+            Some(format!("{before}edited!\n").as_str())
+        );
     }
     // A built document gets frontmatter through its root, and the fences through its syntax.
     let mut document = empty();
