@@ -859,17 +859,33 @@ impl<'a> State<'a> {
                     self.depth += 1;
                     Ok(())
                 }
-                Tag::Link { destination, title } | Tag::Image { destination, title } => {
+                Tag::Link {
+                    destination,
+                    title,
+                    reference,
+                }
+                | Tag::Image {
+                    destination,
+                    title,
+                    reference,
+                } => {
                     let image = matches!(tag, Tag::Image { .. });
                     let destination = destination.resolve(source).unwrap();
                     let title = title.as_ref().map(|value| value.resolve(source).unwrap());
-                    if let Some(NodeSyntax::Reference { kind, label }) = document.syntax(id) {
-                        let label = label.resolve(source).unwrap();
-                        if self.reference_matches(document, id, label, destination, title) {
-                            let result =
-                                self.reference(document, id, kind, label, image, info.after);
+                    if let Some(reference) = reference {
+                        let label = reference.label.resolve(source).unwrap();
+                        if self.reference_matches(document, id, label, destination, title)
+                            && self.reference(
+                                document,
+                                id,
+                                reference.kind,
+                                label,
+                                image,
+                                info.after,
+                            )?
+                        {
                             self.depth -= 1;
-                            return result;
+                            return Ok(());
                         }
                     }
                     self.resource(document, id, destination, title, image)
@@ -881,12 +897,12 @@ impl<'a> State<'a> {
                     let rows = flow_children(document, id).map(|row| (row, false));
                     self.render_table_rows(document, rows, false)
                 }
-                Tag::FootnoteDefinition(label) => {
-                    let syntax = document.syntax(id);
-                    let label = match &syntax {
-                        Some(NodeSyntax::Footnote { label }) => label.resolve(source).unwrap(),
-                        _ => label.resolve(source).unwrap(),
-                    };
+                Tag::FootnoteDefinition { identifier, label } => {
+                    let label = label
+                        .as_ref()
+                        .unwrap_or(identifier)
+                        .resolve(source)
+                        .unwrap();
                     self.output.push_str("[^");
                     self.output.push_str(label);
                     self.output.push_str("]:");
@@ -949,12 +965,12 @@ impl<'a> State<'a> {
                 destination.resolve(source).unwrap(),
                 title.as_ref().map(|value| value.resolve(source).unwrap()),
             ),
-            EventKind::FootnoteReference(label) => {
-                let syntax = document.syntax(id);
-                let label = match &syntax {
-                    Some(NodeSyntax::Footnote { label }) => label.resolve(source).unwrap(),
-                    _ => label.resolve(source).unwrap(),
-                };
+            EventKind::FootnoteReference { identifier, label } => {
+                let label = label
+                    .as_ref()
+                    .unwrap_or(identifier)
+                    .resolve(source)
+                    .unwrap();
                 self.output.push_str("[^");
                 self.output.push_str(label);
                 self.output.push(']');
@@ -1270,9 +1286,13 @@ impl<'a> State<'a> {
             EventKind::Start(Tag::Strong) => Some(self.options.strong),
             EventKind::Start(Tag::Delete) => Some('~'),
             EventKind::Start(Tag::Image { .. }) => Some('!'),
-            EventKind::Start(Tag::Link { destination, title }) => Some(
-                if matches!(document.syntax(id), Some(NodeSyntax::Reference { label, .. })
-                    if self.reference_matches(document, id, label.resolve(document.source()).unwrap(),
+            EventKind::Start(Tag::Link {
+                destination,
+                title,
+                reference,
+            }) => Some(
+                if matches!(reference, Some(reference)
+                    if self.reference_matches(document, id, reference.label.resolve(document.source()).unwrap(),
                         destination.resolve(document.source()).unwrap(),
                         title.as_ref().map(|value| value.resolve(document.source()).unwrap())))
                 {
@@ -1647,7 +1667,7 @@ pub(crate) fn is_phrasing(kind: &EventKind<'_>) -> bool {
             Tag::Delete | Tag::Emphasis | Tag::Image { .. } | Tag::Link { .. } | Tag::Strong
         ) | EventKind::HardBreak
             | EventKind::SoftBreak(_)
-            | EventKind::FootnoteReference(_)
+            | EventKind::FootnoteReference { .. }
             | EventKind::Code { .. }
             | EventKind::Text(_)
             | EventKind::Html { block: false, .. }
@@ -1691,7 +1711,7 @@ fn fences_code<S: AsRef<str>>(
     spread: bool,
 ) -> bool {
     before.is_some_and(|before| match document.node(before).unwrap().kind {
-        EventKind::Start(Tag::FootnoteDefinition(_)) => true,
+        EventKind::Start(Tag::FootnoteDefinition { .. }) => true,
         EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. } => {
             !spread && in_list(document, parent)
         }
@@ -1747,7 +1767,10 @@ fn ends_in_paragraph<S: AsRef<str>>(document: &Document<S>, mut id: NodeId) -> b
         match document.node(last).unwrap().kind {
             EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. } => return true,
             EventKind::Start(
-                Tag::BlockQuote | Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition(_),
+                Tag::BlockQuote
+                | Tag::List { .. }
+                | Tag::Item { .. }
+                | Tag::FootnoteDefinition { .. },
             ) => id = last,
             _ => return false,
         }
@@ -1765,7 +1788,7 @@ fn ends_in_list_or_footnote_definition<S: AsRef<str>>(
     flow_children(document, quote).last().is_some_and(|last| {
         matches!(
             document.node(last).unwrap().kind,
-            EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition(_))
+            EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition { .. })
         )
     })
 }
@@ -1807,7 +1830,7 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
             matches!(right_kind, EventKind::Start(Tag::BlockQuote))
                 || ends_in_list_or_footnote_definition(document, left) && lazy()
         }
-        EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition(_)) => lazy(),
+        EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition { .. }) => lazy(),
         _ => false,
     }
 }

@@ -266,7 +266,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     self.write("<del>")?;
                 }
             }
-            Tag::Link { destination, title } => {
+            Tag::Link {
+                destination, title, ..
+            } => {
                 if tags {
                     self.write("<a href=\"")?;
                     self.destination(
@@ -287,7 +289,9 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     self.write("\">")?;
                 }
             }
-            Tag::Image { destination, title } => {
+            Tag::Image {
+                destination, title, ..
+            } => {
                 frame.flag = tags;
                 if tags {
                     self.write("<img src=\"")?;
@@ -335,8 +339,8 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     (false, crate::AlignKind::None) => "<td>",
                 })?;
             }
-            Tag::FootnoteDefinition(label) => {
-                let key = label
+            Tag::FootnoteDefinition { identifier, .. } => {
+                let key = identifier
                     .resolve(self.source)
                     .expect("event values are source-valid")
                     .to_string();
@@ -641,8 +645,8 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         }
                     }
                     EventKind::Definition { .. } => Ok(()),
-                    EventKind::FootnoteReference(value) => self.footnote_call(
-                        value
+                    EventKind::FootnoteReference { identifier, .. } => self.footnote_call(
+                        identifier
                             .resolve(self.source)
                             .expect("event values are source-valid"),
                     ),
@@ -669,7 +673,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 return Ok(());
             }
             EventKind::End(_) | EventKind::Start(Tag::Document { .. }) => return Ok(()),
-            EventKind::FootnoteReference(_) if self.links != 0 => {
+            EventKind::FootnoteReference { .. } if self.links != 0 => {
                 return Err(StreamError::InvalidNesting)
             }
             _ => {}

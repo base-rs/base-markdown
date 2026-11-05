@@ -1160,7 +1160,7 @@ fn table_definition_header(bytes: &[u8]) -> bool {
     false
 }
 
-fn footnote_prefix(bytes: &[u8], start: usize) -> Option<(Range<usize>, usize)> {
+pub(crate) fn footnote_prefix(bytes: &[u8], start: usize) -> Option<(Range<usize>, usize)> {
     if !bytes[start..].starts_with(b"[^") {
         return None;
     }

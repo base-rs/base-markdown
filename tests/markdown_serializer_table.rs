@@ -4,7 +4,7 @@
 mod support;
 use base_markdown::{
     stream::{EventKind, Tag, Text},
-    to_html_with_options, to_markdown, Document, NodeSyntax, Options, ParseOptions, ReferenceKind,
+    to_html_with_options, to_markdown, Document, Options, ParseOptions, ReferenceKind,
 };
 use pretty_assertions::assert_eq;
 use support::linear::{assert_linear, timed};
@@ -130,15 +130,13 @@ fn table_cells_escape_bare_pipes_in_edited_reference_labels() {
             )
         })
         .unwrap();
-    document
-        .set_syntax(
-            link,
-            Some(NodeSyntax::Reference {
-                kind: ReferenceKind::Full,
-                label: Text::Literal("a|b"),
-            }),
-        )
-        .unwrap();
+    support::fixture::set_reference(
+        &mut document,
+        link,
+        ReferenceKind::Full,
+        Text::Literal("a|b"),
+    )
+    .unwrap();
     let definition = document
         .descendants(document.root())
         .find(|&id| {

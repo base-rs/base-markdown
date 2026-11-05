@@ -579,10 +579,7 @@ fn multiline_labels_in_containers_round_trip() {
 
 /// Set the inferred label of the first link in `document` back, and return it.
 fn set_label_back(document: &mut Document<String>) -> String {
-    use base_markdown::{
-        stream::{EventKind, Tag, Text as Value},
-        NodeSyntax,
-    };
+    use base_markdown::stream::{EventKind, Reference, Tag, Text as Value};
     let link = document
         .descendants(document.root())
         .find(|&id| {
@@ -592,15 +589,15 @@ fn set_label_back(document: &mut Document<String>) -> String {
             )
         })
         .expect("the reference is read");
-    let Some(NodeSyntax::Reference { kind, label }) = document.syntax(link) else {
-        panic!("a reference has reference syntax");
+    let EventKind::Start(Tag::Link {
+        reference: Some(Reference { kind, label }),
+        ..
+    }) = document.node(link).unwrap().kind.clone()
+    else {
+        panic!("a reference has its reference");
     };
     let label = label.resolve(document.source()).unwrap().to_string();
-    let syntax = NodeSyntax::Reference {
-        kind,
-        label: Value::from(label.clone()),
-    };
-    document.set_syntax(link, Some(syntax)).unwrap();
+    support::fixture::set_reference(document, link, kind, Value::from(label.clone())).unwrap();
     label
 }
 
@@ -801,4 +798,31 @@ fn labels_up_to_the_parser_limit_round_trip() {
     let source = format!("[^{0}] x\n\n[^{0}]: n", "a".repeat(999));
     let document = Document::parse(source.clone(), &ParseOptions::default()).unwrap();
     assert_round_trip(document, &ParseOptions::default(), &format!("{source}\n"));
+}
+
+#[test]
+fn shortcut_labels_longer_than_a_full_label_round_trip() {
+    use base_markdown::stream::{EventKind, Text as Value};
+    // The parser reads a shortcut or collapsed label at any size, but not a full one.
+    let tabs = "\t".repeat(251);
+    for form in ["", "[]"] {
+        let source = format!("[a{tabs}b]{form} x\n\n[a b]: /u");
+        let document = Document::parse(source.clone(), &ParseOptions::default()).unwrap();
+        assert_round_trip(document, &ParseOptions::default(), &format!("{source}\n"));
+        // Once its text no longer matches its label, it cannot be written full, so it is a
+        // resource.
+        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+        let text = document
+            .descendants(document.root())
+            .find(|&id| matches!(document.node(id).unwrap().kind, EventKind::Text(_)))
+            .unwrap();
+        document
+            .set_kind(text, EventKind::Text(Value::Literal("c")))
+            .unwrap();
+        assert_round_trip(
+            document,
+            &ParseOptions::default(),
+            "[c](/u) x\n\n[a b]: /u\n",
+        );
+    }
 }

@@ -127,7 +127,10 @@ mod tests {
             alloc::vec![],
             alloc::vec![EventKind::Text(Text::Literal(""))],
             alloc::vec![EventKind::Start(Tag::Emphasis)],
-            alloc::vec![EventKind::FootnoteReference(Text::Literal("label"))],
+            alloc::vec![EventKind::FootnoteReference {
+                identifier: Text::Literal("LABEL"),
+                label: Some(Text::Literal("label")),
+            }],
         ] {
             assert!(!eligible(1, &children));
         }

@@ -22,7 +22,12 @@ fn document(body: Vec<EventKind<'static>>) -> Vec<Result<Event<'static>, StreamE
 
 #[test]
 fn footnotes_keep_call_order_and_the_first_completed_definition() {
-    let definition = |key| EventKind::Start(Tag::FootnoteDefinition(Text::Literal(key)));
+    let definition = |key| {
+        EventKind::Start(Tag::FootnoteDefinition {
+            identifier: Text::Literal(key),
+            label: None,
+        })
+    };
     let end = || EventKind::End(TagKind::FootnoteDefinition);
     let paragraph = |inner: Vec<EventKind<'static>>| {
         let mut events = vec![EventKind::Start(Tag::Paragraph { tight: false })];
@@ -36,10 +41,22 @@ fn footnotes_keep_call_order_and_the_first_completed_definition() {
         paragraph(text("hidden")),
         vec![end()],
         paragraph(vec![
-            EventKind::FootnoteReference(Text::Literal("B")),
-            EventKind::FootnoteReference(Text::Literal("Z")),
-            EventKind::FootnoteReference(Text::Literal("ΟΣ")),
-            EventKind::FootnoteReference(Text::Literal("B")),
+            EventKind::FootnoteReference {
+                identifier: Text::Literal("B"),
+                label: None,
+            },
+            EventKind::FootnoteReference {
+                identifier: Text::Literal("Z"),
+                label: None,
+            },
+            EventKind::FootnoteReference {
+                identifier: Text::Literal("ΟΣ"),
+                label: None,
+            },
+            EventKind::FootnoteReference {
+                identifier: Text::Literal("B"),
+                label: None,
+            },
         ]),
         vec![definition("Z"), end(), definition("Z")],
         paragraph(text("ignored")),
@@ -108,7 +125,13 @@ fn footnote_ids_survive_a_call_writer_failure() {
         }
         if reference {
             renderer
-                .event(event(EventKind::FootnoteReference(Text::Literal("É"))).unwrap())
+                .event(
+                    event(EventKind::FootnoteReference {
+                        identifier: Text::Literal("É"),
+                        label: None,
+                    })
+                    .unwrap(),
+                )
                 .unwrap();
         }
         drop(renderer);
@@ -126,13 +149,25 @@ fn footnote_ids_survive_a_call_writer_failure() {
             renderer.event(event(kind).unwrap()).unwrap();
         }
         assert!(matches!(
-            renderer.event(event(EventKind::FootnoteReference(Text::Literal("É"))).unwrap()),
+            renderer.event(
+                event(EventKind::FootnoteReference {
+                    identifier: Text::Literal("É"),
+                    label: None
+                })
+                .unwrap()
+            ),
             Err(StreamError::Write(_))
         ));
         for kind in [
-            EventKind::FootnoteReference(Text::Literal("É")),
+            EventKind::FootnoteReference {
+                identifier: Text::Literal("É"),
+                label: None,
+            },
             EventKind::End(TagKind::Paragraph),
-            EventKind::Start(Tag::FootnoteDefinition(Text::Literal("É"))),
+            EventKind::Start(Tag::FootnoteDefinition {
+                identifier: Text::Literal("É"),
+                label: None,
+            }),
             EventKind::Start(Tag::Paragraph { tight: false }),
             EventKind::Text(Text::Literal("body")),
             EventKind::End(TagKind::Paragraph),
@@ -153,12 +188,17 @@ fn all_invalid_metadata_is_rejected_before_rendering_or_editing() {
         EventKind::Start(Tag::Link {
             destination: bad(),
             title: None,
+            reference: None,
         }),
         EventKind::Start(Tag::Image {
             destination: Text::Literal("x"),
             title: Some(bad()),
+            reference: None,
         }),
-        EventKind::Start(Tag::FootnoteDefinition(bad())),
+        EventKind::Start(Tag::FootnoteDefinition {
+            identifier: bad(),
+            label: None,
+        }),
         EventKind::Code {
             value: bad(),
             language: None,
@@ -667,7 +707,10 @@ fn writer_failures_propagate_from_every_output_position() {
     )
     .unwrap_err();
     assert!(matches!(error, StreamError::InvalidRange));
-    let missing = document(vec![EventKind::FootnoteReference(Text::Literal("missing"))]);
+    let missing = document(vec![EventKind::FootnoteReference {
+        identifier: Text::Literal("missing"),
+        label: None,
+    }]);
     assert!(matches!(
         render_events("", missing, &Options::default().compile, &mut String::new()),
         Err(StreamError::Unbalanced)
@@ -782,9 +825,16 @@ fn capture_nesting_is_checked_during_construction_rendering_and_edits() {
         Tag::Image {
             destination: Text::Literal("x"),
             title: None,
+            reference: None,
         },
     ] {
-        for child in [Tag::Heading(2), Tag::FootnoteDefinition(Text::Literal("x"))] {
+        for child in [
+            Tag::Heading(2),
+            Tag::FootnoteDefinition {
+                identifier: Text::Literal("x"),
+                label: None,
+            },
+        ] {
             // Directly inside the parent, and inside a non-capturing container in it.
             for wrap in [false, true] {
                 let mut body = vec![EventKind::Start(parent.clone())];
@@ -831,6 +881,7 @@ fn capture_nesting_is_checked_during_construction_rendering_and_edits() {
             EventKind::Start(Tag::Image {
                 destination: Text::Literal("x"),
                 title: None,
+                reference: None
             }),
         ),
         Err(StreamError::InvalidNesting)
@@ -843,6 +894,7 @@ fn custom_phrasing_inside_images_contributes_only_alt_text() {
         let mut events = vec![EventKind::Start(Tag::Image {
             destination: Text::Literal("x"),
             title: None,
+            reference: None,
         })];
         events.extend(inner);
         events.push(EventKind::End(TagKind::Image));
@@ -992,12 +1044,21 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
             ],
         ),
         wrap(
-            &[Tag::FootnoteDefinition(Text::Literal("X")), paragraph()],
+            &[
+                Tag::FootnoteDefinition {
+                    identifier: Text::Literal("X"),
+                    label: None,
+                },
+                paragraph(),
+            ],
             vec![text()],
         ),
         wrap(
             &[paragraph()],
-            vec![EventKind::FootnoteReference(Text::Literal("X"))],
+            vec![EventKind::FootnoteReference {
+                identifier: Text::Literal("X"),
+                label: None,
+            }],
         ),
     ]
     .concat();
@@ -1028,6 +1089,7 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
     let mut body = vec![EventKind::Start(Tag::Image {
         destination: Text::Literal("x"),
         title: None,
+        reference: None,
     })];
     for tag in [
         Tag::Emphasis,
@@ -1036,6 +1098,7 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
         Tag::Link {
             destination: Text::Literal("y"),
             title: None,
+            reference: None,
         },
     ] {
         let kind = tag.kind();
@@ -1132,11 +1195,13 @@ fn deferred_image_titles_retain_values_until_the_image_closes() {
             EventKind::Start(Tag::Image {
                 destination: Text::Literal("image"),
                 title: Some(title),
+                reference: None,
             }),
             EventKind::Text(Text::Literal("outer ")),
             EventKind::Start(Tag::Image {
                 destination: Text::Literal("nested"),
                 title: Some(Text::Literal("ignored")),
+                reference: None,
             }),
             EventKind::Text(Text::Literal("inner")),
             EventKind::End(TagKind::Image),
@@ -1170,6 +1235,7 @@ fn deferred_image_titles_retain_values_until_the_image_closes() {
                 kind: EventKind::Start(Tag::Image {
                     destination: Text::Literal("image"),
                     title: Some(Text::Value(Cow::Borrowed(&title))),
+                    reference: None,
                 }),
             })
             .unwrap();
@@ -1210,9 +1276,10 @@ fn a_mismatched_end_still_closes_a_capturing_frame() {
         .is_err());
     renderer
         .event(
-            event(EventKind::Start(Tag::FootnoteDefinition(Text::Literal(
-                "x",
-            ))))
+            event(EventKind::Start(Tag::FootnoteDefinition {
+                identifier: Text::Literal("x"),
+                label: None,
+            }))
             .unwrap(),
         )
         .unwrap();

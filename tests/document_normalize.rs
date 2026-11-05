@@ -401,6 +401,7 @@ fn unwraps_links_in_links_that_are_not_autolinks() {
             EventKind::Start(Tag::Link {
                 destination: Text::Literal("http://a.b"),
                 title: Some(Text::Literal("t")),
+                reference: None,
             }),
         )
         .unwrap();
@@ -1130,6 +1131,7 @@ fn link(
         Tag::Link {
             destination: Text::Literal("http://a.b"),
             title: None,
+            reference: None,
         },
         TagKind::Link,
         children,
@@ -2170,6 +2172,7 @@ fn image(
         Tag::Image {
             destination: Text::Literal("u"),
             title: None,
+            reference: None,
         },
         TagKind::Image,
         children,
@@ -2306,7 +2309,10 @@ fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) 
             let definition = document
                 .append_child(
                     parent,
-                    EventKind::Start(Tag::FootnoteDefinition(Text::from("1".to_owned()))),
+                    EventKind::Start(Tag::FootnoteDefinition {
+                        identifier: Text::from("1".to_owned()),
+                        label: None,
+                    }),
                 )
                 .unwrap();
             for block in blocks {

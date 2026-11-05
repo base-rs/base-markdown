@@ -354,7 +354,7 @@ impl State<'_> {
         label: &str,
         image: bool,
         after: &str,
-    ) -> Result<(), Message> {
+    ) -> Result<bool, Message> {
         let start = self.output.len();
         let text = self.link_label(document, node, image, "]")?;
         self.output.push_str("][");
@@ -371,6 +371,12 @@ impl State<'_> {
             || text.is_empty()
             || self.output[text] != self.output[reference_start..]
         {
+            // The parser reads a shortcut or collapsed reference's label at any size, but a full
+            // reference's only as long as `label_fits` allows: one that is longer is not written.
+            if !matches!(kind, ReferenceKind::Full) && !crate::node_syntax::label_fits(label) {
+                self.output.truncate(start);
+                return Ok(false);
+            }
             self.output.push(']');
         } else {
             self.output.truncate(reference_start);
@@ -385,7 +391,7 @@ impl State<'_> {
                 self.output.push(']');
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     fn link_label<S: AsRef<str>>(

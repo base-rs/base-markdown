@@ -9,7 +9,7 @@ pub use base_markdown::{AlignKind, CodeFence, ReferenceKind};
 use base_markdown::{Document, NodeId, NodeSyntax, ParseOptions};
 use std::collections::BTreeMap;
 
-use base_markdown::stream::{EventKind, Tag};
+use base_markdown::stream::{EventKind, Reference, Tag};
 /// Historical source coordinates retained only as fixture descriptions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Position([usize; 6]);
@@ -488,45 +488,43 @@ fn append(
         Node::Link(n) => EventKind::Start(Tag::Link {
             destination: value(&n.url),
             title: title(&n.title),
+            reference: None,
         }),
         Node::Image(n) => EventKind::Start(Tag::Image {
             destination: value(&n.url),
             title: title(&n.title),
+            reference: None,
         }),
         Node::LinkReference(n) => {
-            syntax = Some(NodeSyntax::Reference {
-                kind: n.reference_kind,
-                label: association(n.label.as_deref(), &n.identifier),
-            });
             let resource = definitions.get(&normalize(&n.identifier));
             EventKind::Start(Tag::Link {
                 destination: value(resource.map_or("", |r| r.0.as_str())),
                 title: resource.and_then(|r| title(&r.1)),
+                reference: Some(Reference {
+                    kind: n.reference_kind,
+                    label: association(n.label.as_deref(), &n.identifier),
+                }),
             })
         }
         Node::ImageReference(n) => {
-            syntax = Some(NodeSyntax::Reference {
-                kind: n.reference_kind,
-                label: association(n.label.as_deref(), &n.identifier),
-            });
             let resource = definitions.get(&normalize(&n.identifier));
             EventKind::Start(Tag::Image {
                 destination: value(resource.map_or("", |r| r.0.as_str())),
                 title: resource.and_then(|r| title(&r.1)),
+                reference: Some(Reference {
+                    kind: n.reference_kind,
+                    label: association(n.label.as_deref(), &n.identifier),
+                }),
             })
         }
-        Node::FootnoteDefinition(n) => {
-            syntax = Some(NodeSyntax::Footnote {
-                label: value(n.label.as_deref().unwrap_or(&n.identifier)),
-            });
-            EventKind::Start(Tag::FootnoteDefinition(value(&normalize(&n.identifier))))
-        }
-        Node::FootnoteReference(n) => {
-            syntax = Some(NodeSyntax::Footnote {
-                label: value(n.label.as_deref().unwrap_or(&n.identifier)),
-            });
-            EventKind::FootnoteReference(value(&normalize(&n.identifier)))
-        }
+        Node::FootnoteDefinition(n) => EventKind::Start(Tag::FootnoteDefinition {
+            identifier: value(&normalize(&n.identifier)),
+            label: Some(value(n.label.as_deref().unwrap_or(&n.identifier))),
+        }),
+        Node::FootnoteReference(n) => EventKind::FootnoteReference {
+            identifier: value(&normalize(&n.identifier)),
+            label: Some(value(n.label.as_deref().unwrap_or(&n.identifier))),
+        },
         Node::Table(_) => EventKind::Start(Tag::Table),
         Node::TableRow(_) => EventKind::Start(Tag::TableRow),
         Node::TableCell(_) => EventKind::Start(Tag::TableCell {
@@ -793,27 +791,42 @@ fn fixture_canonical<S: AsRef<str>>(document: &Document<S>) -> (Vec<String>, Vec
     let mut syntax = Vec::new();
     for id in document.descendants(document.root()) {
         let node = document.node(id).unwrap();
-        if let EventKind::CodeBlock { fence, .. } = &node.kind {
-            syntax.push(format!("fence:{fence:?}"));
-        }
-        match document.syntax(id) {
-            Some(NodeSyntax::Reference { kind, label }) => syntax.push(format!(
+        match &node.kind {
+            EventKind::CodeBlock { fence, .. } => syntax.push(format!("fence:{fence:?}")),
+            EventKind::Start(
+                Tag::Link {
+                    reference: Some(Reference { kind, label }),
+                    ..
+                }
+                | Tag::Image {
+                    reference: Some(Reference { kind, label }),
+                    ..
+                },
+            ) => syntax.push(format!(
                 "reference:{kind:?}:{:?}",
                 normalize(label.resolve(document.source()).unwrap())
             )),
-            Some(NodeSyntax::Frontmatter {
-                info,
-                fence,
-                closing_fence_length,
-            }) => syntax.push(format!(
-                "frontmatter:{:?}:{fence:?}:{closing_fence_length}",
-                info.resolve(document.source()).unwrap()
-            )),
-            Some(NodeSyntax::Footnote { label }) => syntax.push(format!(
+            EventKind::Start(Tag::FootnoteDefinition {
+                label: Some(label), ..
+            })
+            | EventKind::FootnoteReference {
+                label: Some(label), ..
+            } => syntax.push(format!(
                 "footnote-label:{:?}",
                 normalize(label.resolve(document.source()).unwrap())
             )),
             _ => {}
+        }
+        if let Some(NodeSyntax::Frontmatter {
+            info,
+            fence,
+            closing_fence_length,
+        }) = document.syntax(id)
+        {
+            syntax.push(format!(
+                "frontmatter:{:?}:{fence:?}:{closing_fence_length}",
+                info.resolve(document.source()).unwrap()
+            ));
         }
     }
     (canonical(document), syntax)
@@ -882,18 +895,22 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
                 Some(value) => format!("Document:{:?}", text(&value)),
                 None => "Document".into(),
             },
-            EventKind::Start(Tag::Link { destination, title }) => format!(
+            EventKind::Start(Tag::Link {
+                destination, title, ..
+            }) => format!(
                 "Link:{:?}:{:?}",
                 text(&destination),
                 title.as_ref().map(text)
             ),
-            EventKind::Start(Tag::Image { destination, title }) => format!(
+            EventKind::Start(Tag::Image {
+                destination, title, ..
+            }) => format!(
                 "Image:{:?}:{:?}",
                 text(&destination),
                 title.as_ref().map(text)
             ),
-            EventKind::Start(Tag::FootnoteDefinition(label)) => {
-                format!("FootnoteDefinition:{:?}", normalize(&text(&label)))
+            EventKind::Start(Tag::FootnoteDefinition { identifier, .. }) => {
+                format!("FootnoteDefinition:{:?}", normalize(&text(&identifier)))
             }
             EventKind::Start(tag) => format!("{tag:?}"),
             EventKind::Code { value, language } => {
@@ -921,8 +938,8 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
                 text(&destination),
                 title.as_ref().map(text)
             ),
-            EventKind::FootnoteReference(v) => {
-                format!("FootnoteReference:{:?}", normalize(&text(&v)))
+            EventKind::FootnoteReference { identifier, .. } => {
+                format!("FootnoteReference:{:?}", normalize(&text(&identifier)))
             }
             kind => format!("{kind:?}"),
         };
@@ -948,4 +965,35 @@ impl Frontmatter {
                 _ => None,
             })
     }
+}
+
+/// Set link or image `id` of `document` to the reference `kind` with `label`.
+///
+/// # Errors
+/// Returns what [`Document::set_kind`] returns.
+pub fn set_reference<S: AsRef<str>>(
+    document: &mut Document<S>,
+    id: NodeId,
+    kind: ReferenceKind,
+    label: EventText<'static>,
+) -> Result<(), base_markdown::stream::StreamError> {
+    let reference = Some(Reference { kind, label });
+    let kind = match document.node(id).unwrap().kind.clone() {
+        EventKind::Start(Tag::Link {
+            destination, title, ..
+        }) => Tag::Link {
+            destination,
+            title,
+            reference,
+        },
+        EventKind::Start(Tag::Image {
+            destination, title, ..
+        }) => Tag::Image {
+            destination,
+            title,
+            reference,
+        },
+        kind => panic!("not a link or image: {:?}", kind),
+    };
+    document.set_kind(id, EventKind::Start(kind))
 }

@@ -162,7 +162,7 @@ impl AstBuilder {
                 .first_child
                 .map(|first| &self.nodes[first.index()].kind);
             if !event.kind.nests_in(tag, first)
-                || self.links != 0 && matches!(event.kind, EventKind::FootnoteReference(_))
+                || self.links != 0 && matches!(event.kind, EventKind::FootnoteReference { .. })
             {
                 return Err(StreamError::InvalidNesting);
             }
@@ -250,44 +250,11 @@ impl<S: AsRef<str>> Document<S> {
     /// Returns stream validation errors; built-in Markdown parsing has no syntax errors.
     pub fn parse(source: S, options: &crate::ParseOptions) -> Result<Self, StreamError> {
         let mut builder = AstBuilder::new();
-        let labels = {
-            let mut events = crate::EventParser::new(source.as_ref(), options);
-            if builder.consume(&mut events, usize::MAX).is_err() {
-                unreachable!("the built-in Markdown producer yields a balanced semantic stream");
-            }
-            events.take_read_labels()
-        };
-        builder.finish(source).map(|mut document| {
-            document.record_read_labels(labels);
-            document
-        })
-    }
-
-    // A reference or footnote label is inferred from its source span, which in a container also
-    // holds the prefixes of the lines it continues on, such as a block quote's `>`. The parser
-    // does not read those as part of the label, so the labels it read there are recorded as the
-    // nodes' syntax. `labels` are by span, in the order of the nodes.
-    fn record_read_labels(&mut self, labels: Vec<(core::ops::Range<usize>, String)>) {
-        let mut labels = labels.into_iter().peekable();
-        for index in 0..self.nodes.len() {
-            let Some((span, _)) = labels.peek() else {
-                return;
-            };
-            let node = &self.nodes[index];
-            if node.span != *span
-                || !matches!(
-                    node.kind,
-                    EventKind::Start(Tag::Link { .. } | Tag::Image { .. })
-                        | EventKind::FootnoteReference(_)
-                )
-            {
-                continue;
-            }
-            let (_, label) = labels.next().expect("peeked");
-            let syntax = crate::node_syntax::infer(self.source(), node.span.clone(), &node.kind)
-                .map(|syntax| syntax.with_label(label));
-            self.syntax.insert(NodeId::new(index), syntax);
+        let mut events = crate::EventParser::new(source.as_ref(), options);
+        if builder.consume(&mut events, usize::MAX).is_err() {
+            unreachable!("the built-in Markdown producer yields a balanced semantic stream");
         }
+        builder.finish(source)
     }
 
     /// The immutable source buffer.
@@ -457,16 +424,29 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
     match kind {
         EventKind::Start(tag) => {
             let tag = match tag {
-                crate::stream::Tag::Link { destination, title } => crate::stream::Tag::Link {
+                crate::stream::Tag::Link {
+                    destination,
+                    title,
+                    reference,
+                } => crate::stream::Tag::Link {
                     destination: destination.borrowed(),
                     title: title.as_ref().map(Text::borrowed),
+                    reference: reference.as_ref().map(borrow_reference),
                 },
-                crate::stream::Tag::Image { destination, title } => crate::stream::Tag::Image {
+                crate::stream::Tag::Image {
+                    destination,
+                    title,
+                    reference,
+                } => crate::stream::Tag::Image {
                     destination: destination.borrowed(),
                     title: title.as_ref().map(Text::borrowed),
+                    reference: reference.as_ref().map(borrow_reference),
                 },
-                crate::stream::Tag::FootnoteDefinition(value) => {
-                    crate::stream::Tag::FootnoteDefinition(value.borrowed())
+                crate::stream::Tag::FootnoteDefinition { identifier, label } => {
+                    crate::stream::Tag::FootnoteDefinition {
+                        identifier: identifier.borrowed(),
+                        label: label.as_ref().map(Text::borrowed),
+                    }
                 }
                 crate::stream::Tag::Document {
                     line_ending,
@@ -513,8 +493,20 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
             destination: destination.borrowed(),
             title: title.as_ref().map(Text::borrowed),
         },
-        EventKind::FootnoteReference(value) => EventKind::FootnoteReference(value.borrowed()),
+        EventKind::FootnoteReference { identifier, label } => EventKind::FootnoteReference {
+            identifier: identifier.borrowed(),
+            label: label.as_ref().map(Text::borrowed),
+        },
         _ => kind.clone(),
+    }
+}
+
+fn borrow_reference<'a>(
+    reference: &'a crate::stream::Reference<'_>,
+) -> crate::stream::Reference<'a> {
+    crate::stream::Reference {
+        kind: reference.kind,
+        label: reference.label.borrowed(),
     }
 }
 
@@ -716,7 +708,7 @@ impl<S: AsRef<str>> Document<S> {
             let quote = match node.kind {
                 EventKind::Start(Tag::BlockQuote) => true,
                 EventKind::Start(
-                    Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition(_),
+                    Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition { .. },
                 ) => false,
                 _ => return false,
             };
@@ -749,8 +741,7 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// # Errors
     /// Rejects invalid node IDs, source ranges and metadata for an incompatible node kind with
-    /// [`StreamError::InvalidRange`]. Rejects a reference or footnote label longer than the parser
-    /// reads with [`StreamError::InvalidValue`].
+    /// [`StreamError::InvalidRange`].
     pub fn set_syntax(
         &mut self,
         id: NodeId,
@@ -946,7 +937,7 @@ impl<S: AsRef<str>> Document<S> {
             return Err(StreamError::Unbalanced);
         }
         self.check_nesting(parent, self.nodes[parent.index()].first_child, &kind)?;
-        if matches!(kind, EventKind::FootnoteReference(_)) && self.in_link(parent) {
+        if matches!(kind, EventKind::FootnoteReference { .. }) && self.in_link(parent) {
             return Err(StreamError::InvalidNesting);
         }
         let previous = match self.appended_last_child(parent) {
@@ -1069,7 +1060,7 @@ impl<S: AsRef<str>> Document<S> {
             && self.descendants(id).any(|child| {
                 matches!(
                     self.nodes[child.index()].kind,
-                    EventKind::FootnoteReference(_)
+                    EventKind::FootnoteReference { .. }
                 )
             })
         {
@@ -1209,14 +1200,18 @@ impl<S: AsRef<str>> Document<S> {
                     .index()]
                 .parent;
             }
-            let kind =
+            let mut kind =
                 borrow_kind(&node.kind).map_text(|value| value.materialized(source.source()));
+            // References cross documents as resolved resources: the destination buffer may have a
+            // conflicting or missing definition with the same label.
+            if let EventKind::Start(Tag::Link { reference, .. } | Tag::Image { reference, .. }) =
+                &mut kind
+            {
+                *reference = None;
+            }
             let next = if original == root { before } else { None };
             let id = self.insert_child(parent, kind, previous, next);
-            if let Some(syntax) = source
-                .syntax(original)
-                .and_then(|syntax| syntax.copied(source.source()))
-            {
+            if let Some(syntax) = source.syntax(original).map(NodeSyntax::copied) {
                 self.set_syntax(id, Some(syntax))
                     .expect("materialized syntax describes the copied node kind");
             }
@@ -1240,7 +1235,7 @@ fn ends_item(kind: &EventKind<'_>) -> bool {
         kind,
         EventKind::Separator { .. }
             | EventKind::Definition { .. }
-            | EventKind::Start(Tag::FootnoteDefinition(_))
+            | EventKind::Start(Tag::FootnoteDefinition { .. })
     )
 }
 
@@ -1611,6 +1606,7 @@ fn autolink(
     let EventKind::Start(Tag::Link {
         destination,
         title: None,
+        reference: None,
     }) = &node.kind
     else {
         return false;
@@ -3100,7 +3096,7 @@ impl<S: AsRef<str>> Document<S> {
             if let Some(parent) = parent {
                 let first = self.nodes[parent.index()].first_child;
                 self.check_nesting(parent, first, &node.kind)?;
-                if in_link && matches!(node.kind, EventKind::FootnoteReference(_)) {
+                if in_link && matches!(node.kind, EventKind::FootnoteReference { .. }) {
                     return Err(StreamError::InvalidNesting);
                 }
             }

@@ -115,7 +115,7 @@ fn empty() -> Document<&'static str> {
 
 #[test]
 fn synthetic_references_cannot_override_a_present_definition() {
-    use base_markdown::{NodeSyntax, ReferenceKind};
+    use base_markdown::{stream::Reference, ReferenceKind};
     for target in ["/original", "/changed"] {
         let mut document = empty();
         let root = document.root();
@@ -128,20 +128,15 @@ fn synthetic_references_cannot_override_a_present_definition() {
                 EventKind::Start(Tag::Link {
                     destination: Text::Literal("/original"),
                     title: None,
+                    reference: Some(Reference {
+                        kind: ReferenceKind::Full,
+                        label: Text::Literal("ref"),
+                    }),
                 }),
             )
             .unwrap();
         document
             .append_child(link, EventKind::Text(Text::Literal("label")))
-            .unwrap();
-        document
-            .set_syntax(
-                link,
-                Some(NodeSyntax::Reference {
-                    kind: ReferenceKind::Full,
-                    label: Text::Literal("ref"),
-                }),
-            )
             .unwrap();
         document
             .append_child(
@@ -167,57 +162,165 @@ fn synthetic_references_cannot_override_a_present_definition() {
 }
 
 /// A reference or footnote label longer than the parser reads would be written as text, so
-/// assigning one is rejected (#146).
+/// assigning one is rejected (#146). The parser counts a tab as the columns it spans, so a label
+/// fits when it fits at some column of each of its lines, and a footnote label is written as it
+/// is (#192).
 #[test]
-fn syntax_labels_longer_than_the_parser_reads_are_rejected() {
-    use base_markdown::{stream::StreamError, NodeSyntax, ReferenceKind};
+fn labels_longer_than_the_parser_reads_are_rejected() {
+    use base_markdown::{
+        stream::{Reference, StreamError},
+        ReferenceKind,
+    };
     let mut document = empty();
     let root = document.root();
+    let paragraph = document
+        .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
     let link = document
         .append_child(
-            root,
+            paragraph,
             EventKind::Start(Tag::Link {
                 destination: Text::Literal("/u"),
                 title: None,
+                reference: None,
             }),
         )
         .unwrap();
     let footnote = document
-        .append_child(root, EventKind::FootnoteReference(Text::Literal("1")))
+        .append_child(
+            paragraph,
+            EventKind::FootnoteReference {
+                identifier: Text::Literal("1"),
+                label: None,
+            },
+        )
         .unwrap();
     let reference = |label: &str| {
-        Some(NodeSyntax::Reference {
-            kind: ReferenceKind::Full,
-            label: Text::from(label.to_string()),
+        EventKind::Start(Tag::Link {
+            destination: Text::Literal("/u"),
+            title: None,
+            reference: Some(Reference {
+                kind: ReferenceKind::Full,
+                label: Text::from(label.to_string()),
+            }),
         })
     };
-    let footnote_label = |label: &str| {
-        Some(NodeSyntax::Footnote {
-            label: Text::from(label.to_string()),
-        })
+    let check = |result: Result<(), StreamError>, valid: bool, label: &str| {
+        if valid {
+            assert!(result.is_ok(), "{:?}: {:?}", label, result);
+        } else {
+            assert!(
+                matches!(result, Err(StreamError::InvalidValue)),
+                "{:?}: {:?}",
+                label,
+                result
+            );
+        }
     };
     for (label, valid) in [
         ("a".repeat(999), true),
         (format!("{}\n  {}", "a".repeat(499), "a".repeat(500)), true),
         ("a".repeat(1000), false),
         (format!("{}[", "a".repeat(998)), false),
+        (format!("{}\\", "a".repeat(998)), false),
+        // Each tab after the first of a run spans four columns, and the first at least one.
+        (format!("{}a", "\t".repeat(300)), false),
+        (format!("{}{}", "\t".repeat(249), "a".repeat(6)), true),
+        (format!("{}{}", "\t".repeat(249), "a".repeat(7)), false),
+        // After a letter, a tab spans one column only where the letter ends a column of three.
+        (format!("{}\t{}", "a".repeat(3), "a".repeat(995)), true),
+        (format!("{}\t{}", "a".repeat(3), "a".repeat(996)), false),
+        // Each line starts at the column that suits it best, and the whitespace that starts a
+        // line after the first does not count.
+        (
+            format!("{0}{1}\n{0}a{0}{1}", "\t".repeat(124), "a".repeat(6)),
+            true,
+        ),
+        (
+            format!("{0}{1}\n{0}a{0}{1}a", "\t".repeat(124), "a".repeat(6)),
+            false,
+        ),
     ] {
-        for (id, syntax) in [
-            (link, reference(&label)),
-            (footnote, footnote_label(&label)),
-        ] {
-            let result = document.set_syntax(id, syntax);
-            if valid {
-                assert!(result.is_ok(), "{:?}", result);
-            } else {
-                assert!(
-                    matches!(result, Err(StreamError::InvalidValue)),
-                    "{:?}",
-                    result
+        check(document.set_kind(link, reference(&label)), valid, &label);
+    }
+    let definition = document
+        .append_child(
+            root,
+            EventKind::Start(Tag::FootnoteDefinition {
+                identifier: Text::Literal("1"),
+                label: None,
+            }),
+        )
+        .unwrap();
+    // A call's label is read like a reference's, and a definition's holds no whitespace.
+    for (label, call, defined) in [
+        ("a".repeat(999), true, true),
+        (format!("{}\\]", "a".repeat(997)), true, true),
+        (format!("{}\\\\", "a".repeat(997)), true, true),
+        ("a".repeat(1000), false, false),
+        (String::new(), false, false),
+        (" \n ".into(), false, false),
+        ("a b".into(), true, false),
+        ("a\tb".into(), true, false),
+        ("a\nb".into(), true, false),
+        ("a\r\nb".into(), true, false),
+        ("a\n".into(), true, false),
+        ("a\n \nb".into(), false, false),
+        ("a\r\n\r\nb".into(), false, false),
+        (format!("{}a", "\t".repeat(300)), false, false),
+        ("a]b".into(), false, false),
+        ("a[b".into(), false, false),
+        ("a\\b".into(), true, true),
+        ("a\\".into(), false, false),
+        ("a\\\\\\".into(), false, false),
+    ] {
+        for identifier in [label.clone(), "1".into()] {
+            for label in [None, Some(label.clone())] {
+                // Only the written label is checked: without one, that is the identifier.
+                let only_identifier = label.is_none() && identifier == "1";
+                let name = format!("{:?} {:?}", identifier, label);
+                let kind = EventKind::FootnoteReference {
+                    identifier: Text::from(identifier.clone()),
+                    label: label.clone().map(Text::from),
+                };
+                check(
+                    document.set_kind(footnote, kind),
+                    call || only_identifier,
+                    &name,
+                );
+                let kind = EventKind::Start(Tag::FootnoteDefinition {
+                    identifier: Text::from(identifier.clone()),
+                    label: label.clone().map(Text::from),
+                });
+                check(
+                    document.set_kind(definition, kind),
+                    defined || only_identifier,
+                    &name,
                 );
             }
         }
     }
+    // A parsed identifier can be longer than its label through case folding.
+    let label = "ΐ".repeat(499);
+    let source = format!("[^{label}]\n\n[^{label}]: x\n");
+    let parsed = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+    let call = parsed
+        .descendants(parsed.root())
+        .find(|&id| {
+            matches!(
+                parsed.node(id).unwrap().kind,
+                EventKind::FootnoteReference { .. }
+            )
+        })
+        .unwrap();
+    let EventKind::FootnoteReference { identifier, .. } = &parsed.node(call).unwrap().kind else {
+        unreachable!("found a call");
+    };
+    assert!(identifier.resolve(parsed.source()).unwrap().len() > 999);
+    let kind = parsed.node(call).unwrap().kind.clone();
+    let mut parsed = parsed;
+    parsed.set_kind(call, kind).unwrap();
+    assert_eq!(to_markdown(&parsed).unwrap(), source);
 }
 
 #[test]
@@ -277,7 +380,10 @@ fn serialized_fragments_support_table_sections_and_nonrendered_metadata() {
     }
     for (kind, expected) in [
         (
-            EventKind::FootnoteReference(Text::Literal("NOTE")),
+            EventKind::FootnoteReference {
+                identifier: Text::Literal("NOTE"),
+                label: None,
+            },
             "[^NOTE]",
         ),
         (

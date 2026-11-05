@@ -447,8 +447,12 @@ fn values<'a>(kind: &'a EventKind<'a>) -> Vec<&'a Value<'a>> {
         EventKind::Text(value)
         | EventKind::SoftBreak(value)
         | EventKind::Html { value, .. }
-        | EventKind::FootnoteReference(value)
-        | EventKind::Start(Tag::FootnoteDefinition(value)) => vec![value],
+        | EventKind::FootnoteReference {
+            identifier: value, ..
+        }
+        | EventKind::Start(Tag::FootnoteDefinition {
+            identifier: value, ..
+        }) => vec![value],
         EventKind::Code { value, language }
         | EventKind::CodeBlock {
             value,
@@ -457,11 +461,16 @@ fn values<'a>(kind: &'a EventKind<'a>) -> Vec<&'a Value<'a>> {
         } => IntoIterator::into_iter([Some(value), language.as_ref()])
             .flatten()
             .collect(),
-        EventKind::Start(Tag::Link { destination, title } | Tag::Image { destination, title }) => {
-            IntoIterator::into_iter([Some(destination), title.as_ref()])
-                .flatten()
-                .collect()
-        }
+        EventKind::Start(
+            Tag::Link {
+                destination, title, ..
+            }
+            | Tag::Image {
+                destination, title, ..
+            },
+        ) => IntoIterator::into_iter([Some(destination), title.as_ref()])
+            .flatten()
+            .collect(),
         EventKind::Definition {
             label,
             destination,
@@ -614,7 +623,7 @@ fn encoding_line_endings_is_linear() {
 
 #[test]
 fn carriage_returns_in_constructed_labels_are_written_as_line_feeds() {
-    use base_markdown::{NodeSyntax, ReferenceKind};
+    use base_markdown::ReferenceKind;
     // A label of only whitespace, such as ` \r`, or with a blank line cannot be written with any line ending.
     for label in ["l\rm", "l\r\nm", "\\\r", "\rl\r"] {
         let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
@@ -628,21 +637,20 @@ fn carriage_returns_in_constructed_labels_are_written_as_line_feeds() {
                 EventKind::Start(Tag::Link {
                     destination: Value::Literal("/u"),
                     title: None,
+                    reference: None,
                 }),
             )
             .unwrap();
         document
             .append_child(link, EventKind::Text(Value::Literal("text")))
             .unwrap();
-        document
-            .set_syntax(
-                link,
-                Some(NodeSyntax::Reference {
-                    kind: ReferenceKind::Full,
-                    label: Value::Value(label.to_string().into()),
-                }),
-            )
-            .unwrap();
+        support::fixture::set_reference(
+            &mut document,
+            link,
+            ReferenceKind::Full,
+            Value::Value(label.to_string().into()),
+        )
+        .unwrap();
         document
             .append_child(
                 root,
