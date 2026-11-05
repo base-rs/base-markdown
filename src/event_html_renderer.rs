@@ -171,8 +171,11 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     fn start(&mut self, tag: &Tag<'_>, end: usize) -> Result<(), StreamError> {
         let kind = tag.kind();
         if kind == TagKind::Document {
-            if self.started || !self.stack.is_empty() {
-                return Err(StreamError::Unbalanced);
+            // A document inside another is a node that nothing holds, as `AstBuilder` and
+            // `Document::append_child` reject it. One after the first ends is an event after the
+            // end, which `render` rejects as unbalanced.
+            if !self.stack.is_empty() {
+                return Err(StreamError::InvalidNesting);
             }
             self.started = true;
         } else if self.stack.is_empty() {
@@ -193,6 +196,8 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 if let Some(value) = line_ending {
                     self.line_ending = value.clone();
                 }
+                // Frontmatter is a block before the root's first child. See `Tag::first_class`.
+                frame.first = tag.first_class(None);
             }
             Tag::Paragraph { tight } => {
                 frame.flag = *tight;

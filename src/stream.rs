@@ -273,8 +273,9 @@ pub enum Tag<'a> {
         /// The output line ending: LF when the source has a line ending, since parsed values
         /// store every line ending as LF, or `None` when it has none.
         line_ending: Option<LineEnding>,
-        /// The body of the document's frontmatter, without its fences, or `None` when it has
-        /// none. It is omitted from HTML. See [`Constructs::frontmatter`][crate::Constructs::frontmatter].
+        /// The body of the document's frontmatter, without its fences or the line ending before
+        /// the closing fence, or `None` when it has none. A root with frontmatter holds blocks, so an
+        /// inline root has none. It is omitted from HTML. See [`Constructs::frontmatter`][crate::Constructs::frontmatter].
         frontmatter: Option<Text<'a>>,
     },
     /// Whether the containing list suppresses paragraph tags.
@@ -330,6 +331,18 @@ pub enum Tag<'a> {
 }
 
 impl<'s> Tag<'s> {
+    /// The class that decides what this container holds besides its first child, `first`: a root
+    /// with frontmatter holds blocks, as frontmatter is a block before its first child, so it
+    /// counts as a first child of blocks. See [`TagKind::holds`].
+    pub(crate) fn first_class(&self, first: Option<Class>) -> Option<Class> {
+        match self {
+            Self::Document {
+                frontmatter: Some(_),
+                ..
+            } => Some(Class::Flow),
+            _ => first,
+        }
+    }
     /// Identify the matching end event.
     pub fn kind(&self) -> TagKind {
         match self {
@@ -570,10 +583,13 @@ impl<'s> EventKind<'s> {
         }
     }
 
-    /// Whether this node can be a child of a container of kind `parent` whose first child, if it
-    /// has one, is `first`. See [`TagKind::holds`].
-    pub(crate) fn nests_in(&self, parent: TagKind, first: Option<&EventKind<'_>>) -> bool {
-        parent.holds(self.class(), first.map(EventKind::class))
+    /// Whether this node can be a child of `parent` whose first child, if it has one, is `first`.
+    /// See [`TagKind::holds`] and [`Tag::first_class`].
+    pub(crate) fn nests_in(&self, parent: &Tag<'_>, first: Option<&EventKind<'_>>) -> bool {
+        parent.kind().holds(
+            self.class(),
+            parent.first_class(first.map(EventKind::class)),
+        )
     }
 
     pub(crate) fn map_text<'a>(self, mut map: impl FnMut(Text<'s>) -> Text<'a>) -> EventKind<'a> {

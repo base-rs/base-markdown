@@ -341,10 +341,19 @@ pub(crate) fn frontmatter(
     let closing_fence_length = fence.frontmatter_close(close.as_bytes()).expect(SCANNED);
     let info = raw[fence.length..first_end].trim_matches([' ', '\t']);
     let start = info.as_ptr() as usize - raw.as_ptr() as usize;
+    // The body is the lines between the fences, without the line ending before the closing
+    // fence, which the writer adds back.
+    let body = &raw[body_start..closing_start];
+    let body_end = body_start
+        + body
+            .strip_suffix("\r\n")
+            .or_else(|| body.strip_suffix(['\r', '\n']))
+            .unwrap_or(body)
+            .len();
     (
         start..start + info.len(),
         fence,
         closing_fence_length,
-        body_start..closing_start,
+        body_start..body_end,
     )
 }

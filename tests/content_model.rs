@@ -291,3 +291,223 @@ fn text_content_includes_code_blocks() {
         Document::parse("```\ncode\n```\n".to_owned(), &ParseOptions::default()).unwrap();
     assert_eq!(document.text_content(document.root()), "code\n");
 }
+
+fn document_start(frontmatter: Option<&'static str>) -> EventKind<'static> {
+    EventKind::Start(Tag::Document {
+        line_ending: None,
+        frontmatter: frontmatter.map(Text::Literal),
+    })
+}
+
+// Build and render the events, returning what the builder and the HTML writer report.
+fn build_and_render(
+    kinds: &[EventKind<'static>],
+) -> (Result<(), StreamError>, Result<(), StreamError>) {
+    let events = || {
+        kinds
+            .iter()
+            .cloned()
+            .map(|kind| Ok(Event { kind, span: 0..0 }))
+    };
+    let mut builder = base_markdown::AstBuilder::new();
+    let built = builder
+        .consume(&mut events(), usize::MAX)
+        .and_then(|_| builder.finish(String::new()).map(drop));
+    let mut output = String::new();
+    let rendered = render_events("", events(), &Options::default().compile, &mut output);
+    (built, rendered)
+}
+
+fn nesting(result: &Result<(), StreamError>) -> bool {
+    matches!(result, Err(StreamError::InvalidNesting))
+}
+
+#[cfg(feature = "serde")]
+fn deserialize_fails_nesting(nodes: serde_json::Value) {
+    let wire = serde_json::json!({"source": "", "nodes": nodes, "syntax": {}});
+    let error = serde_json::from_value::<Document>(wire).unwrap_err();
+    assert!(error.to_string().contains("invalid nesting"), "{}", error);
+}
+
+#[test]
+fn no_footnote_reference_is_built_inside_emphasis_in_a_link() {
+    let (built, rendered) = build_and_render(&[
+        document_start(None),
+        EventKind::Start(Tag::Paragraph { tight: false }),
+        link(),
+        EventKind::Start(Tag::Emphasis),
+        note(),
+        EventKind::End(TagKind::Emphasis),
+        EventKind::End(TagKind::Link),
+        EventKind::End(TagKind::Paragraph),
+        EventKind::End(TagKind::Document),
+    ]);
+    assert!(nesting(&built), "{:?}", built);
+    assert!(nesting(&rendered), "{:?}", rendered);
+}
+
+#[test]
+fn an_inline_root_holds_no_block() {
+    let (built, rendered) = build_and_render(&[
+        document_start(None),
+        EventKind::Text(Text::Literal("a")),
+        EventKind::Start(Tag::Paragraph { tight: false }),
+        EventKind::End(TagKind::Paragraph),
+        EventKind::End(TagKind::Document),
+    ]);
+    assert!(nesting(&built), "{:?}", built);
+    assert!(nesting(&rendered), "{:?}", rendered);
+    let mut document = empty();
+    let root = document.root();
+    document
+        .append_child(root, EventKind::Text(Text::Literal("a")))
+        .unwrap();
+    assert!(matches!(
+        document.append_child(root, EventKind::Start(Tag::Paragraph { tight: false })),
+        Err(StreamError::InvalidNesting)
+    ));
+    // Nor can a detached block be attached to it.
+    let mut document = empty();
+    let root = document.root();
+    let paragraph = document
+        .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
+    document.detach(paragraph).unwrap();
+    document
+        .append_child(root, EventKind::Text(Text::Literal("a")))
+        .unwrap();
+    assert!(matches!(
+        document.attach(root, paragraph, None),
+        Err(StreamError::InvalidNesting)
+    ));
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_serialized_inline_root_holds_no_block() {
+    deserialize_fails_nesting(serde_json::json!([
+        {"kind": {"Start": {"Document": {"line_ending": null, "frontmatter": null}}}, "span": {"start": 0, "end": 0}, "parent": null, "first_child": 2, "next_sibling": null},
+        {"kind": {"Text": {"Value": "a"}}, "span": {"start": 0, "end": 0}, "parent": 1, "first_child": null, "next_sibling": 3},
+        {"kind": {"Start": {"Paragraph": {"tight": false}}}, "span": {"start": 0, "end": 0}, "parent": 1, "first_child": null, "next_sibling": null},
+    ]));
+}
+
+#[test]
+fn an_inline_root_takes_no_frontmatter() {
+    let (built, rendered) = build_and_render(&[
+        document_start(Some("x")),
+        EventKind::Text(Text::Literal("a")),
+        EventKind::End(TagKind::Document),
+    ]);
+    assert!(nesting(&built), "{:?}", built);
+    assert!(nesting(&rendered), "{:?}", rendered);
+    // Frontmatter is not set on an inline root.
+    let mut document = empty();
+    let root = document.root();
+    document
+        .append_child(root, EventKind::Text(Text::Literal("a")))
+        .unwrap();
+    assert!(matches!(
+        document.set_kind(root, document_start(Some("x"))),
+        Err(StreamError::InvalidNesting)
+    ));
+    assert_eq!(document.frontmatter(), None);
+    // Nor is phrasing appended to a root with frontmatter, though a block is.
+    let mut document = empty();
+    let root = document.root();
+    document.set_kind(root, document_start(Some("x"))).unwrap();
+    assert!(matches!(
+        document.append_child(root, EventKind::Text(Text::Literal("a"))),
+        Err(StreamError::InvalidNesting)
+    ));
+    document
+        .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_serialized_root_with_frontmatter_holds_no_phrasing() {
+    deserialize_fails_nesting(serde_json::json!([
+        {"kind": {"Start": {"Document": {"line_ending": null, "frontmatter": {"Value": "x"}}}}, "span": {"start": 0, "end": 0}, "parent": null, "first_child": 2, "next_sibling": null},
+        {"kind": {"Text": {"Value": "a"}}, "span": {"start": 0, "end": 0}, "parent": 1, "first_child": null, "next_sibling": null},
+    ]));
+}
+
+#[test]
+fn no_document_starts_inside_another() {
+    let (built, rendered) = build_and_render(&[
+        document_start(None),
+        document_start(None),
+        EventKind::End(TagKind::Document),
+        EventKind::End(TagKind::Document),
+    ]);
+    assert!(nesting(&built), "{:?}", built);
+    assert!(nesting(&rendered), "{:?}", rendered);
+    // A second document after the first is unbalanced instead.
+    let (_, rendered) = build_and_render(&[
+        document_start(None),
+        EventKind::End(TagKind::Document),
+        document_start(None),
+        EventKind::End(TagKind::Document),
+    ]);
+    assert!(
+        matches!(rendered, Err(StreamError::Unbalanced)),
+        "{:?}",
+        rendered
+    );
+    let mut document = empty();
+    let root = document.root();
+    assert!(matches!(
+        document.append_child(root, document_start(None)),
+        Err(StreamError::InvalidNesting)
+    ));
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_serialized_document_starts_inside_no_other() {
+    deserialize_fails_nesting(serde_json::json!([
+        {"kind": {"Start": {"Document": {"line_ending": null, "frontmatter": null}}}, "span": {"start": 0, "end": 0}, "parent": null, "first_child": 2, "next_sibling": null},
+        {"kind": {"Start": {"Document": {"line_ending": null, "frontmatter": null}}}, "span": {"start": 0, "end": 0}, "parent": 1, "first_child": null, "next_sibling": null},
+    ]));
+}
+
+#[test]
+fn frontmatter_is_written_with_one_final_line_ending() {
+    for (body, written) in [("a", "---\na\n---\n\nb\n"), ("", "---\n---\n\nb\n")] {
+        let mut document = empty();
+        let root = document.root();
+        document.set_kind(root, document_start(Some(body))).unwrap();
+        let paragraph = document
+            .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+            .unwrap();
+        document
+            .append_child(paragraph, EventKind::Text(Text::Literal("b")))
+            .unwrap();
+        assert!(document.is_normalized());
+        let markdown = to_markdown(&document).unwrap();
+        assert_eq!(markdown, written);
+        let reparsed = Document::parse(markdown, &ParseOptions::default()).unwrap();
+        assert_eq!(reparsed.frontmatter(), Some(body));
+    }
+}
+
+#[test]
+fn frontmatter_line_endings_are_normalized_to_line_feeds() {
+    for body in ["a\rb", "a\r\nb", "a\r"] {
+        let mut document = empty();
+        let root = document.root();
+        document.set_kind(root, document_start(Some(body))).unwrap();
+        assert!(!document.is_normalized());
+        document.normalize();
+        assert!(document.is_normalized());
+        let normalized = document.frontmatter().unwrap().to_owned();
+        assert!(!normalized.contains('\r'), "{:?}", normalized);
+        document.normalize();
+        assert_eq!(document.frontmatter(), Some(normalized.as_str()));
+        let reparsed =
+            Document::parse(to_markdown(&document).unwrap(), &ParseOptions::default()).unwrap();
+        assert_eq!(reparsed.frontmatter(), Some(normalized.as_str()));
+    }
+}

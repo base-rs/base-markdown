@@ -88,9 +88,11 @@ impl<'a> IncrementalParser<'a> {
         &self.source
     }
 
-    /// The body of the document's frontmatter, without its fences, once its closing fence has
-    /// arrived, or `None` until then and for a document without frontmatter. It is the
-    /// [`Tag::Document`] `frontmatter` that [`EventParser`] yields for the accumulated source.
+    /// The body of the document's frontmatter, without its fences, or `None` for a document
+    /// without frontmatter. The closing fence alone does not show that the frontmatter is
+    /// complete, so it is `None` until the next complete line after the closing fence has been
+    /// pushed, or [`IncrementalParser::finish`] is called. It is the [`Tag::Document`]
+    /// `frontmatter` that [`EventParser`] yields for the accumulated source.
     pub fn frontmatter(&self) -> Option<&str> {
         self.frontmatter.as_ref().map(|value| {
             value

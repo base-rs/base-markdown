@@ -606,7 +606,7 @@ impl State<'_> {
     /// with a line that would close the fence switches to the other one, naming the format the
     /// fence implied when there is no hint, and a body that would close both cannot be written.
     /// Lines end at LF, CRLF or a lone CR, as the parser reads them; the body's own line endings
-    /// are written unchanged, so they read back as LF.
+    /// are written unchanged, so they read back as LF, which [`Document::normalize`] gives them.
     pub(super) fn frontmatter(
         &mut self,
         body: &str,
@@ -652,7 +652,9 @@ impl State<'_> {
             self.output.push_str(info);
         }
         self.output.push('\n');
-        let needs_line_ending = !body.is_empty() && !body.ends_with(['\r', '\n']);
+        // The body holds the lines between the fences without the line ending before the closing
+        // fence, so one is written there, except after an empty body.
+        let needs_line_ending = !body.is_empty();
         self.output
             .reserve(body.len() + fence.len() + usize::from(needs_line_ending) + 1);
         self.output.push_str(body);
