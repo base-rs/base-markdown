@@ -61,3 +61,50 @@ pub fn timed(run: impl FnOnce()) -> Duration {
     run();
     started.elapsed()
 }
+
+/// The largest ratio of the subject's growth to the control's that passes.
+///
+/// Work that grows as the control does gives a ratio near 1, and logarithmic factors keep it under 1.5 at these sizes, while work that grows with the square of the input gives 8 once its quadratic part dominates.
+pub const CONTROL_BOUND: f64 = 2.5;
+
+/// Assert that `subject` grows from `size` to `SCALE * size` no more than `CONTROL_BOUND` times as much as `control` does, measured in the same run.
+///
+/// The control does the same work on inputs that keep what is checked small, such as many short documents in place of one long one, so the ratio of the two growths shows only the work that depends on what is checked, whatever the machine, build or load. Each size of each takes the fastest of five runs, alternating, and a ratio over the bound is measured again up to twice, as in [`assert_linear`].
+pub fn assert_against_control(
+    label: impl Debug,
+    size: usize,
+    mut subject: impl FnMut(usize) -> Duration,
+    mut control: impl FnMut(usize) -> Duration,
+) {
+    let _timing = TIMING.lock().unwrap_or_else(PoisonError::into_inner);
+    subject(size);
+    control(size);
+    let mut ratios = Vec::new();
+    for _ in 0..3 {
+        let mut times = [Duration::MAX; 4];
+        for _ in 0..5 {
+            times[0] = times[0].min(subject(size));
+            times[1] = times[1].min(subject(SCALE * size));
+            times[2] = times[2].min(control(size));
+            times[3] = times[3].min(control(SCALE * size));
+        }
+        let [small, large, control_small, control_large] = times.map(|time| time.as_secs_f64());
+        let ratio = (large / small) / (control_large / control_small);
+        eprintln!(
+            "against control {:?}: {} -> {}: {:?}, {:.2}x the control's growth",
+            label,
+            size,
+            SCALE * size,
+            times,
+            ratio
+        );
+        if ratio < CONTROL_BOUND {
+            return;
+        }
+        ratios.push(ratio);
+    }
+    panic!(
+        "{:?}: grew {:.2?} times the control's growth, against a bound of {}",
+        label, ratios, CONTROL_BOUND
+    );
+}

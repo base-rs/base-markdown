@@ -812,7 +812,7 @@ fn random_document(random: &mut Random) -> Document<String> {
         let phrasing = random_phrasing(random, 4);
         let block = match random.below(6) {
             0 => heading(phrasing),
-            1 => table(phrasing),
+            1 => table(without_breaks(phrasing)),
             2 => attention(
                 Tag::List {
                     start: None,
@@ -883,7 +883,7 @@ fn serializing_unnormalized_trees_does_not_panic() {
             let phrasing = random_phrasing(&mut random, 6);
             events.extend(match random.below(3) {
                 0 => heading(phrasing),
-                1 => table(phrasing),
+                1 => table(without_breaks(phrasing)),
                 _ => paragraph(phrasing),
             });
         }
@@ -1257,6 +1257,24 @@ fn heading(
 }
 
 /// A table with a head row of one cell holding `children`.
+/// Phrasing without its soft and hard breaks, which a table cell cannot hold.
+fn without_breaks(
+    events: Vec<Result<Event<'static>, StreamError>>,
+) -> Vec<Result<Event<'static>, StreamError>> {
+    events
+        .into_iter()
+        .filter(|event| {
+            !matches!(
+                event,
+                Ok(Event {
+                    kind: EventKind::SoftBreak(_) | EventKind::HardBreak,
+                    ..
+                })
+            )
+        })
+        .collect()
+}
+
 fn table(
     children: Vec<Result<Event<'static>, StreamError>>,
 ) -> Vec<Result<Event<'static>, StreamError>> {
@@ -1503,18 +1521,26 @@ fn removes_hard_breaks_at_the_end_of_a_block() {
     );
 }
 
+// A table cell is one line, so it holds no break, as the parser never reads one there (#214).
 #[test]
-fn replaces_hard_breaks_in_table_cells() {
-    assert_eq!(
-        settled(build_blocks(table(concat([
-            vec![text("a"), hard(), text("b")],
-            emphasis(vec![hard(), text("c")]),
-            vec![hard()],
-            delete(emphasis(vec![text("d"), hard()])),
-            vec![hard()],
-        ])))),
-        r#"Start(Table)(Start(TableHead)(Start(TableRow)(cell("a b " emphasis("c") " " delete(emphasis("d")) "  "))))"#
-    );
+fn table_cells_hold_no_breaks() {
+    for cell in [
+        vec![text("a"), hard(), text("b")],
+        emphasis(vec![text("a"), soft(), text("c")]),
+        delete(emphasis(vec![text("d"), hard()])),
+    ] {
+        let mut events = vec![start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        })];
+        events.extend(table(cell));
+        events.push(end(TagKind::Document));
+        let mut builder = AstBuilder::new();
+        assert!(matches!(
+            builder.consume(&mut events.into_iter(), usize::MAX),
+            Err(StreamError::InvalidNesting)
+        ));
+    }
 }
 
 #[test]
@@ -1830,27 +1856,21 @@ fn splitting_text_keeps_the_node_and_its_span() {
 
 #[test]
 fn moved_whole_nodes_keep_their_ids() {
-    let mut document = build_blocks(table(concat([
+    let mut document = build(concat([
         vec![text("a")],
-        emphasis(vec![text("b"), soft(), hard()]),
+        emphasis(vec![text("b"), soft()]),
         vec![text("c")],
-    ])));
-    let row = |document: &Document<String>| {
-        let table = document.children(document.root()).next().unwrap();
-        let head = document.children(table).next().unwrap();
-        let row = document.children(head).next().unwrap();
-        document.children(row).next().unwrap()
-    };
-    let cell = row(&document);
-    let attention = document.children(cell).nth(1).unwrap();
-    let breaks: Vec<_> = document.children(attention).skip(1).collect();
+    ]));
+    let paragraph = document.children(document.root()).next().unwrap();
+    let attention = document.children(paragraph).nth(1).unwrap();
+    let soft = document.children(attention).nth(1).unwrap();
     document.normalize();
     assert_eq!(
-        describe(&document, cell),
-        r#"cell("a" emphasis("b") soft " c")"#
+        describe(&document, paragraph),
+        r#"paragraph("a" emphasis("b") soft "c")"#
     );
-    // The soft break moved whole; the hard break became a space and joined the text after it.
-    assert_eq!(document.children(cell).nth(2), Some(breaks[0]));
+    // The soft break moved whole.
+    assert_eq!(document.children(paragraph).nth(2), Some(soft));
 }
 
 #[test]
@@ -1869,8 +1889,6 @@ fn is_normalized_finds_each_edge_shape() {
         build(vec![text("a"), soft()]),
         build(vec![text("a"), hard()]),
         build_blocks(heading(vec![soft(), text("a")])),
-        build_blocks(table(vec![text("a"), hard(), text("b")])),
-        build_blocks(table(vec![text("a"), soft()])),
         build_blocks(paragraph(vec![])),
     ];
     for document in shapes {

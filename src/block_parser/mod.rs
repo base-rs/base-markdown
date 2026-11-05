@@ -169,6 +169,17 @@ impl Blocks {
         (blocks, definitions)
     }
 
+    /// Prepare `source` with `seed` holding the definitions of another document, which precede
+    /// its own.
+    pub fn parse_seeded<'a>(
+        source: &'a str,
+        options: &'a ParseOptions,
+        seed: Definitions<'a>,
+    ) -> (Self, Definitions<'a>) {
+        let (blocks, definitions, _) = Self::prepare(source, 0, options, seed, false);
+        (blocks, definitions)
+    }
+
     /// Prepare `source[start..]`, where `start` is the line of a clean document-level block, with `seed` holding the definitions authored before it. Node offsets remain relative to the whole source.
     pub fn parse_from<'a>(
         source: &'a str,

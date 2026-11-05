@@ -55,6 +55,11 @@ impl<'a> EventParser<'a> {
             carriage_returns,
         }
     }
+
+    /// The definitions of the source, once its events are pulled.
+    pub(crate) fn into_definitions(self) -> Definitions<'a> {
+        self.definitions
+    }
 }
 impl EventParser<'_> {
     /// Leave the labels of references and footnote calls out of events, as `None`, for a consumer
@@ -111,7 +116,7 @@ impl EventParser<'_> {
             self.inline.prepare::<false, EXTENSIONS>(
                 self.source,
                 fragments,
-                &self.definitions,
+                &mut self.definitions,
                 self.options,
                 task,
                 table,
@@ -120,7 +125,7 @@ impl EventParser<'_> {
             self.inline.prepare::<true, EXTENSIONS>(
                 self.source,
                 fragments,
-                &self.definitions,
+                &mut self.definitions,
                 self.options,
                 task,
                 table,

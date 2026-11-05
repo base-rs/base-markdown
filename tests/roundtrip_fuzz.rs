@@ -18,7 +18,7 @@
 mod support;
 
 use base_markdown::{
-    stream::{EventKind, Text as EventText},
+    stream::{EventKind, Tag, Text as EventText},
     to_markdown_with_options, CompileOptions, Document, IncrementalParser, MarkdownOptions,
     ParseOptions,
 };
@@ -209,7 +209,7 @@ fn text(value: String) -> Node {
     })
 }
 
-/// Phrasing of one to four nodes, where a text of a lone line ending stands for a soft break. `outside` lists the attention and links that enclose it, which are not nested in themselves. A hard break can be the last child, at the end of a block or of attention, and can be in a table cell, where normalizing moves it out of attention, removes it at the end of a paragraph or heading, and turns it into a space in a table cell.
+/// Phrasing of one to four nodes, where a text of a lone line ending stands for a soft break. `outside` lists the attention and links that enclose it, which are not nested in themselves. A hard break can be the last child, at the end of a block or of attention, where normalizing moves it out of attention and removes it at the end of a paragraph or heading. A table cell holds no break, so `outside` lists `break` there, and a lone line ending stays text.
 fn phrasing(random: &mut Random, depth: usize, outside: &[&str]) -> Vec<Node> {
     let mut children = Vec::new();
     for _ in 0..1 + random.below(4) {
@@ -259,7 +259,7 @@ fn phrasing(random: &mut Random, depth: usize, outside: &[&str]) -> Vec<Node> {
     children
 }
 
-/// `document` with each text of a lone line ending replaced by a soft break, which the fixture cannot build, so that whitespace text and breaks meet soft breaks as separate nodes.
+/// `document` with each text of a lone line ending outside a table cell, which holds no break, replaced by a soft break, which the fixture cannot build, so that whitespace text and breaks meet soft breaks as separate nodes.
 fn soft_breaks(mut document: Document) -> Document {
     let mut pending = vec![document.root()];
     let mut soft = Vec::new();
@@ -270,7 +270,9 @@ fn soft_breaks(mut document: Document) -> Document {
                 soft.push(id);
             }
         }
-        pending.extend(document.children(id));
+        if !matches!(kind, EventKind::Start(Tag::TableCell { .. })) {
+            pending.extend(document.children(id));
+        }
     }
     // A text cannot become a soft break in place, so a soft break takes its place.
     for id in soft {
@@ -287,7 +289,8 @@ fn soft_breaks(mut document: Document) -> Document {
 /// A paragraph, heading or one-cell table of random phrasing.
 fn tree(random: &mut Random) -> Input {
     let kind = random.below(4);
-    let children = phrasing(random, 0, &[]);
+    // A table cell holds no break.
+    let children = phrasing(random, 0, if kind == 1 { &["break"] } else { &[] });
     let block = match kind {
         0 => Node::Heading(Heading {
             children,
