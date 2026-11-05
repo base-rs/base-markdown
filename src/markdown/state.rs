@@ -19,7 +19,7 @@ use crate::markdown::{
 };
 use crate::{
     message::Message,
-    stream::{EventKind, Tag, TagKind},
+    stream::{EventKind, Tag},
     util::{
         line_ending::{line_endings, trim_terminal_ending},
         normalize_identifier::{normalize_identifier, normalize_identifier_into},
@@ -53,8 +53,10 @@ pub struct State<'a> {
     email_escapes: Vec<usize>,
     /// Output offsets that make GFM literal autolinks of the text being written.
     literal_markers: Vec<usize>,
-    /// Whether the image text being written can form GFM literal autolinks.
-    alt_literals: bool,
+    /// Where the text of the image being written starts, when literal autolinks form in it. A
+    /// bare link there reads back as one, as the parser reads the text after `![` like the
+    /// start of a line.
+    pub(super) alt_start: Option<usize>,
     /// Whether the text being written leaves literal autolinks to its caller, which edits its
     /// start first.
     defer_literals: bool,
@@ -1202,7 +1204,7 @@ impl<'a> State<'a> {
             applied: Vec::new(),
             email_escapes: Vec::new(),
             literal_markers: Vec::new(),
-            alt_literals: false,
+            alt_start: None,
             defer_literals: false,
             attention_open: [[0; 2]; 2],
             parent: Parent::NONE,
@@ -1366,6 +1368,9 @@ impl<'a> State<'a> {
                     && !next.1.before
                     && !next.1.after
             }) || index > 0
+                // An escape before the input is in output already written, where it was not
+                // applied, so it cannot stand in for this one.
+                && self.escapes[index - 1].0 >= start
                 && self.escapes[index - 1].0 + 1 == position
                 && flags.before
                 && !self.escapes[index - 1].1.before
@@ -1432,61 +1437,9 @@ impl<'a> State<'a> {
             info.after,
             &mut self.output,
         );
-        if !self.defer_literals
-            && (self.alt_literals || super::escape::autolink_literals(&self.stack))
-        {
+        if !self.defer_literals && super::escape::autolink_literals(&self.stack) {
             self.escape_literals(written, info);
         }
-    }
-
-    /// Write the text of the image `node`, which the output holds from `start` up to the text,
-    /// before `after`. Literals form in image text unless the image is in link text, so the text
-    /// of its text nodes is escaped where they would, while the text of links in it, which only
-    /// parsing makes, is written as it is and reads back as those links.
-    pub(super) fn image_text<S: AsRef<str>>(
-        &mut self,
-        document: &Document<S>,
-        node: NodeId,
-        start: usize,
-        after: &str,
-        literals: bool,
-    ) {
-        let text_start = self.output.len();
-        // Runs of the text, each from text nodes or from links.
-        let mut runs: Vec<(String, bool)> = Vec::new();
-        let mut links = 0usize;
-        for event in document.subtree_events(node) {
-            let kind = event.expect("document events are valid").kind;
-            match kind {
-                EventKind::Start(Tag::Link { .. }) => links += 1,
-                EventKind::End(TagKind::Link) => links -= 1,
-                _ => {}
-            }
-            let Some(value) = crate::headings::semantic_text::<false>(&kind, document.source())
-            else {
-                continue;
-            };
-            let link = links > 0;
-            match runs.last_mut() {
-                Some((text, last)) if *last == link => text.push_str(value),
-                _ => runs.push((value.into(), link)),
-            }
-        }
-        let mut buffer = [0u8; 4];
-        for (index, (value, link)) in runs.iter().enumerate() {
-            let after = runs
-                .get(index + 1)
-                .and_then(|(next, _)| next.chars().next())
-                .map_or(after, |next| &*next.encode_utf8(&mut buffer));
-            let info = Info {
-                before: Before::Output("", start..self.output.len()),
-                after,
-                text_run: (index > 0).then_some(text_start),
-            };
-            self.alt_literals = literals && !link;
-            self.write_safe(value, &info, None);
-        }
-        self.alt_literals = false;
     }
 
     /// Escape what makes literal autolinks of the text written from `start`. Text is literal, so
@@ -1871,8 +1824,7 @@ fn normalize_nul(value: &str) -> Cow<'_, str> {
 
 /// How deep the serializer nests: a node more than this many levels below the serialized node,
 /// counting every block and inline node between them, is an error rather than a deeper recursion
-/// that could overflow the stack. The text of an image is written flat, so the nodes in it are not
-/// counted.
+/// that could overflow the stack.
 const MAX_NESTING: usize = 128;
 
 fn nesting_too_deep() -> Message {

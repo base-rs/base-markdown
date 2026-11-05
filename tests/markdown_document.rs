@@ -407,7 +407,7 @@ fn serialized_fragments_support_table_sections_and_nonrendered_metadata() {
 fn structured_image_alt_and_link_text_use_their_semantic_content() {
     let source = "![*one* two](/image) ![`code`](/code) ![](/empty) [one *two*](/link) [*emphasis*](/emphasis)";
     let document = Document::parse(source, &ParseOptions::default()).unwrap();
-    assert_eq!(to_markdown(&document).unwrap(), "![one two](/image) ![code](/code) ![](/empty) [one *two*](/link) [*emphasis*](/emphasis)\n");
+    assert_eq!(to_markdown(&document).unwrap(), "![*one* two](/image) ![`code`](/code) ![](/empty) [one *two*](/link) [*emphasis*](/emphasis)\n");
 }
 
 #[test]
