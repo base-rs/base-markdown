@@ -299,14 +299,21 @@ pub enum EventKind<'a> {
     },
     /// A code block, including source fence provenance where available.
     ///
-    /// The language of code is the first word of its info string, so it cannot be empty: the
-    /// parser reads a fence with no info string as code without a language. Any other language can
-    /// be written, since the serializer encodes whitespace, line endings and backticks in it as
-    /// character references. An empty language is rejected with [`StreamError::InvalidValue`]
-    /// wherever an event enters a document or renderer.
+    /// `info` is the whole info string of a fenced block, as the parser decoded it: trimmed of the
+    /// spaces and tabs at its edges, with backslash escapes and character references decoded when
+    /// [`Constructs::character_escape`][crate::Constructs::character_escape] and
+    /// [`Constructs::character_reference`][crate::Constructs::character_reference] are on. A fence
+    /// without an info string, and indented code, have none. The language is derived from it with
+    /// [`code_language`]: its first word.
+    ///
+    /// Any info string can be written, since the serializer encodes the spaces and tabs at its
+    /// edges, line endings, and the characters that would decode or close the fence, so it reads
+    /// back exactly. An empty info string is code without one, which is `None`, so `Some` empty
+    /// info is rejected with [`StreamError::InvalidValue`] wherever an event enters a document or
+    /// renderer.
     CodeBlock {
         value: Text<'a>,
-        language: Option<Text<'a>>,
+        info: Option<Text<'a>>,
         fence: Option<CodeFence>,
         unclosed: bool,
     },
@@ -370,12 +377,12 @@ impl<'s> EventKind<'s> {
             }
             Self::CodeBlock {
                 value,
-                language: Some(language),
+                info: Some(info),
                 ..
             } => {
                 text(value)?;
-                text(language)?;
-                let empty = match language {
+                text(info)?;
+                let empty = match info {
                     Text::Source(range) => range.is_empty(),
                     Text::Literal(value) => value.is_empty(),
                     Text::Value(value) => value.is_empty(),
@@ -438,12 +445,12 @@ impl<'s> EventKind<'s> {
             },
             Self::CodeBlock {
                 value,
-                language,
+                info,
                 fence,
                 unclosed,
             } => EventKind::CodeBlock {
                 value: map(value),
-                language: language.map(map),
+                info: info.map(map),
                 fence,
                 unclosed,
             },
@@ -468,6 +475,26 @@ impl<'s> EventKind<'s> {
             Self::FootnoteReference(value) => EventKind::FootnoteReference(map(value)),
         }
     }
+}
+
+/// The language of a code block whose info string is `info`: its first word, up to the first
+/// space, tab or line ending, or `None` when that word is empty.
+///
+/// The info string is decoded, so a space written as a character reference separates words like
+/// a raw one, as in cmark. The parser trims the spaces and tabs at the edges of the info string,
+/// so the language of a parsed block is empty only when its info string starts with an encoded
+/// space, tab or line ending, such as `&#x20;x`.
+///
+/// ```
+/// use base_markdown::stream::code_language;
+///
+/// assert_eq!(code_language("rust ignore"), Some("rust"));
+/// assert_eq!(code_language("a\tb"), Some("a"));
+/// assert_eq!(code_language(" x"), None);
+/// ```
+pub fn code_language(info: &str) -> Option<&str> {
+    let end = info.find([' ', '\t', '\r', '\n']).unwrap_or(info.len());
+    (end != 0).then(|| &info[..end])
 }
 
 /// A semantic event and its original source extent.
@@ -503,8 +530,7 @@ pub enum StreamError {
     Unbalanced,
     /// A value has a form its event or syntax cannot hold, such as an inline code language that
     /// [`ParseOptions::inline_code_info`][crate::ParseOptions::inline_code_info] would not read
-    /// back, an empty code block language, or a code info string that does not start with the
-    /// block's language.
+    /// back, or an empty code block info string.
     InvalidValue,
     /// The caller's output writer failed.
     Write(fmt::Error),

@@ -1991,7 +1991,7 @@ fn line_endings_in_code_become_spaces() {
     let mut document = build_blocks(vec![event(
         EventKind::CodeBlock {
             value: Text::Literal("a\nb\n"),
-            language: None,
+            info: None,
             fence: None,
             unclosed: false,
         },
@@ -2251,7 +2251,7 @@ fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) 
                     parent,
                     EventKind::CodeBlock {
                         value: Text::from("x\n".to_owned()),
-                        language: None,
+                        info: None,
                         fence: None,
                         unclosed: false,
                     },
@@ -4486,7 +4486,7 @@ fn joining_paragraphs_and_loosening_lists_in_tight_items_is_linear() {
 fn code_block(value: &str) -> EventKind<'static> {
     EventKind::CodeBlock {
         value: Text::from(value.to_owned()),
-        language: None,
+        info: None,
         fence: None,
         unclosed: false,
     }

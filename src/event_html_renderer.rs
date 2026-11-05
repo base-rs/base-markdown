@@ -590,7 +590,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     }
                     EventKind::CodeBlock {
                         value,
-                        language,
+                        info,
                         unclosed,
                         ..
                     } => {
@@ -603,14 +603,15 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                             );
                         }
                         self.terminate()?;
+                        let language = info.as_ref().and_then(|info| {
+                            crate::stream::code_language(
+                                info.resolve(self.source)
+                                    .expect("event values are source-valid"),
+                            )
+                        });
                         if let Some(language) = language {
                             self.write("<pre><code class=\"language-")?;
-                            self.escaped(
-                                language
-                                    .resolve(self.source)
-                                    .expect("event values are source-valid"),
-                                true,
-                            )?;
+                            self.escaped(language, true)?;
                             self.write("\">")?;
                         } else {
                             self.write("<pre><code>")?;

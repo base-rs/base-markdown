@@ -439,12 +439,12 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
         },
         EventKind::CodeBlock {
             value,
-            language,
+            info,
             fence,
             unclosed,
         } => EventKind::CodeBlock {
             value: value.borrowed(),
-            language: language.as_ref().map(Text::borrowed),
+            info: info.as_ref().map(Text::borrowed),
             fence: *fence,
             unclosed: *unclosed,
         },
@@ -701,10 +701,8 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// # Errors
     /// Rejects invalid node IDs, source ranges and metadata for an incompatible node kind with
-    /// [`StreamError::InvalidRange`]. Rejects a [`NodeSyntax::Code`] info string that the parser
-    /// would not read back with the code's language with [`StreamError::InvalidValue`]: code
-    /// without a language has an empty info string, and code with one has an info string that is
-    /// the language, alone or followed by a space or tab and the metadata.
+    /// [`StreamError::InvalidRange`]. Rejects a reference or footnote label longer than the parser
+    /// reads with [`StreamError::InvalidValue`].
     pub fn set_syntax(
         &mut self,
         id: NodeId,

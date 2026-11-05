@@ -62,14 +62,13 @@ impl State<'_> {
     pub(super) fn code(
         &mut self,
         value: &str,
-        language: Option<&str>,
-        metadata: Option<&str>,
+        info: Option<&str>,
         fence: bool,
     ) -> Result<(), Message> {
         let content = trim_terminal_ending(value);
         let marker = self.options.check_fence()?;
         let start = self.output.len();
-        if !fence && format_code_as_indented(content, language.is_none(), self) {
+        if !fence && format_code_as_indented(content, info.is_none(), self) {
             self.output.push_str(content);
             self.indent_lines(start, |line, _, blank, output| {
                 if !blank {
@@ -81,29 +80,17 @@ impl State<'_> {
         }
         let size = (longest_run(content, marker as u8) + 1).max(3);
         self.output.extend(core::iter::repeat(marker).take(size));
-        if let Some(language) = language {
+        if let Some(info) = info {
             self.enter(if marker == '`' {
-                ConstructName::CodeFencedLangGraveAccent
+                ConstructName::CodeFencedInfoGraveAccent
             } else {
-                ConstructName::CodeFencedLangTilde
+                ConstructName::CodeFencedInfoTilde
             });
-            // The language is its own context, after the fence, so that a `~` at its start in a
-            // tilde fence is escaped rather than lengthening the fence.
-            self.write_safe(language, &Info::new("", " "), Some('`'));
+            // The info string is its own context, after the fence, so that a `~` at its start in
+            // a tilde fence is escaped rather than lengthening the fence, and the spaces and tabs
+            // at its edges, which the parser trims, are encoded.
+            self.write_safe(info, &Info::new("", ""), Some('`'));
             self.exit();
-            if let Some(metadata) = metadata {
-                self.enter(if marker == '`' {
-                    ConstructName::CodeFencedMetaGraveAccent
-                } else {
-                    ConstructName::CodeFencedMetaTilde
-                });
-                self.output.push(' ');
-                // The parser trims the info string and splits the metadata off at the spaces and
-                // tabs after the language, so the metadata is its own context, where spaces and
-                // tabs at its edges are encoded.
-                self.write_safe(metadata, &Info::new("", ""), Some('`'));
-                self.exit();
-            }
         }
         self.output.push('\n');
         if !value.is_empty() {

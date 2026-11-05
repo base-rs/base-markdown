@@ -114,7 +114,7 @@ fn unfenced_nodes_have_no_code_fence() {
     }
     let kind = EventKind::CodeBlock {
         value: "created without source".to_string().into(),
-        language: None,
+        info: None,
         fence: None,
         unclosed: false,
     };
@@ -173,7 +173,7 @@ fn detached_and_edited_nodes_keep_fence_metadata() {
             node,
             EventKind::CodeBlock {
                 value: "edited\n".to_string().into(),
-                language: Some("python".to_string().into()),
+                info: Some("python".to_string().into()),
                 fence,
                 unclosed: false,
             },

@@ -436,15 +436,15 @@ impl EventParser<'_> {
                 let value = self.value(index);
                 let kind = EventKind::CodeBlock {
                     value,
-                    language: if code.info.is_empty() {
-                        None
-                    } else {
-                        Some(crate::value_builder::decode_string_with_options(
+                    // A raw info string decodes to a nonempty one: escapes and references
+                    // decode to at least one character.
+                    info: (!code.info.is_empty()).then(|| {
+                        crate::value_builder::decode_string_with_options(
                             self.source,
                             code.info.clone(),
                             self.options,
-                        ))
-                    },
+                        )
+                    }),
                     fence: code.fence,
                     unclosed: code.unclosed,
                 };

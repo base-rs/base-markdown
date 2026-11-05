@@ -147,7 +147,7 @@ fn events_text_and_syntax_have_owned_deserialization() {
         }),
         EventKind::CodeBlock {
             value: Text::from("x".to_owned()),
-            language: None,
+            info: None,
             fence: Some(CodeFence {
                 character: '`',
                 length: 3,
@@ -396,10 +396,11 @@ fn text_deserialization_rejects_unknown_variants_and_invalid_ranges() {
     }
 }
 
-/// A code block language that cannot be written, or a code info string that does not start with
-/// the language, is rejected when deserialized as when assigned (#144).
+/// A code block info string that cannot be written, an empty one, is rejected when deserialized
+/// as when assigned (#144). The stored form is the whole info string, `info`, and a `Code` syntax
+/// is no longer read (#188).
 #[test]
-fn serialized_code_languages_and_info_strings_that_cannot_be_written_are_rejected() {
+fn serialized_code_info_strings_that_cannot_be_written_are_rejected() {
     let document = Document::parse("```x\n```\n".to_owned(), &Options::default().parse).unwrap();
     let base = serde_json::to_value(document).unwrap();
     let code = base["nodes"]
@@ -408,39 +409,51 @@ fn serialized_code_languages_and_info_strings_that_cannot_be_written_are_rejecte
         .iter()
         .position(|node| node["kind"].get("CodeBlock").is_some())
         .unwrap();
-    let with = |language: Value, info: Option<&str>| {
+    assert_eq!(
+        base["nodes"][code]["kind"]["CodeBlock"]["info"],
+        json!({"Source":{"start":3,"end":4}})
+    );
+    let with = |info: Value| {
         let mut wire = base.clone();
-        wire["nodes"][code]["kind"]["CodeBlock"]["language"] = language;
-        if let Some(info) = info {
-            // Node IDs count from 1.
-            wire["syntax"] = json!({ (code + 1).to_string(): {"Code":{"info":{"Value":info}}} });
-        }
+        wire["nodes"][code]["kind"]["CodeBlock"]["info"] = info;
         serde_json::from_value::<Document>(wire)
     };
-    let x = || json!({"Value":"x"});
-    for (language, info) in [
-        (json!({"Value":""}), None),
-        (json!({"Source":{"start":3,"end":3}}), None),
-        (x(), Some("y")),
-        (x(), Some("xy z")),
-        (Value::Null, Some("x")),
-    ] {
-        let result = with(language.clone(), info);
+    for info in [json!({"Value":""}), json!({"Source":{"start":3,"end":3}})] {
+        let result = with(info.clone());
         assert!(
             result
                 .as_ref()
                 .is_err_and(|error| error.to_string().contains("invalid event value")),
-            "{} {:?}: {:?}",
-            language,
+            "{}: {:?}",
             info,
             result
         );
     }
-    for (language, info) in [
-        (x(), Some("x \ta")),
-        (json!({"Source":{"start":3,"end":4}}), Some("x")),
-        (Value::Null, Some("")),
+    for info in [
+        json!({"Value":"x \ta"}),
+        json!({"Value":" x"}),
+        json!({"Source":{"start":3,"end":4}}),
+        Value::Null,
     ] {
-        with(language, info).unwrap();
+        with(info).unwrap();
+    }
+    // The former `Code` syntax is rejected, as is any other syntax for code.
+    for (syntax, error) in [
+        (
+            json!({"Code":{"info":{"Value":"x"}}}),
+            "unknown variant `Code`",
+        ),
+        (json!({"ListItem":{"spread":true}}), "invalid source range"),
+    ] {
+        let mut wire = base.clone();
+        wire["syntax"] = json!({ (code + 1).to_string(): syntax });
+        let result = serde_json::from_value::<Document>(wire);
+        assert!(
+            result
+                .as_ref()
+                .is_err_and(|e| e.to_string().contains(error)),
+            "{:?}",
+            result
+        );
     }
 }
