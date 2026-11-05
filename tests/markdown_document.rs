@@ -128,10 +128,10 @@ fn synthetic_references_cannot_override_a_present_definition() {
                 EventKind::Start(Tag::Link {
                     destination: Text::Literal("/original"),
                     title: None,
-                    reference: Some(Reference {
+                    reference: Some(Box::new(Reference {
                         kind: ReferenceKind::Full,
                         label: Text::Literal("ref"),
-                    }),
+                    })),
                 }),
             )
             .unwrap();
@@ -199,10 +199,10 @@ fn labels_longer_than_the_parser_reads_are_rejected() {
         EventKind::Start(Tag::Link {
             destination: Text::Literal("/u"),
             title: None,
-            reference: Some(Reference {
+            reference: Some(Box::new(Reference {
                 kind: ReferenceKind::Full,
                 label: Text::from(label.to_string()),
-            }),
+            })),
         })
     };
     let check = |result: Result<(), StreamError>, valid: bool, label: &str| {

@@ -590,12 +590,13 @@ fn set_label_back(document: &mut Document<String>) -> String {
         })
         .expect("the reference is read");
     let EventKind::Start(Tag::Link {
-        reference: Some(Reference { kind, label }),
+        reference: Some(reference),
         ..
     }) = document.node(link).unwrap().kind.clone()
     else {
         panic!("a reference has its reference");
     };
+    let Reference { kind, label } = *reference;
     let label = label.resolve(document.source()).unwrap().to_string();
     support::fixture::set_reference(document, link, kind, Value::from(label.clone())).unwrap();
     label

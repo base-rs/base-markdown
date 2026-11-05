@@ -1135,7 +1135,7 @@ impl InlineParser {
                     let destination = definition.destination.clone();
                     let title = definition.title.clone();
                     let (kind, label) = self.read_label(source, index);
-                    let reference = Some(crate::stream::Reference { kind, label });
+                    let reference = Some(alloc::boxed::Box::new(crate::stream::Reference { kind, label }));
                     EventKind::Start(if tag == TagKind::Link {
                         Tag::Link {
                             destination,

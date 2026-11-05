@@ -1164,25 +1164,21 @@ fn reference_syntax_preserves_backslash_runs_and_authored_offsets() {
                 .unwrap();
             let EventKind::Start(
                 Tag::Link {
-                    reference:
-                        Some(Reference {
-                            kind: actual,
-                            label: actual_label,
-                        }),
+                    reference: Some(reference),
                     ..
                 }
                 | Tag::Image {
-                    reference:
-                        Some(Reference {
-                            kind: actual,
-                            label: actual_label,
-                        }),
+                    reference: Some(reference),
                     ..
                 },
             ) = document.node(id).unwrap().kind.clone()
             else {
                 panic!("missing reference for {:?}", authored);
             };
+            let Reference {
+                kind: actual,
+                label: actual_label,
+            } = *reference;
             assert_eq!(actual, kind);
             assert_eq!(actual_label.resolve(document.source()).unwrap(), label);
             let Text::Source(range) = actual_label else {

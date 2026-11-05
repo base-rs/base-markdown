@@ -62,15 +62,6 @@ impl NodeSyntax<'_> {
         }
     }
 
-    // A link's form describes only the link's own text and destination, which are copied with it, so it survives. Frontmatter is on the root, which is never copied.
-    pub(crate) fn copied(self) -> NodeSyntax<'static> {
-        match self {
-            Self::ListItem { spread } => NodeSyntax::ListItem { spread },
-            Self::Link { form } => NodeSyntax::Link { form },
-            _ => unreachable!("frontmatter is on the root, which is never copied"),
-        }
-    }
-
     /// Whether this syntax can belong to a node of `kind`: an error for syntax of another kind of
     /// node or an invalid source range, as [`StreamError::InvalidRange`].
     pub(crate) fn validate(&self, kind: &EventKind<'_>, source: &str) -> Result<(), StreamError> {

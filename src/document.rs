@@ -431,7 +431,7 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
                 } => crate::stream::Tag::Link {
                     destination: destination.borrowed(),
                     title: title.as_ref().map(Text::borrowed),
-                    reference: reference.as_ref().map(borrow_reference),
+                    reference: reference.as_deref().map(borrow_reference),
                 },
                 crate::stream::Tag::Image {
                     destination,
@@ -440,7 +440,7 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
                 } => crate::stream::Tag::Image {
                     destination: destination.borrowed(),
                     title: title.as_ref().map(Text::borrowed),
-                    reference: reference.as_ref().map(borrow_reference),
+                    reference: reference.as_deref().map(borrow_reference),
                 },
                 crate::stream::Tag::FootnoteDefinition { identifier, label } => {
                     crate::stream::Tag::FootnoteDefinition {
@@ -503,11 +503,11 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
 
 fn borrow_reference<'a>(
     reference: &'a crate::stream::Reference<'_>,
-) -> crate::stream::Reference<'a> {
-    crate::stream::Reference {
+) -> alloc::boxed::Box<crate::stream::Reference<'a>> {
+    alloc::boxed::Box::new(crate::stream::Reference {
         kind: reference.kind,
         label: reference.label.borrowed(),
-    }
+    })
 }
 
 impl<'a, S: AsRef<str>> Iterator for DocumentEvents<'a, S> {
@@ -1211,9 +1211,16 @@ impl<S: AsRef<str>> Document<S> {
             }
             let next = if original == root { before } else { None };
             let id = self.insert_child(parent, kind, previous, next);
-            if let Some(syntax) = source.syntax(original).map(NodeSyntax::copied) {
+            // An item's spread and a link's form describe only the copied node, so they survive.
+            // Frontmatter is on the root, which is never copied.
+            let syntax = match source.syntax(original) {
+                Some(NodeSyntax::ListItem { spread }) => Some(NodeSyntax::ListItem { spread }),
+                Some(NodeSyntax::Link { form }) => Some(NodeSyntax::Link { form }),
+                _ => None,
+            };
+            if let Some(syntax) = syntax {
                 self.set_syntax(id, Some(syntax))
-                    .expect("materialized syntax describes the copied node kind");
+                    .expect("syntax copied from the same kind of node");
             }
             if node.first_child.is_some() {
                 original_parent = Some(original);

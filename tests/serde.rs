@@ -65,10 +65,10 @@ fn document_serialization_preserves_source_edits_metadata_and_detached_subtrees(
             EventKind::Start(Tag::Link {
                 destination,
                 title,
-                reference: Some(Reference {
+                reference: Some(Box::new(Reference {
                     kind: ReferenceKind::Full,
                     label: Text::Literal("name"),
-                }),
+                })),
             }),
         )
         .unwrap();

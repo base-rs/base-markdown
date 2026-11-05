@@ -3,7 +3,7 @@
 
 //! The shared pull-based semantic event contract.
 use crate::{CodeFence, LineEnding};
-use alloc::{borrow::Cow, string::String};
+use alloc::{borrow::Cow, boxed::Box, string::String};
 use core::{fmt, ops::Range};
 
 /// A semantic value, independent of the lifetime of parser scratch storage.
@@ -308,14 +308,14 @@ pub enum Tag<'a> {
     Link {
         destination: Text<'a>,
         title: Option<Text<'a>>,
-        reference: Option<Reference<'a>>,
+        reference: Option<Box<Reference<'a>>>,
     },
     /// Resolved image destination and optional title, and the reference it was written as, if
     /// any.
     Image {
         destination: Text<'a>,
         title: Option<Text<'a>>,
-        reference: Option<Reference<'a>>,
+        reference: Option<Box<Reference<'a>>>,
     },
     /// A table.
     Table,
@@ -432,7 +432,7 @@ impl<'s> Tag<'s> {
             } => Tag::Link {
                 destination: map(destination),
                 title: title.map(&mut map),
-                reference: reference.map(|reference| reference.map_text(&mut map)),
+                reference: reference.map(|reference| Box::new(reference.map_text(&mut map))),
             },
             Self::Image {
                 destination,
@@ -441,7 +441,7 @@ impl<'s> Tag<'s> {
             } => Tag::Image {
                 destination: map(destination),
                 title: title.map(&mut map),
-                reference: reference.map(|reference| reference.map_text(&mut map)),
+                reference: reference.map(|reference| Box::new(reference.map_text(&mut map))),
             },
             Self::Table => Tag::Table,
             Self::TableHead => Tag::TableHead,
@@ -585,10 +585,9 @@ impl<'s> EventKind<'s> {
                 match reference {
                     // The parser reads only a full reference's label up to a size: a shortcut or
                     // collapsed one is the link's text, at any size.
-                    Some(Reference {
-                        kind: crate::ReferenceKind::Full,
-                        label,
-                    }) => check(label, crate::node_syntax::label_fits),
+                    Some(reference) if reference.kind == crate::ReferenceKind::Full => {
+                        check(&reference.label, crate::node_syntax::label_fits)
+                    }
                     Some(reference) => text(&reference.label),
                     None => Ok(()),
                 }

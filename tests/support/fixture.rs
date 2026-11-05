@@ -500,10 +500,10 @@ fn append(
             EventKind::Start(Tag::Link {
                 destination: value(resource.map_or("", |r| r.0.as_str())),
                 title: resource.and_then(|r| title(&r.1)),
-                reference: Some(Reference {
+                reference: Some(Box::new(Reference {
                     kind: n.reference_kind,
                     label: association(n.label.as_deref(), &n.identifier),
-                }),
+                })),
             })
         }
         Node::ImageReference(n) => {
@@ -511,10 +511,10 @@ fn append(
             EventKind::Start(Tag::Image {
                 destination: value(resource.map_or("", |r| r.0.as_str())),
                 title: resource.and_then(|r| title(&r.1)),
-                reference: Some(Reference {
+                reference: Some(Box::new(Reference {
                     kind: n.reference_kind,
                     label: association(n.label.as_deref(), &n.identifier),
-                }),
+                })),
             })
         }
         Node::FootnoteDefinition(n) => EventKind::Start(Tag::FootnoteDefinition {
@@ -795,16 +795,17 @@ fn fixture_canonical<S: AsRef<str>>(document: &Document<S>) -> (Vec<String>, Vec
             EventKind::CodeBlock { fence, .. } => syntax.push(format!("fence:{fence:?}")),
             EventKind::Start(
                 Tag::Link {
-                    reference: Some(Reference { kind, label }),
+                    reference: Some(reference),
                     ..
                 }
                 | Tag::Image {
-                    reference: Some(Reference { kind, label }),
+                    reference: Some(reference),
                     ..
                 },
             ) => syntax.push(format!(
-                "reference:{kind:?}:{:?}",
-                normalize(label.resolve(document.source()).unwrap())
+                "reference:{:?}:{:?}",
+                reference.kind,
+                normalize(reference.label.resolve(document.source()).unwrap())
             )),
             EventKind::Start(Tag::FootnoteDefinition {
                 label: Some(label), ..
@@ -977,7 +978,7 @@ pub fn set_reference<S: AsRef<str>>(
     kind: ReferenceKind,
     label: EventText<'static>,
 ) -> Result<(), base_markdown::stream::StreamError> {
-    let reference = Some(Reference { kind, label });
+    let reference = Some(Box::new(Reference { kind, label }));
     let kind = match document.node(id).unwrap().kind.clone() {
         EventKind::Start(Tag::Link {
             destination, title, ..
