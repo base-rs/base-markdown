@@ -26,11 +26,15 @@ fn link() -> EventKind<'static> {
     EventKind::Start(Tag::Link {
         destination: Text::Literal("u"),
         title: None,
+        reference: None,
     })
 }
 
 fn note() -> EventKind<'static> {
-    EventKind::FootnoteReference(Text::Literal("n"))
+    EventKind::FootnoteReference {
+        identifier: Text::Literal("N"),
+        label: None,
+    }
 }
 
 fn first(document: &Document, id: NodeId) -> NodeId {
@@ -122,8 +126,13 @@ fn a_serialized_footnote_reference_in_a_link_is_rejected() {
         .position(|node| node["kind"].get("Text").is_some())
         .unwrap();
     serde_json::from_value::<Document>(wire.clone()).unwrap();
-    wire["nodes"][text]["kind"] = serde_json::json!({"FootnoteReference": {"Value": "n"}});
-    assert!(serde_json::from_value::<Document>(wire).is_err());
+    wire["nodes"][text]["kind"] = serde_json::json!({"FootnoteReference": {"identifier": {"Value": "N"}, "label": {"Value": "n"}}});
+    assert_eq!(
+        serde_json::from_value::<Document>(wire)
+            .unwrap_err()
+            .to_string(),
+        base_markdown::stream::StreamError::InvalidNesting.to_string()
+    );
 }
 
 #[test]

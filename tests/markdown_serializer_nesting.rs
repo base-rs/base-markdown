@@ -71,6 +71,7 @@ fn link() -> Tag<'static> {
     Tag::Link {
         destination: Text::Literal("u"),
         title: None,
+        reference: None,
     }
 }
 
@@ -78,6 +79,7 @@ fn image() -> Tag<'static> {
     Tag::Image {
         destination: Text::Literal("u"),
         title: None,
+        reference: None,
     }
 }
 
@@ -96,7 +98,10 @@ fn item() -> Tag<'static> {
 }
 
 fn footnote() -> Tag<'static> {
-    Tag::FootnoteDefinition(Text::Literal("a"))
+    Tag::FootnoteDefinition {
+        identifier: Text::Literal("A"),
+        label: None,
+    }
 }
 
 fn paragraph() -> Tag<'static> {
@@ -129,6 +134,11 @@ fn shapes(depth: usize) -> Vec<(&'static str, Vec<Tag<'static>>)> {
             block(&[quote.clone(), list(false), item(), footnote()]),
         ),
         ("links", inline(&[paragraph()], &[link()])),
+        ("images", inline(&[paragraph()], &[image()])),
+        (
+            "links and images",
+            inline(&[paragraph()], &[link(), image()]),
+        ),
         (
             "emphasis and strong",
             inline(&[paragraph()], &[Tag::Emphasis, Tag::Strong]),
@@ -258,15 +268,13 @@ fn siblings_do_not_add_up() {
 }
 
 #[test]
-fn image_text_is_written_flat_and_does_not_count() {
-    // The issue's reproducer: links and images nested 10,000 deep. An image's text is written
-    // without descending into it, so only the link and image outside it count.
-    for (unit, expected) in [
-        ([link(), image()], "[![a](u)](u)\n"),
-        ([image(), link()], "![a](u)\n"),
-    ] {
+fn image_text_counts_like_link_text() {
+    // The reproducer of an earlier issue: links and images nested 10,000 deep. Image text is
+    // written as phrasing, like link text, so each level counts, and the nest stops at the limit
+    // rather than overflowing the stack.
+    for unit in [[link(), image()], [image(), link()]] {
         let document = nest(&levels(10_000, &[paragraph()], &unit, &[], &Tag::Emphasis));
-        assert_eq!(to_markdown(&document).unwrap(), expected);
+        assert_too_deep(to_markdown(&document), "links and images");
     }
 }
 

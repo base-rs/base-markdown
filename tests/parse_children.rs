@@ -75,7 +75,7 @@ fn footnote_references(document: &Document) -> usize {
         .filter(|id| {
             matches!(
                 document.node(*id).unwrap().kind,
-                EventKind::FootnoteReference(_)
+                EventKind::FootnoteReference { .. }
             )
         })
         .count()
@@ -204,7 +204,7 @@ fn every_container_that_holds_blocks_reads_blocks() {
         |kind| matches!(kind, EventKind::Start(Tag::Document { .. })),
         |kind| matches!(kind, EventKind::Start(Tag::BlockQuote)),
         |kind| matches!(kind, EventKind::Start(Tag::Item { .. })),
-        |kind| matches!(kind, EventKind::Start(Tag::FootnoteDefinition(_))),
+        |kind| matches!(kind, EventKind::Start(Tag::FootnoteDefinition { .. })),
     ];
     for container in containers {
         let mut document = parse(source);
@@ -276,13 +276,12 @@ fn references_and_footnote_calls_resolve_against_the_documents_definitions() {
     let link = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::Link { .. }))
     });
-    // A reference keeps its syntax, which reads back to the same definition.
+    // A reference keeps its label, which reads back to the same definition.
     assert!(matches!(
-        document.syntax(link),
-        Some(NodeSyntax::Reference {
-            kind: ReferenceKind::Full,
-            label: Text::Value(label),
-        }) if label == "R"
+        &document.node(link).unwrap().kind,
+        EventKind::Start(Tag::Link { reference: Some(reference), .. })
+            if reference.kind == ReferenceKind::Full
+                && reference.label.resolve(document.source()).ok() == Some("R")
     ));
     assert_eq!(
         reads_back(document),
@@ -355,7 +354,13 @@ fn an_existing_reference_that_a_fragment_definition_shadows_is_written_inline() 
     });
     document.parse_children(quote, "[r]: /b", &gfm()).unwrap();
     assert_eq!(destinations(&document), ["/a"]);
-    assert_eq!(reads_back(document), "[x](/a)\n\n> [r]: /b\n\n[r]: /a\n");
+    // It is written as a resource, so it reads back as one, to the same destination.
+    let markdown = to_markdown(&document).unwrap();
+    assert_eq!(markdown, "[x](/a)\n\n> [r]: /b\n\n[r]: /a\n");
+    let reparsed = Document::parse(markdown.clone(), &gfm()).unwrap();
+    assert_eq!(destinations(&reparsed), ["/a"]);
+    assert_eq!(rendered(&reparsed), rendered(&document));
+    assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
 }
 
 #[test]

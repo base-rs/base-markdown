@@ -5,8 +5,10 @@
 
 mod support;
 use base_markdown::markdown::to_markdown;
+use base_markdown::stream::{EventKind, Reference, Tag, Text as EventText};
 use base_markdown::{Document, ParseOptions};
 use pretty_assertions::assert_eq;
+use support::fixture::rejected;
 use support::fixture::to_markdown as to;
 use support::fixture::{
     canonical, Break, Definition, FootnoteDefinition, FootnoteReference, Fragment, Heading, Html,
@@ -15,35 +17,18 @@ use support::fixture::{
 
 #[test]
 fn link_reference() {
-    assert_eq!(
-        to(&Node::LinkReference(LinkReference {
-            children: Vec::new(),
-            position: None,
-            reference_kind: ReferenceKind::Full,
-            identifier: String::new(),
-            label: None
-        }))
-        .unwrap(),
-        "[][]\n",
-        "should support a link reference (nonsensical"
-    );
-
-    assert_eq!(
-        to(&Node::LinkReference(LinkReference {
-            children: vec![Node::Text(Text {
-                value: String::from("a"),
-                position: None
-            })],
-            position: None,
-            reference_kind: ReferenceKind::Full,
-            identifier: String::new(),
-            label: None
-        }))
-        .unwrap(),
-        "[a][]\n",
-        "should support `children`"
-    );
-
+    // An empty label does not read back as one, so it is rejected (#192).
+    assert!(rejected(
+        EventKind::Start(Tag::Link {
+            destination: EventText::Literal(""),
+            title: None,
+            reference: Some(Box::new(Reference {
+                kind: base_markdown::ReferenceKind::Full,
+                label: EventText::Literal(""),
+            })),
+        }),
+        true
+    ));
     assert_eq!(
         to(&Node::LinkReference(LinkReference {
             children: Vec::new(),
@@ -529,7 +514,11 @@ fn multiline_labels_in_containers_round_trip() {
             "- [a][r\n      s]\n\n[r s]: /u",
             "- [a][r\n      s]\n\n[r s]: /u\n",
         ),
-        ("- [a][r\n\ts]\n\n[r s]: /u", "- [a][r\n  s]\n\n[r s]: /u\n"),
+        // The item takes two of the tab's columns; the label keeps the other two.
+        (
+            "- [a][r\n\ts]\n\n[r s]: /u",
+            "- [a][r\n    s]\n\n[r s]: /u\n",
+        ),
         (
             "- ![a][r\n  s]\n\n[r s]: /u",
             "- ![a][r\n  s]\n\n[r s]: /u\n",
@@ -551,9 +540,10 @@ fn multiline_labels_in_containers_round_trip() {
         // The paragraph's span is the reference's.
         ("[r s]: /u\n\n> [a][r\n> s]", "[r s]: /u\n\n> [a][r\n> s]\n"),
         ("> [a][r\ns]\n\n[r s]: /u", "> [a][r\n> s]\n\n[r s]: /u\n"),
+        // The quote takes one of the tab's three columns; the label keeps the other two.
         (
             ">\t[a][r\n>\ts]\n\n[r s]: /u",
-            "> [a][r\n> s]\n\n[r s]: /u\n",
+            "> [a][r\n>   s]\n\n[r s]: /u\n",
         ),
         (
             "> > ![a][r\n> > s]\n\n[r s]: /u",
@@ -579,10 +569,7 @@ fn multiline_labels_in_containers_round_trip() {
 
 /// Set the inferred label of the first link in `document` back, and return it.
 fn set_label_back(document: &mut Document<String>) -> String {
-    use base_markdown::{
-        stream::{EventKind, Tag, Text as Value},
-        NodeSyntax,
-    };
+    use base_markdown::stream::{EventKind, Reference, Tag, Text as Value};
     let link = document
         .descendants(document.root())
         .find(|&id| {
@@ -592,15 +579,16 @@ fn set_label_back(document: &mut Document<String>) -> String {
             )
         })
         .expect("the reference is read");
-    let Some(NodeSyntax::Reference { kind, label }) = document.syntax(link) else {
-        panic!("a reference has reference syntax");
+    let EventKind::Start(Tag::Link {
+        reference: Some(reference),
+        ..
+    }) = document.node(link).unwrap().kind.clone()
+    else {
+        panic!("a reference has its reference");
     };
+    let Reference { kind, label } = *reference;
     let label = label.resolve(document.source()).unwrap().to_string();
-    let syntax = NodeSyntax::Reference {
-        kind,
-        label: Value::from(label.clone()),
-    };
-    document.set_syntax(link, Some(syntax)).unwrap();
+    support::fixture::set_reference(document, link, kind, Value::from(label.clone())).unwrap();
     label
 }
 
@@ -801,4 +789,50 @@ fn labels_up_to_the_parser_limit_round_trip() {
     let source = format!("[^{0}] x\n\n[^{0}]: n", "a".repeat(999));
     let document = Document::parse(source.clone(), &ParseOptions::default()).unwrap();
     assert_round_trip(document, &ParseOptions::default(), &format!("{source}\n"));
+}
+
+#[test]
+fn shortcut_labels_longer_than_a_full_label_round_trip() {
+    use base_markdown::stream::{EventKind, Text as Value};
+    // The parser reads a shortcut or collapsed label at any size, but not a full one.
+    let tabs = "\t".repeat(251);
+    for form in ["", "[]"] {
+        let source = format!("[a{tabs}b]{form} x\n\n[a b]: /u");
+        // The serializer writes one whose text matches its label as it is.
+        let document = Document::parse(source.clone(), &ParseOptions::default()).unwrap();
+        assert_eq!(to_markdown(&document).unwrap(), format!("{source}\n"));
+        assert!(!document.is_normalized());
+        // Normalizing cannot tell whether the text will match, as that depends on how the
+        // serializer writes it, so it makes one that could not be written full a resource.
+        assert_round_trip(
+            document,
+            &ParseOptions::default(),
+            &format!("[a{tabs}b](/u) x\n\n[a b]: /u\n"),
+        );
+        // Once its text no longer matches its label, it cannot be written full, so the
+        // serializer writes it as a resource too, normalized or not.
+        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+        let text = document
+            .descendants(document.root())
+            .find(|&id| matches!(document.node(id).unwrap().kind, EventKind::Text(_)))
+            .unwrap();
+        document
+            .set_kind(text, EventKind::Text(Value::Literal("c")))
+            .unwrap();
+        assert_eq!(to_markdown(&document).unwrap(), "[c](/u) x\n\n[a b]: /u\n");
+        assert_round_trip(
+            document,
+            &ParseOptions::default(),
+            "[c](/u) x\n\n[a b]: /u\n",
+        );
+    }
+    // An image is made a resource the same way.
+    let source = format!("![a{tabs}b] x\n\n[a b]: /u");
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    assert!(!document.is_normalized());
+    assert_round_trip(
+        document,
+        &ParseOptions::default(),
+        &format!("![a{tabs}b](/u) x\n\n[a b]: /u\n"),
+    );
 }

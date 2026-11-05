@@ -86,7 +86,7 @@ fn footnote_calls_obey_the_independent_label_end_switch() {
     let mut options = Options::gfm();
     options.parse.constructs.label_end = false;
     assert!(EventParser::new(source, &options.parse)
-        .all(|event| !matches!(event.unwrap().kind, EventKind::FootnoteReference(_))));
+        .all(|event| !matches!(event.unwrap().kind, EventKind::FootnoteReference { .. })));
 }
 
 #[test]

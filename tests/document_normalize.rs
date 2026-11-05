@@ -401,6 +401,7 @@ fn unwraps_links_in_links_that_are_not_autolinks() {
             EventKind::Start(Tag::Link {
                 destination: Text::Literal("http://a.b"),
                 title: Some(Text::Literal("t")),
+                reference: None,
             }),
         )
         .unwrap();
@@ -1130,6 +1131,7 @@ fn link(
         Tag::Link {
             destination: Text::Literal("http://a.b"),
             title: None,
+            reference: None,
         },
         TagKind::Link,
         children,
@@ -2170,6 +2172,7 @@ fn image(
         Tag::Image {
             destination: Text::Literal("u"),
             title: None,
+            reference: None,
         },
         TagKind::Image,
         children,
@@ -2177,11 +2180,11 @@ fn image(
 }
 
 #[test]
-fn code_in_image_text_keeps_line_endings() {
-    // Image text writes code as alt text, where a line ending can be written and reads back, so normalizing leaves it, and the heading is still chosen as setext for it.
+fn code_in_image_text_gets_spaces() {
+    // Image text is written as phrasing, like link text, so a line ending in code there cannot be written either: it becomes a space, as elsewhere, and no heading is setext for it.
     let literals: [fn() -> Result<Event<'static>, StreamError>; 2] =
         [|| code("a\nb", None), || code("a\r\nb", None)];
-    for (kind, literal) in literals.iter().enumerate() {
+    for literal in literals {
         let shapes = vec![
             build_blocks(paragraph(image(vec![literal()]))),
             build_blocks(heading(image(vec![literal()]))),
@@ -2197,31 +2200,23 @@ fn code_in_image_text_keeps_line_endings() {
             ]))),
         ];
         let expected = [
-            "![a\nb](u)\n",
-            "![a\nb](u)\n=====\n",
-            "### ![a&#xA;b](u)\n",
-            "| ![a&#xA;b](u) |\n| --- |\n",
-            "![a\nb](u) `a b`\n===========\n",
+            "![`a b`](u)\n",
+            "# ![`a b`](u)\n",
+            "### ![`a b`](u)\n",
+            "| ![`a b`](u) |\n| --- |\n",
+            "# ![`a b`](u) `a b`\n",
         ];
-        let last = shapes.len() - 1;
         for (index, mut tree) in shapes.into_iter().enumerate() {
-            let markdown = to_markdown(&tree).unwrap();
-            if kind == 0 {
-                assert_eq!(markdown, expected[index]);
-            }
-            // Only the code outside the image changes.
-            assert_eq!(tree.is_normalized(), index != last);
+            assert!(!tree.is_normalized());
             tree.normalize();
             assert!(tree.is_normalized());
-            assert_eq!(to_markdown(&tree).unwrap(), markdown);
-            if index == last {
-                let heading = tree.children(tree.root()).next().unwrap();
-                let described = describe(&tree, heading);
-                assert!(described.ends_with(r#"" " code "a b")"#), "{}", described);
-            }
+            let markdown = to_markdown(&tree).unwrap();
+            assert_eq!(markdown, expected[index]);
+            let described = describe(&tree, tree.root());
+            assert!(described.contains(r#"code "a b""#), "{}", described);
+            assert!(!described.contains(r#"code "a\n"#), "{}", described);
             let mut reparsed =
                 Document::parse(markdown.as_str(), &ParseOptions::default()).unwrap();
-            assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
             reparsed.normalize();
             assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
         }
@@ -2306,7 +2301,10 @@ fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) 
             let definition = document
                 .append_child(
                     parent,
-                    EventKind::Start(Tag::FootnoteDefinition(Text::from("1".to_owned()))),
+                    EventKind::Start(Tag::FootnoteDefinition {
+                        identifier: Text::from("1".to_owned()),
+                        label: None,
+                    }),
                 )
                 .unwrap();
             for block in blocks {

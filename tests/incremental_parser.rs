@@ -400,7 +400,7 @@ fn references_resolve_against_earlier_definitions() {
     let footnote_call = |events: &[Event<'static>]| {
         events
             .iter()
-            .any(|event| matches!(event.kind, EventKind::FootnoteReference(..)))
+            .any(|event| matches!(event.kind, EventKind::FootnoteReference { .. }))
     };
     assert!(footnote_call(&one_shot(footnote, &options)));
     assert!(!footnote_call(&incremental([footnote], &options)));

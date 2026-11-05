@@ -109,11 +109,9 @@ impl State<'_> {
     ) -> Result<(), Message> {
         let quote = self.options.check_quote()?;
         let start = self.output.len();
-        self.enter(ConstructName::Label);
         self.output.push('[');
-        self.write_label(label, &Info::at(start, self.output.len(), "]"));
+        self.write_label(label);
         self.output.push_str("]: ");
-        self.exit();
         self.destination_title(
             start,
             destination,
@@ -304,6 +302,7 @@ impl State<'_> {
         let start = self.output.len();
         if !image {
             let after_boundary = self.output.len() == self.line_start
+                || self.alt_start == Some(self.output.len())
                 || self.output.chars().next_back().map_or(true, boundary);
             match written_link(
                 document,
@@ -354,23 +353,25 @@ impl State<'_> {
         label: &str,
         image: bool,
         after: &str,
-    ) -> Result<(), Message> {
+    ) -> Result<bool, Message> {
         let start = self.output.len();
         let text = self.link_label(document, node, image, "]")?;
         self.output.push_str("][");
-        let stack = mem::take(&mut self.stack);
-        self.enter(ConstructName::Reference);
         let reference_start = self.output.len();
-        self.write_label(label, &Info::at(start, reference_start, "]"));
-        self.exit();
-        if stack.contains(&ConstructName::TableCell) {
+        self.write_label(label);
+        if self.stack.contains(&ConstructName::TableCell) {
             escape_table_pipes(&mut self.output, reference_start);
         }
-        self.stack = stack;
         if matches!(kind, ReferenceKind::Full)
             || text.is_empty()
             || self.output[text] != self.output[reference_start..]
         {
+            // The parser reads a shortcut or collapsed reference's label at any size, but a full
+            // reference's only as long as `label_fits` allows: one that is longer is not written.
+            if !matches!(kind, ReferenceKind::Full) && !crate::node_syntax::label_fits(label) {
+                self.output.truncate(start);
+                return Ok(false);
+            }
             self.output.push(']');
         } else {
             self.output.truncate(reference_start);
@@ -385,7 +386,7 @@ impl State<'_> {
                 self.output.push(']');
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     fn link_label<S: AsRef<str>>(
@@ -395,17 +396,28 @@ impl State<'_> {
         image: bool,
         after: &str,
     ) -> Result<core::ops::Range<usize>, Message> {
-        // Literals form in image text, unless the image is in link text.
+        // Image text is phrasing like link text, but literals form in it, unless the image is in
+        // link text, and so does a bare link at its start, which reads back as the same link.
         let literals = image && super::escape::autolink_literals(&self.stack);
-        self.enter(ConstructName::Label);
+        self.enter(if image {
+            ConstructName::ImageLabel
+        } else {
+            ConstructName::Label
+        });
         let start = self.output.len();
         self.output.push_str(if image { "![" } else { "[" });
         let text_start = self.output.len();
+        let alt_start = mem::replace(
+            &mut self.alt_start,
+            if literals { Some(text_start) } else { None },
+        );
         let info = Info::at(start, text_start, after);
-        if image {
-            self.image_text(document, node, start, after, literals);
-        } else {
-            self.container_phrasing(document, node, &info)?;
+        let result = self.container_phrasing(document, node, &info);
+        self.alt_start = alt_start;
+        result?;
+        // `![^` starts no image, as `[^` reads as a footnote call or text instead.
+        if image && self.output[text_start..].starts_with('^') {
+            self.output.insert(text_start, '\\');
         }
         self.exit();
         Ok(text_start..self.output.len())

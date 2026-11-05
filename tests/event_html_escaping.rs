@@ -177,6 +177,7 @@ fn custom_image_alternative_text_rejects_rules() {
         event(EventKind::Start(Tag::Image {
             destination: Text::Literal("image.png"),
             title: None,
+            reference: None,
         })),
         event(EventKind::Text(Text::Literal("before"))),
         event(EventKind::Rule),

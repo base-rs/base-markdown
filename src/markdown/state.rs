@@ -19,7 +19,7 @@ use crate::markdown::{
 };
 use crate::{
     message::Message,
-    stream::{EventKind, Tag, TagKind},
+    stream::{EventKind, Tag},
     util::{
         line_ending::{line_endings, trim_terminal_ending},
         normalize_identifier::{normalize_identifier, normalize_identifier_into},
@@ -53,8 +53,10 @@ pub struct State<'a> {
     email_escapes: Vec<usize>,
     /// Output offsets that make GFM literal autolinks of the text being written.
     literal_markers: Vec<usize>,
-    /// Whether the image text being written can form GFM literal autolinks.
-    alt_literals: bool,
+    /// Where the text of the image being written starts, when literal autolinks form in it. A
+    /// bare link there reads back as one, as the parser reads the text after `![` like the
+    /// start of a line.
+    pub(super) alt_start: Option<usize>,
     /// Whether the text being written leaves literal autolinks to its caller, which edits its
     /// start first.
     defer_literals: bool,
@@ -859,17 +861,33 @@ impl<'a> State<'a> {
                     self.depth += 1;
                     Ok(())
                 }
-                Tag::Link { destination, title } | Tag::Image { destination, title } => {
+                Tag::Link {
+                    destination,
+                    title,
+                    reference,
+                }
+                | Tag::Image {
+                    destination,
+                    title,
+                    reference,
+                } => {
                     let image = matches!(tag, Tag::Image { .. });
                     let destination = destination.resolve(source).unwrap();
                     let title = title.as_ref().map(|value| value.resolve(source).unwrap());
-                    if let Some(NodeSyntax::Reference { kind, label }) = document.syntax(id) {
-                        let label = label.resolve(source).unwrap();
-                        if self.reference_matches(document, id, label, destination, title) {
-                            let result =
-                                self.reference(document, id, kind, label, image, info.after);
+                    if let Some(reference) = reference {
+                        let label = reference.label.resolve(source).unwrap();
+                        if self.reference_matches(document, id, label, destination, title)
+                            && self.reference(
+                                document,
+                                id,
+                                reference.kind,
+                                label,
+                                image,
+                                info.after,
+                            )?
+                        {
                             self.depth -= 1;
-                            return result;
+                            return Ok(());
                         }
                     }
                     self.resource(document, id, destination, title, image)
@@ -881,12 +899,12 @@ impl<'a> State<'a> {
                     let rows = flow_children(document, id).map(|row| (row, false));
                     self.render_table_rows(document, rows, false)
                 }
-                Tag::FootnoteDefinition(label) => {
-                    let syntax = document.syntax(id);
-                    let label = match &syntax {
-                        Some(NodeSyntax::Footnote { label }) => label.resolve(source).unwrap(),
-                        _ => label.resolve(source).unwrap(),
-                    };
+                Tag::FootnoteDefinition { identifier, label } => {
+                    let label = label
+                        .as_ref()
+                        .unwrap_or(identifier)
+                        .resolve(source)
+                        .unwrap();
                     self.output.push_str("[^");
                     self.output.push_str(label);
                     self.output.push_str("]:");
@@ -949,12 +967,12 @@ impl<'a> State<'a> {
                 destination.resolve(source).unwrap(),
                 title.as_ref().map(|value| value.resolve(source).unwrap()),
             ),
-            EventKind::FootnoteReference(label) => {
-                let syntax = document.syntax(id);
-                let label = match &syntax {
-                    Some(NodeSyntax::Footnote { label }) => label.resolve(source).unwrap(),
-                    _ => label.resolve(source).unwrap(),
-                };
+            EventKind::FootnoteReference { identifier, label } => {
+                let label = label
+                    .as_ref()
+                    .unwrap_or(identifier)
+                    .resolve(source)
+                    .unwrap();
                 self.output.push_str("[^");
                 self.output.push_str(label);
                 self.output.push(']');
@@ -1186,7 +1204,7 @@ impl<'a> State<'a> {
             applied: Vec::new(),
             email_escapes: Vec::new(),
             literal_markers: Vec::new(),
-            alt_literals: false,
+            alt_start: None,
             defer_literals: false,
             attention_open: [[0; 2]; 2],
             parent: Parent::NONE,
@@ -1270,9 +1288,13 @@ impl<'a> State<'a> {
             EventKind::Start(Tag::Strong) => Some(self.options.strong),
             EventKind::Start(Tag::Delete) => Some('~'),
             EventKind::Start(Tag::Image { .. }) => Some('!'),
-            EventKind::Start(Tag::Link { destination, title }) => Some(
-                if matches!(document.syntax(id), Some(NodeSyntax::Reference { label, .. })
-                    if self.reference_matches(document, id, label.resolve(document.source()).unwrap(),
+            EventKind::Start(Tag::Link {
+                destination,
+                title,
+                reference,
+            }) => Some(
+                if matches!(reference, Some(reference)
+                    if self.reference_matches(document, id, reference.label.resolve(document.source()).unwrap(),
                         destination.resolve(document.source()).unwrap(),
                         title.as_ref().map(|value| value.resolve(document.source()).unwrap())))
                 {
@@ -1346,6 +1368,9 @@ impl<'a> State<'a> {
                     && !next.1.before
                     && !next.1.after
             }) || index > 0
+                // An escape before the input is in output already written, where it was not
+                // applied, so it cannot stand in for this one.
+                && self.escapes[index - 1].0 >= start
                 && self.escapes[index - 1].0 + 1 == position
                 && flags.before
                 && !self.escapes[index - 1].1.before
@@ -1412,61 +1437,9 @@ impl<'a> State<'a> {
             info.after,
             &mut self.output,
         );
-        if !self.defer_literals
-            && (self.alt_literals || super::escape::autolink_literals(&self.stack))
-        {
+        if !self.defer_literals && super::escape::autolink_literals(&self.stack) {
             self.escape_literals(written, info);
         }
-    }
-
-    /// Write the text of the image `node`, which the output holds from `start` up to the text,
-    /// before `after`. Literals form in image text unless the image is in link text, so the text
-    /// of its text nodes is escaped where they would, while the text of links in it, which only
-    /// parsing makes, is written as it is and reads back as those links.
-    pub(super) fn image_text<S: AsRef<str>>(
-        &mut self,
-        document: &Document<S>,
-        node: NodeId,
-        start: usize,
-        after: &str,
-        literals: bool,
-    ) {
-        let text_start = self.output.len();
-        // Runs of the text, each from text nodes or from links.
-        let mut runs: Vec<(String, bool)> = Vec::new();
-        let mut links = 0usize;
-        for event in document.subtree_events(node) {
-            let kind = event.expect("document events are valid").kind;
-            match kind {
-                EventKind::Start(Tag::Link { .. }) => links += 1,
-                EventKind::End(TagKind::Link) => links -= 1,
-                _ => {}
-            }
-            let Some(value) = crate::headings::semantic_text::<false>(&kind, document.source())
-            else {
-                continue;
-            };
-            let link = links > 0;
-            match runs.last_mut() {
-                Some((text, last)) if *last == link => text.push_str(value),
-                _ => runs.push((value.into(), link)),
-            }
-        }
-        let mut buffer = [0u8; 4];
-        for (index, (value, link)) in runs.iter().enumerate() {
-            let after = runs
-                .get(index + 1)
-                .and_then(|(next, _)| next.chars().next())
-                .map_or(after, |next| &*next.encode_utf8(&mut buffer));
-            let info = Info {
-                before: Before::Output("", start..self.output.len()),
-                after,
-                text_run: (index > 0).then_some(text_start),
-            };
-            self.alt_literals = literals && !link;
-            self.write_safe(value, &info, None);
-        }
-        self.alt_literals = false;
     }
 
     /// Escape what makes literal autolinks of the text written from `start`. Text is literal, so
@@ -1530,58 +1503,11 @@ impl<'a> State<'a> {
         self.literal_markers = markers;
     }
 
-    /// Write a definition or reference label. Labels match by their raw text, so backslashes are
-    /// written as they are and a character one already escapes needs no other escape. Labels match
-    /// after collapsing whitespace, so a CR or CRLF in a constructed label is written as LF.
-    pub(super) fn write_label(&mut self, label: &str, info: &Info) {
-        let normalized;
-        let label = if label.contains('\r') {
-            normalized = {
-                let mut value = String::with_capacity(label.len());
-                crate::util::line_ending::push_normalized(&mut value, label);
-                value
-            };
-            normalized.as_str()
-        } else {
-            label
-        };
-        let before = info.before(&self.output);
-        let start = before[0].len() + before[1].len();
-        self.escapes.clear();
-        super::escape::collect(before, label, info.after, &self.stack, &mut self.escapes);
-        self.escapes.sort_unstable_by_key(|entry| entry.0);
-        self.escapes.dedup_by_key(|entry| entry.0);
-        let bytes = label.as_bytes();
-        let escaped = |index: usize| {
-            bytes[..index]
-                .iter()
-                .rev()
-                .take_while(|&&byte| byte == b'\\')
-                .count()
-                % 2
-                == 1
-        };
-        let mut cursor = 0;
-        for &(position, _) in &self.escapes {
-            let Some(index) = position
-                .checked_sub(start)
-                .filter(|&index| index < label.len())
-            else {
-                continue;
-            };
-            if escaped(index) {
-                continue;
-            }
-            // Labels are written outside phrasing, so only ASCII punctuation needs an escape.
-            self.output.push_str(&label[cursor..index]);
-            self.output.push('\\');
-            cursor = index;
-        }
-        self.output.push_str(&label[cursor..]);
-        // A trailing backslash would otherwise escape the closing bracket.
-        if escaped(label.len()) {
-            self.output.push('\\');
-        }
+    /// Write a label as it is: a label in a document is one the parser reads, as
+    /// `node_syntax::valid_label` checks, a normalized one reads back as itself when written
+    /// so, and an escape would change it.
+    pub(super) fn write_label(&mut self, label: &str) {
+        self.output.push_str(label);
     }
 }
 
@@ -1647,7 +1573,7 @@ pub(crate) fn is_phrasing(kind: &EventKind<'_>) -> bool {
             Tag::Delete | Tag::Emphasis | Tag::Image { .. } | Tag::Link { .. } | Tag::Strong
         ) | EventKind::HardBreak
             | EventKind::SoftBreak(_)
-            | EventKind::FootnoteReference(_)
+            | EventKind::FootnoteReference { .. }
             | EventKind::Code { .. }
             | EventKind::Text(_)
             | EventKind::Html { block: false, .. }
@@ -1691,7 +1617,7 @@ fn fences_code<S: AsRef<str>>(
     spread: bool,
 ) -> bool {
     before.is_some_and(|before| match document.node(before).unwrap().kind {
-        EventKind::Start(Tag::FootnoteDefinition(_)) => true,
+        EventKind::Start(Tag::FootnoteDefinition { .. }) => true,
         EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. } => {
             !spread && in_list(document, parent)
         }
@@ -1747,7 +1673,10 @@ fn ends_in_paragraph<S: AsRef<str>>(document: &Document<S>, mut id: NodeId) -> b
         match document.node(last).unwrap().kind {
             EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. } => return true,
             EventKind::Start(
-                Tag::BlockQuote | Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition(_),
+                Tag::BlockQuote
+                | Tag::List { .. }
+                | Tag::Item { .. }
+                | Tag::FootnoteDefinition { .. },
             ) => id = last,
             _ => return false,
         }
@@ -1765,7 +1694,7 @@ fn ends_in_list_or_footnote_definition<S: AsRef<str>>(
     flow_children(document, quote).last().is_some_and(|last| {
         matches!(
             document.node(last).unwrap().kind,
-            EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition(_))
+            EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition { .. })
         )
     })
 }
@@ -1807,7 +1736,7 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
             matches!(right_kind, EventKind::Start(Tag::BlockQuote))
                 || ends_in_list_or_footnote_definition(document, left) && lazy()
         }
-        EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition(_)) => lazy(),
+        EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition { .. }) => lazy(),
         _ => false,
     }
 }
@@ -1848,8 +1777,7 @@ fn normalize_nul(value: &str) -> Cow<'_, str> {
 
 /// How deep the serializer nests: a node more than this many levels below the serialized node,
 /// counting every block and inline node between them, is an error rather than a deeper recursion
-/// that could overflow the stack. The text of an image is written flat, so the nodes in it are not
-/// counted.
+/// that could overflow the stack.
 const MAX_NESTING: usize = 128;
 
 fn nesting_too_deep() -> Message {
