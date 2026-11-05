@@ -40,7 +40,10 @@ fn serializes_inline_documents_and_footnote_subtrees() {
     let note = document
         .append_child(
             document.root(),
-            EventKind::Start(Tag::FootnoteDefinition(Text::Literal("note"))),
+            EventKind::Start(Tag::FootnoteDefinition {
+                identifier: Text::Literal("NOTE"),
+                label: Some(Text::Literal("note")),
+            }),
         )
         .unwrap();
     paragraph(&mut document, note, "first");

@@ -588,15 +588,17 @@ impl Builder<'_> {
     fn definition_fragments(
         &self,
         start: usize,
-    ) -> impl Iterator<Item = Range<usize>> + Clone + '_ {
+    ) -> impl Iterator<Item = (Range<usize>, usize)> + Clone + '_ {
         let mut at = Some((start, false));
         core::iter::from_fn(move || {
             let bytes = self.source.as_bytes();
             let (start, continuation) = at.take()?;
+            let mut spaces = 0;
             let current = if continuation {
                 let mut line = LineStart::new(&bytes[start..]);
                 self.containers(&mut line);
                 let candidate = start + line.bytes_scanned();
+                spaces = line.remaining_space();
                 let indented = line.scan_space(4) && self.options.constructs.code_indented;
                 line.scan_all_space();
                 if line.is_at_eol() {
@@ -620,41 +622,12 @@ impl Builder<'_> {
             if end < bytes.len() {
                 at = Some((end, true));
             }
-            Some(current..end)
+            Some((current..end, spaces))
         })
     }
 
     fn interrupts(&self, bytes: &[u8], current_container: bool) -> bool {
-        let constructs = &self.options.constructs;
-        match bytes.first().copied() {
-            None | Some(b'\r' | b'\n') => true,
-            Some(b'>') => constructs.block_quote,
-            Some(b'<') => {
-                constructs.html_flow
-                    && html::Html::start(bytes, self.options.html_tag_namespaces, false).is_some()
-            }
-            Some(b'[') => constructs.footnote_definition && footnote_prefix(bytes, 0).is_some(),
-            Some(b'#') => constructs.heading_atx && scan_atx_heading(bytes).is_some(),
-            Some(b'`' | b'~') => constructs.code_fenced && scan_code_fence(bytes).is_some(),
-            Some(b'*' | b'_' | b'-') if constructs.thematic_break && scan_hrule(bytes).is_ok() => {
-                true
-            }
-            Some(b'*' | b'-' | b'+' | b'0'..=b'9') if constructs.list_item => {
-                self.list_interrupts(bytes, current_container)
-            }
-            _ => false,
-        }
-    }
-    // List lookahead needs an aligned line cursor; ordinary interruption dispatch does not need its stack frame.
-    #[inline(never)]
-    fn list_interrupts(&self, bytes: &[u8], current_container: bool) -> bool {
-        let mut line = LineStart::new(bytes);
-        line.scan_list_marker_with_indent(0, self.options.constructs.thematic_break)
-            .is_some_and(|(marker, number, _)| {
-                !current_container
-                    || ((matches!(marker, b'*' | b'-' | b'+') || number == 1)
-                        && scan_blank_line(&bytes[line.bytes_scanned()..]).is_none())
-            })
+        interrupts(self.options, bytes, current_container)
     }
     fn paragraph(&mut self, start: usize, line_start: usize) -> usize {
         self.finish_list(line_start);
@@ -662,12 +635,15 @@ impl Builder<'_> {
         self.push();
         let bytes = self.source.as_bytes();
         let mut at = start;
+        // The columns of a tab that a container prefix only partly consumed, before `at`.
+        let mut spaces = 0;
         loop {
             let next = at + scan_nextline(&bytes[at..]);
-            self.fragment(at, next, 0);
+            self.fragment(at, next, spaces);
             let mut line = LineStart::new(&bytes[next..]);
             let continued = self.containers(&mut line) == self.open.len();
             let content_start = next + line.bytes_scanned();
+            spaces = line.remaining_space();
             let indented = line.scan_space(4) && self.options.constructs.code_indented;
             line.scan_all_space();
             if line.is_at_eol() {
@@ -1075,7 +1051,7 @@ pub(crate) fn frontmatter_extent(source: &str) -> Option<core::ops::Range<usize>
 pub(crate) fn starts_definition(source: &str) -> bool {
     definition::scan(
         source,
-        core::iter::once(0..source.len()),
+        core::iter::once((0..source.len(), 0)),
         &ParseOptions::default(),
     )
     .is_some()
@@ -1087,7 +1063,7 @@ pub(crate) fn definition_has_title(source: &str) -> bool {
     let lines = source.split_inclusive('\n').scan(0, |at, line| {
         let range = *at..*at + line.len();
         *at = range.end;
-        Some(range)
+        Some((range, 0))
     });
     definition::scan(source, lines, &ParseOptions::default())
         .is_some_and(|definition| definition.title.is_some())
@@ -1103,18 +1079,34 @@ pub(crate) fn starts_footnote_definition(bytes: &[u8]) -> bool {
 /// `:` and is not a list item, is a delimiter row with as many cells as the row `header` on the
 /// line before it, so that the two lines start a table. Neither includes its line ending.
 fn table_start(header: &[u8], delimiter: &[u8]) -> bool {
+    delimiter_columns(delimiter).is_some_and(|columns| {
+        &header[table::trim(header, 0..header.len())] != b"|"
+            && table::Cells::new(header, 0..header.len()).count() == columns
+    })
+}
+
+/// The number of columns of the table whose delimiter row `delimiter` would be, if its cells are
+/// one's.
+fn delimiter_columns(delimiter: &[u8]) -> Option<usize> {
     if !delimiter.contains(&b'|') && !delimiter.contains(&b':') {
-        return false;
+        return None;
     }
     let mut columns = 0;
     for (_, content) in table::Cells::new(delimiter, 0..delimiter.len()) {
-        if table::alignment(&delimiter[content]).is_none() {
-            return false;
-        }
+        table::alignment(&delimiter[content])?;
         columns += 1;
     }
-    &header[table::trim(header, 0..header.len())] != b"|"
-        && table::Cells::new(header, 0..header.len()).count() == columns
+    Some(columns)
+}
+
+/// Whether the line `delimiter`, without container prefixes, indentation or line ending, would be
+/// a table's delimiter row under a header with as many cells, with the default options.
+pub(crate) fn delimiter_row(delimiter: &[u8]) -> bool {
+    matches!(delimiter.first(), Some(b'|' | b'-' | b':'))
+        && LineStart::new(delimiter)
+            .scan_list_marker_with_indent(0, true)
+            .is_none()
+        && delimiter_columns(delimiter).is_some()
 }
 
 /// Whether the line `delimiter` after the line `header`, both without container prefixes or line
@@ -1160,7 +1152,7 @@ fn table_definition_header(bytes: &[u8]) -> bool {
     false
 }
 
-fn footnote_prefix(bytes: &[u8], start: usize) -> Option<(Range<usize>, usize)> {
+pub(crate) fn footnote_prefix(bytes: &[u8], start: usize) -> Option<(Range<usize>, usize)> {
     if !bytes[start..].starts_with(b"[^") {
         return None;
     }
@@ -1178,4 +1170,46 @@ fn footnote_prefix(bytes: &[u8], start: usize) -> Option<(Range<usize>, usize)> 
         at += 1;
     }
     None
+}
+
+fn interrupts(options: &ParseOptions, bytes: &[u8], current_container: bool) -> bool {
+    let constructs = &options.constructs;
+    match bytes.first().copied() {
+        None | Some(b'\r' | b'\n') => true,
+        Some(b'>') => constructs.block_quote,
+        Some(b'<') => {
+            constructs.html_flow
+                && html::Html::start(bytes, options.html_tag_namespaces, false).is_some()
+        }
+        Some(b'[') => constructs.footnote_definition && footnote_prefix(bytes, 0).is_some(),
+        Some(b'#') => constructs.heading_atx && scan_atx_heading(bytes).is_some(),
+        Some(b'`' | b'~') => constructs.code_fenced && scan_code_fence(bytes).is_some(),
+        Some(b'*' | b'_' | b'-') if constructs.thematic_break && scan_hrule(bytes).is_ok() => true,
+        Some(b'*' | b'-' | b'+' | b'0'..=b'9') if constructs.list_item => {
+            list_interrupts(options, bytes, current_container)
+        }
+        _ => false,
+    }
+}
+// List lookahead needs an aligned line cursor; ordinary interruption dispatch does not need its stack frame.
+#[inline(never)]
+fn list_interrupts(options: &ParseOptions, bytes: &[u8], current_container: bool) -> bool {
+    let mut line = LineStart::new(bytes);
+    line.scan_list_marker_with_indent(0, options.constructs.thematic_break)
+        .is_some_and(|(marker, number, _)| {
+            !current_container
+                || ((matches!(marker, b'*' | b'-' | b'+') || number == 1)
+                    && scan_blank_line(&bytes[line.bytes_scanned()..]).is_none())
+        })
+}
+
+/// Whether a line that continues a paragraph in the same containers, from its first byte other
+/// than a space or tab, starts a block instead, as `paragraph` decides with the default
+/// constructs: a setext underline, or a block that interrupts a paragraph. A line that continues
+/// a `definition` is read as `definition_fragments` reads one, where any list item interrupts it.
+/// Indentation, which keeps any of these from starting, is not counted here.
+pub(crate) fn continuation_starts_block(bytes: &[u8], definition: bool) -> bool {
+    let options = ParseOptions::default();
+    (matches!(bytes.first(), Some(b'=' | b'-')) && scan_setext_heading(bytes).is_some())
+        || interrupts(&options, bytes, !definition)
 }

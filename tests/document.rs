@@ -2,7 +2,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 use base_markdown::{
-    stream::{EventKind, Tag, Text},
+    stream::{EventKind, Reference, Tag, Text},
     CompileOptions, Document, HeadingOptions, LinkForm, NodeSyntax, Options, ParseOptions,
     ReferenceKind,
 };
@@ -113,7 +113,10 @@ fn rejected_structural_edits_preserve_the_tree() {
     let footnote = document
         .append_child(
             root,
-            EventKind::Start(Tag::FootnoteDefinition(Text::Literal("x"))),
+            EventKind::Start(Tag::FootnoteDefinition {
+                identifier: Text::Literal("X"),
+                label: None,
+            }),
         )
         .unwrap();
     let original = html(&document);
@@ -167,6 +170,33 @@ fn rejected_structural_edits_preserve_the_tree() {
         .is_err());
 }
 
+/// The form and label of the reference that link or image `id` was written as.
+fn reference<S: AsRef<str>>(
+    document: &Document<S>,
+    id: base_markdown::NodeId,
+) -> Option<(ReferenceKind, String)> {
+    match &document.node(id)?.kind {
+        EventKind::Start(
+            Tag::Link {
+                reference: Some(reference),
+                ..
+            }
+            | Tag::Image {
+                reference: Some(reference),
+                ..
+            },
+        ) => Some((
+            reference.kind,
+            reference
+                .label
+                .resolve(document.source())
+                .unwrap()
+                .to_string(),
+        )),
+        _ => None,
+    }
+}
+
 #[test]
 fn source_syntax_is_lazy_and_explicit_edits_can_disconnect_it() {
     for (source, kind, label) in [
@@ -186,33 +216,16 @@ fn source_syntax_is_lazy_and_explicit_edits_can_disconnect_it() {
                 )
             })
             .unwrap();
-        let Some(NodeSyntax::Reference {
-            kind: actual,
-            label: value,
-        }) = document.syntax(id)
-        else {
+        // The parser records the reference it read in the event, and a reference has no
+        // other syntax.
+        let Some((actual, value)) = reference(&document, id) else {
             panic!("{:?}", source)
         };
         assert_eq!(actual, kind);
-        assert_eq!(value.resolve(document.source()).unwrap(), label);
-        document
-            .set_syntax(
-                id,
-                Some(NodeSyntax::Reference {
-                    kind: ReferenceKind::Full,
-                    label: Text::Literal("Override"),
-                }),
-            )
-            .unwrap();
-        assert!(matches!(
-            document.syntax(id),
-            Some(NodeSyntax::Reference {
-                kind: ReferenceKind::Full,
-                ..
-            })
-        ));
-        document.set_syntax(id, None).unwrap();
+        assert_eq!(value, label);
         assert!(document.syntax(id).is_none());
+        document.set_syntax(id, None).unwrap();
+        assert_eq!(reference(&document, id), Some((kind, label.to_string())));
     }
     for (source, form) in [
         ("[a](/u)", LinkForm::Explicit),
@@ -278,15 +291,6 @@ fn source_syntax_is_lazy_and_explicit_edits_can_disconnect_it() {
     };
     assert_eq!(info.resolve(document.source()).unwrap(), "rust key=&!");
     assert!(document.syntax(id).is_none());
-    assert!(document
-        .set_syntax(
-            id,
-            Some(NodeSyntax::Reference {
-                kind: ReferenceKind::Full,
-                label: Text::Literal("bad")
-            })
-        )
-        .is_err());
     let kind = document.node(id).unwrap().kind.clone();
     document.set_kind(id, kind).unwrap();
     assert!(document.syntax(id).is_none());
@@ -619,13 +623,20 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
             EventKind::Start(Tag::Link {
                 destination,
                 title: None,
+                reference: None,
             }),
         );
         let id = document.children(document.root()).next().unwrap();
         assert!(document.syntax(id).is_none(), "{:?}", raw);
     }
     for raw in ["plain", "[^missing", "[^a\\]"] {
-        let document = custom(raw, EventKind::FootnoteReference(Text::Literal("x")));
+        let document = custom(
+            raw,
+            EventKind::FootnoteReference {
+                identifier: Text::Literal("X"),
+                label: None,
+            },
+        );
         assert!(document
             .syntax(document.children(document.root()).next().unwrap())
             .is_none());
@@ -746,7 +757,7 @@ fn copied_references_preserve_targets_with_conflicting_or_missing_definitions() 
         )
         .unwrap();
         let mut replacement = Document::parse(
-            "[x][ref]\n\n[ref]: /new \"title\"\n",
+            "[x][ref] ![y][ref] <https://a.b>\n\n[ref]: /new \"title\"\n",
             &ParseOptions::default(),
         )
         .unwrap();
@@ -774,7 +785,9 @@ fn copied_references_preserve_targets_with_conflicting_or_missing_definitions() 
             .unwrap();
         drop(replacement);
         let markdown = base_markdown::to_markdown(&document).unwrap();
-        assert!(markdown.contains("[x](/new \"title\")"));
+        assert!(markdown.contains("[x](/new \"title\") ![y](/new \"title\")"));
+        // A link's form is its own, so it is copied.
+        assert!(markdown.contains("<https://a.b>"));
         assert_eq!(
             html(&document).trim_end(),
             base_markdown::to_html(&markdown).trim_end()
@@ -1149,13 +1162,23 @@ fn reference_syntax_preserves_backslash_runs_and_authored_offsets() {
                     )
                 })
                 .unwrap();
-            let Some(NodeSyntax::Reference {
+            let EventKind::Start(
+                Tag::Link {
+                    reference: Some(reference),
+                    ..
+                }
+                | Tag::Image {
+                    reference: Some(reference),
+                    ..
+                },
+            ) = document.node(id).unwrap().kind.clone()
+            else {
+                panic!("missing reference for {:?}", authored);
+            };
+            let Reference {
                 kind: actual,
                 label: actual_label,
-            }) = document.syntax(id)
-            else {
-                panic!("missing syntax for {:?}", authored);
-            };
+            } = *reference;
             assert_eq!(actual, kind);
             assert_eq!(actual_label.resolve(document.source()).unwrap(), label);
             let Text::Source(range) = actual_label else {
@@ -1191,15 +1214,11 @@ fn reference_syntax_distinguishes_escaped_brackets_after_backslash_runs() {
                         )
                     })
                     .unwrap();
-                let Some(NodeSyntax::Reference {
-                    kind,
-                    label: actual,
-                }) = document.syntax(id)
-                else {
-                    panic!("missing reference syntax for {:?}", authored)
+                let Some((kind, actual)) = reference(&document, id) else {
+                    panic!("missing reference for {:?}", authored)
                 };
                 assert_eq!(kind, expected);
-                assert_eq!(actual.resolve(document.source()).unwrap(), label);
+                assert_eq!(actual, label);
             }
         }
     }
@@ -1295,5 +1314,51 @@ fn code_info_is_decoded_with_the_parse_options() {
             panic!("{:?}", written);
         };
         assert_eq!(reread_info.resolve(&written).unwrap(), info, "{:?}", source);
+    }
+}
+
+#[test]
+fn every_parser_path_builds_the_document_that_parsing_does() {
+    use base_markdown::{markdown::to_markdown, AstBuilder, EventParser, IncrementalParser};
+    let options = ParseOptions::default();
+    let label = "a".repeat(997);
+    for source in [
+        // The reference's source span holds the `>` its label continues after, which the
+        // parser does not read as part of it (#192).
+        format!("[{label} b]: /u\n\n> [x][{label}\n> b]\n"),
+        "[a b]: /u\n\n> [a\n> b] [c][a\n> b] ![a\n> b][]\n".to_string(),
+        "[^1]: n\n\n> [^1\n> ] [^1]\n".to_string(),
+    ] {
+        let parsed = Document::parse(source.clone(), &options).unwrap();
+        let nodes = |document: &Document<String>| {
+            document
+                .nodes()
+                .iter()
+                .map(|node| format!("{:?} {:?}", node.kind, node.span))
+                .collect::<Vec<_>>()
+        };
+        let events: Vec<_> = EventParser::new(&source, &options)
+            .map(Result::unwrap)
+            .collect();
+        let mut builder = AstBuilder::new();
+        builder
+            .consume(&mut events.iter().cloned().map(Ok), usize::MAX)
+            .unwrap();
+        let built = builder.finish(source.clone()).unwrap();
+        assert_eq!(nodes(&built), nodes(&parsed), "{:?}", source);
+        let mut parser = IncrementalParser::new(&options);
+        let mut incremental = vec![events[0].clone()];
+        for line in source.split_inclusive('\n') {
+            incremental.extend(parser.push(line));
+        }
+        incremental.extend(parser.finish());
+        incremental.push(events.last().unwrap().clone());
+        let mut builder = AstBuilder::new();
+        builder
+            .consume(&mut incremental.into_iter().map(Ok), usize::MAX)
+            .unwrap();
+        let built = builder.finish(source.clone()).unwrap();
+        assert_eq!(nodes(&built), nodes(&parsed), "{:?}", source);
+        assert_eq!(to_markdown(&built).unwrap(), source);
     }
 }

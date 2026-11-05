@@ -10,6 +10,7 @@ use crate::util::normalize_identifier::{
     normalize_identifier_into, normalize_reference_identifier_into,
 };
 use crate::value_builder::{decode_string_with_options, decode_unpadded};
+use crate::ReferenceKind;
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -98,6 +99,8 @@ struct CodeInfo {
 struct Segment {
     logical: Range<usize>,
     source: Range<usize>,
+    // The columns of a tab that a container prefix only partly consumed before this line.
+    spaces: usize,
 }
 struct Link {
     destination: Range<usize>,
@@ -115,12 +118,12 @@ pub(crate) struct InlineParser {
     reference_key: String,
     logical: String,
     segments: Vec<Segment>,
-    // The logical label ranges of the references and footnote calls resolved in a scan of
-    // logical text, by node, sorted before events are pulled.
-    labels: Vec<(usize, Range<usize>)>,
-    // The labels of the yielded references and footnote calls whose source span holds container
-    // prefixes that the parser did not read as part of the label, by the span of the event.
-    read_labels: Vec<(Range<usize>, String)>,
+    // The label ranges of the references and footnote calls resolved in a scan, and the form of
+    // each reference, by node, sorted before events are pulled. A footnote call is a shortcut.
+    labels: Vec<(usize, Range<usize>, ReferenceKind)>,
+    // Whether events leave out the labels of references and footnote calls, for a consumer that
+    // never reads them, such as direct HTML rendering, which then neither records nor builds them.
+    pub(crate) skip_labels: bool,
     code_info: Vec<CodeInfo>,
     normalized: bool,
     table: bool,
@@ -281,7 +284,7 @@ impl InlineParser {
     pub(crate) fn prepare<const REFERENCES: bool, const EXTENSIONS: bool>(
         &mut self,
         source: &str,
-        fragments: impl Iterator<Item = Range<usize>> + Clone,
+        fragments: impl Iterator<Item = (Range<usize>, usize)> + Clone,
         definitions: &Definitions<'_>,
         options: &crate::ParseOptions,
         task: bool,
@@ -292,7 +295,7 @@ impl InlineParser {
         if self.scan::<REFERENCES, EXTENSIONS>(
             source,
             source,
-            fragments.clone(),
+            fragments.clone().map(|(fragment, _)| fragment),
             definitions,
             options,
             task,
@@ -301,7 +304,7 @@ impl InlineParser {
         }
         let mut combined: Option<Range<usize>> = None;
         let mut contiguous = true;
-        for fragment in fragments.clone() {
+        for (fragment, _) in fragments.clone() {
             match &mut combined {
                 None => combined = Some(fragment),
                 Some(range) => {
@@ -325,12 +328,13 @@ impl InlineParser {
         let mut logical = core::mem::take(&mut self.logical);
         logical.clear();
         self.segments.clear();
-        for fragment in fragments {
+        for (fragment, spaces) in fragments {
             let start = logical.len();
             logical.push_str(&source[fragment.clone()]);
             self.segments.push(Segment {
                 logical: start..logical.len(),
                 source: fragment,
+                spaces,
             });
         }
         self.normalized = true;
@@ -614,8 +618,8 @@ impl InlineParser {
                                     }
                                     let node =
                                         self.append(footnote_start, end, Kind::Footnote(index));
-                                    if self.normalized {
-                                        self.labels.push((node, label));
+                                    if !self.skip_labels {
+                                        self.labels.push((node, label, ReferenceKind::Shortcut));
                                     }
                                     at = end;
                                     self.link_bottom = self.nodes.len();
@@ -684,21 +688,29 @@ impl InlineParser {
                         if resolved.is_none() && REFERENCES && !definitions.is_empty() {
                             let label_start =
                                 self.nodes[bracket.node].start + 1 + usize::from(bracket.image);
-                            let mut reference = bracket.label.then_some((at, label_start..start));
+                            let mut reference = bracket.label.then_some((
+                                at,
+                                label_start..start,
+                                ReferenceKind::Shortcut,
+                            ));
                             if bytes.get(at) == Some(&b'[') {
                                 if bytes.get(at + 1) == Some(&b']') {
-                                    reference =
-                                        bracket.label.then_some((at + 2, label_start..start));
+                                    reference = bracket.label.then_some((
+                                        at + 2,
+                                        label_start..start,
+                                        ReferenceKind::Collapsed,
+                                    ));
                                 } else {
                                     reference = label(bytes, at, range.end, |at| {
                                         self.column(original_source, at)
-                                    });
+                                    })
+                                    .map(|(end, label)| (end, label, ReferenceKind::Full));
                                     if reference.is_none() && fragments.peek().is_some() {
                                         return false;
                                     }
                                 }
                             }
-                            if let Some((end, label)) = reference {
+                            if let Some((end, label, form)) = reference {
                                 if label.start < range.start {
                                     return false;
                                 }
@@ -709,8 +721,8 @@ impl InlineParser {
                                 resolved = definitions
                                     .find(&self.reference_key)
                                     .map(|index| (end, Kind::Reference(tag, index)));
-                                if resolved.is_some() && self.normalized {
-                                    self.labels.push((bracket.node, label));
+                                if resolved.is_some() && !self.skip_labels {
+                                    self.labels.push((bracket.node, label, form));
                                 }
                             }
                         }
@@ -746,7 +758,7 @@ impl InlineParser {
         if EXTENSIONS && options.constructs.autolink_literal && saw_email {
             self.resolve_email(source);
         }
-        self.labels.sort_unstable_by_key(|&(node, _)| node);
+        self.labels.sort_unstable_by_key(|&(node, ..)| node);
         self.cursor = self.nodes[0].next;
         true
     }
@@ -1041,9 +1053,10 @@ impl InlineParser {
                     }
                     EventKind::Text(self.text(source, node.start..node.end))
                 }
-                Kind::Footnote(index) => EventKind::FootnoteReference(Text::from(
-                    definitions.footnote_key(index).to_string(),
-                )),
+                Kind::Footnote(footnote) => EventKind::FootnoteReference {
+                    identifier: Text::from(definitions.footnote_key(footnote).to_string()),
+                    label: (!self.skip_labels).then(|| self.read_label(source, index).1),
+                },
                 Kind::NamedEntity(index) => EventKind::Text(Text::Literal(
                     crate::util::constant::CHARACTER_REFERENCES[index].1,
                 )),
@@ -1062,6 +1075,7 @@ impl InlineParser {
                             Text::from(alloc::format!("{prefix}{}", &source[node.start..node.end]))
                         },
                         title: None,
+                        reference: None,
                     })
                 }
                 Kind::Html => EventKind::Html {
@@ -1078,6 +1092,7 @@ impl InlineParser {
                         self.text(source, node.start + 1..node.end - 1)
                     },
                     title: None,
+                    reference: None,
                 }),
                 Kind::Code(_) | Kind::CodeInfo(_) => {
                     let (count, start, language) = match node.kind {
@@ -1107,55 +1122,90 @@ impl InlineParser {
                             .clone()
                             .map(|range| self.title(source, range, options));
                         if tag == TagKind::Link {
-                            Tag::Link { destination, title }
+                            Tag::Link {
+                                destination,
+                                title,
+                                reference: None,
+                            }
                         } else {
-                            Tag::Image { destination, title }
+                            Tag::Image {
+                                destination,
+                                title,
+                                reference: None,
+                            }
                         }
                     }
                     _ => unreachable!("inline candidates open only inline containers"),
                 }),
                 Kind::End(tag) => EventKind::End(tag),
-                Kind::Reference(tag, index) => {
-                    let definition = definitions.entry(index);
+                Kind::Reference(tag, definition) => {
+                    let definition = definitions.entry(definition);
                     let destination = definition.destination.clone();
                     let title = definition.title.clone();
+                    let reference = (!self.skip_labels).then(|| {
+                        let (kind, label) = self.read_label(source, index);
+                        alloc::boxed::Box::new(crate::stream::Reference { kind, label })
+                    });
                     EventKind::Start(if tag == TagKind::Link {
-                        Tag::Link { destination, title }
+                        Tag::Link {
+                            destination,
+                            title,
+                            reference,
+                        }
                     } else {
-                        Tag::Image { destination, title }
+                        Tag::Image {
+                            destination,
+                            title,
+                            reference,
+                        }
                     })
                 }
             };
             let span = self.source_range(node.start..node.end);
-            // A span longer than the node's logical text holds container prefixes.
-            if span.len() != node.end - node.start
-                && matches!(node.kind, Kind::Reference(..) | Kind::Footnote(_))
-            {
-                self.read_label(index, &span);
-            }
             return Some(Event { kind, span });
         }
         None
     }
 
-    /// Record the label of reference or footnote node `index`, yielded with `span`, whose source
-    /// also holds container prefixes, which are not part of it.
-    #[cold]
-    fn read_label(&mut self, index: usize, span: &Range<usize>) {
+    /// The form and label of reference or footnote call node `index`, as the parser read it: in
+    /// a container, without the prefixes of the lines it continues on, which its source holds.
+    fn read_label(&self, source: &str, index: usize) -> (ReferenceKind, Text<'static>) {
         let at = self
             .labels
-            .binary_search_by_key(&index, |&(node, _)| node)
-            .expect("every reference and footnote call resolved in logical text has its label");
-        let label = self.labels[at].1.clone();
-        let mut value = String::with_capacity(label.len());
-        crate::util::line_ending::push_normalized(&mut value, &self.logical[label]);
-        self.read_labels.push((span.clone(), value));
+            .binary_search_by_key(&index, |&(node, ..)| node)
+            .expect("every reference and footnote call has its label");
+        let (_, label, kind) = &self.labels[at];
+        (*kind, self.label_text(source, label.clone()))
     }
 
-    /// The labels of the references and footnote calls yielded so far whose source span holds
-    /// container prefixes, by the span of their event, in the order they were yielded.
-    pub(crate) fn take_read_labels(&mut self) -> Vec<(Range<usize>, String)> {
-        core::mem::take(&mut self.read_labels)
+    // A label keeps the spaces at the start of the lines it continues on, so the columns of a tab
+    // that a container prefix only partly consumed are written into it as spaces, as the line
+    // means them: `> [x][a` and `>\t  b]` hold the label `a`, a line ending and four spaces.
+    fn label_text(&self, source: &str, range: Range<usize>) -> Text<'static> {
+        if self.normalized {
+            let first = self
+                .segments
+                .partition_point(|segment| segment.logical.end <= range.start);
+            let lines = self.segments[first..]
+                .iter()
+                .take_while(|segment| segment.logical.start < range.end)
+                .filter(|segment| segment.spaces > 0 && segment.logical.start > range.start);
+            if lines.clone().next().is_some() {
+                let mut value = String::with_capacity(range.len() + 3);
+                let mut at = range.start;
+                for segment in lines {
+                    crate::util::line_ending::push_normalized(
+                        &mut value,
+                        &source[at..segment.logical.start],
+                    );
+                    value.push_str(&"   "[..segment.spaces]);
+                    at = segment.logical.start;
+                }
+                crate::util::line_ending::push_normalized(&mut value, &source[at..range.end]);
+                return Text::from(value);
+            }
+        }
+        self.text(source, range)
     }
 }
 

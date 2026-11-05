@@ -155,6 +155,7 @@ fn renders_constructed_nodes_and_subtrees() {
             EventKind::Start(Tag::Image {
                 destination: "javascript:bad()".to_string().into(),
                 title: None,
+                reference: None,
             }),
         )
         .unwrap();

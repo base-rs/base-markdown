@@ -71,6 +71,7 @@ fn link() -> Tag<'static> {
     Tag::Link {
         destination: Text::Literal("u"),
         title: None,
+        reference: None,
     }
 }
 
@@ -78,6 +79,7 @@ fn image() -> Tag<'static> {
     Tag::Image {
         destination: Text::Literal("u"),
         title: None,
+        reference: None,
     }
 }
 
@@ -96,7 +98,10 @@ fn item() -> Tag<'static> {
 }
 
 fn footnote() -> Tag<'static> {
-    Tag::FootnoteDefinition(Text::Literal("a"))
+    Tag::FootnoteDefinition {
+        identifier: Text::Literal("A"),
+        label: None,
+    }
 }
 
 fn paragraph() -> Tag<'static> {

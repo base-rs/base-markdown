@@ -162,7 +162,7 @@ impl AstBuilder {
                 .first_child
                 .map(|first| &self.nodes[first.index()].kind);
             if !event.kind.nests_in(tag, first)
-                || self.links != 0 && matches!(event.kind, EventKind::FootnoteReference(_))
+                || self.links != 0 && matches!(event.kind, EventKind::FootnoteReference { .. })
             {
                 return Err(StreamError::InvalidNesting);
             }
@@ -250,44 +250,11 @@ impl<S: AsRef<str>> Document<S> {
     /// Returns stream validation errors; built-in Markdown parsing has no syntax errors.
     pub fn parse(source: S, options: &crate::ParseOptions) -> Result<Self, StreamError> {
         let mut builder = AstBuilder::new();
-        let labels = {
-            let mut events = crate::EventParser::new(source.as_ref(), options);
-            if builder.consume(&mut events, usize::MAX).is_err() {
-                unreachable!("the built-in Markdown producer yields a balanced semantic stream");
-            }
-            events.take_read_labels()
-        };
-        builder.finish(source).map(|mut document| {
-            document.record_read_labels(labels);
-            document
-        })
-    }
-
-    // A reference or footnote label is inferred from its source span, which in a container also
-    // holds the prefixes of the lines it continues on, such as a block quote's `>`. The parser
-    // does not read those as part of the label, so the labels it read there are recorded as the
-    // nodes' syntax. `labels` are by span, in the order of the nodes.
-    fn record_read_labels(&mut self, labels: Vec<(core::ops::Range<usize>, String)>) {
-        let mut labels = labels.into_iter().peekable();
-        for index in 0..self.nodes.len() {
-            let Some((span, _)) = labels.peek() else {
-                return;
-            };
-            let node = &self.nodes[index];
-            if node.span != *span
-                || !matches!(
-                    node.kind,
-                    EventKind::Start(Tag::Link { .. } | Tag::Image { .. })
-                        | EventKind::FootnoteReference(_)
-                )
-            {
-                continue;
-            }
-            let (_, label) = labels.next().expect("peeked");
-            let syntax = crate::node_syntax::infer(self.source(), node.span.clone(), &node.kind)
-                .map(|syntax| syntax.with_label(label));
-            self.syntax.insert(NodeId::new(index), syntax);
+        let mut events = crate::EventParser::new(source.as_ref(), options);
+        if builder.consume(&mut events, usize::MAX).is_err() {
+            unreachable!("the built-in Markdown producer yields a balanced semantic stream");
         }
+        builder.finish(source)
     }
 
     /// The immutable source buffer.
@@ -457,16 +424,33 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
     match kind {
         EventKind::Start(tag) => {
             let tag = match tag {
-                crate::stream::Tag::Link { destination, title } => crate::stream::Tag::Link {
+                crate::stream::Tag::Link {
+                    destination,
+                    title,
+                    reference,
+                } => crate::stream::Tag::Link {
                     destination: destination.borrowed(),
                     title: title.as_ref().map(Text::borrowed),
+                    reference: reference
+                        .as_deref()
+                        .map(|reference| alloc::boxed::Box::new(borrow_reference(reference))),
                 },
-                crate::stream::Tag::Image { destination, title } => crate::stream::Tag::Image {
+                crate::stream::Tag::Image {
+                    destination,
+                    title,
+                    reference,
+                } => crate::stream::Tag::Image {
                     destination: destination.borrowed(),
                     title: title.as_ref().map(Text::borrowed),
+                    reference: reference
+                        .as_deref()
+                        .map(|reference| alloc::boxed::Box::new(borrow_reference(reference))),
                 },
-                crate::stream::Tag::FootnoteDefinition(value) => {
-                    crate::stream::Tag::FootnoteDefinition(value.borrowed())
+                crate::stream::Tag::FootnoteDefinition { identifier, label } => {
+                    crate::stream::Tag::FootnoteDefinition {
+                        identifier: identifier.borrowed(),
+                        label: label.as_ref().map(Text::borrowed),
+                    }
                 }
                 crate::stream::Tag::Document {
                     line_ending,
@@ -513,8 +497,20 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
             destination: destination.borrowed(),
             title: title.as_ref().map(Text::borrowed),
         },
-        EventKind::FootnoteReference(value) => EventKind::FootnoteReference(value.borrowed()),
+        EventKind::FootnoteReference { identifier, label } => EventKind::FootnoteReference {
+            identifier: identifier.borrowed(),
+            label: label.as_ref().map(Text::borrowed),
+        },
         _ => kind.clone(),
+    }
+}
+
+fn borrow_reference<'a>(
+    reference: &'a crate::stream::Reference<'_>,
+) -> crate::stream::Reference<'a> {
+    crate::stream::Reference {
+        kind: reference.kind,
+        label: reference.label.borrowed(),
     }
 }
 
@@ -716,7 +712,7 @@ impl<S: AsRef<str>> Document<S> {
             let quote = match node.kind {
                 EventKind::Start(Tag::BlockQuote) => true,
                 EventKind::Start(
-                    Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition(_),
+                    Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition { .. },
                 ) => false,
                 _ => return false,
             };
@@ -749,8 +745,7 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// # Errors
     /// Rejects invalid node IDs, source ranges and metadata for an incompatible node kind with
-    /// [`StreamError::InvalidRange`]. Rejects a reference or footnote label longer than the parser
-    /// reads with [`StreamError::InvalidValue`].
+    /// [`StreamError::InvalidRange`].
     pub fn set_syntax(
         &mut self,
         id: NodeId,
@@ -946,7 +941,7 @@ impl<S: AsRef<str>> Document<S> {
             return Err(StreamError::Unbalanced);
         }
         self.check_nesting(parent, self.nodes[parent.index()].first_child, &kind)?;
-        if matches!(kind, EventKind::FootnoteReference(_)) && self.in_link(parent) {
+        if matches!(kind, EventKind::FootnoteReference { .. }) && self.in_link(parent) {
             return Err(StreamError::InvalidNesting);
         }
         let previous = match self.appended_last_child(parent) {
@@ -1069,7 +1064,7 @@ impl<S: AsRef<str>> Document<S> {
             && self.descendants(id).any(|child| {
                 matches!(
                     self.nodes[child.index()].kind,
-                    EventKind::FootnoteReference(_)
+                    EventKind::FootnoteReference { .. }
                 )
             })
         {
@@ -1209,16 +1204,27 @@ impl<S: AsRef<str>> Document<S> {
                     .index()]
                 .parent;
             }
-            let kind =
+            let mut kind =
                 borrow_kind(&node.kind).map_text(|value| value.materialized(source.source()));
+            // References cross documents as resolved resources: the destination buffer may have a
+            // conflicting or missing definition with the same label.
+            if let EventKind::Start(Tag::Link { reference, .. } | Tag::Image { reference, .. }) =
+                &mut kind
+            {
+                *reference = None;
+            }
             let next = if original == root { before } else { None };
             let id = self.insert_child(parent, kind, previous, next);
-            if let Some(syntax) = source
-                .syntax(original)
-                .and_then(|syntax| syntax.copied(source.source()))
-            {
+            // An item's spread and a link's form describe only the copied node, so they survive.
+            // Frontmatter is on the root, which is never copied.
+            let syntax = match source.syntax(original) {
+                Some(NodeSyntax::ListItem { spread }) => Some(NodeSyntax::ListItem { spread }),
+                Some(NodeSyntax::Link { form }) => Some(NodeSyntax::Link { form }),
+                _ => None,
+            };
+            if let Some(syntax) = syntax {
                 self.set_syntax(id, Some(syntax))
-                    .expect("materialized syntax describes the copied node kind");
+                    .expect("syntax copied from the same kind of node");
             }
             if node.first_child.is_some() {
                 original_parent = Some(original);
@@ -1240,7 +1246,7 @@ fn ends_item(kind: &EventKind<'_>) -> bool {
         kind,
         EventKind::Separator { .. }
             | EventKind::Definition { .. }
-            | EventKind::Start(Tag::FootnoteDefinition(_))
+            | EventKind::Start(Tag::FootnoteDefinition { .. })
     )
 }
 
@@ -1584,6 +1590,11 @@ fn table_cell(kind: &EventKind<'_>) -> bool {
     matches!(kind, EventKind::Start(Tag::TableCell { .. }))
 }
 
+// Whether a node is a heading of rank 3 or more, which only an ATX heading can write.
+fn atx_heading(kind: &EventKind<'_>) -> bool {
+    matches!(kind, EventKind::Start(Tag::Heading(rank)) if *rank > 2)
+}
+
 // Whether a node is a paragraph, heading or table cell, whose phrasing normalization removes breaks at the edges of.
 fn block_phrasing(kind: &EventKind<'_>) -> bool {
     matches!(
@@ -1607,6 +1618,7 @@ fn autolink(
     let EventKind::Start(Tag::Link {
         destination,
         title: None,
+        reference: None,
     }) = &node.kind
     else {
         return false;
@@ -1665,6 +1677,8 @@ struct Enclosing {
     deletes: usize,
     links: usize,
     cells: usize,
+    // Headings of rank 3 or more, which are written ATX, on one line.
+    headings: usize,
 }
 
 impl Enclosing {
@@ -1673,12 +1687,18 @@ impl Enclosing {
         self.deletes += usize::from(delete(kind));
         self.links += usize::from(matches!(kind, EventKind::Start(Tag::Link { .. })));
         self.cells += usize::from(table_cell(kind));
+        self.headings += usize::from(atx_heading(kind));
     }
     // Stop counting a node once the nodes below it are passed.
     fn leave(&mut self, kind: &EventKind<'_>) {
         self.deletes -= usize::from(delete(kind));
         self.links -= usize::from(matches!(kind, EventKind::Start(Tag::Link { .. })));
         self.cells -= usize::from(table_cell(kind));
+        self.headings -= usize::from(atx_heading(kind));
+    }
+    // Whether what this encloses is written on one line, where a line ending in a label cannot be.
+    fn one_line(self) -> bool {
+        self.cells > 0 || self.headings > 0
     }
 }
 
@@ -1898,6 +1918,101 @@ fn write_lines(value: &mut Text<'static>, source: &str, last: bool) {
         written.push('\n');
     }
     *value = Text::from(written);
+}
+
+// How `normalize_label` changes a label.
+enum LabelChange {
+    // The label becomes this one.
+    Set(String),
+    // A link or image becomes a resource, or a footnote call is written as its identifier.
+    Drop,
+}
+
+// How the label of a reference, definition or footnote call changes to get the shape that reads back wherever it is written, as `node_syntax::normalized_label` describes, where it is written on `one_line` or not, if it does. A link or image whose label still does not fit wherever it is written becomes a resource, and such a footnote call is written as its identifier, when that fits.
+fn label_change(kind: &EventKind<'_>, source: &str, one_line: bool) -> Option<LabelChange> {
+    use crate::node_syntax::{label_fits_anywhere, normalized_label, valid_label};
+    fn resolved<'v>(value: &'v Text<'_>, source: &'v str) -> &'v str {
+        value.resolve(source).expect("document text is validated")
+    }
+    let resolve = |value| resolved(value, source);
+    match kind {
+        EventKind::Start(
+            Tag::Link {
+                reference: Some(reference),
+                ..
+            }
+            | Tag::Image {
+                reference: Some(reference),
+                ..
+            },
+        ) => {
+            let label = resolve(&reference.label);
+            let full = reference.kind == crate::ReferenceKind::Full;
+            let normalized = normalized_label(label, one_line, full, false);
+            if label_fits_anywhere(normalized.as_deref().unwrap_or(label)) {
+                normalized.map(LabelChange::Set)
+            } else {
+                Some(LabelChange::Drop)
+            }
+        }
+        EventKind::Definition { label, .. } => {
+            normalized_label(resolve(label), false, true, true).map(LabelChange::Set)
+        }
+        EventKind::FootnoteReference { identifier, label } => {
+            let identifier = resolve(identifier);
+            let written = label.as_ref().map_or(identifier, resolve);
+            let normalized = normalized_label(written, one_line, true, false);
+            if label.is_some()
+                && !label_fits_anywhere(normalized.as_deref().unwrap_or(written))
+                && valid_label(identifier, true)
+                && normalized_label(identifier, one_line, true, false).is_none()
+            {
+                Some(LabelChange::Drop)
+            } else {
+                normalized.map(LabelChange::Set)
+            }
+        }
+        _ => None,
+    }
+}
+
+// Apply `label_change` to `kind`.
+fn normalize_label(kind: &mut EventKind<'static>, source: &str, one_line: bool) {
+    let Some(change) = label_change(kind, source, one_line) else {
+        return;
+    };
+    match (kind, change) {
+        (
+            EventKind::Start(Tag::Link { reference, .. } | Tag::Image { reference, .. }),
+            LabelChange::Drop,
+        ) => *reference = None,
+        (
+            EventKind::Start(
+                Tag::Link {
+                    reference: Some(reference),
+                    ..
+                }
+                | Tag::Image {
+                    reference: Some(reference),
+                    ..
+                },
+            ),
+            LabelChange::Set(label),
+        ) => reference.label = Text::from(label),
+        (EventKind::Definition { label, .. }, LabelChange::Set(value)) => {
+            *label = Text::from(value);
+        }
+        (EventKind::FootnoteReference { label, .. }, LabelChange::Drop) => *label = None,
+        (EventKind::FootnoteReference { identifier, label }, LabelChange::Set(value)) => {
+            *label.as_mut().unwrap_or(identifier) = Text::from(value);
+        }
+        _ => unreachable!("only a link, image or footnote call drops its label"),
+    }
+}
+
+// Whether `normalize_label` would change nothing.
+fn label_normalized(kind: &EventKind<'_>, source: &str, one_line: bool) -> bool {
+    label_change(kind, source, one_line).is_none()
 }
 
 // Replace each line ending in the value of inline code with the space the parser reads for it.
@@ -2210,7 +2325,7 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// Markdown cannot write whitespace at the edges of emphasis, strong or strikethrough, so it moves out: Unicode whitespace in text and soft breaks at either edge, and hard breaks at the end, move out through any attention nested at that edge to just before or after the outermost attention whose edge they are. Attention left empty is removed, and what moved out takes its place. A hard break at the start of attention stays, and links and images keep whitespace at their edges. The parser reads no break at the edges of a paragraph, heading or table cell, so soft breaks at either edge of its phrasing are removed, and so are hard breaks at the end of a paragraph or heading, including those that moved out of attention; a hard break at the start stays. Markdown cannot write a hard break in a table cell, so one there, at any depth and at its end too, becomes a space, which the serializer encodes where it is at the edge of the cell, so `| a&#x20; |` is written for a cell of `a` and a hard break.
     ///
-    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code or attention on either side is joined or merged too. A separator sits between blocks, where it stays and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. Inline HTML without a value writes nothing, so it is removed, before anything above, and what was on either side meets: text joins, attention merges, and attention or a paragraph it leaves empty is removed, so a link reference after it starts its paragraph and is escaped as such, `[r]\: /u` rather than `[r]: /u`, which reads back as a definition. Inline HTML of whitespace alone stays, as it can be written between text. An HTML block whose value is empty or holds only spaces, tabs and line endings is written as blank lines, as no HTML block starts with whitespace alone, and a list without items, not counting separators, is written as nothing, or as a lone `-` where it is the only block of an item, so each is removed with one separator beside it, like an empty paragraph, and also before anything above, so the rules below see the items they leave empty: an item of `p` and a list whose only item holds a list without items is written `- p`, where `- p\n  -` read back as a heading. The parser produces none of these. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. An empty item cannot interrupt a paragraph, and a `-` alone under one is a setext underline, so in an item of a tight list, where no blank line can come between them, a list directly after a paragraph, not counting separators, cannot start with an empty item, one with no blocks once its empty paragraphs are removed: such a list's leading empty items are removed, as each next one becomes the first, so items of `p` and a list of an empty item and `a` are written `- p\n  - a`, where `- p\n  -` read back as a heading. Later empty items stay. A list left with no item is removed with one separator beside it, the one after it if there is one, and a list after it then follows the paragraph in turn. Only an ordered list that starts at 1 can interrupt a paragraph, so in an item of a tight list, an ordered list directly after a paragraph, not counting separators, that starts at another number, including one whose leading empty items were removed, is made to start at 1: `- p\n  3. a` reads back as text, so it is written `- p\n  1. a`. Its items and text stay; only its numbering changes. In an item of a tight list, two paragraphs in a row, not counting separators, cannot be written either, as the blank line between them would make the list loose, so once the rules above have run, each run of them is joined into its first paragraph, with a soft break between each, and the separators between them are removed: a tight list has no `<p>`, so this renders almost the same, and items of `a` and `b` are written `- a\n  b`. Some blocks in a row in an item of a tight list can be written apart only with a blank line between them, which makes the list loose, and the serializer decides which with the same rule: two block quotes, which would otherwise read back as one; a link reference definition or a heading that only a setext heading can write, as it holds a soft or hard break, after a paragraph, which neither can interrupt; and a paragraph, table, link reference definition or such a heading after a list or footnote definition that ends in a paragraph or link reference definition, through the last blocks of any containers in it, which would otherwise continue it lazily, or after a block quote whose last block is such a list or definition, where the line of `>` that would end the quote's paragraph is a blank line in that list or definition. Such a list is made loose, with the paragraphs of all its items, and its paragraphs in a row are then left apart. Any other heading there is written as an ATX heading, which interrupts a paragraph and ends the containers around it, with a line ending in its text written as `&#xA;`, so it leaves the list tight, as a parsed heading there always does; the serializer's options are not known here, so a heading with a soft break makes the list loose even when unwrapping would write it as a space. A block after a list that does not end in a paragraph or definition, such as one whose last item is empty or a heading, is written on the next line, a table after a paragraph interrupts it, and a block after a block quote that ends in a paragraph in any other way is written after a line of `>`, so these stay in a tight list. A task item's checkbox is written before its first block other than definitions and separators, and the parser keeps the space or tab that separates the checkbox from its text at the start of that text. Markdown cannot write a checkbox with nothing after its separator, so when that paragraph is only breaks and at most one text that is a single space or tab, the item stops being a task item, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a checkbox alone, or of a checkbox and a hard break, is left empty, and removed if it starts a list after a paragraph as above, and one of a checkbox and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the checkbox keeps it, including whitespace after the separator, which the serializer encodes, so a checkbox and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. Once the rules above have run, a task item whose first block other than definitions and separators is not a paragraph, or whose paragraph would write nothing after the checkbox, stops being a task item, and the paragraph of any other gets a space at its start when it does not start with a space, a tab or a soft break, as the serializer writes the checkbox's separator there and the parser reads it back as text. The parser reads each line ending in inline code as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. This holds in image text too, which is written as phrasing, like link text. The parser stores each line ending in a code block as LF, and the last line of a closed fence with its line ending, so in the value of such a block each CRLF and lone CR becomes LF, and a value that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty value stays, as `` ```\n``` `` reads back as one. The last node of the document, attached, keeps a value without a final line ending, as the parser stores one for an unclosed fence or indented code that ends the source without a line ending, such as `` ```\na ``, so normalizing a parsed document leaves it as it is. The parser stores each line of frontmatter with its line ending, as LF, too, so in the root's frontmatter each CRLF and lone CR becomes LF, and a body that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty body stays, as `---\n---` reads back as one. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
+    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code or attention on either side is joined or merged too. A separator sits between blocks, where it stays and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. Inline HTML without a value writes nothing, so it is removed, before anything above, and what was on either side meets: text joins, attention merges, and attention or a paragraph it leaves empty is removed, so a link reference after it starts its paragraph and is escaped as such, `[r]\: /u` rather than `[r]: /u`, which reads back as a definition. Inline HTML of whitespace alone stays, as it can be written between text. An HTML block whose value is empty or holds only spaces, tabs and line endings is written as blank lines, as no HTML block starts with whitespace alone, and a list without items, not counting separators, is written as nothing, or as a lone `-` where it is the only block of an item, so each is removed with one separator beside it, like an empty paragraph, and also before anything above, so the rules below see the items they leave empty: an item of `p` and a list whose only item holds a list without items is written `- p`, where `- p\n  -` read back as a heading. The parser produces none of these. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. An empty item cannot interrupt a paragraph, and a `-` alone under one is a setext underline, so in an item of a tight list, where no blank line can come between them, a list directly after a paragraph, not counting separators, cannot start with an empty item, one with no blocks once its empty paragraphs are removed: such a list's leading empty items are removed, as each next one becomes the first, so items of `p` and a list of an empty item and `a` are written `- p\n  - a`, where `- p\n  -` read back as a heading. Later empty items stay. A list left with no item is removed with one separator beside it, the one after it if there is one, and a list after it then follows the paragraph in turn. Only an ordered list that starts at 1 can interrupt a paragraph, so in an item of a tight list, an ordered list directly after a paragraph, not counting separators, that starts at another number, including one whose leading empty items were removed, is made to start at 1: `- p\n  3. a` reads back as text, so it is written `- p\n  1. a`. Its items and text stay; only its numbering changes. In an item of a tight list, two paragraphs in a row, not counting separators, cannot be written either, as the blank line between them would make the list loose, so once the rules above have run, each run of them is joined into its first paragraph, with a soft break between each, and the separators between them are removed: a tight list has no `<p>`, so this renders almost the same, and items of `a` and `b` are written `- a\n  b`. Some blocks in a row in an item of a tight list can be written apart only with a blank line between them, which makes the list loose, and the serializer decides which with the same rule: two block quotes, which would otherwise read back as one; a link reference definition or a heading that only a setext heading can write, as it holds a soft or hard break, after a paragraph, which neither can interrupt; and a paragraph, table, link reference definition or such a heading after a list or footnote definition that ends in a paragraph or link reference definition, through the last blocks of any containers in it, which would otherwise continue it lazily, or after a block quote whose last block is such a list or definition, where the line of `>` that would end the quote's paragraph is a blank line in that list or definition. Such a list is made loose, with the paragraphs of all its items, and its paragraphs in a row are then left apart. Any other heading there is written as an ATX heading, which interrupts a paragraph and ends the containers around it, with a line ending in its text written as `&#xA;`, so it leaves the list tight, as a parsed heading there always does; the serializer's options are not known here, so a heading with a soft break makes the list loose even when unwrapping would write it as a space. A block after a list that does not end in a paragraph or definition, such as one whose last item is empty or a heading, is written on the next line, a table after a paragraph interrupts it, and a block after a block quote that ends in a paragraph in any other way is written after a line of `>`, so these stay in a tight list. A task item's checkbox is written before its first block other than definitions and separators, and the parser keeps the space or tab that separates the checkbox from its text at the start of that text. Markdown cannot write a checkbox with nothing after its separator, so when that paragraph is only breaks and at most one text that is a single space or tab, the item stops being a task item, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a checkbox alone, or of a checkbox and a hard break, is left empty, and removed if it starts a list after a paragraph as above, and one of a checkbox and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the checkbox keeps it, including whitespace after the separator, which the serializer encodes, so a checkbox and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. Once the rules above have run, a task item whose first block other than definitions and separators is not a paragraph, or whose paragraph would write nothing after the checkbox, stops being a task item, and the paragraph of any other gets a space at its start when it does not start with a space, a tab or a soft break, as the serializer writes the checkbox's separator there and the parser reads it back as text. The parser reads each line ending in inline code as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. This holds in image text too, which is written as phrasing, like link text. The parser stores each line ending in a code block as LF, and the last line of a closed fence with its line ending, so in the value of such a block each CRLF and lone CR becomes LF, and a value that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty value stays, as `` ```\n``` `` reads back as one. The last node of the document, attached, keeps a value without a final line ending, as the parser stores one for an unclosed fence or indented code that ends the source without a line ending, such as `` ```\na ``, so normalizing a parsed document leaves it as it is. The parser stores each line of frontmatter with its line ending, as LF, too, so in the root's frontmatter each CRLF and lone CR becomes LF, and a body that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty body stays, as `---\n---` reads back as one. A label of a link, image, definition or footnote call is written as it is, so it is given the shape that reads back wherever it is written with the default parse options: a line of it after the first that would start a block there, such as `# b`, `> b`, a fence, a list item or an HTML block, which a parser with that construct turned off reads as part of the label, or whose leading tabs would start one at some columns and not at others, or that could be a table's delimiter row under whatever line is written before it, has its leading whitespace written as four spaces, which starts none; a label longer than the parser reads at some column, counting each tab as four, has its other tabs written as one space each. An ATX heading or table cell cannot hold a line ending, so in a label there each run of whitespace that holds one becomes one space. A link or image whose label is still longer than a full reference's can be at some column cannot be written as a reference, so it becomes a resource, with its destination and title, which renders the same, and such a footnote call loses its label and is written as its identifier when that fits. Other lines are left as they are, so a parsed label changes only where one of these holds, such as a line `|-|` under a head of another number of cells, which a head of the right number, written before the label, would make a table. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
     ///
     /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, adjacent attention of the same kind, such as `*a*_b_`, stays separate, and strikethrough inside strikethrough, such as `~a~~b~~c~`, stays nested. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
     ///
@@ -2233,7 +2348,7 @@ impl<S: AsRef<str>> Document<S> {
         write_frontmatter_value(&mut self.nodes[0].kind, source);
     }
 
-    // Replace each line ending in inline code with a space, and give code block values the line endings the parser stores, in every subtree, attached or detached, once its child lists are normalized.
+    // Replace each line ending in inline code with a space, give code block values the line endings the parser stores, and give labels the shape that reads back wherever they are written, in every subtree, attached or detached, once its child lists are normalized.
     fn space_line_endings(&mut self) {
         let source = self.source.as_ref();
         let nodes = &mut self.nodes;
@@ -2246,6 +2361,7 @@ impl<S: AsRef<str>> Document<S> {
             let mut current = Some(root);
             while let Some(id) = current {
                 space_line_endings(&mut nodes[id.index()].kind, source);
+                normalize_label(&mut nodes[id.index()].kind, source, enclosing.one_line());
                 current = next_enclosed(nodes, root, id, &mut enclosing);
                 let last = current.is_none() && index == 0;
                 write_block_value(&mut nodes[id.index()].kind, source, last);
@@ -2253,7 +2369,7 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent attention of the same kind, HTML without a value in phrasing, or, outside phrasing, an HTML block that is empty or holds only spaces, tabs and line endings, a list without items, not counting separators, or a table without a cell; no strikethrough is inside other strikethrough; no link is inside another link's text unless it is written as an autolink; no table with a cell has another shape than the one the parser gives a table; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, or ends with a hard break; no task item's checkbox is written before anything but a paragraph that starts with its separator and writes something after it; no inline code has a line ending in its value; neither the root's frontmatter nor any code block has a carriage return in its value, the frontmatter has no value that is not empty and has no final line ending, nor has any code block unless it is the last node of the document; no attached paragraph is empty; no loose list has only one item with fewer than two blocks; no item of a tight list holds a list that starts with an empty item, or an ordered list that starts at a number other than 1, directly after a paragraph; and no item of a tight list holds two blocks in a row, not counting separators, that can be written apart only with a blank line between them, as [`Document::normalize`] lists, or two paragraphs in a row. This takes time linear in the size of the arena.
+    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent attention of the same kind, HTML without a value in phrasing, or, outside phrasing, an HTML block that is empty or holds only spaces, tabs and line endings, a list without items, not counting separators, or a table without a cell; no strikethrough is inside other strikethrough; no link is inside another link's text unless it is written as an autolink; no table with a cell has another shape than the one the parser gives a table; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, or ends with a hard break; no task item's checkbox is written before anything but a paragraph that starts with its separator and writes something after it; no inline code has a line ending in its value; no label of a link, image, definition or footnote call has a line whose leading tabs start a block at some columns only, a tab where it is longer than the parser reads at some column, or a line ending in an ATX heading or table cell, and no shortcut or collapsed reference has a label longer than a full reference's can be at some column; neither the root's frontmatter nor any code block has a carriage return in its value, the frontmatter has no value that is not empty and has no final line ending, nor has any code block unless it is the last node of the document; no attached paragraph is empty; no loose list has only one item with fewer than two blocks; no item of a tight list holds a list that starts with an empty item, or an ordered list that starts at a number other than 1, directly after a paragraph; and no item of a tight list holds two blocks in a row, not counting separators, that can be written apart only with a blank line between them, as [`Document::normalize`] lists, or two paragraphs in a row. This takes time linear in the size of the arena.
     pub fn is_normalized(&self) -> bool {
         let source = self.source.as_ref();
         let nodes = &self.nodes;
@@ -2290,6 +2406,7 @@ impl<S: AsRef<str>> Document<S> {
                     if unwrapped(&self.syntax, source, nodes, id, enclosing)
                         || (enclosing.cells > 0 && matches!(node.kind, EventKind::HardBreak))
                         || line_ending_in_code(&node.kind, source)
+                        || !label_normalized(&node.kind, source, enclosing.one_line())
                     {
                         return false;
                     }
@@ -3091,7 +3208,7 @@ impl<S: AsRef<str>> Document<S> {
             if let Some(parent) = parent {
                 let first = self.nodes[parent.index()].first_child;
                 self.check_nesting(parent, first, &node.kind)?;
-                if in_link && matches!(node.kind, EventKind::FootnoteReference(_)) {
+                if in_link && matches!(node.kind, EventKind::FootnoteReference { .. }) {
                     return Err(StreamError::InvalidNesting);
                 }
             }

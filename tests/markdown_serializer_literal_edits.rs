@@ -179,6 +179,7 @@ fn constructed_links_are_explicit() {
                 EventKind::Start(Tag::Link {
                     destination: Text::from(destination.to_owned()),
                     title: None,
+                    reference: None,
                 }),
             )
             .unwrap();
@@ -204,6 +205,7 @@ fn bare_and_angle_forms_fall_back_when_they_cannot_hold_the_link() {
             EventKind::Start(Tag::Link {
                 destination: Text::from("http://www.a.b".to_owned()),
                 title: Some(Text::from("t".to_owned())),
+                reference: None,
             }),
         )
         .unwrap();
@@ -220,6 +222,7 @@ fn bare_and_angle_forms_fall_back_when_they_cannot_hold_the_link() {
             EventKind::Start(Tag::Link {
                 destination: Text::from("http://www.a.b".to_owned()),
                 title: None,
+                reference: None,
             }),
         )
         .unwrap();
@@ -292,6 +295,7 @@ fn constructed(
                     EventKind::Start(Tag::Link {
                         destination: Text::from(destination.to_owned()),
                         title: None,
+                        reference: None,
                     }),
                 )
                 .unwrap();

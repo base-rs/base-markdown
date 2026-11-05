@@ -57,17 +57,16 @@ impl<'a> EventParser<'a> {
     }
 }
 impl EventParser<'_> {
+    /// Leave the labels of references and footnote calls out of events, as `None`, for a consumer
+    /// that never reads them, such as the HTML renderer.
+    pub(crate) fn skip_labels(mut self) -> Self {
+        self.inline.skip_labels = true;
+        self
+    }
+
     /// Resolve references and footnote calls in subsequently consumed blocks only against definitions starting before `limit`.
     pub(crate) fn set_definition_limit(&mut self, limit: Option<usize>) {
         self.definitions.set_limit(limit);
-    }
-    /// The labels of the references and footnote calls yielded so far whose source span also
-    /// holds container prefixes, such as a block quote's `>` on a line the label continues on,
-    /// as the parser read them, by the span of their event. Others are their span's label.
-    pub(crate) fn take_read_labels(
-        &mut self,
-    ) -> alloc::vec::Vec<(core::ops::Range<usize>, alloc::string::String)> {
-        self.inline.take_read_labels()
     }
 }
 impl Iterator for EventParser<'_> {
@@ -102,10 +101,12 @@ enum Phase {
 }
 impl EventParser<'_> {
     fn prepare_inline<const EXTENSIONS: bool>(&mut self, index: usize, task: bool, table: bool) {
-        let fragments = self
-            .blocks
-            .children(index)
-            .map(|(_, node)| node.start..node.end);
+        let fragments = self.blocks.children(index).map(|(_, node)| {
+            let Body::Fragment(spaces) = node.body else {
+                unreachable!("inline block children are source fragments");
+            };
+            (node.start..node.end, spaces)
+        });
         if self.definitions.is_empty() {
             self.inline.prepare::<false, EXTENSIONS>(
                 self.source,
@@ -380,9 +381,15 @@ impl EventParser<'_> {
                 }
             }
             Body::Quote => EventKind::Start(Tag::BlockQuote),
-            Body::Footnote(index) => EventKind::Start(Tag::FootnoteDefinition(Text::from(
-                self.definitions.footnote_key(index).to_string(),
-            ))),
+            Body::Footnote(index) => {
+                let (label, _) =
+                    crate::block_parser::footnote_prefix(self.source.as_bytes(), node.start)
+                        .expect("a footnote definition starts with its label");
+                EventKind::Start(Tag::FootnoteDefinition {
+                    identifier: Text::from(self.definitions.footnote_key(index).to_string()),
+                    label: Some(Text::Source(label)),
+                })
+            }
             Body::Opaque => unreachable!("frontmatter is delivered on the document start"),
             Body::Table => EventKind::Start(Tag::Table),
             Body::TableHead => EventKind::Start(Tag::TableHead),

@@ -6,7 +6,7 @@
 #![cfg(feature = "serde")]
 
 use base_markdown::{
-    stream::{Event, EventKind, Tag, Text},
+    stream::{Event, EventKind, Reference, Tag, Text},
     CodeFence, Document, LinkForm, NodeSyntax, Options, ReferenceKind,
 };
 use serde_json::{json, Value};
@@ -53,12 +53,22 @@ fn document_serialization_preserves_source_edits_metadata_and_detached_subtrees(
             )
         })
         .unwrap();
+    let EventKind::Start(Tag::Link {
+        destination, title, ..
+    }) = document.node(link).unwrap().kind.clone()
+    else {
+        unreachable!("found a link");
+    };
     document
-        .set_syntax(
+        .set_kind(
             link,
-            Some(NodeSyntax::Reference {
-                kind: ReferenceKind::Full,
-                label: Text::Literal("name"),
+            EventKind::Start(Tag::Link {
+                destination,
+                title,
+                reference: Some(Box::new(Reference {
+                    kind: ReferenceKind::Full,
+                    label: Text::Literal("name"),
+                })),
             }),
         )
         .unwrap();
@@ -232,7 +242,19 @@ fn invalid_serialized_arena_links_ranges_and_metadata_are_rejected() {
     alter(
         text,
         "kind",
-        json!({"Start":{"FootnoteDefinition":{"Literal":"x"}}}),
+        json!({"Start":{"FootnoteDefinition":{"identifier":{"Literal":"x"},"label":null}}}),
+    );
+    // An identifier is checked as a source range even when the label is what is written.
+    let out_of_range = json!({"Source":{"start":0,"end":999}});
+    alter(
+        text,
+        "kind",
+        json!({"FootnoteReference":{"identifier":out_of_range,"label":{"Value":"x"}}}),
+    );
+    alter(
+        heading,
+        "kind",
+        json!({"Start":{"FootnoteDefinition":{"identifier":out_of_range,"label":{"Value":"x"}}}}),
     );
     let mut valid = base.clone();
     valid["nodes"][text]["kind"] =
