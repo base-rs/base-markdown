@@ -481,7 +481,8 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         &mut self,
         options: &crate::ParseOptions,
     ) -> Result<(), StreamError> {
-        let events = crate::EventParser::new(self.source, options);
+        // The renderer never reads labels, so the parser need not build them.
+        let events = crate::EventParser::new(self.source, options).skip_labels();
         self.render_inner::<false>(events)
     }
 

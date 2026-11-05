@@ -869,6 +869,19 @@ fn fixture_canonical<S: AsRef<str>>(document: &Document<S>) -> (Vec<String>, Vec
 /// Source extents and text chunking are deliberately independent of AST semantics.
 /// Focused document tests assert spans directly, while this projection keeps the
 /// long-established construct fixtures useful without retaining a second AST.
+/// Whether a reference is full, and what its label matches. A shortcut and a collapsed reference
+/// are alike, as both take their label from their text, and the serializer writes a shortcut
+/// collapsed before a `[`, where it would otherwise read as a full reference (#146).
+fn reference_signature(
+    reference: &base_markdown::stream::Reference<'_>,
+    text: &impl Fn(&EventText<'_>) -> String,
+) -> (bool, String) {
+    (
+        reference.kind == base_markdown::ReferenceKind::Full,
+        normalize(&text(&reference.label)),
+    )
+}
+
 pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
     let source = document.source();
     let mut output: Vec<String> = Vec::new();
@@ -929,19 +942,31 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
                 Some(value) => format!("Document:{:?}", text(&value)),
                 None => "Document".into(),
             },
+            // A reference keeps its form and what its label matches, so a reference that reads
+            // back as a resource, or in another form, is caught.
             EventKind::Start(Tag::Link {
-                destination, title, ..
+                destination,
+                title,
+                reference,
             }) => format!(
-                "Link:{:?}:{:?}",
+                "Link:{:?}:{:?}:{:?}",
                 text(&destination),
-                title.as_ref().map(text)
+                title.as_ref().map(text),
+                reference
+                    .as_ref()
+                    .map(|reference| reference_signature(reference, &text))
             ),
             EventKind::Start(Tag::Image {
-                destination, title, ..
+                destination,
+                title,
+                reference,
             }) => format!(
-                "Image:{:?}:{:?}",
+                "Image:{:?}:{:?}:{:?}",
                 text(&destination),
-                title.as_ref().map(text)
+                title.as_ref().map(text),
+                reference
+                    .as_ref()
+                    .map(|reference| reference_signature(reference, &text))
             ),
             EventKind::Start(Tag::FootnoteDefinition { identifier, .. }) => {
                 format!("FootnoteDefinition:{:?}", normalize(&text(&identifier)))

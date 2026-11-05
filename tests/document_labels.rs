@@ -4,11 +4,13 @@
 //! Labels of references, definitions and footnotes: every label the parser reads is one that can
 //! be assigned, and normalizing gives each the shape that reads back wherever it is written.
 
+mod support;
 use base_markdown::{
     markdown::{to_markdown, to_markdown_with_options},
     stream::{EventKind, Reference, Tag, Text},
     to_html, Document, LineWrapping, MarkdownOptions, NodeId, ParseOptions, ReferenceKind,
 };
+use support::linear::{assert_linear, timed};
 
 /// The label a node is written with, if it has one.
 fn label_of<'a>(document: &'a Document<String>, kind: &'a EventKind<'_>) -> Option<&'a str> {
@@ -553,10 +555,10 @@ fn normalizing_indents_label_lines_that_start_a_block() {
     );
 }
 
-/// A line of a label that is a table's delimiter row under the line before it would start a
-/// table, so normalizing indents it four columns where the label holds both lines, and the
-/// serializer writes a link whose second line is one under its first, with what is written
-/// before it, as a resource, and a footnote call as its identifier (#192).
+/// A line of a label after its first that could be a table's delimiter row would start a table
+/// under the right line before it, which for the second line is what is written before the
+/// label, so normalizing indents every such line four columns, whatever the line before it, and
+/// the reference reads back as itself (#192).
 #[test]
 fn label_lines_that_would_be_delimiter_rows_read_back() {
     let reference = |label: &'static str| {
@@ -598,18 +600,39 @@ fn label_lines_that_would_be_delimiter_rows_read_back() {
     document.normalize();
     assert_eq!(
         to_markdown(&document).unwrap(),
-        "[x][a\nb\n    |-|\nc] [x][a\nb\n    :-:\nc] [x](/u) [^A |-| C]\n\n[a b |-| c]: /u\n\n[a b :-: c]: /u\n\n[a | - | c]: /u\n\n[a\n    |-|\nc]: /u\n\n[^a]: x\n"
+        "[x][a\nb\n    |-|\nc] [x][a\nb\n    :-:\nc] [x][a\n    | - |\nc] [^a\n    |-|\nc]\n\n[a b |-| c]: /u\n\n[a b :-: c]: /u\n\n[a | - | c]: /u\n\n[a\n    |-|\nc]: /u\n\n[^a]: x\n"
     );
-    // Where the head has another number of cells, the line is no delimiter row.
-    let source = "[x][a\nb|c\n|-|\nd]\n\n[a b|c |-| d]: /u\n";
-    assert!(parse(source).is_normalized());
-    assert_eq!(normalized(parse(source)), source);
-    // Parsed without tables, a label can hold such a line, which then reads back.
+    // A parsed label can hold such a line: as a lazy line in a block quote, under a head with
+    // another number of cells, or parsed without tables. It is indented too, wherever the label
+    // is, and then reads back as the same reference, which `normalized` checks.
+    for (source, expected) in [
+        (
+            "> [x][a\n|-|\nb]\n\n[a |-| b]: /u",
+            "> [x][a\n>     |-|\n> b]\n\n[a |-| b]: /u\n",
+        ),
+        (
+            "> t [x][a\n|-|\nb]\n\n[a |-| b]: /u",
+            "> t [x][a\n>     |-|\n> b]\n\n[a |-| b]: /u\n",
+        ),
+        (
+            "- [x][a\n|-|\nb]\n\n[a |-| b]: /u",
+            "- [x][a\n      |-|\n  b]\n\n[a |-| b]: /u\n",
+        ),
+        (
+            "[x][a\nb|c\n|-|\nd]\n\n[a b|c |-| d]: /u",
+            "[x][a\nb|c\n    |-|\nd]\n\n[a b|c |-| d]: /u\n",
+        ),
+    ] {
+        let document = parse(source);
+        assert!(!document.is_normalized(), "{:?}", source);
+        assert_eq!(normalized(document), expected);
+        assert_eq!(to_html(expected), to_html(source), "{:?}", source);
+    }
     let source = "[x][a\n|-|\nc]\n\n[a |-| c]: /u\n";
     let document = Document::parse(source.to_owned(), &ParseOptions::commonmark()).unwrap();
     assert_eq!(labels(&document)[0], "a\n|-|\nc");
-    let markdown = to_markdown(&document).unwrap();
-    assert_eq!(markdown, "[x](/u)\n\n[a |-| c]: /u\n");
+    let markdown = normalized(document);
+    assert_eq!(markdown, "[x][a\n    |-|\nc]\n\n[a |-| c]: /u\n");
     assert_eq!(
         to_html(&markdown),
         base_markdown::to_html_with_options(source, &base_markdown::Options::commonmark())
@@ -648,5 +671,37 @@ fn footnote_calls_too_long_on_one_line_are_written_as_their_identifier() {
             format!("### [^{0}]\n\n| [^{0}] |\n| --- |\n\n[^{1}]: x\n", upper, a)
         );
         assert_eq!(labels(&parse(&markdown)), [upper.clone(), upper, a.clone()]);
+    }
+}
+
+/// Writing the labels of a line of many references or footnote calls takes time linear in the
+/// line, in a paragraph, a table cell and an ATX heading, however long the line is before each
+/// (#192). Text between them makes the line long without making it slow to write.
+#[test]
+fn writing_many_labels_on_a_line_is_linear() {
+    type Build = fn(&str) -> String;
+    let cases: [(&str, &str, Build); 4] = [
+        ("footnote calls", "[^a]", |line| {
+            format!("{line}\n\n[^a]: x\n")
+        }),
+        ("references", "[x][a]", |line| {
+            format!("{line}\n\n[a]: /u\n")
+        }),
+        ("cell", "[^a]", |line| {
+            format!("| h |\n| - |\n| {line} |\n\n[^a]: x\n")
+        }),
+        ("heading", "[x][a]", |line| {
+            format!("### {line}\n\n[a]: /u\n")
+        }),
+    ];
+    let text = "a".repeat(256);
+    for (label, call, build) in cases {
+        assert_linear(label, 1 << 8, |count| {
+            let document = parse(&build(&format!("{call} {text} ").repeat(count)));
+            assert!(document.is_normalized());
+            timed(|| {
+                to_markdown(&document).unwrap();
+            })
+        });
     }
 }

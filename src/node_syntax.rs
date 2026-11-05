@@ -193,49 +193,14 @@ pub(crate) fn valid_label(label: &str, limited: bool) -> bool {
     content && !escaped && (!limited || label_fits(label))
 }
 
-// Whether `line`, line `index` of a label, after its first and before its last, with `header`
-// the line before it, would be a table's delimiter row under that line where the Markdown
-// serializer writes it. What is written before the first line of a label depends on where it is,
-// so the second is only checked in a definition, `definition`, whose label starts its line after
-// `[`; the serializer checks it elsewhere (`label_starts_table`).
-fn label_delimiter_row(header: Option<&[u8]>, index: usize, line: &[u8], definition: bool) -> bool {
-    match header {
-        Some(header) if index > 1 => delimiter_row(header, line),
-        Some(header) if definition => {
-            let mut written = alloc::vec::Vec::with_capacity(header.len() + 1);
-            written.push(b'[');
-            written.extend_from_slice(header);
-            delimiter_row(&written, line)
-        }
-        _ => false,
-    }
-}
-
-/// Whether the second line of `label`, written after `before` on its first line, is a table's
-/// delimiter row under that line as the parser reads them with the default options, so that the
-/// label would not read back. Lines after it are checked by [`normalized_label`].
-pub(crate) fn label_starts_table(before: &str, label: &str) -> bool {
-    let mut lines = label.as_bytes().split(|&byte| byte == b'\n');
-    let (Some(first), Some(second), Some(_)) = (lines.next(), lines.next(), lines.next()) else {
-        return false;
-    };
-    let mut header = alloc::vec::Vec::with_capacity(before.len() + first.len());
-    header.extend_from_slice(before.as_bytes());
-    header.extend_from_slice(first);
-    delimiter_row(&header, second)
-}
-
-// Whether `line` is a table's delimiter row under `header`, the line written before it, as the
-// parser reads them with the default options, at some column where they could start.
-fn delimiter_row(header: &[u8], line: &[u8]) -> bool {
-    let header_indent = leading_whitespace(header);
+// Whether `line`, a line of a label after its first and before its last, could be a table's
+// delimiter row, as the parser reads one with the default options, under whatever line is written
+// before it: what comes before a label's first line depends on where it is written, so the line
+// before is not checked. Indented four columns, it is none, as the parser reads such a line as
+// indented code, which cannot interrupt a paragraph, in any container.
+fn delimiter_row(line: &[u8]) -> bool {
     let indent = leading_whitespace(line);
-    indentation(&header[..header_indent]).0 < 4
-        && indentation(&line[..indent]).0 < 4
-        && core::str::from_utf8(&header[header_indent..])
-            .ok()
-            .zip(core::str::from_utf8(&line[indent..]).ok())
-            .is_some_and(|(header, line)| crate::block_parser::starts_table(header, line))
+    indentation(&line[..indent]).0 < 4 && crate::block_parser::delimiter_row(&line[indent..])
 }
 
 // Whether `line`, a line of a label after its first, without its line ending, continues the
@@ -297,13 +262,12 @@ pub(crate) fn valid_footnote_definition_label(label: &str) -> bool {
 /// spaces when that line, read with the default options, would start a block at some column
 /// where it could start, such as `>` or `` ``` ``, as
 /// [`crate::block_parser::continuation_starts_block`] decides with the bracket that closes the
-/// label after the last, or would be a table's delimiter row under the line before it: indented
-/// four columns, it continues the label at every column. When `tabs` and the label does not fit
-/// as [`label_fits_anywhere`] checks, each other tab becomes a space. None of these changes what
-/// the label matches, as a run of whitespace in a label matches any other, and the label then
-/// reads back as it is wherever it is written, unless it is too long once its line endings are
-/// spaces, or its second line is a delimiter row under what is written before it, which the
-/// serializer checks.
+/// label after the last, or could be a table's delimiter row under whatever line is written before
+/// it: indented four columns, it continues the label at every column. When `tabs` and the label
+/// does not fit as [`label_fits_anywhere`] checks, each other tab becomes a space. None of these
+/// changes what the label matches, as a run of whitespace in a label matches any other, and the
+/// label then reads back as it is wherever it is written, unless it is too long once its line
+/// endings are spaces.
 pub(crate) fn normalized_label(
     label: &str,
     one_line: bool,
@@ -330,9 +294,6 @@ pub(crate) fn normalized_label(
     // The end of what `value` holds a copy of, once anything changes.
     let mut cursor = 0;
     let mut start = 0;
-    // The line before the current one, unless it is indented so that it is no table's head.
-    let mut header = None;
-    let mut index = 0;
     loop {
         let end = start
             + bytes[start..]
@@ -342,16 +303,12 @@ pub(crate) fn normalized_label(
         let line = &bytes[start..end];
         let last = end == bytes.len();
         let mut indent = 0;
-        let mut indented = false;
         if start > 0 {
             indent = leading_whitespace(line);
-            if !continuation_writable(line, last, definition)
-                || !last && label_delimiter_row(header, index, line, definition)
-            {
+            if !continuation_writable(line, last, definition) || !last && delimiter_row(line) {
                 value.push_str(&label[cursor..start]);
                 value.push_str("    ");
                 cursor = start + indent;
-                indented = true;
             }
         }
         if tabs {
@@ -367,8 +324,6 @@ pub(crate) fn normalized_label(
         if last {
             break;
         }
-        header = (!indented).then_some(line);
-        index += 1;
         start = end + 1;
     }
     (cursor > 0).then(|| {

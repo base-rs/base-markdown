@@ -121,6 +121,9 @@ pub(crate) struct InlineParser {
     // The label ranges of the references and footnote calls resolved in a scan, and the form of
     // each reference, by node, sorted before events are pulled. A footnote call is a shortcut.
     labels: Vec<(usize, Range<usize>, ReferenceKind)>,
+    // Whether events leave out the labels of references and footnote calls, for a consumer that
+    // never reads them, such as direct HTML rendering, which then neither records nor builds them.
+    pub(crate) skip_labels: bool,
     code_info: Vec<CodeInfo>,
     normalized: bool,
     table: bool,
@@ -615,7 +618,9 @@ impl InlineParser {
                                     }
                                     let node =
                                         self.append(footnote_start, end, Kind::Footnote(index));
-                                    self.labels.push((node, label, ReferenceKind::Shortcut));
+                                    if !self.skip_labels {
+                                        self.labels.push((node, label, ReferenceKind::Shortcut));
+                                    }
                                     at = end;
                                     self.link_bottom = self.nodes.len();
                                     continue;
@@ -716,7 +721,7 @@ impl InlineParser {
                                 resolved = definitions
                                     .find(&self.reference_key)
                                     .map(|index| (end, Kind::Reference(tag, index)));
-                                if resolved.is_some() {
+                                if resolved.is_some() && !self.skip_labels {
                                     self.labels.push((bracket.node, label, form));
                                 }
                             }
@@ -1050,7 +1055,7 @@ impl InlineParser {
                 }
                 Kind::Footnote(footnote) => EventKind::FootnoteReference {
                     identifier: Text::from(definitions.footnote_key(footnote).to_string()),
-                    label: Some(self.read_label(source, index).1),
+                    label: (!self.skip_labels).then(|| self.read_label(source, index).1),
                 },
                 Kind::NamedEntity(index) => EventKind::Text(Text::Literal(
                     crate::util::constant::CHARACTER_REFERENCES[index].1,
@@ -1137,11 +1142,10 @@ impl InlineParser {
                     let definition = definitions.entry(definition);
                     let destination = definition.destination.clone();
                     let title = definition.title.clone();
-                    let (kind, label) = self.read_label(source, index);
-                    let reference = Some(alloc::boxed::Box::new(crate::stream::Reference {
-                        kind,
-                        label,
-                    }));
+                    let reference = (!self.skip_labels).then(|| {
+                        let (kind, label) = self.read_label(source, index);
+                        alloc::boxed::Box::new(crate::stream::Reference { kind, label })
+                    });
                     EventKind::Start(if tag == TagKind::Link {
                         Tag::Link {
                             destination,

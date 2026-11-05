@@ -57,6 +57,13 @@ impl<'a> EventParser<'a> {
     }
 }
 impl EventParser<'_> {
+    /// Leave the labels of references and footnote calls out of events, as `None`, for a consumer
+    /// that never reads them, such as the HTML renderer.
+    pub(crate) fn skip_labels(mut self) -> Self {
+        self.inline.skip_labels = true;
+        self
+    }
+
     /// Resolve references and footnote calls in subsequently consumed blocks only against definitions starting before `limit`.
     pub(crate) fn set_definition_limit(&mut self, limit: Option<usize>) {
         self.definitions.set_limit(limit);

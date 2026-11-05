@@ -968,19 +968,12 @@ impl<'a> State<'a> {
                 title.as_ref().map(|value| value.resolve(source).unwrap()),
             ),
             EventKind::FootnoteReference { identifier, label } => {
-                let identifier = identifier.resolve(source).unwrap();
-                let mut label = label
+                let label = label
                     .as_ref()
-                    .map_or(identifier, |label| label.resolve(source).unwrap());
+                    .unwrap_or(identifier)
+                    .resolve(source)
+                    .unwrap();
                 self.output.push_str("[^");
-                // A label whose second line is a delimiter row under its first, with what is
-                // written before it, would not read back, so the call is written as its
-                // identifier, which reads back as the same call.
-                if crate::node_syntax::label_starts_table(self.current_line(), label)
-                    && crate::node_syntax::valid_label(identifier, true)
-                {
-                    label = identifier;
-                }
                 self.output.push_str(label);
                 self.output.push(']');
                 self.label_end = Some((self.output.len(), true));
@@ -1508,12 +1501,6 @@ impl<'a> State<'a> {
             self.email_escapes = dropped;
         }
         self.literal_markers = markers;
-    }
-
-    /// What is written on the current line of the output so far, which has no container prefixes
-    /// within the block being written.
-    pub(super) fn current_line(&self) -> &str {
-        &self.output[self.output.rfind('\n').map_or(0, |index| index + 1)..]
     }
 
     /// Write a label as it is: a label in a document is one the parser reads, as

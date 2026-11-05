@@ -1079,18 +1079,34 @@ pub(crate) fn starts_footnote_definition(bytes: &[u8]) -> bool {
 /// `:` and is not a list item, is a delimiter row with as many cells as the row `header` on the
 /// line before it, so that the two lines start a table. Neither includes its line ending.
 fn table_start(header: &[u8], delimiter: &[u8]) -> bool {
+    delimiter_columns(delimiter).is_some_and(|columns| {
+        &header[table::trim(header, 0..header.len())] != b"|"
+            && table::Cells::new(header, 0..header.len()).count() == columns
+    })
+}
+
+/// The number of columns of the table whose delimiter row `delimiter` would be, if its cells are
+/// one's.
+fn delimiter_columns(delimiter: &[u8]) -> Option<usize> {
     if !delimiter.contains(&b'|') && !delimiter.contains(&b':') {
-        return false;
+        return None;
     }
     let mut columns = 0;
     for (_, content) in table::Cells::new(delimiter, 0..delimiter.len()) {
-        if table::alignment(&delimiter[content]).is_none() {
-            return false;
-        }
+        table::alignment(&delimiter[content])?;
         columns += 1;
     }
-    &header[table::trim(header, 0..header.len())] != b"|"
-        && table::Cells::new(header, 0..header.len()).count() == columns
+    Some(columns)
+}
+
+/// Whether the line `delimiter`, without container prefixes, indentation or line ending, would be
+/// a table's delimiter row under a header with as many cells, with the default options.
+pub(crate) fn delimiter_row(delimiter: &[u8]) -> bool {
+    matches!(delimiter.first(), Some(b'|' | b'-' | b':'))
+        && LineStart::new(delimiter)
+            .scan_list_marker_with_indent(0, true)
+            .is_none()
+        && delimiter_columns(delimiter).is_some()
 }
 
 /// Whether the line `delimiter` after the line `header`, both without container prefixes or line
