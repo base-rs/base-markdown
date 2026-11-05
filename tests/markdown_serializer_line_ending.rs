@@ -621,10 +621,11 @@ fn encoding_line_endings_is_linear() {
     }
 }
 
+/// The parser stores each line ending in a label as LF, and a label is written as it is, so a
+/// constructed label with a carriage return is rejected rather than written with it (#192).
 #[test]
-fn carriage_returns_in_constructed_labels_are_written_as_line_feeds() {
-    use base_markdown::ReferenceKind;
-    // A label of only whitespace, such as ` \r`, or with a blank line cannot be written with any line ending.
+fn carriage_returns_in_constructed_labels_are_rejected() {
+    use base_markdown::{stream::StreamError, ReferenceKind};
     for label in ["l\rm", "l\r\nm", "\\\r", "\rl\r"] {
         let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
         let root = document.root();
@@ -641,41 +642,26 @@ fn carriage_returns_in_constructed_labels_are_written_as_line_feeds() {
                 }),
             )
             .unwrap();
-        document
-            .append_child(link, EventKind::Text(Value::Literal("text")))
-            .unwrap();
-        support::fixture::set_reference(
-            &mut document,
-            link,
-            ReferenceKind::Full,
-            Value::Value(label.to_string().into()),
-        )
-        .unwrap();
-        document
-            .append_child(
+        assert!(matches!(
+            support::fixture::set_reference(
+                &mut document,
+                link,
+                ReferenceKind::Full,
+                Value::Value(label.to_string().into()),
+            ),
+            Err(StreamError::InvalidValue)
+        ));
+        assert!(matches!(
+            document.append_child(
                 root,
                 EventKind::Definition {
                     label: Value::Value(label.to_string().into()),
                     destination: Value::Literal("/u"),
                     title: None,
                 },
-            )
-            .unwrap();
-        let output = to_markdown(&document).unwrap();
-        assert!(!output.contains('\r'), "{:?}: {:?}", label, output);
-        let reparsed = Document::parse(output.clone(), &ParseOptions::default()).unwrap();
-        assert_eq!(to_markdown(&reparsed).unwrap(), output, "{label:?}");
-        let mut html = String::new();
-        reparsed
-            .render_html(&Default::default(), &mut html)
-            .unwrap();
-        assert!(
-            html.contains("href=\"/u\""),
-            "{:?}: {:?} {:?}",
-            label,
-            output,
-            html
-        );
+            ),
+            Err(StreamError::InvalidValue)
+        ));
     }
 }
 

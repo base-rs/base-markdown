@@ -161,12 +161,25 @@ fn synthetic_references_cannot_override_a_present_definition() {
     }
 }
 
-/// A reference or footnote label longer than the parser reads would be written as text, so
-/// assigning one is rejected (#146). The parser counts a tab as the columns it spans, so a label
-/// fits when it fits at some column of each of its lines, and a footnote label is written as it
-/// is (#192).
+/// What a footnote label normalizes to, for an ASCII label: its runs of whitespace as one space,
+/// trimmed, and uppercase.
+fn identifier(label: &str) -> String {
+    label
+        .split([' ', '\t', '\r', '\n'])
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_uppercase()
+}
+
+/// A label is written as it is, so one that the parser would not read back as itself is rejected
+/// wherever it is assigned, with one rule for every label: a definition's, a reference's, and a
+/// footnote call's or definition's (#146, #192). A shortcut or collapsed reference's label is its
+/// link text, which the parser reads at any size, and a footnote definition's holds no whitespace.
+/// The parser counts a tab as the columns it spans, so a label fits when it fits at some column of
+/// each of its lines.
 #[test]
-fn labels_longer_than_the_parser_reads_are_rejected() {
+fn labels_that_do_not_read_back_are_rejected() {
     use base_markdown::{
         stream::{Reference, StreamError},
         ReferenceKind,
@@ -195,55 +208,17 @@ fn labels_longer_than_the_parser_reads_are_rejected() {
             },
         )
         .unwrap();
-    let reference = |label: &str| {
-        EventKind::Start(Tag::Link {
-            destination: Text::Literal("/u"),
-            title: None,
-            reference: Some(Box::new(Reference {
-                kind: ReferenceKind::Full,
-                label: Text::from(label.to_string()),
-            })),
-        })
-    };
-    let check = |result: Result<(), StreamError>, valid: bool, label: &str| {
-        if valid {
-            assert!(result.is_ok(), "{:?}: {:?}", label, result);
-        } else {
-            assert!(
-                matches!(result, Err(StreamError::InvalidValue)),
-                "{:?}: {:?}",
-                label,
-                result
-            );
-        }
-    };
-    for (label, valid) in [
-        ("a".repeat(999), true),
-        (format!("{}\n  {}", "a".repeat(499), "a".repeat(500)), true),
-        ("a".repeat(1000), false),
-        (format!("{}[", "a".repeat(998)), false),
-        (format!("{}\\", "a".repeat(998)), false),
-        // Each tab after the first of a run spans four columns, and the first at least one.
-        (format!("{}a", "\t".repeat(300)), false),
-        (format!("{}{}", "\t".repeat(249), "a".repeat(6)), true),
-        (format!("{}{}", "\t".repeat(249), "a".repeat(7)), false),
-        // After a letter, a tab spans one column only where the letter ends a column of three.
-        (format!("{}\t{}", "a".repeat(3), "a".repeat(995)), true),
-        (format!("{}\t{}", "a".repeat(3), "a".repeat(996)), false),
-        // Each line starts at the column that suits it best, and the whitespace that starts a
-        // line after the first does not count.
-        (
-            format!("{0}{1}\n{0}a{0}{1}", "\t".repeat(124), "a".repeat(6)),
-            true,
-        ),
-        (
-            format!("{0}{1}\n{0}a{0}{1}a", "\t".repeat(124), "a".repeat(6)),
-            false,
-        ),
-    ] {
-        check(document.set_kind(link, reference(&label)), valid, &label);
-    }
     let definition = document
+        .append_child(
+            root,
+            EventKind::Definition {
+                label: Text::Literal("1"),
+                destination: Text::Literal("/u"),
+                title: None,
+            },
+        )
+        .unwrap();
+    let footnote_definition = document
         .append_child(
             root,
             EventKind::Start(Tag::FootnoteDefinition {
@@ -252,53 +227,215 @@ fn labels_longer_than_the_parser_reads_are_rejected() {
             }),
         )
         .unwrap();
-    // A call's label is read like a reference's, and a definition's holds no whitespace.
-    for (label, call, defined) in [
-        ("a".repeat(999), true, true),
-        (format!("{}\\]", "a".repeat(997)), true, true),
-        (format!("{}\\\\", "a".repeat(997)), true, true),
-        ("a".repeat(1000), false, false),
-        (String::new(), false, false),
-        (" \n ".into(), false, false),
-        ("a b".into(), true, false),
-        ("a\tb".into(), true, false),
-        ("a\nb".into(), true, false),
-        ("a\r\nb".into(), true, false),
-        ("a\n".into(), true, false),
-        ("a\n \nb".into(), false, false),
-        ("a\r\n\r\nb".into(), false, false),
-        (format!("{}a", "\t".repeat(300)), false, false),
-        ("a]b".into(), false, false),
-        ("a[b".into(), false, false),
-        ("a\\b".into(), true, true),
-        ("a\\".into(), false, false),
-        ("a\\\\\\".into(), false, false),
-    ] {
-        for identifier in [label.clone(), "1".into()] {
-            for label in [None, Some(label.clone())] {
-                // Only the written label is checked: without one, that is the identifier.
-                let only_identifier = label.is_none() && identifier == "1";
-                let name = format!("{:?} {:?}", identifier, label);
-                let kind = EventKind::FootnoteReference {
-                    identifier: Text::from(identifier.clone()),
-                    label: label.clone().map(Text::from),
-                };
-                check(
-                    document.set_kind(footnote, kind),
-                    call || only_identifier,
-                    &name,
-                );
-                let kind = EventKind::Start(Tag::FootnoteDefinition {
-                    identifier: Text::from(identifier.clone()),
-                    label: label.clone().map(Text::from),
-                });
-                check(
-                    document.set_kind(definition, kind),
-                    defined || only_identifier,
-                    &name,
-                );
-            }
+    let reference = |kind: ReferenceKind, label: &str| {
+        EventKind::Start(Tag::Link {
+            destination: Text::Literal("/u"),
+            title: None,
+            reference: Some(Box::new(Reference {
+                kind,
+                label: Text::from(label.to_string()),
+            })),
+        })
+    };
+    let check = |result: Result<(), StreamError>, valid: bool, name: &str| {
+        if valid {
+            assert!(result.is_ok(), "{:?}: {:?}", name, result);
+        } else {
+            assert!(
+                matches!(result, Err(StreamError::InvalidValue)),
+                "{:?}: {:?}",
+                name,
+                result
+            );
         }
+    };
+    let a = |count: usize| "a".repeat(count);
+    let tabs = |count: usize| "\t".repeat(count);
+    // Each label, whether it reads back where its size is limited, as a definition's, a full
+    // reference's and a footnote call's, as link text, and as a footnote definition's.
+    for (label, limited, text, defined) in [
+        (a(999), true, true, true),
+        (format!("{}\n  {}", a(499), a(500)), true, true, false),
+        (a(1000), false, true, false),
+        (format!("{}\\]", a(997)), true, true, true),
+        (format!("{}\\\\", a(997)), true, true, true),
+        (format!("{}\\]", a(998)), false, true, false),
+        // Each tab after the first of a run spans four columns, and the first at least one.
+        (format!("{}a", tabs(300)), false, true, false),
+        (format!("{}{}", tabs(249), a(6)), true, true, false),
+        (format!("{}{}", tabs(249), a(7)), false, true, false),
+        // After a letter, a tab spans one column only where the letter ends a column of three.
+        (format!("{}\t{}", a(3), a(995)), true, true, false),
+        (format!("{}\t{}", a(3), a(996)), false, true, false),
+        // Each line starts at the column that suits it best, and the whitespace that starts a
+        // line after the first does not count.
+        (
+            format!("{0}{1}\n{0}a{0}{1}", tabs(124), a(6)),
+            true,
+            true,
+            false,
+        ),
+        (
+            format!("{0}{1}\n{0}a{0}{1}a", tabs(124), a(6)),
+            false,
+            true,
+            false,
+        ),
+        // A tab after a backslash is not escaped, and ends the escape, so a bracket after it
+        // needs a backslash of its own, which counts.
+        ("\\\t]".into(), false, false, false),
+        (format!("{}\\\t]", a(997)), false, false, false),
+        (format!("{}\\\t\\]", a(995)), true, true, false),
+        (format!("{}\\\t\\]", a(996)), false, true, false),
+        // Something other than whitespace, and no blank line, carriage return, bracket without a
+        // backslash before it or backslash before the closing bracket.
+        (String::new(), false, false, false),
+        (" \n ".into(), false, false, false),
+        ("a b".into(), true, true, false),
+        ("a\tb".into(), true, true, false),
+        ("a\nb".into(), true, true, false),
+        ("a\n".into(), true, true, false),
+        ("\na".into(), true, true, false),
+        ("a\r\nb".into(), false, false, false),
+        ("a\rb".into(), false, false, false),
+        ("a\n\nb".into(), false, false, false),
+        ("a\n \t\nb".into(), false, false, false),
+        ("a]b".into(), false, false, false),
+        ("a[b".into(), false, false, false),
+        ("a\\[b".into(), true, true, true),
+        ("a\\b".into(), true, true, true),
+        ("a\\".into(), false, false, false),
+        ("a\\\\\\".into(), false, false, false),
+        ("a\\\nb".into(), true, true, false),
+        // A line after the first starts no block where it would continue a paragraph, with the
+        // closing bracket after the last, unless it is indented four columns at some column.
+        ("a\n#b".into(), true, true, false),
+        ("a\n# b".into(), false, false, false),
+        ("a\n   # b".into(), false, false, false),
+        ("a\n    # b".into(), true, true, false),
+        ("a\n\t# b".into(), true, true, false),
+        ("a\n  \t# b".into(), true, true, false),
+        ("a\n> b".into(), false, false, false),
+        ("a\n```".into(), false, false, false),
+        ("a\n```\nb".into(), false, false, false),
+        ("a\n~~~ b".into(), false, false, false),
+        ("a\n- b".into(), false, false, false),
+        ("a\n-".into(), true, true, false),
+        ("a\n-\nb".into(), false, false, false),
+        ("a\n+ b".into(), false, false, false),
+        ("a\n*b".into(), true, true, false),
+        ("a\n1. b".into(), false, false, false),
+        ("a\n2. b".into(), true, true, false),
+        ("a\n===".into(), true, true, false),
+        ("a\n===\nb".into(), false, false, false),
+        ("a\n***\nb".into(), false, false, false),
+        ("a\n<div>\nb".into(), false, false, false),
+        ("a\n<!--".into(), false, false, false),
+        ("a\n<span>\nb".into(), true, true, false),
+    ] {
+        check(
+            document.set_kind(link, reference(ReferenceKind::Full, &label)),
+            limited,
+            &label,
+        );
+        for kind in [ReferenceKind::Collapsed, ReferenceKind::Shortcut] {
+            check(
+                document.set_kind(link, reference(kind, &label)),
+                text,
+                &label,
+            );
+        }
+        check(
+            document.set_kind(
+                definition,
+                EventKind::Definition {
+                    label: Text::from(label.clone()),
+                    destination: Text::Literal("/u"),
+                    title: None,
+                },
+            ),
+            limited,
+            &label,
+        );
+        let identifier = identifier(&label);
+        check(
+            document.set_kind(
+                footnote,
+                EventKind::FootnoteReference {
+                    identifier: Text::from(identifier.clone()),
+                    label: Some(Text::from(label.clone())),
+                },
+            ),
+            limited,
+            &label,
+        );
+        check(
+            document.set_kind(
+                footnote_definition,
+                EventKind::Start(Tag::FootnoteDefinition {
+                    identifier: Text::from(identifier.clone()),
+                    label: Some(Text::from(label.clone())),
+                }),
+            ),
+            defined,
+            &label,
+        );
+    }
+    // A footnote's identifier is what its label normalizes to, and without a label, which its
+    // identifier is then written as, it is normalized itself.
+    for (identifier, label, valid) in [
+        ("A", Some("a"), true),
+        ("a", Some("a"), false),
+        ("A B", Some(" a\n\tb "), true),
+        ("A  B", Some("a  b"), false),
+        ("B", Some("a"), false),
+        ("A", None, true),
+        ("A B", None, true),
+        ("a", None, false),
+        ("A  B", None, false),
+        (" A", None, false),
+    ] {
+        let name = format!("{:?} {:?}", identifier, label);
+        let label = label.map(Text::Literal);
+        check(
+            document.set_kind(
+                footnote,
+                EventKind::FootnoteReference {
+                    identifier: Text::Literal(identifier),
+                    label: label.clone(),
+                },
+            ),
+            valid,
+            &name,
+        );
+        // A definition's label holds no whitespace, nor then does its identifier.
+        let defined = valid && !identifier.contains(' ');
+        check(
+            document.set_kind(
+                footnote_definition,
+                EventKind::Start(Tag::FootnoteDefinition {
+                    identifier: Text::Literal(identifier),
+                    label,
+                }),
+            ),
+            defined,
+            &name,
+        );
+    }
+    // An identifier out of the source's range is reported as such, as is a label.
+    for (identifier, label) in [
+        (Text::Source(0..99), Some(Text::Literal("a"))),
+        (Text::Literal("A"), Some(Text::Source(0..99))),
+        (Text::Source(0..99), None),
+    ] {
+        let kind = EventKind::FootnoteReference {
+            identifier: identifier.clone(),
+            label: label.clone(),
+        };
+        assert!(matches!(
+            document.set_kind(footnote, kind),
+            Err(StreamError::InvalidRange)
+        ));
     }
     // A parsed identifier can be longer than its label through case folding.
     let label = "ΐ".repeat(499);

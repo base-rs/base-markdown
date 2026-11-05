@@ -99,7 +99,7 @@ fn item() -> Tag<'static> {
 
 fn footnote() -> Tag<'static> {
     Tag::FootnoteDefinition {
-        identifier: Text::Literal("a"),
+        identifier: Text::Literal("A"),
         label: None,
     }
 }

@@ -114,7 +114,7 @@ fn rejected_structural_edits_preserve_the_tree() {
         .append_child(
             root,
             EventKind::Start(Tag::FootnoteDefinition {
-                identifier: Text::Literal("x"),
+                identifier: Text::Literal("X"),
                 label: None,
             }),
         )
@@ -633,7 +633,7 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
         let document = custom(
             raw,
             EventKind::FootnoteReference {
-                identifier: Text::Literal("x"),
+                identifier: Text::Literal("X"),
                 label: None,
             },
         );

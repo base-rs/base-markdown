@@ -370,9 +370,12 @@ fn value(value: &str) -> EventText<'static> {
 fn title(value: &Option<String>) -> Option<EventText<'static>> {
     value.as_ref().map(|s| self::value(s))
 }
+/// The label of a reference or definition, as written: mdast's label is the text the label
+/// reads as, which the serializer escaped, but a label here is written as it is, so a bracket
+/// without a backslash before it, and a final backslash, are escaped here.
 fn association(label: Option<&str>, identifier: &str) -> EventText<'static> {
     if let Some(label) = label {
-        return value(label);
+        return value(&escape_label(label));
     }
     let pattern = regex::RegexBuilder::new(
         r"\\([!-/:-@\[-`{-~])|&(#(?:\d{1,7}|x[\da-f]{1,6})|[\da-z]{1,31});",
@@ -387,7 +390,37 @@ fn association(label: Option<&str>, identifier: &str) -> EventText<'static> {
         let document = Document::parse(captures[0].to_owned(), &ParseOptions::default()).unwrap();
         document.text_content(document.root())
     });
-    value(&decoded)
+    value(&escape_label(&decoded))
+}
+fn escape_label(label: &str) -> String {
+    let mut escaped = String::with_capacity(label.len());
+    let mut backslash = false;
+    for character in label.chars() {
+        if matches!(character, '[' | ']') && !backslash {
+            escaped.push('\\');
+        }
+        backslash = character == '\\' && !backslash;
+        escaped.push(character);
+    }
+    if backslash {
+        escaped.push('\\');
+    }
+    escaped
+}
+/// Whether `kind`, appended to an empty document, in a paragraph if it is phrasing, is rejected as
+/// an invalid value.
+pub fn rejected(kind: EventKind<'static>, phrasing: bool) -> bool {
+    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+    let mut parent = document.root();
+    if phrasing {
+        parent = document
+            .append_child(parent, EventKind::Start(Tag::Paragraph { tight: false }))
+            .unwrap();
+    }
+    matches!(
+        document.append_child(parent, kind),
+        Err(base_markdown::stream::StreamError::InvalidValue)
+    )
 }
 fn list_spread(list: &List) -> bool {
     list.spread

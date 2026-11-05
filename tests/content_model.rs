@@ -32,7 +32,7 @@ fn link() -> EventKind<'static> {
 
 fn note() -> EventKind<'static> {
     EventKind::FootnoteReference {
-        identifier: Text::Literal("n"),
+        identifier: Text::Literal("N"),
         label: None,
     }
 }

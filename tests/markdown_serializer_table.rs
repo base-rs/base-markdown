@@ -176,8 +176,11 @@ fn labels_keep_their_raw_text() {
     }
 }
 
+/// A label is written as it is, so an edited one with a bracket without a backslash before it, or
+/// a final backslash, which would not read back, is rejected, and one that escapes them is written
+/// as it is (#192).
 #[test]
-fn edited_labels_escape_brackets_and_a_trailing_backslash() {
+fn edited_labels_are_written_as_they_are() {
     let mut document = Document::parse("[a]: c\n", &ParseOptions::gfm()).unwrap();
     let definition = document
         .descendants(document.root())
@@ -188,15 +191,17 @@ fn edited_labels_escape_brackets_and_a_trailing_backslash() {
             )
         })
         .unwrap();
+    let definition_of = |label| EventKind::Definition {
+        label: Text::Literal(label),
+        destination: Text::Literal("c"),
+        title: None,
+    };
+    assert!(matches!(
+        document.set_kind(definition, definition_of("a[b\\")),
+        Err(base_markdown::stream::StreamError::InvalidValue)
+    ));
     document
-        .set_kind(
-            definition,
-            EventKind::Definition {
-                label: Text::Literal("a[b\\"),
-                destination: Text::Literal("c"),
-                title: None,
-            },
-        )
+        .set_kind(definition, definition_of("a\\[b\\\\"))
         .unwrap();
     let markdown = to_markdown(&document).unwrap();
     assert_eq!(markdown, "[a\\[b\\\\]: c\n");

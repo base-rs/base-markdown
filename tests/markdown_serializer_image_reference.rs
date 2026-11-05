@@ -4,38 +4,26 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
+use base_markdown::stream::{EventKind, Reference, Tag, Text as EventText};
 use pretty_assertions::assert_eq;
+use support::fixture::rejected;
 use support::fixture::to_markdown as to;
 use support::fixture::{ImageReference, Node, Paragraph, ReferenceKind};
 
 #[test]
 fn image_reference() {
-    assert_eq!(
-        to(&Node::ImageReference(ImageReference {
-            position: None,
-            alt: String::new(),
-            reference_kind: ReferenceKind::Full,
-            identifier: String::new(),
-            label: None
-        }))
-        .unwrap(),
-        "![][]\n",
-        "should support a link reference (nonsensical)"
-    );
-
-    assert_eq!(
-        to(&Node::ImageReference(ImageReference {
-            position: None,
-            alt: String::from("a"),
-            reference_kind: ReferenceKind::Full,
-            identifier: String::new(),
-            label: None
-        }))
-        .unwrap(),
-        "![a][]\n",
-        "should support `alt`"
-    );
-
+    // An empty label does not read back as one, so it is rejected (#192).
+    assert!(rejected(
+        EventKind::Start(Tag::Image {
+            destination: EventText::Literal(""),
+            title: None,
+            reference: Some(Box::new(Reference {
+                kind: base_markdown::ReferenceKind::Full,
+                label: EventText::Literal(""),
+            })),
+        }),
+        true
+    ));
     assert_eq!(
         to(&Node::ImageReference(ImageReference {
             position: None,

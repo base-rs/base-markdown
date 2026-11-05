@@ -625,36 +625,7 @@ impl Builder<'_> {
     }
 
     fn interrupts(&self, bytes: &[u8], current_container: bool) -> bool {
-        let constructs = &self.options.constructs;
-        match bytes.first().copied() {
-            None | Some(b'\r' | b'\n') => true,
-            Some(b'>') => constructs.block_quote,
-            Some(b'<') => {
-                constructs.html_flow
-                    && html::Html::start(bytes, self.options.html_tag_namespaces, false).is_some()
-            }
-            Some(b'[') => constructs.footnote_definition && footnote_prefix(bytes, 0).is_some(),
-            Some(b'#') => constructs.heading_atx && scan_atx_heading(bytes).is_some(),
-            Some(b'`' | b'~') => constructs.code_fenced && scan_code_fence(bytes).is_some(),
-            Some(b'*' | b'_' | b'-') if constructs.thematic_break && scan_hrule(bytes).is_ok() => {
-                true
-            }
-            Some(b'*' | b'-' | b'+' | b'0'..=b'9') if constructs.list_item => {
-                self.list_interrupts(bytes, current_container)
-            }
-            _ => false,
-        }
-    }
-    // List lookahead needs an aligned line cursor; ordinary interruption dispatch does not need its stack frame.
-    #[inline(never)]
-    fn list_interrupts(&self, bytes: &[u8], current_container: bool) -> bool {
-        let mut line = LineStart::new(bytes);
-        line.scan_list_marker_with_indent(0, self.options.constructs.thematic_break)
-            .is_some_and(|(marker, number, _)| {
-                !current_container
-                    || ((matches!(marker, b'*' | b'-' | b'+') || number == 1)
-                        && scan_blank_line(&bytes[line.bytes_scanned()..]).is_none())
-            })
+        interrupts(self.options, bytes, current_container)
     }
     fn paragraph(&mut self, start: usize, line_start: usize) -> usize {
         self.finish_list(line_start);
@@ -1178,4 +1149,45 @@ pub(crate) fn footnote_prefix(bytes: &[u8], start: usize) -> Option<(Range<usize
         at += 1;
     }
     None
+}
+
+fn interrupts(options: &ParseOptions, bytes: &[u8], current_container: bool) -> bool {
+    let constructs = &options.constructs;
+    match bytes.first().copied() {
+        None | Some(b'\r' | b'\n') => true,
+        Some(b'>') => constructs.block_quote,
+        Some(b'<') => {
+            constructs.html_flow
+                && html::Html::start(bytes, options.html_tag_namespaces, false).is_some()
+        }
+        Some(b'[') => constructs.footnote_definition && footnote_prefix(bytes, 0).is_some(),
+        Some(b'#') => constructs.heading_atx && scan_atx_heading(bytes).is_some(),
+        Some(b'`' | b'~') => constructs.code_fenced && scan_code_fence(bytes).is_some(),
+        Some(b'*' | b'_' | b'-') if constructs.thematic_break && scan_hrule(bytes).is_ok() => true,
+        Some(b'*' | b'-' | b'+' | b'0'..=b'9') if constructs.list_item => {
+            list_interrupts(options, bytes, current_container)
+        }
+        _ => false,
+    }
+}
+// List lookahead needs an aligned line cursor; ordinary interruption dispatch does not need its stack frame.
+#[inline(never)]
+fn list_interrupts(options: &ParseOptions, bytes: &[u8], current_container: bool) -> bool {
+    let mut line = LineStart::new(bytes);
+    line.scan_list_marker_with_indent(0, options.constructs.thematic_break)
+        .is_some_and(|(marker, number, _)| {
+            !current_container
+                || ((matches!(marker, b'*' | b'-' | b'+') || number == 1)
+                    && scan_blank_line(&bytes[line.bytes_scanned()..]).is_none())
+        })
+}
+
+/// Whether a line that continues a paragraph in the same containers, from its first byte other
+/// than a space or tab, starts a block instead, as `paragraph` decides with the default
+/// constructs: a setext underline, or a block that interrupts a paragraph. Indentation, which
+/// keeps any of these from starting, is not counted here.
+pub(crate) fn continuation_starts_block(bytes: &[u8]) -> bool {
+    let options = ParseOptions::default();
+    (matches!(bytes.first(), Some(b'=' | b'-')) && scan_setext_heading(bytes).is_some())
+        || interrupts(&options, bytes, true)
 }

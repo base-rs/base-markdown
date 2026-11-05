@@ -5,8 +5,10 @@
 
 mod support;
 use base_markdown::markdown::to_markdown;
+use base_markdown::stream::{EventKind, Reference, Tag, Text as EventText};
 use base_markdown::{Document, ParseOptions};
 use pretty_assertions::assert_eq;
+use support::fixture::rejected;
 use support::fixture::to_markdown as to;
 use support::fixture::{
     canonical, Break, Definition, FootnoteDefinition, FootnoteReference, Fragment, Heading, Html,
@@ -15,35 +17,18 @@ use support::fixture::{
 
 #[test]
 fn link_reference() {
-    assert_eq!(
-        to(&Node::LinkReference(LinkReference {
-            children: Vec::new(),
-            position: None,
-            reference_kind: ReferenceKind::Full,
-            identifier: String::new(),
-            label: None
-        }))
-        .unwrap(),
-        "[][]\n",
-        "should support a link reference (nonsensical"
-    );
-
-    assert_eq!(
-        to(&Node::LinkReference(LinkReference {
-            children: vec![Node::Text(Text {
-                value: String::from("a"),
-                position: None
-            })],
-            position: None,
-            reference_kind: ReferenceKind::Full,
-            identifier: String::new(),
-            label: None
-        }))
-        .unwrap(),
-        "[a][]\n",
-        "should support `children`"
-    );
-
+    // An empty label does not read back as one, so it is rejected (#192).
+    assert!(rejected(
+        EventKind::Start(Tag::Link {
+            destination: EventText::Literal(""),
+            title: None,
+            reference: Some(Box::new(Reference {
+                kind: base_markdown::ReferenceKind::Full,
+                label: EventText::Literal(""),
+            })),
+        }),
+        true
+    ));
     assert_eq!(
         to(&Node::LinkReference(LinkReference {
             children: Vec::new(),
@@ -808,10 +793,19 @@ fn shortcut_labels_longer_than_a_full_label_round_trip() {
     let tabs = "\t".repeat(251);
     for form in ["", "[]"] {
         let source = format!("[a{tabs}b]{form} x\n\n[a b]: /u");
+        // The serializer writes one whose text matches its label as it is.
         let document = Document::parse(source.clone(), &ParseOptions::default()).unwrap();
-        assert_round_trip(document, &ParseOptions::default(), &format!("{source}\n"));
-        // Once its text no longer matches its label, it cannot be written full, so it is a
-        // resource.
+        assert_eq!(to_markdown(&document).unwrap(), format!("{source}\n"));
+        assert!(!document.is_normalized());
+        // Normalizing cannot tell whether the text will match, as that depends on how the
+        // serializer writes it, so it makes one that could not be written full a resource.
+        assert_round_trip(
+            document,
+            &ParseOptions::default(),
+            &format!("[a{tabs}b](/u) x\n\n[a b]: /u\n"),
+        );
+        // Once its text no longer matches its label, it cannot be written full, so the
+        // serializer writes it as a resource too, normalized or not.
         let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
         let text = document
             .descendants(document.root())
@@ -820,6 +814,7 @@ fn shortcut_labels_longer_than_a_full_label_round_trip() {
         document
             .set_kind(text, EventKind::Text(Value::Literal("c")))
             .unwrap();
+        assert_eq!(to_markdown(&document).unwrap(), "[c](/u) x\n\n[a b]: /u\n");
         assert_round_trip(
             document,
             &ParseOptions::default(),

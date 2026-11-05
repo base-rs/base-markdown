@@ -348,12 +348,16 @@ pub enum Tag<'a> {
 /// reference matches a definition with the same destination and title as that reference, and any
 /// other as a resource.
 ///
-/// The parser reads a full reference's label only up to the size of a
-/// [`EventKind::Definition`]'s, and a shortcut or collapsed one's at any size. A full reference
-/// with a longer label would be written as text, so it is rejected with
-/// [`StreamError::InvalidValue`] wherever an event enters a document or renderer. A shortcut or
-/// collapsed reference with a longer label whose text no longer matches it is written as a
-/// resource.
+/// The serializer writes a label as it is, so it must be one the parser can read: it holds
+/// something other than whitespace, no carriage return, no blank line, no bracket without a
+/// backslash before it, does not end in a backslash that would escape the closing bracket, and
+/// none of its lines after the first starts a block that would interrupt it, such as a heading,
+/// fence, block quote, list item or HTML block, at any column it can be written at. A full
+/// reference's label is also at most 999 characters, counting a tab as the columns it spans, but
+/// not line endings and the spaces and tabs after them; the parser reads a shortcut or collapsed
+/// one at any size. A label that is not is rejected with [`StreamError::InvalidValue`] wherever
+/// an event enters a document or renderer. A shortcut or collapsed reference with a longer label,
+/// or whose text no longer matches it, is written as a resource.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Reference<'a> {
@@ -509,10 +513,8 @@ pub enum EventKind<'a> {
     Html { value: Text<'a>, block: bool },
     /// A resolved definition, retained in the AST but omitted from HTML.
     ///
-    /// A label longer than the parser reads, 999 characters counting a tab as the columns it
-    /// spans, but not line endings and the spaces and tabs after them, would be written as text,
-    /// so it is rejected with [`StreamError::InvalidValue`] wherever an event enters a document or
-    /// renderer.
+    /// Its label follows the rules of a full [`Reference`]'s, and one that does not is rejected
+    /// with [`StreamError::InvalidValue`] wherever an event enters a document or renderer.
     Definition {
         label: Text<'a>,
         destination: Text<'a>,
@@ -522,13 +524,11 @@ pub enum EventKind<'a> {
     /// authored, which the serializer writes. The parser always reads a label; one built without
     /// it is written as its identifier.
     ///
-    /// A footnote label is written as it is, so it must read back as one: it holds something
-    /// other than whitespace, no bracket without a backslash before it and no blank line, does not
-    /// end in an odd run of backslashes, which would escape the closing bracket, and is no longer
-    /// than a [`Reference`]'s label can be. A definition's label also holds no whitespace, and is
-    /// at most 999 bytes long. A label, or an identifier without one, that does not is rejected
-    /// with [`StreamError::InvalidValue`] wherever an event enters a document or renderer. The
-    /// identifier of a label can be longer, since case folding can lengthen it, and is not checked.
+    /// A footnote label is written as it is, so it follows the rules of a full [`Reference`]'s,
+    /// and a definition's label also holds no whitespace. A label, or an identifier without one,
+    /// that does not is rejected with [`StreamError::InvalidValue`], as is an identifier that is
+    /// not the normalized form of its label, or of itself without one, wherever an event enters a
+    /// document or renderer.
     FootnoteReference {
         identifier: Text<'a>,
         label: Option<Text<'a>>,
@@ -537,6 +537,16 @@ pub enum EventKind<'a> {
 
 impl<'s> EventKind<'s> {
     pub(crate) fn validate(&self, source: Option<&str>) -> Result<(), StreamError> {
+        // A value, unless it is source-backed and its source is not known yet.
+        fn resolved<'v>(
+            value: &'v Text<'_>,
+            source: Option<&'v str>,
+        ) -> Result<Option<&'v str>, StreamError> {
+            match (value, source) {
+                (Text::Source(_), None) => Ok(None),
+                (value, source) => value.resolve(source.unwrap_or("")).map(Some),
+            }
+        }
         let text = |value: &Text<'_>| {
             if let Some(source) = source {
                 value.resolve(source)?;
@@ -550,20 +560,28 @@ impl<'s> EventKind<'s> {
             Ok::<(), StreamError>(())
         };
         // A source-backed value is checked once its source is known.
-        let check = |value: &Text<'_>, valid: fn(&str) -> bool| {
-            text(value)?;
-            if source.is_none() && matches!(value, Text::Source(_)) {
-                return Ok(());
-            }
-            let value = value
-                .resolve(source.unwrap_or(""))
-                .expect("a literal or owned value, or one checked by `text`");
-            if valid(value) {
-                Ok(())
-            } else {
-                Err(StreamError::InvalidValue)
-            }
+        let check = |value: &Text<'s>, valid: &dyn Fn(&str) -> bool| match resolved(value, source)?
+        {
+            Some(value) if !valid(value) => Err(StreamError::InvalidValue),
+            _ => Ok(()),
         };
+        // A footnote's label, or its identifier without one, is written, and its identifier is
+        // what the label normalizes to, as the parser gives it.
+        let footnote =
+            |identifier: &Text<'s>, label: Option<&Text<'s>>, valid: &dyn Fn(&str) -> bool| {
+                let written = label.unwrap_or(identifier);
+                let identifier = resolved(identifier, source)?;
+                match (identifier, resolved(written, source)?) {
+                    (_, Some(written)) if !valid(written) => Err(StreamError::InvalidValue),
+                    (Some(identifier), Some(written))
+                        if crate::util::normalize_identifier::normalize_identifier(written)
+                            != identifier =>
+                    {
+                        Err(StreamError::InvalidValue)
+                    }
+                    _ => Ok(()),
+                }
+            };
         match self {
             Self::Start(Tag::Heading(level)) if !(1..=6).contains(level) => {
                 Err(StreamError::InvalidValue)
@@ -583,34 +601,24 @@ impl<'s> EventKind<'s> {
                 text(destination)?;
                 optional(title)?;
                 match reference {
-                    // The parser reads only a full reference's label up to a size: a shortcut or
-                    // collapsed one is the link's text, at any size.
-                    Some(reference) if reference.kind == crate::ReferenceKind::Full => {
-                        check(&reference.label, crate::node_syntax::label_fits)
-                    }
-                    Some(reference) => text(&reference.label),
+                    Some(reference) => check(&reference.label, &|label| {
+                        crate::node_syntax::label_reads_back(
+                            label,
+                            reference.kind == crate::ReferenceKind::Full,
+                        )
+                    }),
                     None => Ok(()),
                 }
             }
-            Self::Start(Tag::FootnoteDefinition { identifier, label }) => {
-                let reads_back = crate::node_syntax::footnote_definition_label_reads_back;
-                match label {
-                    Some(label) => {
-                        text(identifier)?;
-                        check(label, reads_back)
-                    }
-                    None => check(identifier, reads_back),
-                }
-            }
+            Self::Start(Tag::FootnoteDefinition { identifier, label }) => footnote(
+                identifier,
+                label.as_ref(),
+                &crate::node_syntax::footnote_definition_label_reads_back,
+            ),
             Self::FootnoteReference { identifier, label } => {
-                let reads_back = crate::node_syntax::footnote_call_label_reads_back;
-                match label {
-                    Some(label) => {
-                        text(identifier)?;
-                        check(label, reads_back)
-                    }
-                    None => check(identifier, reads_back),
-                }
+                footnote(identifier, label.as_ref(), &|label| {
+                    crate::node_syntax::label_reads_back(label, true)
+                })
             }
             Self::Code {
                 value,
@@ -663,7 +671,9 @@ impl<'s> EventKind<'s> {
             } => {
                 text(destination)?;
                 optional(title)?;
-                check(label, crate::node_syntax::label_fits)
+                check(label, &|label| {
+                    crate::node_syntax::label_reads_back(label, true)
+                })
             }
             _ => Ok(()),
         }

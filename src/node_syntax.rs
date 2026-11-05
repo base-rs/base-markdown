@@ -94,107 +94,240 @@ impl NodeSyntax<'_> {
     }
 }
 
-/// Whether `label`, written as the label of a reference or definition, is no longer than the
-/// parser reads one: 999 bytes, counting the escape the serializer writes before a bracket that
-/// has none, or after a final backslash, but not a line ending or the spaces and tabs after one.
-///
-/// The parser counts a tab as the columns it spans, up to the next multiple of four, so how many
-/// a tab counts depends on the column where its line of the label starts, which depends on where
-/// the label is written. A label fits if it fits at some column of each of its lines: then the
-/// parser can read it, and every label the parser read fits, at the columns where it was read. A
-/// label that fits at no column, such as 300 tabs and a letter, can never be read back.
-pub(crate) fn label_fits(label: &str) -> bool {
+/// The columns `label` spans as the parser counts a label's size: each byte but a line ending
+/// and the spaces and tabs after one, and a tab as the columns up to the next multiple of four.
+/// How many a tab spans depends on the column where its line of the label starts, which depends
+/// on where the label is written, so this is the least size, at the column of each line where
+/// that line is smallest, and the most, with every tab four columns wide.
+fn label_size(label: &str) -> (usize, usize) {
     let bytes = label.as_bytes();
     // The columns that the current line of the label spans, for each column modulo four where it
     // could start, and the least that each line before it spans.
     let mut line = [0; 4];
-    let mut size = 0;
-    let mut escaped = false;
+    let mut least = 0;
+    let mut most = 0;
     let mut at = 0;
     while at < bytes.len() {
-        let width = match bytes[at] {
-            b'\r' | b'\n' => {
+        match bytes[at] {
+            b'\n' => {
                 at += 1;
-                while at < bytes.len() && matches!(bytes[at], b' ' | b'\t' | b'\r' | b'\n') {
+                while at < bytes.len() && matches!(bytes[at], b' ' | b'\t' | b'\n') {
                     at += 1;
                 }
-                size += line.iter().min().expect("four columns");
+                least += line.iter().min().expect("four columns");
                 line = [0; 4];
-                escaped = false;
                 continue;
             }
             b'\t' => {
                 for (start, columns) in line.iter_mut().enumerate() {
                     *columns += 4 - (start + *columns) % 4;
                 }
-                escaped = false;
-                at += 1;
-                continue;
+                most += 4;
             }
-            b'[' | b']' if !escaped => 2,
-            b'\\' => {
-                escaped = !escaped;
-                at += 1;
+            _ => {
                 for columns in &mut line {
                     *columns += 1;
                 }
-                continue;
+                most += 1;
             }
-            _ => 1,
-        };
-        for columns in &mut line {
-            *columns += width;
         }
-        escaped = false;
         at += 1;
     }
-    size + line.iter().min().expect("four columns") + usize::from(escaped)
-        <= crate::util::constant::LINK_REFERENCE_SIZE_MAX
+    (least + line.iter().min().expect("four columns"), most)
+}
+
+/// Whether `label`, which reads back as [`label_reads_back`] checks, is no longer than the parser
+/// reads one, 999 bytes as [`label_size`] counts them, at some column of each of its lines: then
+/// the parser can read it, and every label the parser read fits, at the columns where it was
+/// read. A label that fits at no column, such as 300 tabs and a letter, can never be read back.
+pub(crate) fn label_fits(label: &str) -> bool {
+    label_size(label).0 <= crate::util::constant::LINK_REFERENCE_SIZE_MAX
+}
+
+/// Whether `label` fits as [`label_fits`] checks wherever it is written, with each tab as wide as
+/// it can be.
+pub(crate) fn label_fits_anywhere(label: &str) -> bool {
+    label_size(label).1 <= crate::util::constant::LINK_REFERENCE_SIZE_MAX
+}
+
+/// Whether `label`, written as it is between brackets, reads back as that label, as the parser
+/// reads the label of a definition, a reference, or a footnote call or definition: it holds
+/// something other than spaces, tabs and line endings, no carriage return, as the parser stores
+/// each line ending in a label as LF, no blank line, no bracket without a backslash before it, and
+/// does not end in a backslash that would escape its closing bracket. Each line after the first
+/// starts no block where it would continue a paragraph, such as `>` or `` ``` ``, as
+/// [`crate::block_parser::continuation_starts_block`] decides with the bracket that closes the label
+/// after the last, unless it is indented four columns or more at some column where it could
+/// start: no escape can keep a block from starting there, as it would change the label. When
+/// `limited`, the label also fits as [`label_fits`] checks: the parser reads a shortcut or
+/// collapsed reference's label, which is its link text, at any size, and every other one only up
+/// to that size. A table delimiter row is not checked for, as whether a line is one depends on
+/// the line before it, which the label does not determine.
+pub(crate) fn label_reads_back(label: &str, limited: bool) -> bool {
+    let bytes = label.as_bytes();
+    let mut content = false;
+    let mut escaped = false;
+    let mut at = 0;
+    loop {
+        let end = at
+            + bytes[at..]
+                .iter()
+                .position(|&byte| byte == b'\n')
+                .unwrap_or(bytes.len() - at);
+        if at > 0 && !continuation_reads_back(&bytes[at..end], end == bytes.len()) {
+            return false;
+        }
+        for &byte in &bytes[at..end] {
+            match byte {
+                b'\r' => return false,
+                b'[' | b']' if !escaped => return false,
+                b' ' | b'\t' => {}
+                _ => content = true,
+            }
+            escaped = byte == b'\\' && !escaped;
+        }
+        if end == bytes.len() {
+            break;
+        }
+        escaped = false;
+        at = end + 1;
+    }
+    content && !escaped && (!limited || label_fits(label))
+}
+
+// Whether `line`, a line of a label after its first, without its line ending, continues the
+// label's paragraph where it is written, `last` when the closing bracket follows it.
+fn continuation_reads_back(line: &[u8], last: bool) -> bool {
+    let indent = leading_whitespace(line);
+    if indent == line.len() && !last {
+        return false;
+    }
+    if indentation(&line[..indent]).1 >= 4 {
+        return true;
+    }
+    let mut rest = alloc::vec::Vec::with_capacity(line.len() - indent + 1);
+    rest.extend_from_slice(&line[indent..]);
+    rest.push(if last { b']' } else { b'\n' });
+    !crate::block_parser::continuation_starts_block(&rest)
+}
+
+// How many spaces and tabs `line` starts with.
+fn leading_whitespace(line: &[u8]) -> usize {
+    line.iter()
+        .take_while(|&&byte| matches!(byte, b' ' | b'\t'))
+        .count()
+}
+
+// The least and most columns that `whitespace`, of spaces and tabs, spans, at the columns where
+// it could start.
+fn indentation(whitespace: &[u8]) -> (usize, usize) {
+    let mut columns = [0; 4];
+    for &byte in whitespace {
+        for (start, columns) in columns.iter_mut().enumerate() {
+            *columns += if byte == b'\t' {
+                4 - (start + *columns) % 4
+            } else {
+                1
+            };
+        }
+    }
+    (
+        *columns.iter().min().expect("four columns"),
+        *columns.iter().max().expect("four columns"),
+    )
 }
 
 /// Whether `label`, written as it is as the label of a footnote definition, reads back as that
-/// label, as `footnote_prefix` in the block parser reads one: it is not empty, holds no space, tab
-/// or line ending, and no bracket without a backslash before it, does not end in an odd run of
-/// backslashes, which would escape its closing bracket, and is at most 999 bytes long.
+/// label, as `footnote_prefix` in the block parser reads one: it reads back as
+/// [`label_reads_back`] checks, limited, and holds no space, tab or line ending, so it is at most
+/// 999 bytes long.
 pub(crate) fn footnote_definition_label_reads_back(label: &str) -> bool {
     !label
         .bytes()
-        .any(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
-        && footnote_call_label_reads_back(label)
-        && label.len() <= crate::util::constant::LINK_REFERENCE_SIZE_MAX
+        .any(|byte| matches!(byte, b' ' | b'\t' | b'\n'))
+        && label_reads_back(label, true)
 }
 
-/// Whether `label`, written as it is as the label of a footnote call, reads back as that label, as
-/// the inline parser reads one: it holds something other than whitespace, no bracket without a
-/// backslash before it and no blank line, does not end in an odd run of backslashes, which would
-/// escape its closing bracket, and fits as [`label_fits`] counts.
-pub(crate) fn footnote_call_label_reads_back(label: &str) -> bool {
+/// The label that [`crate::Document::normalize`] gives a reference, a definition or a footnote
+/// call whose label is `label`, which reads back as [`label_reads_back`] checks, if it changes.
+/// Where it is written on one line, `one_line`, as in an ATX heading or a table cell, each run of
+/// spaces, tabs and line endings in a label that holds a line ending becomes one space. Otherwise,
+/// each space or tab that a line after the first starts with becomes four spaces or one when that
+/// line would start a block at some column where it could start and not at another, and when
+/// `tabs` and the label does not fit as [`label_fits_anywhere`] checks, each other tab becomes a
+/// space. None of these changes what the label matches, as a run of whitespace in a label matches
+/// any other, and the label then reads back as it is wherever it is written, unless it is too long
+/// once its line endings are spaces.
+pub(crate) fn normalized_label(
+    label: &str,
+    one_line: bool,
+    tabs: bool,
+) -> Option<alloc::string::String> {
     let bytes = label.as_bytes();
-    let mut content = false;
-    let mut blank = false;
-    let mut at = 0;
-    while at < bytes.len() {
-        match bytes[at] {
-            b'[' | b']' => return false,
-            b'\r' | b'\n' if blank => return false,
-            b'\r' if bytes.get(at + 1) == Some(&b'\n') => {
-                blank = true;
-                at += 1;
+    let mut value = alloc::string::String::new();
+    if one_line && bytes.contains(&b'\n') {
+        value.reserve(label.len());
+        let mut space = false;
+        for character in label.chars() {
+            let whitespace = matches!(character, ' ' | '\t' | '\n');
+            if !whitespace {
+                value.push(character);
+            } else if !space {
+                value.push(' ');
             }
-            b'\r' | b'\n' => blank = true,
-            b' ' | b'\t' => {}
-            b'\\' if at + 1 == bytes.len() => return false,
-            byte => {
-                if byte == b'\\' && matches!(bytes[at + 1], b'[' | b']' | b'\\') {
-                    at += 1;
+            space = whitespace;
+        }
+        return Some(value);
+    }
+    let tabs = tabs && !label_fits_anywhere(label);
+    // The end of what `value` holds a copy of, once anything changes.
+    let mut cursor = 0;
+    let mut start = 0;
+    loop {
+        let end = start
+            + bytes[start..]
+                .iter()
+                .position(|&byte| byte == b'\n')
+                .unwrap_or(bytes.len() - start);
+        let line = &bytes[start..end];
+        let mut indent = 0;
+        if start > 0 {
+            indent = leading_whitespace(line);
+            if column_dependent(line, indent, end == bytes.len()) {
+                value.push_str(&label[cursor..start]);
+                for &byte in &line[..indent] {
+                    value.push_str(if byte == b'\t' { "    " } else { " " });
                 }
-                content = true;
-                blank = false;
+                cursor = start + indent;
             }
         }
-        at += 1;
+        if tabs {
+            for (offset, &byte) in line[indent..].iter().enumerate() {
+                if byte == b'\t' {
+                    let at = start + indent + offset;
+                    value.push_str(&label[cursor..at]);
+                    value.push(' ');
+                    cursor = at + 1;
+                }
+            }
+        }
+        if end == bytes.len() {
+            break;
+        }
+        start = end + 1;
     }
-    content && label_fits(label)
+    (cursor > 0).then(|| {
+        value.push_str(&label[cursor..]);
+        value
+    })
+}
+
+// Whether `line`, a line of a label after its first that reads back somewhere and starts with
+// `indent` spaces and tabs, starts a block at some column where it could start and not at
+// another, as its indentation is four columns or more at only some of them.
+fn column_dependent(line: &[u8], indent: usize, closed: bool) -> bool {
+    let (least, most) = indentation(&line[..indent]);
+    least < 4 && most >= 4 && !continuation_reads_back(&line[indent..], closed)
 }
 
 pub(crate) fn infer(

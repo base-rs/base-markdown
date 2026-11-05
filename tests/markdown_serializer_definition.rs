@@ -5,24 +5,22 @@
 
 mod support;
 use base_markdown::markdown::Options;
+use base_markdown::stream::{EventKind, Text as EventText};
 use pretty_assertions::assert_eq;
+use support::fixture::{rejected, Definition, Node};
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
-use support::fixture::{Definition, Node};
 
 #[test]
 fn defintion() {
-    assert_eq!(
-        to(&Node::Definition(Definition {
-            url: String::new(),
+    // An empty label does not read back as one, so it is rejected (#192).
+    assert!(rejected(
+        EventKind::Definition {
+            label: EventText::Literal(""),
+            destination: EventText::Literal(""),
             title: None,
-            identifier: String::new(),
-            position: None,
-            label: None
-        }))
-        .unwrap(),
-        "[]: <>\n",
-        "should support a definition w/o label"
-    );
+        },
+        false
+    ));
 
     assert_eq!(
         to(&Node::Definition(Definition {

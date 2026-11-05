@@ -1506,55 +1506,10 @@ impl<'a> State<'a> {
     /// Write a definition or reference label. Labels match by their raw text, so backslashes are
     /// written as they are and a character one already escapes needs no other escape. Labels match
     /// after collapsing whitespace, so a CR or CRLF in a constructed label is written as LF.
-    pub(super) fn write_label(&mut self, label: &str, info: &Info) {
-        let normalized;
-        let label = if label.contains('\r') {
-            normalized = {
-                let mut value = String::with_capacity(label.len());
-                crate::util::line_ending::push_normalized(&mut value, label);
-                value
-            };
-            normalized.as_str()
-        } else {
-            label
-        };
-        let before = info.before(&self.output);
-        let start = before[0].len() + before[1].len();
-        self.escapes.clear();
-        super::escape::collect(before, label, info.after, &self.stack, &mut self.escapes);
-        self.escapes.sort_unstable_by_key(|entry| entry.0);
-        self.escapes.dedup_by_key(|entry| entry.0);
-        let bytes = label.as_bytes();
-        let escaped = |index: usize| {
-            bytes[..index]
-                .iter()
-                .rev()
-                .take_while(|&&byte| byte == b'\\')
-                .count()
-                % 2
-                == 1
-        };
-        let mut cursor = 0;
-        for &(position, _) in &self.escapes {
-            let Some(index) = position
-                .checked_sub(start)
-                .filter(|&index| index < label.len())
-            else {
-                continue;
-            };
-            if escaped(index) {
-                continue;
-            }
-            // Labels are written outside phrasing, so only ASCII punctuation needs an escape.
-            self.output.push_str(&label[cursor..index]);
-            self.output.push('\\');
-            cursor = index;
-        }
-        self.output.push_str(&label[cursor..]);
-        // A trailing backslash would otherwise escape the closing bracket.
-        if escaped(label.len()) {
-            self.output.push('\\');
-        }
+    /// Write a label as it is: a label in a document reads back as itself when written so, as
+    /// `node_syntax::label_reads_back` checks, and an escape would change it.
+    pub(super) fn write_label(&mut self, label: &str) {
+        self.output.push_str(label);
     }
 }
 

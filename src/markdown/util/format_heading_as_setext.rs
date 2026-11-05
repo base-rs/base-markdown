@@ -29,7 +29,8 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
 /// whether a line ending in text, at any depth, is written in an ATX heading as `&#xA;`,
 /// which reads back as the same text, rather than making the heading setext. Only a heading that
 /// a setext heading cannot be written for without a blank line does that (#168), so that other
-/// headings are written as before.
+/// headings are written as before. A reference's or footnote call's label is written as it is, so
+/// one that holds a line ending always makes the heading setext.
 pub(crate) fn heading_as_setext<S: AsRef<str>>(
     document: &Document<S>,
     id: NodeId,
@@ -50,6 +51,32 @@ pub(crate) fn heading_as_setext<S: AsRef<str>>(
     while let Some(child) = current {
         let node = document.node(child).unwrap();
         let kind = &node.kind;
+        // A label is written as it is, so one that holds a line ending needs a setext heading
+        // wherever it is, and a link or footnote call is never empty.
+        let label = match kind {
+            EventKind::Start(
+                Tag::Link {
+                    reference: Some(reference),
+                    ..
+                }
+                | Tag::Image {
+                    reference: Some(reference),
+                    ..
+                },
+            ) => Some(&reference.label),
+            EventKind::FootnoteReference { identifier, label } => {
+                Some(label.as_ref().unwrap_or(identifier))
+            }
+            _ => None,
+        };
+        if label.is_some_and(|label| {
+            label
+                .resolve(document.source())
+                .expect("document text is validated")
+                .contains('\n')
+        }) {
+            return true;
+        }
         if let Some(value) = crate::headings::semantic_text::<false>(kind, document.source()) {
             nonempty |= !value.is_empty();
             let unwrapped = unwrap && matches!(kind, EventKind::Text(_) | EventKind::SoftBreak(_));

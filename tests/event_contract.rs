@@ -37,7 +37,7 @@ fn footnotes_keep_call_order_and_the_first_completed_definition() {
     };
     let text = |value| vec![EventKind::Text(Text::Literal(value))];
     let body = [
-        vec![definition("unused")],
+        vec![definition("UNUSED")],
         paragraph(text("hidden")),
         vec![end()],
         paragraph(vec![
@@ -708,7 +708,7 @@ fn writer_failures_propagate_from_every_output_position() {
     .unwrap_err();
     assert!(matches!(error, StreamError::InvalidRange));
     let missing = document(vec![EventKind::FootnoteReference {
-        identifier: Text::Literal("missing"),
+        identifier: Text::Literal("MISSING"),
         label: None,
     }]);
     assert!(matches!(
@@ -831,7 +831,7 @@ fn capture_nesting_is_checked_during_construction_rendering_and_edits() {
         for child in [
             Tag::Heading(2),
             Tag::FootnoteDefinition {
-                identifier: Text::Literal("x"),
+                identifier: Text::Literal("X"),
                 label: None,
             },
         ] {
@@ -1277,7 +1277,7 @@ fn a_mismatched_end_still_closes_a_capturing_frame() {
     renderer
         .event(
             event(EventKind::Start(Tag::FootnoteDefinition {
-                identifier: Text::Literal("x"),
+                identifier: Text::Literal("X"),
                 label: None,
             }))
             .unwrap(),
@@ -1293,9 +1293,9 @@ fn definition(label: Text<'static>) -> EventKind<'static> {
     }
 }
 
-/// A definition label longer than the parser reads would be written as text, so it is rejected
-/// wherever an event enters a document or renderer, counting the escapes it is written with but
-/// not its line endings or the indentation after them (#146).
+/// A definition label that does not read back as itself, such as one longer than the parser reads,
+/// would be written as text, so it is rejected wherever an event enters a document or renderer,
+/// counting its line endings and the indentation after them as nothing (#146, #192).
 #[test]
 fn definition_labels_longer_than_the_parser_reads_are_rejected() {
     let options = Options::default();
@@ -1314,13 +1314,13 @@ fn definition_labels_longer_than_the_parser_reads_are_rejected() {
         a(999),
         format!("{}\n   \t{}", a(500), a(499)),
         format!("{}\\]", a(997)),
-        format!("{}\\", a(997)),
+        format!("{}\\\\", a(997)),
     ];
     let long = [
         a(1000),
-        format!("{}]", a(998)),
-        format!("{}\\", a(998)),
-        format!("{}\\\\\\", a(996)),
+        format!("{}\\]", a(998)),
+        format!("{}]", a(997)),
+        format!("{}\\", a(997)),
         format!("{}\n{}", a(500), a(500)),
     ];
     let mut check = |label: &String, valid: bool| {

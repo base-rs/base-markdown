@@ -109,11 +109,9 @@ impl State<'_> {
     ) -> Result<(), Message> {
         let quote = self.options.check_quote()?;
         let start = self.output.len();
-        self.enter(ConstructName::Label);
         self.output.push('[');
-        self.write_label(label, &Info::at(start, self.output.len(), "]"));
+        self.write_label(label);
         self.output.push_str("]: ");
-        self.exit();
         self.destination_title(
             start,
             destination,
@@ -359,15 +357,11 @@ impl State<'_> {
         let start = self.output.len();
         let text = self.link_label(document, node, image, "]")?;
         self.output.push_str("][");
-        let stack = mem::take(&mut self.stack);
-        self.enter(ConstructName::Reference);
         let reference_start = self.output.len();
-        self.write_label(label, &Info::at(start, reference_start, "]"));
-        self.exit();
-        if stack.contains(&ConstructName::TableCell) {
+        self.write_label(label);
+        if self.stack.contains(&ConstructName::TableCell) {
             escape_table_pipes(&mut self.output, reference_start);
         }
-        self.stack = stack;
         if matches!(kind, ReferenceKind::Full)
             || text.is_empty()
             || self.output[text] != self.output[reference_start..]
