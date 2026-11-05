@@ -140,7 +140,7 @@ static RULES: &[Rule] = &[
     rule!(b'[', Line, A, 0, bit(TableCell)),
     rule!(b'[', EncodedLine, A, 0, bit(TableCell)),
     rule!(b'[', B, A, PHRASING, FULL_SPANS),
-    rule!(b'[', B, A, bit(ImageLabel) | bit(Label) | bit(Reference), 0),
+    rule!(b'[', B, A, bit(Label) | bit(Reference), 0),
     rule!(b'\\', B, Set(b"\n"), PHRASING, 0),
     rule!(b']', B, A, bit(ImageLabel) | bit(Label) | bit(Reference), 0),
     rule!(b'|', B, A, bit(TableCell), 0),

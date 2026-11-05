@@ -90,9 +90,10 @@ pub fn ends_at_boundary<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> 
 }
 
 /// Whether what follows the link starts at a boundary: whitespace before more content, a line
-/// ending, or the end of a paragraph, heading, table cell or image text. Spaces and tabs before a line ending
-/// or the end of the block are written as references, which a link would take, so they do not
-/// count, and neither does a node whose first character is only known once written.
+/// ending, or the end of a paragraph, heading, table cell or image text. Spaces and tabs before a
+/// line ending or the end of a block are written as references, which a link would take, so they
+/// do not count, and neither does a node whose first character is only known once written. Image
+/// text keeps them raw at its end, so there they count.
 fn boundary_after<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
     let node = document.node(id).expect("link exists");
     let kind = |sibling: NodeId| &document.node(sibling).unwrap().kind;
@@ -114,20 +115,17 @@ fn boundary_after<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
         Some(EventKind::SoftBreak(_)) => !spaces,
         Some(EventKind::HardBreak) => false,
         Some(_) => spaces,
-        None => {
-            !spaces
-                && node.parent().is_some_and(|parent| {
-                    matches!(
-                        document.node(parent).unwrap().kind,
-                        EventKind::Start(
-                            Tag::Paragraph { .. }
-                                | Tag::Heading(_)
-                                | Tag::TableCell { .. }
-                                | Tag::Image { .. }
-                        )
-                    )
-                })
-        }
+        None => node.parent().is_some_and(|parent| {
+            match document.node(parent).unwrap().kind {
+                // Image text keeps spaces and tabs at its end, written before `]`, which the parser
+                // reads as text after the literal.
+                EventKind::Start(Tag::Image { .. }) => true,
+                EventKind::Start(
+                    Tag::Paragraph { .. } | Tag::Heading(_) | Tag::TableCell { .. },
+                ) => !spaces,
+                _ => false,
+            }
+        }),
     }
 }
 

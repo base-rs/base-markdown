@@ -71,6 +71,8 @@ fn links_and_images_in_image_text_are_written() {
         // The issue's reproducer, which was written `![a b](/i)`.
         ("![a [b](/v)](/i)", "![a [b](/v)](/i)\n"),
         ("![a ![b](/v)](/i)", "![a ![b](/v)](/i)\n"),
+        // `[` in a destination in image text is not escaped, as in a paragraph.
+        ("![a [b](/v[x)](/i)", "![a [b](/v[x)](/i)\n"),
         ("![[a](/b)[c](/d)](/i)", "![[a](/b)[c](/d)](/i)\n"),
         ("![![![a](b)](c)](d)", "![![![a](b)](c)](d)\n"),
         (
@@ -133,6 +135,32 @@ fn other_phrasing_in_image_text_is_written() {
         ("![\\^a](/i)\n\n[^a]: x\n", "![\\^a](/i)\n\n[^a]: x\n"),
     ] {
         assert_eq!(round_trip(source), expected, "{source:?}");
+    }
+}
+
+#[test]
+fn literals_before_the_end_of_image_text_stay_bare() {
+    // Image text keeps spaces at its end, so a literal before them is at a boundary, and one before
+    // a soft break, which unwrapping writes as a space, stays bare when it is written again.
+    for (source, expected) in [
+        ("![x@y.z ](u)", "![x@y.z ](u)\n"),
+        ("![www.x.com\t](u)", "![www.x.com\t](u)\n"),
+        ("![a\nx@y.z ](u)", "![a\nx@y.z ](u)\n"),
+    ] {
+        assert_eq!(round_trip(source), expected, "{source:?}");
+    }
+    for (source, expected) in [
+        ("![x@y.z\n](u)", "![x@y.z ](u)\n"),
+        ("![ www.x.com\n](u)", "![ www.x.com ](u)\n"),
+        ("> ![https://a.b\n](u)", "> ![https://a.b ](u)\n"),
+    ] {
+        let markdown = normalize_markdown(source).unwrap();
+        assert_eq!(markdown, expected, "{source:?}");
+        assert_eq!(
+            normalize_markdown(&markdown).unwrap(),
+            markdown,
+            "{source:?}"
+        );
     }
 }
 
