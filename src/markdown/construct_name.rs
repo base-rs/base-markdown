@@ -67,16 +67,23 @@ pub enum ConstructName {
     ///     ^^^^^^^
     /// ```
     HeadingAtx,
-    /// Label (occurs in definitions, image reference, image, link reference,
-    /// link).
+    /// Image text (occurs in image reference, image), where literal autolinks form unless the
+    /// image is in link text.
+    ///
+    /// ```markdown
+    /// > | a ![b][c] d
+    ///       ^^^^
+    /// > | a ![b](c) d
+    ///       ^^^^
+    /// ```
+    ImageLabel,
+    /// Label (occurs in definitions, link reference, link).
     ///
     /// ```markdown
     /// > | [a]: b "c"
     ///     ^^^
     /// > | a [b] c
     ///       ^^^
-    /// > | a ![b][c] d
-    ///       ^^^^
     /// > | a [b](c) d
     ///       ^^^
     /// ```

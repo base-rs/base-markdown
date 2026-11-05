@@ -26,7 +26,7 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
 /// Whether heading `id` must be written as a setext heading, when `unwrap` is whether soft breaks
 /// are written as spaces. Headings are written ATX, but only a setext heading can hold a line
 /// ending, so a heading of rank 1 or 2 with text that holds one is written setext. `encode` is
-/// whether a line ending in text, including image text, is written in an ATX heading as `&#xA;`,
+/// whether a line ending in text, at any depth, is written in an ATX heading as `&#xA;`,
 /// which reads back as the same text, rather than making the heading setext. Only a heading that
 /// a setext heading cannot be written for without a blank line does that (#168), so that other
 /// headings are written as before.
@@ -44,9 +44,8 @@ pub(crate) fn heading_as_setext<S: AsRef<str>>(
     }
     let mut nonempty = false;
     let mut setext = false;
-    // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading. Line endings in inline code are always written as spaces, except in image text, which writes them as alt text, and a code block cannot be written in a heading.
-    // Walk the descendants in document order, counting the images that enclose each.
-    let mut images = 0;
+    // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading. Line endings in inline code are always written as spaces, in image text too, and a code block cannot be written in a heading.
+    // Walk the descendants in document order.
     let mut current = document.node(id).unwrap().first_child();
     while let Some(child) = current {
         let node = document.node(child).unwrap();
@@ -54,8 +53,7 @@ pub(crate) fn heading_as_setext<S: AsRef<str>>(
         if let Some(value) = crate::headings::semantic_text::<false>(kind, document.source()) {
             nonempty |= !value.is_empty();
             let unwrapped = unwrap && matches!(kind, EventKind::Text(_) | EventKind::SoftBreak(_));
-            let literal = matches!(kind, EventKind::CodeBlock { .. })
-                || images == 0 && matches!(kind, EventKind::Code { .. });
+            let literal = matches!(kind, EventKind::CodeBlock { .. } | EventKind::Code { .. });
             setext = setext
                 || matches!(kind, EventKind::HardBreak)
                 || !unwrapped && matches!(kind, EventKind::SoftBreak(_))
@@ -68,7 +66,6 @@ pub(crate) fn heading_as_setext<S: AsRef<str>>(
             return true;
         }
         if let Some(first) = node.first_child() {
-            images += usize::from(image(kind));
             current = Some(first);
             continue;
         }
@@ -82,15 +79,10 @@ pub(crate) fn heading_as_setext<S: AsRef<str>>(
             if parent == id {
                 break None;
             }
-            images -= usize::from(image(&document.node(parent).unwrap().kind));
             at = parent;
         };
     }
     false
-}
-
-fn image(kind: &EventKind<'_>) -> bool {
-    matches!(kind, EventKind::Start(Tag::Image { .. }))
 }
 
 #[cfg(test)]

@@ -26,9 +26,10 @@ pub enum WrittenLink<'a> {
 /// stored form is written explicitly.
 ///
 /// A bare link is written bare only between whitespace or line boundaries, where nothing next to
-/// it can change where it ends. `after_boundary` says whether the output before the link ends at
-/// one. Anywhere else it is written as `<…>` when that reads back as the same link, and
-/// explicitly otherwise.
+/// it can change where it ends, and outside link text, where no literal forms. The edges of image
+/// text outside link text are boundaries too, as the parser forms literals there. `after_boundary`
+/// says whether the output before the link ends at one. Anywhere else it is written as `<…>` when
+/// that reads back as the same link, and explicitly otherwise.
 pub fn written_link<'a, S: AsRef<str>>(
     document: &'a Document<S>,
     id: NodeId,
@@ -44,6 +45,7 @@ pub fn written_link<'a, S: AsRef<str>>(
             Some(text)
                 if reads_back_bare(text, destination)
                     && after_boundary
+                    && !state.stack.contains(&ConstructName::Label)
                     && boundary_after(document, id)
                     && !(text.contains('|') && state.stack.contains(&ConstructName::TableCell)) =>
             {
@@ -88,7 +90,7 @@ pub fn ends_at_boundary<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> 
 }
 
 /// Whether what follows the link starts at a boundary: whitespace before more content, a line
-/// ending, or the end of a paragraph, heading or table cell. Spaces and tabs before a line ending
+/// ending, or the end of a paragraph, heading, table cell or image text. Spaces and tabs before a line ending
 /// or the end of the block are written as references, which a link would take, so they do not
 /// count, and neither does a node whose first character is only known once written.
 fn boundary_after<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
@@ -118,7 +120,10 @@ fn boundary_after<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
                     matches!(
                         document.node(parent).unwrap().kind,
                         EventKind::Start(
-                            Tag::Paragraph { .. } | Tag::Heading(_) | Tag::TableCell { .. }
+                            Tag::Paragraph { .. }
+                                | Tag::Heading(_)
+                                | Tag::TableCell { .. }
+                                | Tag::Image { .. }
                         )
                     )
                 })
