@@ -529,3 +529,101 @@ fn frontmatter_line_endings_are_normalized_to_line_feeds() {
         assert_eq!(reparsed.frontmatter(), Some(normal));
     }
 }
+
+fn header_cell() -> EventKind<'static> {
+    EventKind::Start(Tag::TableCell {
+        alignment: AlignKind::None,
+        header: true,
+    })
+}
+
+// A table cell is one line, so it holds no soft or hard break at any depth, which the parser never
+// reads there, on every path (#214).
+#[test]
+fn no_break_is_inside_a_table_cell_at_any_depth() {
+    for line_break in [
+        EventKind::HardBreak,
+        EventKind::SoftBreak(Text::Literal("\n")),
+    ] {
+        let mut document =
+            Document::parse("| a |\n| - |\n".to_owned(), &ParseOptions::gfm()).unwrap();
+        let table = first(&document, document.root());
+        let cell = first(&document, first(&document, first(&document, table)));
+        let emphasis = document
+            .append_child(cell, EventKind::Start(Tag::Emphasis))
+            .unwrap();
+        assert!(matches!(
+            document.append_child(emphasis, line_break.clone()),
+            Err(StreamError::InvalidNesting)
+        ));
+        // Nor can a subtree that holds one be attached there.
+        let root = document.root();
+        let paragraph = document
+            .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+            .unwrap();
+        let strong = document
+            .append_child(paragraph, EventKind::Start(Tag::Strong))
+            .unwrap();
+        document.append_child(strong, line_break.clone()).unwrap();
+        assert!(matches!(
+            document.attach(emphasis, strong, None),
+            Err(StreamError::InvalidNesting)
+        ));
+        let (built, rendered) = build_and_render(&[
+            document_start(None),
+            EventKind::Start(Tag::Table),
+            EventKind::Start(Tag::TableHead),
+            EventKind::Start(Tag::TableRow),
+            header_cell(),
+            EventKind::Start(Tag::Delete),
+            line_break,
+            EventKind::End(TagKind::Delete),
+            EventKind::End(TagKind::TableCell),
+            EventKind::End(TagKind::TableRow),
+            EventKind::End(TagKind::TableHead),
+            EventKind::End(TagKind::Table),
+            EventKind::End(TagKind::Document),
+        ]);
+        assert!(nesting(&built), "{:?}", built);
+        assert!(nesting(&rendered), "{:?}", rendered);
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_serialized_break_in_a_table_cell_is_rejected() {
+    let document = Document::parse("| *a* |\n| - |\n".to_owned(), &ParseOptions::gfm()).unwrap();
+    let mut wire = serde_json::to_value(&document).unwrap();
+    let text = wire["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| node["kind"].get("Text").is_some())
+        .unwrap();
+    serde_json::from_value::<Document>(wire.clone()).unwrap();
+    wire["nodes"][text]["kind"] = serde_json::json!("HardBreak");
+    assert_eq!(
+        serde_json::from_value::<Document>(wire)
+            .unwrap_err()
+            .to_string(),
+        StreamError::InvalidNesting.to_string()
+    );
+}
+
+// The parser reads no break in a table cell, under any options.
+#[test]
+fn the_parser_builds_no_break_in_a_cell() {
+    for source in [
+        "| a\\\n| - |\n",
+        "| a  \n| - |\n",
+        "| a | b\nc |\n| - | - |\n",
+        "| a |\n| - |\n| b  \nc |\n",
+        "| [a\nb](/u) |\n| - |\n",
+    ] {
+        for options in [ParseOptions::gfm(), ParseOptions::default()] {
+            // Building checks the rule, so a parse that built a break in a cell would panic.
+            let document = Document::parse(source.to_owned(), &options).unwrap();
+            to_markdown(&document).unwrap();
+        }
+    }
+}

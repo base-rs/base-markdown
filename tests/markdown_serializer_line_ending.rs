@@ -302,7 +302,8 @@ fn whitespace_after_an_encoded_soft_break_is_encoded() {
         assert_eq!(to_markdown(&reparsed).unwrap(), output, "{children:?}");
     }
     // In a table cell every line ending is a reference, which reads back as one, so whitespace
-    // next to it stays as it is.
+    // next to it stays as it is. A cell holds no soft break, so `None` is a line ending in text
+    // there.
     for (children, expected) in [
         (&[Some("a"), None, Some(" b")][..], "| a&#xA; b |"),
         (&[Some("a"), None, Some("\tb")], "| a&#xA;\tb |"),
@@ -318,7 +319,11 @@ fn whitespace_after_an_encoded_soft_break_is_encoded() {
         (&[Some("a"), None, Some("~~~ b")], "| a&#xA;~~~ b |"),
         (&[Some("a\n# b")], "| a&#xA;# b |"),
     ] {
-        let mut document = in_cell(with_soft_breaks(children));
+        let text: Vec<_> = children
+            .iter()
+            .map(|child| Some(child.unwrap_or("\n")))
+            .collect();
+        let mut document = in_cell(with_soft_breaks(&text));
         document.normalize();
         let output = to_markdown(&document).unwrap();
         assert_eq!(output, format!("{expected}\n| --- |\n"), "{children:?}");

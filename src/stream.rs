@@ -204,8 +204,8 @@ impl TagKind {
     /// child, so phrasing and flow never share a parent. Separators sit where the parser writes
     /// them: between blocks in a container of blocks, and between the parts and rows of a table.
     ///
-    /// A footnote reference also cannot be inside a link at any depth, as a link's text cannot
-    /// hold one. That rule is on ancestors rather than the parent, so each path that adds nodes
+    /// Some containers also restrict what can be below them at any depth, which [`Reach`]
+    /// decides. That rule is on ancestors rather than the parent, so each path that adds nodes
     /// checks it alongside this one.
     pub(crate) fn holds(self, child: Class, first: Option<Class>) -> bool {
         match self.content() {
@@ -242,6 +242,64 @@ impl TagKind {
             Self::TableHead | Self::TableBody => Content::Rows,
             Self::TableRow => Content::Cells,
         }
+    }
+}
+
+/// The containers above a node that restrict what can be below them at any depth, besides the
+/// rule for their children that [`TagKind::holds`] decides: a link holds no footnote reference,
+/// as a link's text cannot hold one, and a table cell holds no soft or hard break, as it is one
+/// line of its row. The parser produces neither. They are counted so that checking a node takes
+/// constant time where looking through its ancestors would make a deep nest quadratic.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Reach {
+    links: usize,
+    cells: usize,
+}
+
+impl Reach {
+    /// Count a container as above the nodes that follow, until it is left.
+    pub(crate) fn enter(&mut self, kind: TagKind) {
+        match kind {
+            TagKind::Link => self.links += 1,
+            TagKind::TableCell => self.cells += 1,
+            _ => {}
+        }
+    }
+
+    /// Stop counting a container entered before.
+    pub(crate) fn leave(&mut self, kind: TagKind) {
+        match kind {
+            TagKind::Link => self.links -= 1,
+            TagKind::TableCell => self.cells -= 1,
+            _ => {}
+        }
+    }
+
+    /// Whether none of the containers counted restricts anything.
+    pub(crate) fn is_empty(self) -> bool {
+        self.links == 0 && self.cells == 0
+    }
+
+    /// Whether a link is counted.
+    pub(crate) fn link(self) -> bool {
+        self.links != 0
+    }
+
+    /// Whether a table cell is counted.
+    pub(crate) fn cell(self) -> bool {
+        self.cells != 0
+    }
+
+    /// Whether some container cannot have `kind` below it, so that adding it checks the
+    /// containers above it.
+    pub(crate) fn restricted(kind: &EventKind<'_>) -> bool {
+        !Self { links: 1, cells: 1 }.allows(kind)
+    }
+
+    /// Whether every container counted can have `kind` below it.
+    pub(crate) fn allows(self, kind: &EventKind<'_>) -> bool {
+        (self.links == 0 || !matches!(kind, EventKind::FootnoteReference { .. }))
+            && (self.cells == 0 || !matches!(kind, EventKind::SoftBreak(_) | EventKind::HardBreak))
     }
 }
 

@@ -7,7 +7,6 @@ use crate::util::normalize_identifier::{
     normalize_identifier, normalize_reference_identifier_into,
 };
 use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
-use core::cell::RefCell;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Definition<'a> {
@@ -48,36 +47,21 @@ impl Seed {
     }
 }
 
-impl Seed {
-    /// Append a definition of another document, after every existing one, keeping the first
-    /// definition of each key. Its label is as authored; its destination and title are resolved.
-    pub fn push(&mut self, label: &str, destination: &str, title: Option<&str>) {
-        let key = owned_reference_key(label);
-        let index = self.entries.len();
-        self.index.entry(key.clone()).or_insert(index);
-        self.entries.push(Definition {
-            start: 0,
-            label: Text::from(String::from(label)),
-            key: Cow::Owned(key),
-            destination: Text::from(String::from(destination)),
-            title: title.map(|title| Text::from(String::from(title))),
-        });
-    }
-
-    /// Append the footnote definition of another document whose identifier is `key`.
-    pub fn push_footnote(&mut self, key: &str) {
-        let key = String::from(key);
-        let index = self.footnotes.len();
-        self.footnote_index.entry(key.clone()).or_insert(index);
-        self.footnotes.push(key);
-        self.footnote_starts.push(0);
-    }
-}
-
 /// Owned copies of definitions taken from a parse, ready to append to a [`Seed`].
 pub(crate) struct Authored {
     entries: Vec<Definition<'static>>,
     footnotes: Vec<(usize, String)>,
+}
+
+/// The definitions of a document outside a fragment being parsed into it, which the fragment's
+/// references and footnote calls resolve to where they come before the fragment's own.
+pub(crate) trait Outside: core::fmt::Debug {
+    /// The definition outside the fragment that a reference with `key` resolves to, given
+    /// whether the fragment defines `key` itself, with its values owned.
+    fn reference(&self, key: &str, own: bool) -> Option<Definition<'static>>;
+    /// Whether a footnote call with `key` resolves to a definition outside the fragment, given
+    /// whether the fragment defines `key` itself.
+    fn footnote(&self, key: &str, own: bool) -> bool;
 }
 
 #[derive(Debug, Default)]
@@ -91,14 +75,12 @@ pub(crate) struct Definitions<'a> {
     footnote_order: Vec<usize>,
     // Lookups ignore definitions starting at or after this offset. Incremental parsing scopes each top-level block to the definitions authored before its end.
     limit: Option<usize>,
-    // When recording, each key looked up: whether it is a footnote's, the key, and whether it
-    // was found.
-    lookups: Option<RefCell<Vec<Lookup>>>,
+    // The definitions outside the parsed source, and those found there, whose indices follow
+    // the source's own, all of which are complete before anything is looked up.
+    outside: Option<&'a dyn Outside>,
+    found: Vec<Definition<'a>>,
+    found_footnotes: Vec<String>,
 }
-
-/// A key looked up while recording: whether it is a footnote's, the key, and whether a
-/// definition was found.
-pub(crate) type Lookup = (bool, String, bool);
 
 impl<'a> Definitions<'a> {
     /// Create definitions that extend `seed` with those of the parsed source.
@@ -109,31 +91,30 @@ impl<'a> Definitions<'a> {
         }
     }
 
-    /// Record the keys looked up from now on, and whether each was found.
-    pub fn record(&mut self) {
-        self.lookups = Some(RefCell::default());
-    }
-
-    /// The keys looked up since recording started, which it must have.
-    pub fn take_lookups(&mut self) -> Vec<Lookup> {
-        let lookups = self.lookups.as_mut().expect("lookups are recorded");
-        core::mem::take(lookups.get_mut())
-    }
-
-    fn note(&self, footnote: bool, key: &str, found: bool) {
-        if let Some(lookups) = &self.lookups {
-            lookups
-                .borrow_mut()
-                .push((footnote, String::from(key), found));
+    /// Create definitions of the parsed source that `outside` comes before or after.
+    pub fn outside(outside: &'a dyn Outside) -> Self {
+        Self {
+            outside: Some(outside),
+            ..Self::default()
         }
     }
 
-    // Whether no reference can resolve, so that references need not be looked up. While recording,
-    // they are looked up anyway.
+    // Whether no reference can resolve, so that references need not be looked up.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
             && self.seed.map_or(true, |seed| seed.entries.is_empty())
-            && self.lookups.is_none()
+            && self.outside.is_none()
+    }
+
+    /// The key of each definition of the parsed source in authored order, with their indices
+    /// sorted by key, those of one key in authored order, and the same for footnote definitions.
+    pub fn into_keys(self) -> (Vec<Cow<'a, str>>, Vec<usize>, Vec<String>, Vec<usize>) {
+        (
+            self.entries.into_iter().map(|entry| entry.key).collect(),
+            self.ordered,
+            self.footnotes,
+            self.footnote_order,
+        )
     }
 
     fn seed_entries(&self) -> usize {
@@ -145,9 +126,13 @@ impl<'a> Definitions<'a> {
     }
 
     pub fn entry(&self, index: usize) -> &Definition<'a> {
+        let seed = self.seed_entries();
         match self.seed {
             Some(seed) if index < seed.entries.len() => &seed.entries[index],
-            _ => &self.entries[index - self.seed_entries()],
+            _ => self
+                .entries
+                .get(index - seed)
+                .unwrap_or_else(|| &self.found[index - seed - self.entries.len()]),
         }
     }
 
@@ -183,22 +168,22 @@ impl<'a> Definitions<'a> {
         build_index(&mut self.footnote_order, &self.footnotes, String::as_str);
     }
 
-    // The index keeps the first authored definition of each key, so an invisible match has no visible predecessor. Seeded definitions precede the parsed source.
-    pub fn find(&self, key: &str) -> Option<usize> {
-        let found = self.lookup(key);
-        self.note(false, key, found.is_some());
-        found
-    }
-
-    fn lookup(&self, key: &str) -> Option<usize> {
-        let index = match self.seed.and_then(|seed| seed.index.get(key)) {
-            Some(&index) => index,
-            None => {
-                find_index(&self.ordered, &self.entries, key, |entry| {
-                    entry.key.as_ref()
-                })? + self.seed_entries()
-            }
-        };
+    // The index keeps the first authored definition of each key first, so an invisible match has no visible predecessor. Seeded definitions precede the parsed source, and one outside it comes first if it comes before the source's own.
+    pub fn find(&mut self, key: &str) -> Option<usize> {
+        if let Some(&index) = self.seed.and_then(|seed| seed.index.get(key)) {
+            return Some(index).filter(|&index| self.visible(self.entry(index).start));
+        }
+        let own = find_index(&self.ordered, &self.entries, key, |entry| {
+            entry.key.as_ref()
+        });
+        if let Some(definition) = self
+            .outside
+            .and_then(|outside| outside.reference(key, own.is_some()))
+        {
+            self.found.push(definition);
+            return Some(self.seed_entries() + self.entries.len() + self.found.len() - 1);
+        }
+        let index = own? + self.seed_entries();
         Some(index).filter(|&index| self.visible(self.entry(index).start))
     }
 
@@ -249,47 +234,57 @@ impl<'a> Definitions<'a> {
     }
 
     pub fn footnote_key(&self, index: usize) -> &str {
+        let seed = self.seed_footnotes();
         match self.seed {
             Some(seed) if index < seed.footnotes.len() => &seed.footnotes[index],
-            _ => &self.footnotes[index - self.seed_footnotes()],
+            _ => self
+                .footnotes
+                .get(index - seed)
+                .unwrap_or_else(|| &self.found_footnotes[index - seed - self.footnotes.len()]),
         }
     }
 
-    pub fn find_footnote(&self, key: &str) -> Option<usize> {
-        let found = self.lookup_footnote(key);
-        self.note(true, key, found.is_some());
-        found
-    }
-
-    fn lookup_footnote(&self, key: &str) -> Option<usize> {
+    pub fn find_footnote(&mut self, key: &str) -> Option<usize> {
         if let Some(&index) = self.seed.and_then(|seed| seed.footnote_index.get(key)) {
             return Some(index)
                 .filter(|&index| self.visible(self.seed.unwrap().footnote_starts[index]));
         }
-        let index = find_index(&self.footnote_order, &self.footnotes, key, String::as_str)?;
+        let own = find_index(&self.footnote_order, &self.footnotes, key, String::as_str);
+        if self
+            .outside
+            .is_some_and(|outside| outside.footnote(key, own.is_some()))
+        {
+            self.found_footnotes.push(String::from(key));
+            return Some(
+                self.seed_footnotes() + self.footnotes.len() + self.found_footnotes.len() - 1,
+            );
+        }
+        let index = own?;
         self.visible(self.footnote_starts[index])
             .then_some(index + self.seed_footnotes())
     }
 }
 
-// Sort equal keys by authored position so deduplication keeps the first definition.
+// Sort the indices of `values` by key, those of equal keys by authored position, so that a
+// lookup finds the first definition of each.
 pub(crate) fn build_index<T>(order: &mut Vec<usize>, values: &[T], key: impl Fn(&T) -> &str) {
     order.clear();
     order.extend(0..values.len());
     order.sort_unstable_by(|&a, &b| key(&values[a]).cmp(key(&values[b])).then(a.cmp(&b)));
-    order.dedup_by(|a, b| key(&values[*a]) == key(&values[*b]));
 }
 
+// The first index in `order` of a value whose key is `value`.
 pub(crate) fn find_index<T>(
     order: &[usize],
     values: &[T],
     value: &str,
     key: impl Fn(&T) -> &str,
 ) -> Option<usize> {
+    let at = order.partition_point(|&index| key(&values[index]) < value);
     order
-        .binary_search_by(|&index| key(&values[index]).cmp(value))
-        .ok()
-        .map(|index| order[index])
+        .get(at)
+        .copied()
+        .filter(|&index| key(&values[index]) == value)
 }
 
 // Reference keys fold ASCII letters to lowercase after the shared Unicode fold.

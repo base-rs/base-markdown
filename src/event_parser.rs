@@ -55,6 +55,11 @@ impl<'a> EventParser<'a> {
             carriage_returns,
         }
     }
+
+    /// The definitions of the source, once its events are pulled.
+    pub(crate) fn into_definitions(self) -> Definitions<'a> {
+        self.definitions
+    }
 }
 impl EventParser<'_> {
     /// Leave the labels of references and footnote calls out of events, as `None`, for a consumer
@@ -62,12 +67,6 @@ impl EventParser<'_> {
     pub(crate) fn skip_labels(mut self) -> Self {
         self.inline.skip_labels = true;
         self
-    }
-
-    /// The keys of references and footnote calls looked up so far, when `definitions` recorded
-    /// them.
-    pub(crate) fn take_lookups(&mut self) -> alloc::vec::Vec<crate::definitions::Lookup> {
-        self.definitions.take_lookups()
     }
 
     /// Resolve references and footnote calls in subsequently consumed blocks only against definitions starting before `limit`.
@@ -117,7 +116,7 @@ impl EventParser<'_> {
             self.inline.prepare::<false, EXTENSIONS>(
                 self.source,
                 fragments,
-                &self.definitions,
+                &mut self.definitions,
                 self.options,
                 task,
                 table,
@@ -126,7 +125,7 @@ impl EventParser<'_> {
             self.inline.prepare::<true, EXTENSIONS>(
                 self.source,
                 fragments,
-                &self.definitions,
+                &mut self.definitions,
                 self.options,
                 task,
                 table,

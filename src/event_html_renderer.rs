@@ -67,8 +67,8 @@ pub struct EventHtmlRenderer<'a, W> {
     line_ending: LineEnding,
     last: Option<u8>,
     stack: Vec<Frame>,
-    // How many frames of `stack` are links, which cannot hold a footnote reference at any depth. Counting them keeps each event constant time, where looking through `stack` would make a deep nest quadratic.
-    links: usize,
+    // The frames of `stack` that restrict what is below them at any depth.
+    reach: crate::stream::Reach,
     images: usize,
     // The checkbox of the task item just opened, written at the start of its first paragraph.
     task: Option<bool>,
@@ -94,7 +94,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             line_ending: options.default_line_ending.clone(),
             last: None,
             stack: Vec::new(),
-            links: 0,
+            reach: crate::stream::Reach::default(),
             images: 0,
             task: None,
             fragment: false,
@@ -659,24 +659,19 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         }
     }
 
-    // Check a node against the one content model: its parent must hold it, and no link can
-    // hold a footnote reference. Balance is checked where tags open and close.
+    // Check a node against the one content model: its parent must hold it, and its ancestors
+    // must allow it. Balance is checked where tags open and close.
     fn check_nesting(&mut self, kind: &EventKind<'_>) -> Result<(), StreamError> {
         match kind {
-            EventKind::Start(Tag::Link { .. }) => self.links += 1,
-            EventKind::End(TagKind::Link)
-                if self
-                    .stack
-                    .last()
-                    .is_some_and(|frame| frame.kind == TagKind::Link) =>
-            {
-                self.links -= 1;
+            EventKind::End(kind) => {
+                if self.stack.last().is_some_and(|frame| frame.kind == *kind) {
+                    self.reach.leave(*kind);
+                }
                 return Ok(());
             }
-            EventKind::End(_) | EventKind::Start(Tag::Document { .. }) => return Ok(()),
-            EventKind::FootnoteReference { .. } if self.links != 0 => {
-                return Err(StreamError::InvalidNesting)
-            }
+            EventKind::Start(Tag::Document { .. }) => return Ok(()),
+            _ if !self.reach.allows(kind) => return Err(StreamError::InvalidNesting),
+            EventKind::Start(tag) => self.reach.enter(tag.kind()),
             _ => {}
         }
         let fragment = self.fragment && self.stack.len() == 1;

@@ -125,9 +125,18 @@ fn every_container_that_holds_phrasing_reads_a_paragraphs_content() {
         document
             .parse_children(parent, "  x _y_ `z` <b>h</b> \\* &amp;  ", &gfm())
             .unwrap();
+        // Link text is read as written in a link, where whitespace at its edges stays.
+        let link = matches!(
+            document.node(parent).unwrap().kind,
+            EventKind::Start(Tag::Link { .. })
+        );
         assert_eq!(
             document.text_content(parent),
-            "x y z <b>h</b> * &",
+            if link {
+                "  x y z <b>h</b> * &  "
+            } else {
+                "x y z <b>h</b> * &"
+            },
             "{:?}",
             document.node(parent).unwrap().kind
         );
@@ -573,4 +582,163 @@ fn parsing_into_every_paragraph_of_a_document_is_linear() {
         ratios.push(ratio);
     }
     panic!("the document grew {:?} times the control's growth", ratios);
+}
+
+/// Assert that parsing `fragment` into the first node of `source` that `parent` accepts builds the
+/// tree that `source` with `PLACEHOLDER` replaced by `spliced` reads as, the fragment written there.
+fn assert_splices(
+    source: &str,
+    parent: impl Fn(&EventKind<'_>) -> bool,
+    fragment: &str,
+    spliced: &str,
+) {
+    let mut document = parse(source);
+    let id = find(&document, parent);
+    document.parse_children(id, fragment, &gfm()).unwrap();
+    let written = parse(&source.replacen("PLACEHOLDER", spliced, 1));
+    assert_eq!(canonical(&document), canonical(&written), "{fragment:?}");
+    assert_eq!(rendered(&document), rendered(&written), "{fragment:?}");
+}
+
+fn quote(kind: &EventKind<'_>) -> bool {
+    matches!(kind, EventKind::Start(Tag::BlockQuote))
+}
+
+/// Each footnote call of a chain is found only once the one around it resolves, so recording the
+/// keys a parse looks up and parsing again with them would take a parse for each; resolving each
+/// lookup as the parser makes it takes one (#121).
+#[test]
+fn a_chain_of_references_resolves_in_one_parse() {
+    let definitions: String = (0..33)
+        .map(|index| format!("[^n{index}]: Note.\n\n[n{index}]: /u{index}\n\n"))
+        .collect();
+    let source = format!("> PLACEHOLDER\n\n{definitions}");
+    for wrap in ["[^n{}]({})", "[{}][n{}]", "[[^n{}] {}]"] {
+        let fragment = (0..33).fold(String::from("x"), |inner, index| {
+            wrap.replacen("{}", &index.to_string(), 1)
+                .replacen("{}", &inner, 1)
+        });
+        assert_splices(&source, quote, &fragment, &fragment);
+    }
+}
+
+/// A fragment read in an item gains no separator that the parser writes only at the root: not
+/// after its last block, and not after a paragraph that the item's tight list makes tight. A
+/// separator between two paragraphs stays, as only one makes them two, though a tight list cannot
+/// write them apart, which normalizing does not yet fix (#216).
+#[test]
+fn a_fragment_read_in_an_item_adds_no_separator_the_parser_would_not() {
+    let item = |kind: &EventKind<'_>| matches!(kind, EventKind::Start(Tag::Item { .. }));
+    for (fragment, spliced) in [
+        ("a\n", "a"),
+        ("a\n\n", "a"),
+        ("a\n[^c]: x", "a\n  [^c]: x"),
+        ("a\n[^c]: x\n", "a\n  [^c]: x"),
+        ("a\n> q\n", "a\n  > q"),
+        ("> q\n", "> q"),
+        ("a\n- b\n", "a\n  - b"),
+        ("# h\n", "# h"),
+    ] {
+        assert_splices("- PLACEHOLDER\n- z\n", item, fragment, spliced);
+        assert_splices("- PLACEHOLDER\n\n- z\n", item, fragment, spliced);
+    }
+    let mut document = parse("- PLACEHOLDER\n");
+    let id = find(&document, item);
+    document.parse_children(id, "a\n\nb\n", &gfm()).unwrap();
+    assert_eq!(
+        kinds(&document, id)
+            .iter()
+            .filter(|kind| kind.starts_with("Separator"))
+            .count(),
+        1
+    );
+}
+
+/// Phrasing in a link is read as the text of a link, so a fragment that the parser would read as a
+/// link in place of the one around it is rejected, wherever it is in the link, as is one whose
+/// brackets would take the link's own, such as `[a` or `a\`, and literal
+/// autolinks do not form there; an angle autolink is not a link the parser reads as ending the one
+/// around it, so it stays.
+#[test]
+fn a_link_rejects_a_fragment_that_holds_a_link() {
+    let source = "[*t*](/u)\n\n[a]: /a\n\n[^n]: Note.\n";
+    let link = |kind: &EventKind<'_>| matches!(kind, EventKind::Start(Tag::Link { .. }));
+    let emphasis = |kind: &EventKind<'_>| matches!(kind, EventKind::Start(Tag::Emphasis));
+    for fragment in [
+        "[a]",
+        "x [b](/b) y",
+        "[^n][a]",
+        "[x][a]",
+        "*[a]*",
+        "[a",
+        "\\[a]",
+        "a\\",
+    ] {
+        for parent in [link, emphasis] {
+            let mut document = parse(source);
+            let id = find(&document, parent);
+            assert!(
+                matches!(
+                    document.parse_children(id, fragment, &gfm()),
+                    Err(StreamError::InvalidNesting)
+                ),
+                "{:?}",
+                fragment
+            );
+            assert_eq!(to_markdown(&document).unwrap(), source);
+        }
+    }
+    let source = "[PLACEHOLDER](/u)\n\n[a]: /a\n\n[^n]: Note.\n";
+    for fragment in ["<http://a>", "www.a.com", "`[a]`", "\\[a\\]", "![i](/i)"] {
+        assert_splices(source, link, fragment, fragment);
+    }
+}
+
+/// Phrasing in a table cell is read as the content of a cell, so a `|` ends it unless it is
+/// escaped, in code too, and the result is the cell the fragment written there reads as.
+#[test]
+fn a_cell_reads_a_fragment_as_written_in_a_cell() {
+    let source = "| PLACEHOLDER |\n| - |\n\n[a]: /a\n";
+    let cell = |kind: &EventKind<'_>| matches!(kind, EventKind::Start(Tag::TableCell { .. }));
+    for fragment in [
+        ")a`\\|[a]`a\t",
+        "a\\|b",
+        "`a\\|b`",
+        "[a\\|b](/u)",
+        "[a]",
+        " *a* ",
+        "www.a.com",
+        "a\\",
+        "&#124;",
+        "\\",
+    ] {
+        assert_splices(source, cell, fragment, fragment);
+    }
+    for fragment in ["a | b", "`a|b`", "a\nb", "|", "a |\n|-|\n| b"] {
+        let mut document = parse(source);
+        let id = find(&document, cell);
+        assert!(
+            matches!(
+                document.parse_children(id, fragment, &gfm()),
+                Err(StreamError::InvalidNesting)
+            ),
+            "{:?}",
+            fragment
+        );
+    }
+    // A cell is read as one whatever the options.
+    let mut document = parse(source);
+    let id = find(&document, cell);
+    let mut options = gfm();
+    options.constructs.table = false;
+    document.parse_children(id, "a\\|b", &options).unwrap();
+    assert_eq!(document.text_content(id), "a|b");
+    // Phrasing inside a cell reads as in the cell too.
+    let mut document = parse("| *x* |\n| - |\n");
+    let emphasis = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::Emphasis))
+    });
+    document.parse_children(emphasis, "a\\|b", &gfm()).unwrap();
+    assert_eq!(document.text_content(emphasis), "a|b");
+    reads_back(document);
 }

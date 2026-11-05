@@ -4,10 +4,14 @@
 // `Document::definition` and `Document::footnote_definition` find the first attached definition
 // of a label as the document is edited (#121).
 
+mod support;
+
 use base_markdown::{
     stream::{EventKind, Tag, Text},
-    Document, NodeId, ParseOptions,
+    to_markdown, Document, NodeId, ParseOptions,
 };
+use std::time::Duration;
+use support::linear::{assert_against_control, timed};
 
 fn parse(source: &str) -> Document {
     Document::parse(source.to_owned(), &ParseOptions::gfm()).unwrap()
@@ -188,6 +192,28 @@ fn a_footnote_definition_comes_before_those_inside_it_whichever_was_indexed_firs
     assert_eq!(document.footnote_definition("a"), Some(inner));
 }
 
+/// Finding the first again, once the first is removed, counts a definition inside another of its
+/// label as after it, as finding it directly does.
+#[test]
+fn the_first_found_again_is_the_outer_of_two_nested_definitions() {
+    let mut document = parse("> [^a]: First.\n\n[^b]: x\n");
+    let b = document.footnote_definition("b").unwrap();
+    document
+        .parse_children(b, "[^a]: Outer.\n", &ParseOptions::gfm())
+        .unwrap();
+    let outer = children(&document, b, |kind| {
+        matches!(kind, EventKind::Start(Tag::FootnoteDefinition { .. }))
+    })[0];
+    document
+        .parse_children(outer, "[^a]: Inner.\n", &ParseOptions::gfm())
+        .unwrap();
+    let quote = children(&document, document.root(), quote)[0];
+    document
+        .parse_children(quote, "y", &ParseOptions::gfm())
+        .unwrap();
+    assert_eq!(document.footnote_definition("a"), Some(outer));
+}
+
 #[test]
 fn a_definition_moved_before_another_is_found_first() {
     let mut document = parse("[^a]: x\n\n> [^b]: y\n");
@@ -284,4 +310,235 @@ fn a_loaded_document_finds_its_definitions() {
     let mut loaded = loaded;
     loaded.extract_children(loaded.root()).unwrap();
     assert_eq!(loaded.definition("a"), None);
+}
+
+#[test]
+fn removing_duplicates_keeps_the_rest_in_document_order() {
+    let mut document = parse("[a]: /1\n\n[a]: /2\n\n[a]: /3\n\n[a]: /4\n");
+    let root = document.root();
+    let built: Vec<NodeId> = document.children(root).collect();
+    let definitions: Vec<NodeId> = built
+        .iter()
+        .copied()
+        .filter(|id| {
+            matches!(
+                document.node(*id).unwrap().kind,
+                EventKind::Definition { .. }
+            )
+        })
+        .collect();
+    // Removing one after the first keeps the first; removing the first finds the next left.
+    document.detach(definitions[1]).unwrap();
+    assert_eq!(destination(&document, "a").as_deref(), Some("/1"));
+    document.detach(definitions[0]).unwrap();
+    assert_eq!(destination(&document, "a").as_deref(), Some("/3"));
+    // Definitions added by edits count with those left, in document order.
+    let added = document.append_child(root, definition("a", "/5")).unwrap();
+    let before = document.append_child(root, definition("A", "/6")).unwrap();
+    let first = document.children(root).next();
+    document.attach(root, before, first).unwrap();
+    assert_eq!(destination(&document, "a").as_deref(), Some("/6"));
+    document.detach(before).unwrap();
+    assert_eq!(destination(&document, "a").as_deref(), Some("/3"));
+    document.detach(definitions[2]).unwrap();
+    assert_eq!(destination(&document, "a").as_deref(), Some("/4"));
+    // Put back before the others, a removed one is first again.
+    let first = document.children(root).next();
+    document.attach(root, definitions[1], first).unwrap();
+    assert_eq!(destination(&document, "a").as_deref(), Some("/2"));
+    document.detach(definitions[1]).unwrap();
+    document.detach(definitions[3]).unwrap();
+    assert_eq!(destination(&document, "a").as_deref(), Some("/5"));
+    document.detach(added).unwrap();
+    assert_eq!(document.definition("a"), None);
+}
+
+#[test]
+fn replacing_a_heading_section_in_an_item_refreshes_how_the_item_ends() {
+    let mut document = parse("- # A\n  a\n- b\n");
+    let list = document.children(document.root()).next().unwrap();
+    let item = document.children(list).next().unwrap();
+    let replacement = parse("# A\n\n```\nd\n```\n");
+    assert!(document
+        .replace_heading_section(item, 0, &replacement, true, false)
+        .unwrap());
+    assert!(matches!(
+        document.node(item).unwrap().kind,
+        EventKind::Start(Tag::Item {
+            block_end: true,
+            ..
+        })
+    ));
+    document.normalize();
+    let markdown = to_markdown(&document).unwrap();
+    let mut reparsed = parse(&markdown);
+    reparsed.normalize();
+    assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
+}
+
+/// Look `label` up `count` times.
+fn look_up(document: &Document, label: &str, count: usize) -> Duration {
+    timed(|| {
+        for _ in 0..count {
+            assert!(document.definition(label).is_some());
+        }
+    })
+}
+
+/// Looking up a label shared by many definitions takes time logarithmic in their number, as for a
+/// label of one, the control, whether they were parsed or added by edits: the first is kept, not
+/// searched for (#121). Searching them grew 8 times the control's growth.
+#[test]
+fn looking_up_a_label_of_many_definitions_takes_logarithmic_time() {
+    let duplicated = |count: usize| parse(&"[a]: /x\n".repeat(count));
+    let distinct = |count: usize| {
+        parse(
+            &(0..count)
+                .map(|index| format!("[a{index}]: /x\n"))
+                .collect::<String>(),
+        )
+    };
+    assert_against_control(
+        "parsed",
+        1 << 11,
+        |count| look_up(&duplicated(count), "a", count),
+        |count| look_up(&distinct(count), "a0", count),
+    );
+    // Added by edits, each after the last.
+    let added = |count: usize, label: fn(usize) -> String| {
+        let mut document = parse("");
+        let root = document.root();
+        for index in 0..count {
+            document
+                .append_child(
+                    root,
+                    EventKind::Definition {
+                        label: Text::from(label(index)),
+                        destination: Text::Literal("/x"),
+                        title: None,
+                    },
+                )
+                .unwrap();
+        }
+        document
+    };
+    assert_against_control(
+        "added",
+        1 << 11,
+        |count| look_up(&added(count, |_| String::from("a")), "a", count),
+        |count| look_up(&added(count, |index| format!("a{index}")), "a0", count),
+    );
+}
+
+/// A lookup in nested block quotes, each holding a definition of the same label, takes time linear
+/// in their depth and logarithmic in their number, as with a label for each, the control (#121).
+#[test]
+fn looking_up_a_label_defined_at_every_depth_takes_time_linear_in_the_depth() {
+    let nested = |count: usize, label: fn(usize) -> String| {
+        let mut source = String::new();
+        for depth in 1..=count {
+            let prefix = ">".repeat(depth);
+            source.push_str(&format!("{prefix} [{}]: /x\n{prefix}\n", label(depth)));
+        }
+        parse(&source)
+    };
+    let time = |document: Document, count: usize| {
+        let mut document = document;
+        let paragraphs: Vec<NodeId> = document
+            .descendants(document.root())
+            .filter(|id| {
+                matches!(
+                    document.node(*id).unwrap().kind,
+                    EventKind::Start(Tag::BlockQuote)
+                )
+            })
+            .collect();
+        timed(|| {
+            for &quote in &paragraphs {
+                let paragraph = document
+                    .append_child(quote, EventKind::Start(Tag::Paragraph { tight: false }))
+                    .unwrap();
+                document
+                    .parse_children(paragraph, "[a]", &ParseOptions::gfm())
+                    .unwrap();
+            }
+            for _ in 0..count {
+                assert!(document.definition("a").is_some());
+            }
+        })
+    };
+    assert_against_control(
+        "nested",
+        1 << 8,
+        |count| time(nested(count, |_| String::from("a")), count),
+        |count| {
+            time(
+                nested(count, |depth| {
+                    if depth == 1 {
+                        String::from("a")
+                    } else {
+                        format!("a{depth}")
+                    }
+                }),
+                count,
+            )
+        },
+    );
+}
+
+#[test]
+fn a_definition_moved_into_one_added_after_it_is_found_after_it() {
+    let mut document = parse("[^a]: Inner.\n");
+    let root = document.root();
+    let inner = document.footnote_definition("a").unwrap();
+    let outer = document
+        .append_child(root, footnote_definition("A", "a"))
+        .unwrap();
+    assert_eq!(document.footnote_definition("a"), Some(inner));
+    // The inner definition, built before the outer, is now inside it, so the outer comes first.
+    document.attach(outer, inner, None).unwrap();
+    assert_eq!(document.footnote_definition("a"), Some(outer));
+}
+
+#[test]
+fn parsing_into_a_container_of_the_first_definition_finds_the_next_outside_it() {
+    let options = ParseOptions::gfm();
+    let mut document = parse("> [a]: /in\n\n[a]: /after\n");
+    let root = document.root();
+    document
+        .append_child(root, definition("a", "/added"))
+        .unwrap();
+    let quote = children(&document, root, quote)[0];
+    let paragraph = document
+        .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
+    document.parse_children(quote, "[a]", &options).unwrap();
+    assert_eq!(destination(&document, "a").as_deref(), Some("/after"));
+    // The paragraph's reference resolves to it too.
+    document.parse_children(paragraph, "[a]", &options).unwrap();
+    let link = document.children(paragraph).next().unwrap();
+    assert!(matches!(
+        &document.node(link).unwrap().kind,
+        EventKind::Start(Tag::Link { destination, .. })
+            if destination.resolve(document.source()).ok() == Some("/after")
+    ));
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_loaded_document_whose_definitions_were_moved_finds_the_first() {
+    let mut document = parse("[a]: /first\n\n[^n]: First.\n");
+    let root = document.root();
+    let added = document
+        .append_child(root, definition("A", "/added"))
+        .unwrap();
+    let first = document.children(root).next();
+    document.attach(root, added, first).unwrap();
+    let json = serde_json::to_string(&document).unwrap();
+    let loaded: Document = serde_json::from_str(&json).unwrap();
+    assert_eq!(destination(&loaded, "a").as_deref(), Some("/added"));
+    assert_eq!(note(&loaded, "n").as_deref(), Some("First."));
+    let mut loaded = loaded;
+    loaded.detach(added).unwrap();
+    assert_eq!(destination(&loaded, "a").as_deref(), Some("/first"));
 }
