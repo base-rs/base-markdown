@@ -47,6 +47,32 @@ impl Seed {
     }
 }
 
+impl Seed {
+    /// Append a definition of another document, after every existing one, keeping the first
+    /// definition of each key. Its label is as authored; its destination and title are resolved.
+    pub fn push(&mut self, label: &str, destination: &str, title: Option<&str>) {
+        let key = owned_reference_key(label);
+        let index = self.entries.len();
+        self.index.entry(key.clone()).or_insert(index);
+        self.entries.push(Definition {
+            start: 0,
+            label: Text::from(String::from(label)),
+            key: Cow::Owned(key),
+            destination: Text::from(String::from(destination)),
+            title: title.map(|title| Text::from(String::from(title))),
+        });
+    }
+
+    /// Append the footnote definition of another document labelled `label`.
+    pub fn push_footnote(&mut self, label: &str) {
+        let key = normalize_identifier(label);
+        let index = self.footnotes.len();
+        self.footnote_index.entry(key.clone()).or_insert(index);
+        self.footnotes.push(key);
+        self.footnote_starts.push(0);
+    }
+}
+
 /// Owned copies of definitions taken from a parse, ready to append to a [`Seed`].
 pub(crate) struct Authored {
     entries: Vec<Definition<'static>>,
@@ -172,6 +198,11 @@ impl<'a> Definitions<'a> {
                 .zip(self.footnotes[..footnotes].iter().cloned())
                 .collect(),
         }
+    }
+
+    /// Whether a definition labelled `label`, as authored, is visible.
+    pub fn defines(&self, label: &str) -> bool {
+        self.find(&owned_reference_key(label)).is_some()
     }
 
     pub fn push_footnote(&mut self, source: &str, start: usize, label: &Text<'_>) -> usize {

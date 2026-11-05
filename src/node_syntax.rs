@@ -82,9 +82,15 @@ impl NodeSyntax<'_> {
     }
 
     // References cross documents as resolved resources: the destination buffer may have a conflicting or missing definition with the same label. A link's form describes only the link's own text and destination, which are copied with it, so it survives.
-    pub(crate) fn copied(self, source: &str) -> Option<NodeSyntax<'static>> {
+    // With `references`, a reference keeps its syntax too, for a copy whose label resolves to
+    // the same definition in the destination.
+    pub(crate) fn copied(self, source: &str, references: bool) -> Option<NodeSyntax<'static>> {
         let own = |text: Text<'_>| text.materialized(source);
         Some(match self {
+            Self::Reference { kind, label } if references => NodeSyntax::Reference {
+                kind,
+                label: own(label),
+            },
             Self::Footnote { label } => NodeSyntax::Footnote { label: own(label) },
             Self::ListItem { spread } => NodeSyntax::ListItem { spread },
             Self::Link { form } => NodeSyntax::Link { form },

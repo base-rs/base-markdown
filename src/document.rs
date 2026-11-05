@@ -249,9 +249,36 @@ impl<S: AsRef<str>> Document<S> {
     /// # Errors
     /// Returns stream validation errors; built-in Markdown parsing has no syntax errors.
     pub fn parse(source: S, options: &crate::ParseOptions) -> Result<Self, StreamError> {
+        Self::parse_seeded(source, options, None)
+    }
+
+    // Parse with the definitions of `seed`, from another document, preceding those of `source`.
+    fn parse_seeded(
+        source: S,
+        options: &crate::ParseOptions,
+        seed: Option<&crate::definitions::Seed>,
+    ) -> Result<Self, StreamError> {
         let mut builder = AstBuilder::new();
         let labels = {
-            let mut events = crate::EventParser::new(source.as_ref(), options);
+            let text = source.as_ref();
+            let mut events = match seed {
+                None => crate::EventParser::new(text, options),
+                Some(seed) => {
+                    let (blocks, definitions) = crate::block_parser::Blocks::parse_seeded(
+                        text,
+                        options,
+                        crate::definitions::Definitions::seeded(seed),
+                    );
+                    let carriage_returns = memchr::memchr(b'\r', text.as_bytes()).is_some();
+                    crate::EventParser::from_blocks(
+                        text,
+                        options,
+                        blocks,
+                        definitions,
+                        carriage_returns,
+                    )
+                }
+            };
             if builder.consume(&mut events, usize::MAX).is_err() {
                 unreachable!("the built-in Markdown producer yields a balanced semantic stream");
             }
@@ -1182,10 +1209,200 @@ impl<S: AsRef<str>> Document<S> {
             self.refresh_item(Some(parent));
         }
         for child in replacement.children(replacement.root()) {
-            previous = Some(self.copy_subtree(replacement, child, parent, previous, end));
+            previous = Some(self.copy_subtree(replacement, child, parent, previous, end, false));
         }
+        self.refresh_item(Some(parent));
         Ok(true)
     }
+    /// Parse Markdown into a node's children, replacing all of them.
+    ///
+    /// The parent decides how `markdown` is read. A paragraph, heading, table cell, emphasis,
+    /// strong, strikethrough, link or image holds phrasing, so `markdown` is read as the content
+    /// of one paragraph: it must parse into one paragraph, or into nothing, such as an empty or
+    /// blank fragment, which leaves the parent empty. The document root, a block quote, an item or
+    /// a footnote definition holds blocks, so `markdown` is read as a document's blocks.
+    ///
+    /// References and footnote calls in `markdown` resolve against this document's definitions,
+    /// as they will when the document is written and read back; one that does not resolve stays
+    /// text. A block fragment's own definitions become nodes of this document, available to the
+    /// rest of it as written: for each label, the first definition in document order wins, so
+    /// the fragment's references resolve first to a definition before the parent, then to the
+    /// fragment's own, then to one after the parent. Definitions among the replaced children no
+    /// longer count. A reference keeps its reference syntax, as it reads back to the same
+    /// definition. Existing links keep their resolved destinations; the serializer writes one
+    /// whose label a fragment definition now shadows as an inline link. Inside a link, which
+    /// cannot hold a footnote reference, a footnote call stays text, as the parser leaves the
+    /// link's brackets text where a footnote call is inside them.
+    ///
+    /// `markdown` is read as though it were not at the start of a document, so frontmatter is
+    /// never read: `---` fences read as thematic breaks or setext underlines, as they would
+    /// anywhere else, and the document's own frontmatter is kept. Parsed values are owned, so
+    /// `markdown` can be dropped afterwards. The replaced children are detached, keeping their
+    /// IDs, as [`Document::extract_children`] leaves them.
+    ///
+    /// Parsing takes time linear in the size of `markdown` and of the replaced children, plus,
+    /// when `markdown` holds a `[`, the blocks of the document outside paragraphs, headings and
+    /// tables, which are searched for definitions.
+    ///
+    /// ```
+    /// use base_markdown::{stream::{EventKind, Tag}, to_markdown, Document, ParseOptions};
+    ///
+    /// let options = ParseOptions::gfm();
+    /// let mut document = Document::parse("Old text.\n".to_owned(), &options).unwrap();
+    /// let paragraph = document.children(document.root()).next().unwrap();
+    /// document
+    ///     .parse_children(paragraph, "Visit www.google.com for more details.", &options)
+    ///     .unwrap();
+    ///
+    /// // The literal autolink is parsed into a link.
+    /// let link = document.children(paragraph).nth(1).unwrap();
+    /// assert!(matches!(
+    ///     &document.node(link).unwrap().kind,
+    ///     EventKind::Start(Tag::Link { destination, .. })
+    ///         if destination.resolve(document.source()).ok() == Some("https://www.google.com")
+    /// ));
+    /// assert_eq!(
+    ///     to_markdown(&document).unwrap(),
+    ///     "Visit www.google.com for more details.\n"
+    /// );
+    /// ```
+    ///
+    /// # Errors
+    /// Rejects an invalid parent ID with [`StreamError::InvalidRange`] and a leaf parent with
+    /// [`StreamError::Unbalanced`]. Rejects with [`StreamError::InvalidNesting`] a list, table,
+    /// table head, table body or table row parent, which holds no Markdown that parses on its own,
+    /// and, for a parent that holds phrasing, a fragment that parses into anything other than one
+    /// paragraph, such as `# h`, `a\n\nb`, `- x`, a setext heading or a definition, as its
+    /// blocks cannot be in the parent. The tree is not modified on error.
+    pub fn parse_children(
+        &mut self,
+        parent: NodeId,
+        markdown: &str,
+        options: &crate::ParseOptions,
+    ) -> Result<(), StreamError> {
+        let EventKind::Start(tag) = &self.node(parent).ok_or(StreamError::InvalidRange)?.kind
+        else {
+            return Err(StreamError::Unbalanced);
+        };
+        let phrasing = match tag.kind().content() {
+            crate::stream::Content::Phrasing => true,
+            crate::stream::Content::Root | crate::stream::Content::Blocks => false,
+            _ => return Err(StreamError::InvalidNesting),
+        };
+        let options = crate::ParseOptions {
+            constructs: crate::Constructs {
+                frontmatter: false,
+                ..options.constructs.clone()
+            },
+            inline_code_info: options.inline_code_info,
+            html_block_blank_lines: options.html_block_blank_lines,
+            html_tag_namespaces: options.html_tag_namespaces,
+            strikethrough_single_tilde: options.strikethrough_single_tilde,
+        };
+        // Only a `[` starts a reference or footnote call, or a definition.
+        let seed = if memchr::memchr(b'[', markdown.as_bytes()).is_some() {
+            self.definitions_around(parent, markdown, &options, phrasing)
+        } else {
+            crate::definitions::Seed::default()
+        };
+        let fragment = Document::parse_seeded(markdown, &options, Some(&seed))
+            .expect("the built-in Markdown producer yields a valid document");
+        // A block quote, an item and a footnote definition hold the blocks and separators that a
+        // document's root holds, so a flow parent holds every child of the fragment's root.
+        let from = if phrasing {
+            let mut blocks = fragment.children(fragment.root()).filter(|id| {
+                !matches!(fragment.nodes[id.index()].kind, EventKind::Separator { .. })
+            });
+            match (blocks.next(), blocks.next()) {
+                (None, _) => None,
+                (Some(paragraph), None)
+                    if matches!(
+                        fragment.nodes[paragraph.index()].kind,
+                        EventKind::Start(Tag::Paragraph { .. })
+                    ) =>
+                {
+                    Some(paragraph)
+                }
+                _ => return Err(StreamError::InvalidNesting),
+            }
+        } else {
+            Some(fragment.root())
+        };
+        self.extract_children(parent)
+            .expect("the parent is a node of this document");
+        let mut previous = None;
+        if let Some(from) = from {
+            for child in fragment.children(from) {
+                previous = Some(self.copy_subtree(&fragment, child, parent, previous, None, true));
+            }
+        }
+        self.refresh_item(Some(parent));
+        Ok(())
+    }
+    // The definitions a fragment parsed into the children of `parent` resolves against: this
+    // document's, in document order, without those among `parent`'s children, which the fragment
+    // replaces. Definitions after `parent` come after the fragment's own, which `markdown` parsed
+    // as blocks with `options` holds when `parent` holds blocks. Footnote definitions are left
+    // out inside a link, which cannot hold a footnote reference. Only blocks outside phrasing and
+    // tables are searched, as nothing else holds a definition.
+    fn definitions_around<'a>(
+        &'a self,
+        parent: NodeId,
+        markdown: &str,
+        options: &crate::ParseOptions,
+        phrasing: bool,
+    ) -> crate::definitions::Seed {
+        let own = (!phrasing).then(|| crate::block_parser::Blocks::parse(markdown, options).1);
+        let footnotes = !self.in_link(parent);
+        let mut seed = crate::definitions::Seed::default();
+        let source = self.source();
+        let resolve = |value: &'a Text<'a>| -> &'a str {
+            value.resolve(source).expect("document text is validated")
+        };
+        let root = self.root();
+        let mut after = false;
+        let mut current = Some(root);
+        while let Some(id) = current {
+            let node = &self.nodes[id.index()];
+            match &node.kind {
+                EventKind::Definition {
+                    label,
+                    destination,
+                    title,
+                } => {
+                    let label = resolve(label);
+                    if !(after && own.as_ref().is_some_and(|own| own.defines(label))) {
+                        seed.push(label, resolve(destination), title.as_ref().map(resolve));
+                    }
+                }
+                EventKind::Start(Tag::FootnoteDefinition(label)) if footnotes => {
+                    seed.push_footnote(resolve(label));
+                }
+                _ => {}
+            }
+            let descend = id != parent
+                && matches!(
+                    node.kind,
+                    EventKind::Start(
+                        Tag::Document { .. }
+                            | Tag::BlockQuote
+                            | Tag::List { .. }
+                            | Tag::Item { .. }
+                            | Tag::FootnoteDefinition(_)
+                    )
+                );
+            after |= id == parent;
+            current = descend.then_some(node.first_child).flatten().or_else(|| {
+                core::iter::successors(Some(id), |id| self.nodes[id.index()].parent)
+                    .take_while(|id| *id != root)
+                    .find_map(|id| self.nodes[id.index()].next_sibling)
+            });
+        }
+        seed
+    }
+    // Copy the subtree at `root` of `source` into `parent`, after `previous` and before `before`,
+    // owning its values and syntax, with `references` keeping reference syntax too. The caller
+    // refreshes the item `parent` may be once its children are complete.
     fn copy_subtree<T: AsRef<str>>(
         &mut self,
         source: &Document<T>,
@@ -1193,6 +1410,7 @@ impl<S: AsRef<str>> Document<S> {
         mut parent: NodeId,
         mut previous: Option<NodeId>,
         before: Option<NodeId>,
+        references: bool,
     ) -> NodeId {
         let copied_root = NodeId::new(self.nodes.len());
         let mut original_parent = source.nodes[root.index()].parent;
@@ -1215,7 +1433,7 @@ impl<S: AsRef<str>> Document<S> {
             let id = self.insert_child(parent, kind, previous, next);
             if let Some(syntax) = source
                 .syntax(original)
-                .and_then(|syntax| syntax.copied(source.source()))
+                .and_then(|syntax| syntax.copied(source.source(), references))
             {
                 self.set_syntax(id, Some(syntax))
                     .expect("materialized syntax describes the copied node kind");
@@ -1229,7 +1447,6 @@ impl<S: AsRef<str>> Document<S> {
             }
         }
         self.refresh_context(copied_root);
-        self.refresh_item(self.nodes[copied_root.index()].parent);
         copied_root
     }
 }
