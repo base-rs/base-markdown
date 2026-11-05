@@ -348,11 +348,12 @@ pub enum Tag<'a> {
 /// reference matches a definition with the same destination and title as that reference, and any
 /// other as a resource.
 ///
-/// The serializer writes a label as it is, so it must be one the parser can read: it holds
-/// something other than whitespace, no carriage return, no blank line, no bracket without a
-/// backslash before it, does not end in a backslash that would escape the closing bracket, and
-/// none of its lines after the first starts a block that would interrupt it, such as a heading,
-/// fence, block quote, list item or HTML block, at any column it can be written at. A full
+/// The serializer writes a label as it is, so it must be one the parser can read with some
+/// options: it holds something other than whitespace, no carriage return, no blank line, no
+/// bracket without a backslash before it, and does not end in a backslash that would escape the
+/// closing bracket. A line after the first may look like the start of a block, such as `# b`, as
+/// a parser with headings turned off reads it as part of the label; `Document::normalize` indents
+/// such a line so the default options read it back too. A full
 /// reference's label is also at most 999 characters, counting a tab as the columns it spans, but
 /// not line endings and the spaces and tabs after them; the parser reads a shortcut or collapsed
 /// one at any size. A label that is not is rejected with [`StreamError::InvalidValue`] wherever
@@ -602,7 +603,7 @@ impl<'s> EventKind<'s> {
                 optional(title)?;
                 match reference {
                     Some(reference) => check(&reference.label, &|label| {
-                        crate::node_syntax::label_reads_back(
+                        crate::node_syntax::valid_label(
                             label,
                             reference.kind == crate::ReferenceKind::Full,
                         )
@@ -613,11 +614,11 @@ impl<'s> EventKind<'s> {
             Self::Start(Tag::FootnoteDefinition { identifier, label }) => footnote(
                 identifier,
                 label.as_ref(),
-                &crate::node_syntax::footnote_definition_label_reads_back,
+                &crate::node_syntax::valid_footnote_definition_label,
             ),
             Self::FootnoteReference { identifier, label } => {
                 footnote(identifier, label.as_ref(), &|label| {
-                    crate::node_syntax::label_reads_back(label, true)
+                    crate::node_syntax::valid_label(label, true)
                 })
             }
             Self::Code {
@@ -671,9 +672,7 @@ impl<'s> EventKind<'s> {
             } => {
                 text(destination)?;
                 optional(title)?;
-                check(label, &|label| {
-                    crate::node_syntax::label_reads_back(label, true)
-                })
+                check(label, &|label| crate::node_syntax::valid_label(label, true))
             }
             _ => Ok(()),
         }

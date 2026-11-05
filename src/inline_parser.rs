@@ -99,6 +99,8 @@ struct CodeInfo {
 struct Segment {
     logical: Range<usize>,
     source: Range<usize>,
+    // The columns of a tab that a container prefix only partly consumed before this line.
+    spaces: usize,
 }
 struct Link {
     destination: Range<usize>,
@@ -279,7 +281,7 @@ impl InlineParser {
     pub(crate) fn prepare<const REFERENCES: bool, const EXTENSIONS: bool>(
         &mut self,
         source: &str,
-        fragments: impl Iterator<Item = Range<usize>> + Clone,
+        fragments: impl Iterator<Item = (Range<usize>, usize)> + Clone,
         definitions: &Definitions<'_>,
         options: &crate::ParseOptions,
         task: bool,
@@ -290,7 +292,7 @@ impl InlineParser {
         if self.scan::<REFERENCES, EXTENSIONS>(
             source,
             source,
-            fragments.clone(),
+            fragments.clone().map(|(fragment, _)| fragment),
             definitions,
             options,
             task,
@@ -299,7 +301,7 @@ impl InlineParser {
         }
         let mut combined: Option<Range<usize>> = None;
         let mut contiguous = true;
-        for fragment in fragments.clone() {
+        for (fragment, _) in fragments.clone() {
             match &mut combined {
                 None => combined = Some(fragment),
                 Some(range) => {
@@ -323,12 +325,13 @@ impl InlineParser {
         let mut logical = core::mem::take(&mut self.logical);
         logical.clear();
         self.segments.clear();
-        for fragment in fragments {
+        for (fragment, spaces) in fragments {
             let start = logical.len();
             logical.push_str(&source[fragment.clone()]);
             self.segments.push(Segment {
                 logical: start..logical.len(),
                 source: fragment,
+                spaces,
             });
         }
         self.normalized = true;
@@ -1168,7 +1171,37 @@ impl InlineParser {
             .binary_search_by_key(&index, |&(node, ..)| node)
             .expect("every reference and footnote call has its label");
         let (_, label, kind) = &self.labels[at];
-        (*kind, self.text(source, label.clone()))
+        (*kind, self.label_text(source, label.clone()))
+    }
+
+    // A label keeps the spaces at the start of the lines it continues on, so the columns of a tab
+    // that a container prefix only partly consumed are written into it as spaces, as the line
+    // means them: `> [x][a` and `>\t  b]` hold the label `a`, a line ending and four spaces.
+    fn label_text(&self, source: &str, range: Range<usize>) -> Text<'static> {
+        if self.normalized {
+            let first = self
+                .segments
+                .partition_point(|segment| segment.logical.end <= range.start);
+            let lines = self.segments[first..]
+                .iter()
+                .take_while(|segment| segment.logical.start < range.end)
+                .filter(|segment| segment.spaces > 0 && segment.logical.start > range.start);
+            if lines.clone().next().is_some() {
+                let mut value = String::with_capacity(range.len() + 3);
+                let mut at = range.start;
+                for segment in lines {
+                    crate::util::line_ending::push_normalized(
+                        &mut value,
+                        &source[at..segment.logical.start],
+                    );
+                    value.push_str(&"   "[..segment.spaces]);
+                    at = segment.logical.start;
+                }
+                crate::util::line_ending::push_normalized(&mut value, &source[at..range.end]);
+                return Text::from(value);
+            }
+        }
+        self.text(source, range)
     }
 }
 

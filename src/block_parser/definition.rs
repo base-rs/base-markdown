@@ -30,9 +30,11 @@ struct Cursor<'a, I> {
     consumed: usize,
 }
 
-impl<'a, I: Iterator<Item = Range<usize>> + Clone> Cursor<'a, I> {
+/// Each fragment is one physical line, with the columns of a tab that a container prefix only
+/// partly consumed before it.
+impl<'a, I: Iterator<Item = (Range<usize>, usize)> + Clone> Cursor<'a, I> {
     fn new(source: &'a str, mut remaining: I) -> Self {
-        let range = remaining.next().unwrap_or(0..0);
+        let (range, _) = remaining.next().unwrap_or((0..0, 0));
         let at = range.start;
         Self {
             source,
@@ -52,7 +54,7 @@ impl<'a, I: Iterator<Item = Range<usize>> + Clone> Cursor<'a, I> {
         self.at += count;
         self.consumed = self.at;
         while self.at == self.range.end {
-            let Some(range) = self.remaining.next() else {
+            let Some((range, _)) = self.remaining.next() else {
                 break;
             };
             self.at = range.start;
@@ -109,6 +111,7 @@ impl<'a, I: Iterator<Item = Range<usize>> + Clone> Cursor<'a, I> {
         let mut result = ValueBuilder::new(self.source);
         let mut cursor = self.clone();
         let mut continuation = false;
+        let mut spaces = 0;
         while cursor.at < end && cursor.at < cursor.range.end {
             let range = cursor.at..end.min(cursor.range.end);
             if let Some(options) = options {
@@ -127,15 +130,21 @@ impl<'a, I: Iterator<Item = Range<usize>> + Clone> Cursor<'a, I> {
                     options,
                 ));
             } else {
+                // A label keeps the spaces at the start of its lines, so the columns of a partly
+                // consumed tab are written into it as spaces, as the line means them.
+                if continuation && spaces > 0 {
+                    result.append(Text::Literal(&"   "[..spaces]));
+                }
                 result.append(Text::Source(range.clone()));
             }
             if range.end == end {
                 break;
             }
-            let range = cursor
+            let (range, next) = cursor
                 .remaining
                 .next()
                 .expect("value endpoint was scanned in these fragments");
+            spaces = next;
             cursor.at = range.start;
             cursor.range = range;
             continuation = true;
@@ -147,7 +156,7 @@ impl<'a, I: Iterator<Item = Range<usize>> + Clone> Cursor<'a, I> {
 /// Content fragments stop at block interruptions. Failed next-line titles roll back to the destination-only checkpoint.
 pub(super) fn scan(
     source: &str,
-    fragments: impl Iterator<Item = Range<usize>> + Clone,
+    fragments: impl Iterator<Item = (Range<usize>, usize)> + Clone,
     options: &ParseOptions,
 ) -> Option<Metadata> {
     let mut cursor = Cursor::new(source, fragments);

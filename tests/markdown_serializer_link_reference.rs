@@ -514,7 +514,11 @@ fn multiline_labels_in_containers_round_trip() {
             "- [a][r\n      s]\n\n[r s]: /u",
             "- [a][r\n      s]\n\n[r s]: /u\n",
         ),
-        ("- [a][r\n\ts]\n\n[r s]: /u", "- [a][r\n  s]\n\n[r s]: /u\n"),
+        // The item takes two of the tab's columns; the label keeps the other two.
+        (
+            "- [a][r\n\ts]\n\n[r s]: /u",
+            "- [a][r\n    s]\n\n[r s]: /u\n",
+        ),
         (
             "- ![a][r\n  s]\n\n[r s]: /u",
             "- ![a][r\n  s]\n\n[r s]: /u\n",
@@ -536,9 +540,10 @@ fn multiline_labels_in_containers_round_trip() {
         // The paragraph's span is the reference's.
         ("[r s]: /u\n\n> [a][r\n> s]", "[r s]: /u\n\n> [a][r\n> s]\n"),
         ("> [a][r\ns]\n\n[r s]: /u", "> [a][r\n> s]\n\n[r s]: /u\n"),
+        // The quote takes one of the tab's three columns; the label keeps the other two.
         (
             ">\t[a][r\n>\ts]\n\n[r s]: /u",
-            "> [a][r\n> s]\n\n[r s]: /u\n",
+            "> [a][r\n>   s]\n\n[r s]: /u\n",
         ),
         (
             "> > ![a][r\n> > s]\n\n[r s]: /u",
@@ -821,4 +826,13 @@ fn shortcut_labels_longer_than_a_full_label_round_trip() {
             "[c](/u) x\n\n[a b]: /u\n",
         );
     }
+    // An image is made a resource the same way.
+    let source = format!("![a{tabs}b] x\n\n[a b]: /u");
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    assert!(!document.is_normalized());
+    assert_round_trip(
+        document,
+        &ParseOptions::default(),
+        &format!("![a{tabs}b](/u) x\n\n[a b]: /u\n"),
+    );
 }

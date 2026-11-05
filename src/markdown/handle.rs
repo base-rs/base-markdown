@@ -358,6 +358,12 @@ impl State<'_> {
         let text = self.link_label(document, node, image, "]")?;
         self.output.push_str("][");
         let reference_start = self.output.len();
+        // A label whose second line is a delimiter row under its first, with what is written
+        // before it, would not read back, so the link is written as a resource.
+        if crate::node_syntax::label_starts_table(self.current_line(), label) {
+            self.output.truncate(start);
+            return Ok(false);
+        }
         self.write_label(label);
         if self.stack.contains(&ConstructName::TableCell) {
             escape_table_pipes(&mut self.output, reference_start);

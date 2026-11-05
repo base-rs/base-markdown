@@ -588,15 +588,17 @@ impl Builder<'_> {
     fn definition_fragments(
         &self,
         start: usize,
-    ) -> impl Iterator<Item = Range<usize>> + Clone + '_ {
+    ) -> impl Iterator<Item = (Range<usize>, usize)> + Clone + '_ {
         let mut at = Some((start, false));
         core::iter::from_fn(move || {
             let bytes = self.source.as_bytes();
             let (start, continuation) = at.take()?;
+            let mut spaces = 0;
             let current = if continuation {
                 let mut line = LineStart::new(&bytes[start..]);
                 self.containers(&mut line);
                 let candidate = start + line.bytes_scanned();
+                spaces = line.remaining_space();
                 let indented = line.scan_space(4) && self.options.constructs.code_indented;
                 line.scan_all_space();
                 if line.is_at_eol() {
@@ -620,7 +622,7 @@ impl Builder<'_> {
             if end < bytes.len() {
                 at = Some((end, true));
             }
-            Some(current..end)
+            Some((current..end, spaces))
         })
     }
 
@@ -633,12 +635,15 @@ impl Builder<'_> {
         self.push();
         let bytes = self.source.as_bytes();
         let mut at = start;
+        // The columns of a tab that a container prefix only partly consumed, before `at`.
+        let mut spaces = 0;
         loop {
             let next = at + scan_nextline(&bytes[at..]);
-            self.fragment(at, next, 0);
+            self.fragment(at, next, spaces);
             let mut line = LineStart::new(&bytes[next..]);
             let continued = self.containers(&mut line) == self.open.len();
             let content_start = next + line.bytes_scanned();
+            spaces = line.remaining_space();
             let indented = line.scan_space(4) && self.options.constructs.code_indented;
             line.scan_all_space();
             if line.is_at_eol() {
@@ -1046,7 +1051,7 @@ pub(crate) fn frontmatter_extent(source: &str) -> Option<core::ops::Range<usize>
 pub(crate) fn starts_definition(source: &str) -> bool {
     definition::scan(
         source,
-        core::iter::once(0..source.len()),
+        core::iter::once((0..source.len(), 0)),
         &ParseOptions::default(),
     )
     .is_some()
@@ -1058,7 +1063,7 @@ pub(crate) fn definition_has_title(source: &str) -> bool {
     let lines = source.split_inclusive('\n').scan(0, |at, line| {
         let range = *at..*at + line.len();
         *at = range.end;
-        Some(range)
+        Some((range, 0))
     });
     definition::scan(source, lines, &ParseOptions::default())
         .is_some_and(|definition| definition.title.is_some())
@@ -1184,10 +1189,11 @@ fn list_interrupts(options: &ParseOptions, bytes: &[u8], current_container: bool
 
 /// Whether a line that continues a paragraph in the same containers, from its first byte other
 /// than a space or tab, starts a block instead, as `paragraph` decides with the default
-/// constructs: a setext underline, or a block that interrupts a paragraph. Indentation, which
-/// keeps any of these from starting, is not counted here.
-pub(crate) fn continuation_starts_block(bytes: &[u8]) -> bool {
+/// constructs: a setext underline, or a block that interrupts a paragraph. A line that continues
+/// a `definition` is read as `definition_fragments` reads one, where any list item interrupts it.
+/// Indentation, which keeps any of these from starting, is not counted here.
+pub(crate) fn continuation_starts_block(bytes: &[u8], definition: bool) -> bool {
     let options = ParseOptions::default();
     (matches!(bytes.first(), Some(b'=' | b'-')) && scan_setext_heading(bytes).is_some())
-        || interrupts(&options, bytes, true)
+        || interrupts(&options, bytes, !definition)
 }

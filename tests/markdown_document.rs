@@ -179,7 +179,7 @@ fn identifier(label: &str) -> String {
 /// The parser counts a tab as the columns it spans, so a label fits when it fits at some column of
 /// each of its lines.
 #[test]
-fn labels_that_do_not_read_back_are_rejected() {
+fn labels_the_parser_cannot_read_are_rejected() {
     use base_markdown::{
         stream::{Reference, StreamError},
         ReferenceKind,
@@ -307,30 +307,31 @@ fn labels_that_do_not_read_back_are_rejected() {
         ("a\\".into(), false, false, false),
         ("a\\\\\\".into(), false, false, false),
         ("a\\\nb".into(), true, true, false),
-        // A line after the first starts no block where it would continue a paragraph, with the
-        // closing bracket after the last, unless it is indented four columns at some column.
+        // A line after the first may start a block where it would continue a paragraph, as the
+        // parser reads one as part of the label where that block is turned off, so validity
+        // does not depend on the options; normalizing gives such a line an indent.
         ("a\n#b".into(), true, true, false),
-        ("a\n# b".into(), false, false, false),
-        ("a\n   # b".into(), false, false, false),
+        ("a\n# b".into(), true, true, false),
+        ("a\n   # b".into(), true, true, false),
         ("a\n    # b".into(), true, true, false),
         ("a\n\t# b".into(), true, true, false),
         ("a\n  \t# b".into(), true, true, false),
-        ("a\n> b".into(), false, false, false),
-        ("a\n```".into(), false, false, false),
-        ("a\n```\nb".into(), false, false, false),
-        ("a\n~~~ b".into(), false, false, false),
-        ("a\n- b".into(), false, false, false),
+        ("a\n> b".into(), true, true, false),
+        ("a\n```".into(), true, true, false),
+        ("a\n```\nb".into(), true, true, false),
+        ("a\n~~~ b".into(), true, true, false),
+        ("a\n- b".into(), true, true, false),
         ("a\n-".into(), true, true, false),
-        ("a\n-\nb".into(), false, false, false),
-        ("a\n+ b".into(), false, false, false),
+        ("a\n-\nb".into(), true, true, false),
+        ("a\n+ b".into(), true, true, false),
         ("a\n*b".into(), true, true, false),
-        ("a\n1. b".into(), false, false, false),
+        ("a\n1. b".into(), true, true, false),
         ("a\n2. b".into(), true, true, false),
         ("a\n===".into(), true, true, false),
-        ("a\n===\nb".into(), false, false, false),
-        ("a\n***\nb".into(), false, false, false),
-        ("a\n<div>\nb".into(), false, false, false),
-        ("a\n<!--".into(), false, false, false),
+        ("a\n===\nb".into(), true, true, false),
+        ("a\n***\nb".into(), true, true, false),
+        ("a\n<div>\nb".into(), true, true, false),
+        ("a\n<!--".into(), true, true, false),
         ("a\n<span>\nb".into(), true, true, false),
     ] {
         check(

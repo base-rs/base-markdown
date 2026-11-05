@@ -94,10 +94,12 @@ enum Phase {
 }
 impl EventParser<'_> {
     fn prepare_inline<const EXTENSIONS: bool>(&mut self, index: usize, task: bool, table: bool) {
-        let fragments = self
-            .blocks
-            .children(index)
-            .map(|(_, node)| node.start..node.end);
+        let fragments = self.blocks.children(index).map(|(_, node)| {
+            let Body::Fragment(spaces) = node.body else {
+                unreachable!("inline block children are source fragments");
+            };
+            (node.start..node.end, spaces)
+        });
         if self.definitions.is_empty() {
             self.inline.prepare::<false, EXTENSIONS>(
                 self.source,
