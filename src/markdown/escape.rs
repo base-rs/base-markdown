@@ -142,7 +142,7 @@ static RULES: &[Rule] = &[
     rule!(b'[', B, A, PHRASING, FULL_SPANS),
     rule!(b'[', B, A, bit(Label) | bit(Reference), 0),
     rule!(b'\\', B, Set(b"\n"), PHRASING, 0),
-    rule!(b']', B, A, bit(Label) | bit(Reference), 0),
+    rule!(b']', B, A, bit(ImageLabel) | bit(Label) | bit(Reference), 0),
     rule!(b'|', B, A, bit(TableCell), 0),
     rule!(b'_', Line, A, 0, bit(TableCell)),
     rule!(b'_', EncodedLine, A, 0, bit(TableCell)),
@@ -440,9 +440,9 @@ pub(super) fn strikethrough(stack: &[ConstructName]) -> bool {
     scopes & PHRASING != 0 && scopes & FULL_SPANS == 0
 }
 
-/// Whether text in `stack` can form GFM literal autolinks: parsed phrasing outside a label. No
-/// literal forms in link text, and image text is written flattened, as the text of whatever
-/// nodes it has, so a literal there stays one.
+/// Whether text in `stack` can form GFM literal autolinks: parsed phrasing outside link text. No
+/// literal forms in link text, at any depth, while image text outside it forms them like the
+/// phrasing around it.
 pub(super) fn autolink_literals(stack: &[ConstructName]) -> bool {
     strikethrough(stack) && scopes(stack) & bit(Label) == 0
 }
