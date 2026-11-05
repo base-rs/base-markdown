@@ -59,7 +59,7 @@ enum Kind {
     AngleLink(bool),
     SoftBreak,
     HardBreak,
-    Task(bool),
+    Task,
     Autolink(AutolinkPrefix),
     Start(TagKind, usize),
     Reference(TagKind, usize),
@@ -394,8 +394,9 @@ impl InlineParser {
                 && self.nodes.len() == 1
                 && bytes.get(at) == Some(&b'[')
             {
-                if let Some((end, checked)) = task_marker(bytes, at, range.end) {
-                    self.append(at, end, Kind::Task(checked));
+                // The item that holds the paragraph carries the checkbox; see `task_checked`.
+                if let Some((end, _)) = task_marker(bytes, at, range.end) {
+                    self.append(at, end, Kind::Task);
                     at = end;
                 } else if fragments.peek().is_some() && range.end.saturating_sub(at) < 5 {
                     return false;
@@ -1051,7 +1052,7 @@ impl InlineParser {
                 }
                 Kind::SoftBreak => EventKind::SoftBreak(self.text(source, node.start..node.end)),
                 Kind::HardBreak => EventKind::HardBreak,
-                Kind::Task(checked) => EventKind::TaskMarker(checked),
+                Kind::Task => continue,
                 Kind::Autolink(prefix) => {
                     let prefix = prefix.as_str();
                     EventKind::Start(Tag::Link {
@@ -1267,6 +1268,29 @@ fn angle<const CONFIGURED: bool>(
         }
     }
     None
+}
+
+/// Whether a paragraph whose inline fragments are `fragments`, and whose first byte is `[`,
+/// starts with a task marker, which is read as `scan` reads it, from the logical bytes of the
+/// fragments, and whether it is checked.
+pub(crate) fn task_checked(
+    source: &str,
+    fragments: impl Iterator<Item = Range<usize>>,
+) -> Option<bool> {
+    let bytes = source.as_bytes();
+    // A marker and the byte after it are at most five bytes, and the bytes past them only matter
+    // to whether there are any.
+    let mut logical = [0; 6];
+    let mut length = 0;
+    for range in fragments {
+        let take = range.len().min(logical.len() - length);
+        logical[length..length + take].copy_from_slice(&bytes[range.start..range.start + take]);
+        length += take;
+        if length == logical.len() {
+            break;
+        }
+    }
+    task_marker(&logical[..length], 0, length).map(|(_, checked)| checked)
 }
 
 fn task_marker(bytes: &[u8], start: usize, end: usize) -> Option<(usize, bool)> {

@@ -121,19 +121,18 @@ pub struct Constructs {
     /// Frontmatter with an unindented opening fence on the first document line,
     /// outside list items and blockquotes, and a matching closing fence.
     ///
-    /// Frontmatter is language-agnostic, following [Markly](https://github.com/socketry/markly) and [cmarkly](https://github.com/socketry/cmarkly). It opens with exactly `---` or `+++` and closes with the same three characters on a line of its own, optionally followed by spaces or tabs, and produces a source-backed opaque node with [`NodeSyntax::Frontmatter`][crate::NodeSyntax::Frontmatter] metadata. Untagged `---` and `+++` imply YAML and TOML, with an empty info string, and a format hint after the opening fence (such as `--- json` or `---yaml`) supplies an explicit language. The parser preserves the raw body and the full authored info string without parsing the named format; [`Document::frontmatter_value`][crate::Document::frontmatter_value] returns the body. HTML omits the frontmatter. A backtick or tilde code fence is never frontmatter, even at the start of a document, and fences later in a document and unclosed fences remain ordinary Markdown.
+    /// Frontmatter is language-agnostic, following [Markly](https://github.com/socketry/markly) and [cmarkly](https://github.com/socketry/cmarkly). It opens with exactly `---` or `+++` and closes with the same three characters on a line of its own, optionally followed by spaces or tabs, and is stored as the body on the root [`Tag::Document`][crate::stream::Tag::Document], whose syntax is [`NodeSyntax::Frontmatter`][crate::NodeSyntax::Frontmatter]. Untagged `---` and `+++` imply YAML and TOML, with an empty info string, and a format hint after the opening fence (such as `--- json` or `---yaml`) supplies an explicit language. The parser preserves the raw body and the full authored info string without parsing the named format; [`Document::frontmatter`][crate::Document::frontmatter] returns the body, the lines between the fences, each with its line ending. HTML omits the frontmatter. A backtick or tilde code fence is never frontmatter, even at the start of a document, and fences later in a document and unclosed fences remain ordinary Markdown.
     ///
-    /// Markdown serialization retains the stored info string and body while normalizing spacing around the info string. It writes `+++` instead of `---`, or `---` instead of `+++`, when an edited body has a line that would close the fence, whether its lines end in LF, CRLF or CR, writing the implied language explicitly when the info has none, and adds a line ending before the closing fence when an edited body needs one. A frontmatter node whose syntax has another fence character, such as one built by hand with a backtick or tilde code fence, is written as `---` followed by its info as the language hint; with empty info that is plain `---`, which implies YAML. A body with both a `---` and a `+++` line cannot be written. Round trips preserve the body and effective language.
+    /// Markdown serialization retains the stored info string and body while normalizing spacing around the info string. It writes `+++` instead of `---`, or `---` instead of `+++`, when an edited body has a line that would close the fence, whether its lines end in LF, CRLF or CR, writing the implied language explicitly when the info has none, and adds a line ending before the closing fence when an edited body has none. A frontmatter node whose syntax has another fence character, such as one built by hand with a backtick or tilde code fence, is written as `---` followed by its info as the language hint; with empty info that is plain `---`, which implies YAML. A body with both a `---` and a `+++` line cannot be written. Round trips preserve the body and effective language.
     ///
     /// ````
     /// use base_markdown::{Document, NodeSyntax, ParseOptions};
     ///
     /// let options = ParseOptions::default();
     /// let document = Document::parse("--- json title=example\n{\"draft\": true}\n---\n\n# Hello", &options).unwrap();
-    /// let node = document.children(document.root()).next().unwrap();
-    /// let Some(NodeSyntax::Frontmatter { info, .. }) = document.syntax(node) else { panic!() };
+    /// let Some(NodeSyntax::Frontmatter { info, .. }) = document.syntax(document.root()) else { panic!() };
     /// assert_eq!(info.resolve(document.source()).unwrap(), "json title=example");
-    /// assert_eq!(document.frontmatter_value(node), Some("{\"draft\": true}\n"));
+    /// assert_eq!(document.frontmatter(), Some("{\"draft\": true}\n"));
     /// ````
     ///
     /// ````markdown

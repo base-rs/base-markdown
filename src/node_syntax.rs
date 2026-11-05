@@ -25,7 +25,8 @@ pub enum NodeSyntax<'a> {
     },
     /// The authored spelling of a normalized footnote identifier.
     Footnote { label: Text<'a> },
-    /// Frontmatter's raw info and original opening and closing fences.
+    /// The raw info and original opening and closing fences of the frontmatter of the document
+    /// root that it belongs to.
     Frontmatter {
         info: Text<'a>,
         fence: CodeFence,
@@ -84,19 +85,11 @@ impl NodeSyntax<'_> {
     pub(crate) fn copied(self, source: &str) -> Option<NodeSyntax<'static>> {
         let own = |text: Text<'_>| text.materialized(source);
         Some(match self {
-            Self::Reference { .. } => return None,
             Self::Footnote { label } => NodeSyntax::Footnote { label: own(label) },
-            Self::Frontmatter {
-                info,
-                fence,
-                closing_fence_length,
-            } => NodeSyntax::Frontmatter {
-                info: own(info),
-                fence,
-                closing_fence_length,
-            },
             Self::ListItem { spread } => NodeSyntax::ListItem { spread },
             Self::Link { form } => NodeSyntax::Link { form },
+            // A reference, and frontmatter, which is on the root and never copied.
+            _ => return None,
         })
     }
 
@@ -131,7 +124,7 @@ impl NodeSyntax<'_> {
                     fence,
                     closing_fence_length,
                 },
-                EventKind::Opaque { block: true, .. },
+                EventKind::Start(Tag::Document { .. }),
             ) => {
                 info.resolve(source).is_ok()
                     && matches!(fence.character, '`' | '~' | '-' | '+')
@@ -274,13 +267,19 @@ pub(crate) fn infer(
                 label: Text::Source(span.start + start..span.start + end).normalized(source),
             })
         }
-        EventKind::Opaque { block: true, .. } => frontmatter(raw).map(
-            |(info, fence, closing_fence_length, _)| NodeSyntax::Frontmatter {
-                info: Text::Source(span.start + info.start..span.start + info.end),
+        // The root's span is the whole source, which starts with its frontmatter.
+        EventKind::Start(Tag::Document {
+            frontmatter: Some(_),
+            ..
+        }) if span.start == 0 => {
+            let extent = crate::block_parser::frontmatter_extent(raw)?;
+            let (info, fence, closing_fence_length, _) = frontmatter(&raw[extent.clone()]);
+            Some(NodeSyntax::Frontmatter {
+                info: Text::Source(extent.start + info.start..extent.start + info.end),
                 fence,
                 closing_fence_length,
-            },
-        ),
+            })
+        }
         _ => None,
     }
 }
@@ -315,35 +314,37 @@ fn link_form(source: &str, raw: &str, tag: &Tag<'_>) -> Option<NodeSyntax<'stati
     Some(NodeSyntax::Link { form })
 }
 
-/// Return info and body ranges relative to a full frontmatter source extent.
+/// Return info and body ranges relative to a full frontmatter source extent, which the block
+/// parser scanned as closed frontmatter.
 pub(crate) fn frontmatter(
     raw: &str,
-) -> Option<(
+) -> (
     core::ops::Range<usize>,
     CodeFence,
     usize,
     core::ops::Range<usize>,
-)> {
+) {
+    const SCANNED: &str = "the block parser scanned closed frontmatter";
     let bytes = raw.as_bytes();
-    let fence = CodeFence::frontmatter_open(bytes)?;
-    let first_end = bytes.iter().position(|b| matches!(b, b'\r' | b'\n'))?;
+    let fence = CodeFence::frontmatter_open(bytes).expect(SCANNED);
+    let first_end = bytes
+        .iter()
+        .position(|b| matches!(b, b'\r' | b'\n'))
+        .expect(SCANNED);
     let mut body_start = first_end + 1;
     if bytes[first_end] == b'\r' && bytes.get(body_start) == Some(&b'\n') {
         body_start += 1;
     }
     let raw_end = raw.trim_end_matches(['\r', '\n']).len();
     let closing_start = raw[..raw_end].rfind(['\r', '\n']).map_or(0, |i| i + 1);
-    if closing_start < body_start {
-        return None;
-    }
     let close = raw[closing_start..raw_end].trim_matches([' ', '\t']);
-    let closing_fence_length = fence.frontmatter_close(close.as_bytes())?;
+    let closing_fence_length = fence.frontmatter_close(close.as_bytes()).expect(SCANNED);
     let info = raw[fence.length..first_end].trim_matches([' ', '\t']);
     let start = info.as_ptr() as usize - raw.as_ptr() as usize;
-    Some((
+    (
         start..start + info.len(),
         fence,
         closing_fence_length,
         body_start..closing_start,
-    ))
+    )
 }

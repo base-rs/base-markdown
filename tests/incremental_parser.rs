@@ -79,7 +79,7 @@ fn one_shot(source: &str, options: &ParseOptions) -> Vec<Event<'static>> {
         .filter(|event| {
             !matches!(
                 event.kind,
-                EventKind::Start(Tag::Document(_)) | EventKind::End(TagKind::Document)
+                EventKind::Start(Tag::Document { .. }) | EventKind::End(TagKind::Document)
             )
         })
         .collect()
@@ -219,7 +219,21 @@ fn frontmatter_holds_output_until_it_closes() {
     }
     let mut parser = IncrementalParser::new(&options);
     assert_eq!(parser.push("---\ntitle: x\n\nbody\n\n").count(), 0);
-    assert!(parser.push("---\n\n").next().is_some());
+    // Frontmatter is the root's, not an event, so it is read once it closes.
+    assert_eq!(parser.frontmatter(), None);
+    assert_eq!(parser.push("---\n\n").count(), 0);
+    assert_eq!(parser.frontmatter(), Some("title: x\n\nbody\n\n"));
+    // The closing fence alone does not show the block is complete: the frontmatter is read once
+    // the next complete line arrives, or at the end.
+    for (rest, read) in [("\n", true), ("# a\n", true), ("a\n", true), ("a", false)] {
+        let mut parser = IncrementalParser::new(&options);
+        assert_eq!(parser.push("---\na\n---\n").count(), 0);
+        assert_eq!(parser.frontmatter(), None);
+        parser.push(rest).count();
+        assert_eq!(parser.frontmatter().is_some(), read, "{:?}", rest);
+        parser.finish().count();
+        assert_eq!(parser.frontmatter(), Some("a\n"));
+    }
     // Fences that cannot open frontmatter are ordinary blocks.
     for opening in ["```\n", "~~~\n", "```a`b\n"] {
         let mut parser = IncrementalParser::new(&options);

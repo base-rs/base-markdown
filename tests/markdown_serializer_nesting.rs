@@ -31,7 +31,10 @@ fn nest_bare(tags: &[Tag<'static>]) -> Document<String> {
 }
 
 fn build(tags: &[Tag<'static>], text: bool) -> Document<String> {
-    let mut events = vec![event(EventKind::Start(Tag::Document(None)))];
+    let mut events = vec![event(EventKind::Start(Tag::Document {
+        line_ending: None,
+        frontmatter: None,
+    }))];
     events.extend(tags.iter().map(|tag| event(EventKind::Start(tag.clone()))));
     events.extend(text.then(|| event(EventKind::Text(Text::Literal("a")))));
     events.extend(
@@ -86,7 +89,10 @@ fn list(ordered: bool) -> Tag<'static> {
 }
 
 fn item() -> Tag<'static> {
-    Tag::Item { block_end: false }
+    Tag::Item {
+        block_end: false,
+        checked: None,
+    }
 }
 
 fn footnote() -> Tag<'static> {
@@ -206,25 +212,20 @@ fn content_at_the_limit_serializes_and_deeper_content_is_an_error() {
 #[test]
 fn each_part_of_a_table_counts_one_level() {
     // A table `depth` levels below the root, in block quotes, with text in its one cell.
-    let table = |depth: usize, group: bool| {
+    let table = |depth: usize| {
         let mut tags = vec![Tag::BlockQuote; depth - 1];
-        tags.push(Tag::Table);
-        if group {
-            tags.push(Tag::TableHead);
-        }
-        tags.extend([Tag::TableRow, cell()]);
+        tags.extend([Tag::Table, Tag::TableHead, Tag::TableRow, cell()]);
         nest(&tags)
     };
-    assert!(to_markdown(&table(LIMIT - 4, true)).is_ok());
+    assert!(to_markdown(&table(LIMIT - 4)).is_ok());
     // The text, the cell, the row and the head are each one level too deep.
-    for (depth, group, label) in [
-        (LIMIT - 3, true, "text"),
-        (LIMIT - 2, true, "cell"),
-        (LIMIT - 1, true, "row in a head"),
-        (LIMIT, true, "head"),
-        (LIMIT, false, "row"),
+    for (depth, label) in [
+        (LIMIT - 3, "text"),
+        (LIMIT - 2, "cell"),
+        (LIMIT - 1, "row in a head"),
+        (LIMIT, "head"),
     ] {
-        let document = table(depth, group);
+        let document = table(depth);
         assert_too_deep(to_markdown(&document), label);
     }
     // An empty cell, and a row with no cells, are each one level too deep.
@@ -233,7 +234,6 @@ fn each_part_of_a_table_counts_one_level() {
     for (parts, label) in [
         (&cell_parts[..], "empty cell"),
         (&cell_parts[..3], "empty row in a head"),
-        (&[Tag::Table, Tag::TableRow][..], "empty row"),
     ] {
         let mut tags = quotes(LIMIT + 2 - parts.len());
         tags.extend_from_slice(parts);
@@ -340,4 +340,30 @@ fn deeply_nested_parsed_documents_are_an_error() {
     );
     let source = format!("{} a\n", ">".repeat(LIMIT - 1));
     assert_too_deep(normalize_markdown(&source), "quotes");
+}
+
+#[test]
+fn a_next_node_that_is_too_deep_to_peek_is_an_error() {
+    // Text one level too deep, followed by a soft break, which has no fixed first character, so
+    // writing the text first writes the break to see what follows it.
+    let mut events = vec![
+        event(EventKind::Start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        })),
+        event(EventKind::Start(paragraph())),
+    ];
+    events.extend((0..LIMIT - 1).map(|_| event(EventKind::Start(Tag::Emphasis))));
+    events.push(event(EventKind::Text(Text::Literal("a"))));
+    events.push(event(EventKind::SoftBreak(Text::Literal("\n"))));
+    events.push(event(EventKind::Text(Text::Literal("b"))));
+    events.extend((0..LIMIT - 1).map(|_| event(EventKind::End(TagKind::Emphasis))));
+    events.push(event(EventKind::End(TagKind::Paragraph)));
+    events.push(event(EventKind::End(TagKind::Document)));
+    let mut builder = AstBuilder::new();
+    builder
+        .consume(&mut events.into_iter(), usize::MAX)
+        .unwrap();
+    let document = builder.finish(String::new()).unwrap();
+    assert_too_deep(to_markdown(&document), "a soft break after deep text");
 }

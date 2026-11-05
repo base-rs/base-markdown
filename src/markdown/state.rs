@@ -175,11 +175,9 @@ impl<'a> State<'a> {
         ) {
             return false;
         }
-        // Whether `item` is the list's only block. Each item looks past the separators up to the
-        // next block, and only the last item looks past those before the first, so the list's
-        // separators are each read a bounded number of times.
-        let lone = !flow_siblings_after(document, item)
-            && flow_children(document, list).next() == Some(item);
+        // Whether `item` is the list's only child, as a list holds only items.
+        let lone = node.next_sibling().is_none()
+            && document.node(list).unwrap().first_child() == Some(item);
         let mut joined = false;
         let mut before = None;
         let mut left = None;
@@ -295,7 +293,7 @@ impl<'a> State<'a> {
         // Phrasing directly in the document is written as a paragraph. Link text is not a block.
         let block = matches!(
             kind,
-            EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_) | Tag::Document(_))
+            EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_) | Tag::Document { .. })
         );
         let joined_definition = if block {
             self.joined_definition.take()
@@ -612,11 +610,14 @@ impl<'a> State<'a> {
         // Where the previous child starts if it is a label that `:` can make a definition's,
         // whether it is a footnote reference, and whether it starts the block (#122).
         let mut definition_label = None;
+        // A task item's checkbox is written before its paragraph, so the paragraph's first child
+        // does not start the line.
+        let task = children
+            .first()
+            .and_then(|&first| document.node(first).unwrap().parent())
+            .is_some_and(|parent| self.is_task_paragraph(document, parent));
         for (position, &child) in children.iter().enumerate() {
             let kind = &document.node(child).unwrap().kind;
-            if !is_phrasing(kind) {
-                return Err(unsupported_content());
-            }
             let sequences = self.attention_sequences(kind)?;
             if after_hard_break && matches!(kind, EventKind::SoftBreak(_)) {
                 after_hard_break = false;
@@ -743,9 +744,9 @@ impl<'a> State<'a> {
                         })
                 })
                 .and_then(|(_, footnote)| {
-                    // The first child of a paragraph or setext heading starts it, unless a task
-                    // marker, which is written before the item's content, comes first.
-                    let block_start = position == 0 && length == self.line_start;
+                    // The first child of a paragraph or setext heading starts it, unless the
+                    // paragraph is a task item's, whose checkbox is written before it.
+                    let block_start = position == 0 && !task && length == self.line_start;
                     // A footnote definition also interrupts a paragraph, so a footnote reference
                     // after a line ending in the block, such as a soft or hard break, can start
                     // one too.
@@ -813,7 +814,28 @@ impl<'a> State<'a> {
         let source = document.source();
         let result = match &node.kind {
             EventKind::Start(tag) => match tag {
-                Tag::Document(_) => {
+                Tag::Document { frontmatter, .. } => {
+                    if let Some(body) = frontmatter {
+                        let syntax = document.syntax(id);
+                        let (info, fence) = match &syntax {
+                            // Without recorded fences, frontmatter is written with `---`.
+                            Some(NodeSyntax::Frontmatter { info, fence, .. }) => {
+                                (info.resolve(source).unwrap(), *fence)
+                            }
+                            _ => (
+                                "",
+                                crate::CodeFence {
+                                    character: '-',
+                                    length: 3,
+                                    indent: 0,
+                                },
+                            ),
+                        };
+                        self.frontmatter(body.resolve(source).unwrap(), info, fence)?;
+                        if flow_children(document, id).next().is_some() {
+                            self.output.push_str("\n\n");
+                        }
+                    }
                     if flow_children(document, id)
                         .all(|child| is_phrasing(&document.node(child).unwrap().kind))
                     {
@@ -887,15 +909,10 @@ impl<'a> State<'a> {
             EventKind::Text(text) => {
                 let mut value = text.resolve(source).unwrap();
                 if let Some(parent) = node.parent() {
-                    let marker = document
-                        .node(parent)
-                        .unwrap()
-                        .first_child()
-                        .expect("an attached node belongs to a nonempty parent");
-                    if document.node(marker).unwrap().next_sibling() == Some(id)
-                        && self.is_item_task(document, marker)
+                    if document.node(parent).unwrap().first_child() == Some(id)
+                        && self.is_task_paragraph(document, parent)
                     {
-                        // The marker is written with its separating space, so only the one the parser keeps after it is dropped. Other whitespace is content.
+                        // The checkbox is written with its separating space, so only the one the parser keeps after it is dropped. Other whitespace is content.
                         value = value.strip_prefix([' ', '\t']).unwrap_or(value);
                     }
                 }
@@ -923,12 +940,6 @@ impl<'a> State<'a> {
                 self.output.push_str(value.resolve(source).unwrap());
                 Ok(())
             }
-            EventKind::TaskMarker(checked) => {
-                if !self.is_item_task(document, id) {
-                    self.output.push_str(if *checked { "[x]" } else { "[ ]" });
-                }
-                Ok(())
-            }
             EventKind::Definition {
                 label,
                 destination,
@@ -938,22 +949,6 @@ impl<'a> State<'a> {
                 destination.resolve(source).unwrap(),
                 title.as_ref().map(|value| value.resolve(source).unwrap()),
             ),
-            EventKind::Opaque { value, .. } => {
-                if let Some(NodeSyntax::Frontmatter { info, fence, .. }) = document.syntax(id) {
-                    self.frontmatter(
-                        document
-                            .frontmatter_value(id)
-                            .expect("frontmatter syntax identifies a frontmatter body"),
-                        info.resolve(source).unwrap(),
-                        fence,
-                    )
-                } else {
-                    {
-                        self.output.push_str(value.resolve(source).unwrap());
-                        Ok(())
-                    }
-                }
-            }
             EventKind::FootnoteReference(label) => {
                 let syntax = document.syntax(id);
                 let label = match &syntax {
@@ -978,18 +973,9 @@ impl<'a> State<'a> {
         document: &Document<S>,
         id: NodeId,
     ) -> Result<(), Message> {
-        // Each row, and whether it is in a head or body, a level between it and the table.
-        let rows = flow_children(document, id).flat_map(|child| {
-            let group = matches!(
-                document.node(child).unwrap().kind,
-                EventKind::Start(Tag::TableHead | Tag::TableBody)
-            );
-            (!group).then_some((child, false)).into_iter().chain(
-                flow_children(document, child)
-                    .take(if group { usize::MAX } else { 0 })
-                    .map(|row| (row, true)),
-            )
-        });
+        // Each row, in a head or body, a level between it and the table.
+        let rows = flow_children(document, id)
+            .flat_map(|group| flow_children(document, group).map(|row| (row, true)));
         self.render_table_rows(document, rows, true)
     }
 
@@ -1000,12 +986,6 @@ impl<'a> State<'a> {
         header: bool,
     ) -> Result<(), Message> {
         for (index, (row, grouped)) in rows.enumerate() {
-            if !matches!(
-                document.node(row).unwrap().kind,
-                EventKind::Start(Tag::TableRow)
-            ) {
-                return Err(unsupported_content());
-            }
             if index > 0 {
                 self.output.push('\n');
             }
@@ -1046,12 +1026,6 @@ impl<'a> State<'a> {
     ) -> Result<(), Message> {
         self.output.push_str("| ");
         for (index, cell) in flow_children(document, row).enumerate() {
-            if !matches!(
-                document.node(cell).unwrap().kind,
-                EventKind::Start(Tag::TableCell { .. })
-            ) {
-                return Err(unsupported_content());
-            }
             if index > 0 {
                 self.output.push_str(" | ");
             }
@@ -1675,7 +1649,6 @@ pub(crate) fn is_phrasing(kind: &EventKind<'_>) -> bool {
             | EventKind::SoftBreak(_)
             | EventKind::FootnoteReference(_)
             | EventKind::Code { .. }
-            | EventKind::TaskMarker(_)
             | EventKind::Text(_)
             | EventKind::Html { block: false, .. }
     )
@@ -1853,19 +1826,6 @@ fn continues_text<S: AsRef<str>>(
     }
 }
 
-/// Whether a flow child, not a separator, follows `id` among its siblings.
-fn flow_siblings_after<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
-    let mut next = document.node(id).unwrap().next_sibling();
-    while let Some(sibling) = next {
-        let node = document.node(sibling).unwrap();
-        if !matches!(node.kind, EventKind::Separator { .. }) {
-            return true;
-        }
-        next = node.next_sibling();
-    }
-    false
-}
-
 pub(super) fn flow_children<S: AsRef<str>>(
     document: &Document<S>,
     id: NodeId,
@@ -1883,15 +1843,6 @@ fn normalize_nul(value: &str) -> Cow<'_, str> {
         Cow::Owned(value.replace('\0', "�"))
     } else {
         Cow::Borrowed(value)
-    }
-}
-
-pub(super) fn unsupported_content() -> Message {
-    Message {
-        span: None,
-        reason: "This content shape cannot be represented in Markdown".into(),
-        rule_id: "unsupported-node",
-        source: "markdown",
     }
 }
 

@@ -37,7 +37,10 @@ fn escaping_preserves_unicode_and_handles_adjacent_markers_at_scan_boundaries() 
                     EventKind::Text(text)
                 };
                 let events = [
-                    event(EventKind::Start(Tag::Document(None))),
+                    event(EventKind::Start(Tag::Document {
+                        line_ending: None,
+                        frontmatter: None,
+                    })),
                     event(body),
                     event(EventKind::Text(Text::Literal(""))),
                     event(EventKind::End(TagKind::Document)),
@@ -103,12 +106,13 @@ fn failed_escape_writes_retain_the_last_successfully_written_byte() {
             Ok(())
         }
     }
+    // Text after the failed write follows what was written of it.
     for (value, fail_on, expected) in [
-        ("prefix\n&tail", "&amp;", "prefix\n<hr />"),
-        ("prefix&tail", "&amp;", "prefix\n<hr />"),
-        ("&tail", "tail", "&amp;\n<hr />"),
-        ("&\n<tail", "\n", "&amp;\n<hr />"),
-        ("<tail", "&lt;", "<hr />"),
+        ("prefix\n&tail", "&amp;", "prefix\n|"),
+        ("prefix&tail", "&amp;", "prefix|"),
+        ("&tail", "tail", "&amp;|"),
+        ("&\n<tail", "\n", "&amp;|"),
+        ("<tail", "&lt;", "|"),
     ] {
         let mut writer = Writer {
             output: String::new(),
@@ -117,13 +121,18 @@ fn failed_escape_writes_retain_the_last_successfully_written_byte() {
         let options = Options::default();
         let mut renderer = EventHtmlRenderer::new("", &options.compile, &mut writer);
         renderer
-            .event(event(EventKind::Start(Tag::Document(None))))
+            .event(event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })))
             .unwrap();
         assert!(matches!(
             renderer.event(event(EventKind::Text(Text::Literal(value)))),
             Err(StreamError::Write(_))
         ));
-        renderer.event(event(EventKind::Rule)).unwrap();
+        renderer
+            .event(event(EventKind::Text(Text::Literal("|"))))
+            .unwrap();
         renderer
             .event(event(EventKind::End(TagKind::Document)))
             .unwrap();
@@ -136,10 +145,16 @@ fn failed_escape_writes_retain_the_last_successfully_written_byte() {
     let options = Options::default();
     let mut renderer = EventHtmlRenderer::new("", &options.compile, &mut writer);
     renderer
-        .event(event(EventKind::Start(Tag::Document(None))))
+        .event(event(EventKind::Start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        })))
         .unwrap();
     renderer
-        .event(event(EventKind::Text(Text::Literal("prefix"))))
+        .event(event(EventKind::Html {
+            value: Text::Literal("prefix"),
+            block: true,
+        }))
         .unwrap();
     assert!(matches!(
         renderer.event(event(EventKind::Rule)),
@@ -153,26 +168,27 @@ fn failed_escape_writes_retain_the_last_successfully_written_byte() {
 }
 
 #[test]
-fn custom_image_alternative_text_suppresses_rule_markup() {
+fn custom_image_alternative_text_rejects_rules() {
     let events = [
-        event(EventKind::Start(Tag::Document(None))),
+        event(EventKind::Start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        })),
         event(EventKind::Start(Tag::Image {
             destination: Text::Literal("image.png"),
             title: None,
         })),
         event(EventKind::Text(Text::Literal("before"))),
         event(EventKind::Rule),
-        event(EventKind::Text(Text::Literal("after"))),
-        event(EventKind::End(TagKind::Image)),
-        event(EventKind::End(TagKind::Document)),
     ];
     let mut output = String::new();
-    render_events(
-        "",
-        IntoIterator::into_iter(events).map(Ok),
-        &Options::default().compile,
-        &mut output,
-    )
-    .unwrap();
-    assert_eq!(output, "<img src=\"image.png\" alt=\"beforeafter\" />");
+    assert!(matches!(
+        render_events(
+            "",
+            IntoIterator::into_iter(events).map(Ok),
+            &Options::default().compile,
+            &mut output,
+        ),
+        Err(StreamError::InvalidNesting)
+    ));
 }

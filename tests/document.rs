@@ -125,7 +125,13 @@ fn rejected_structural_edits_preserve_the_tree() {
     assert!(document.attach(root, footnote, Some(text)).is_err());
     assert!(document.append_child(text, EventKind::Rule).is_err());
     assert!(document
-        .append_child(root, EventKind::Start(Tag::Document(None)))
+        .append_child(
+            root,
+            EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None
+            })
+        )
         .is_err());
     assert!(document
         .append_child(root, EventKind::Start(Tag::Heading(7)))
@@ -297,38 +303,39 @@ fn frontmatter_edits_detach_the_body_and_keep_fence_metadata() {
         "+++toml\n{}\n+++ \n",
     ] {
         let mut document = Document::parse(source, &options).unwrap();
-        let id = document.children(document.root()).next().unwrap();
-        let before = document.frontmatter_value(id).unwrap().to_owned();
+        let root = document.root();
+        let before = document.frontmatter().unwrap().to_owned();
         assert!(!before.contains("---"));
         assert!(matches!(
-            document.syntax(id),
+            document.syntax(root),
             Some(NodeSyntax::Frontmatter { .. })
         ));
-        document.text_mut(id).unwrap().push_str("edited");
-        document.text_mut(id).unwrap().push('!');
+        document.frontmatter_mut().unwrap().push_str("edited");
+        document.frontmatter_mut().unwrap().push('!');
         assert_eq!(
-            document.frontmatter_value(id),
+            document.frontmatter(),
             Some(format!("{before}edited!").as_str())
         );
         assert_eq!(html(&document), "");
         let output = base_markdown::to_markdown(&document).unwrap();
         let reparsed = Document::parse(output.as_str(), &options).unwrap();
-        let id = reparsed.children(reparsed.root()).next().unwrap();
         assert_eq!(
-            reparsed.frontmatter_value(id),
+            reparsed.frontmatter(),
             Some(format!("{before}edited!\n").as_str())
         );
     }
+    // A built document gets frontmatter through its root, and the fences through its syntax.
     let mut document = empty();
     let root = document.root();
-    assert!(document.frontmatter_value(root).is_none());
-    let id = document
-        .append_child(
+    assert!(document.frontmatter().is_none());
+    assert!(document.frontmatter_mut().is_none());
+    document
+        .set_kind(
             root,
-            EventKind::Opaque {
-                value: Text::Source(0..0),
-                block: true,
-            },
+            EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: Some(Text::Source(0..0)),
+            }),
         )
         .unwrap();
     let syntax = NodeSyntax::Frontmatter {
@@ -340,8 +347,9 @@ fn frontmatter_edits_detach_the_body_and_keep_fence_metadata() {
         },
         closing_fence_length: 3,
     };
-    document.set_syntax(id, Some(syntax)).unwrap();
-    assert_eq!(document.frontmatter_value(id), Some(""));
+    document.set_syntax(root, Some(syntax)).unwrap();
+    assert_eq!(document.frontmatter(), Some(""));
+    assert_eq!(base_markdown::to_markdown(&document).unwrap(), "---\n---\n");
 }
 
 #[test]
@@ -544,6 +552,26 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
         stream::{Event, TagKind},
         AstBuilder,
     };
+    fn with_frontmatter(raw: &str, body: std::ops::Range<usize>) -> Document<String> {
+        let events = vec![
+            Ok(Event {
+                kind: EventKind::Start(Tag::Document {
+                    line_ending: None,
+                    frontmatter: Some(Text::Source(body)),
+                }),
+                span: 0..raw.len(),
+            }),
+            Ok(Event {
+                kind: EventKind::End(TagKind::Document),
+                span: raw.len()..raw.len(),
+            }),
+        ];
+        let mut builder = AstBuilder::new();
+        builder
+            .consume(&mut events.into_iter(), usize::MAX)
+            .unwrap();
+        builder.finish(raw.to_owned()).unwrap()
+    }
     fn custom(raw: &str, kind: EventKind<'static>) -> Document<String> {
         let end = if let EventKind::Start(tag) = &kind {
             Some(EventKind::End(tag.kind()))
@@ -552,7 +580,10 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
         };
         let mut events = vec![
             Ok(Event {
-                kind: EventKind::Start(Tag::Document(None)),
+                kind: EventKind::Start(Tag::Document {
+                    line_ending: None,
+                    frontmatter: None,
+                }),
                 span: 0..raw.len(),
             }),
             Ok(Event {
@@ -631,29 +662,15 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
         "```a`b\nx\n```",
         "---\nx\n--- extra",
     ] {
-        let document = custom(
-            raw,
-            EventKind::Opaque {
-                value: Text::Source(0..raw.len()),
-                block: true,
-            },
-        );
-        let id = document.children(document.root()).next().unwrap();
-        assert!(document.syntax(id).is_none(), "{:?}", raw);
-        assert!(document.frontmatter_value(id).is_none());
+        let document = with_frontmatter(raw, 0..raw.len());
+        assert!(document.syntax(document.root()).is_none(), "{:?}", raw);
     }
     // A custom producer can supply a body range and explicit fences without storing fenced source.
-    let mut document = custom(
-        "prebody",
-        EventKind::Opaque {
-            value: Text::Source(3..7),
-            block: true,
-        },
-    );
-    let id = document.children(document.root()).next().unwrap();
+    let mut document = with_frontmatter("prebody", 3..7);
+    let root = document.root();
     document
         .set_syntax(
-            id,
+            root,
             Some(NodeSyntax::Frontmatter {
                 info: Text::Literal(""),
                 fence: base_markdown::CodeFence {
@@ -665,7 +682,13 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
             }),
         )
         .unwrap();
-    assert_eq!(document.frontmatter_value(id), Some("body"));
+    assert_eq!(document.frontmatter(), Some("body"));
+    // Frontmatter at the start of the source has its fences inferred.
+    let document = with_frontmatter("---\nbody\n---", 4..9);
+    assert!(matches!(
+        document.syntax(document.root()),
+        Some(NodeSyntax::Frontmatter { .. })
+    ));
 }
 
 #[test]
@@ -764,8 +787,7 @@ fn copied_sections_materialize_frontmatter_footnotes_and_edited_values() {
     let mut options = Options::gfm();
     options.parse.constructs.frontmatter = true;
     let mut replacement=Document::parse("--- custom\nbody\n---\n\n- a\n\n  b\n\nNote[^Mixed] &amp;.\n\n[^Mixed]: Body.\n\n```rust meta\nx\n```\n".to_owned(),&options.parse).unwrap();
-    let opaque = replacement.children(replacement.root()).next().unwrap();
-    replacement.text_mut(opaque).unwrap().push_str("edited\n");
+    replacement.frontmatter_mut().unwrap().push_str("edited\n");
     let text = replacement
         .descendants(replacement.root())
         .find(|id| matches!(replacement.node(*id).unwrap().kind, EventKind::Text(_)))
@@ -777,13 +799,11 @@ fn copied_sections_materialize_frontmatter_footnotes_and_edited_values() {
         .unwrap();
     let markdown = base_markdown::to_markdown(&document).unwrap();
     drop(replacement);
-    assert!(markdown.contains("custom\nbody\nedited\n---"));
+    // The frontmatter belongs to the replacement's root, not to its content, so it is not copied.
+    assert!(!markdown.contains("custom"));
     assert!(markdown.contains("[^Mixed]"));
     assert!(markdown.contains("rust meta"));
-    assert_eq!(
-        document.frontmatter_value(document.children(document.root()).next().unwrap()),
-        Some("body\nedited\n")
-    );
+    assert_eq!(document.frontmatter(), None);
     assert_eq!(
         html(&document).trim_end(),
         base_markdown::to_html_with_options(&markdown, &options).trim_end()
@@ -800,8 +820,9 @@ fn custom_heading_helpers_capture_the_same_leaf_set_and_line_endings_as_html() {
     document
         .append_child(title, EventKind::Text(Text::Literal("Title")))
         .unwrap();
-    document
-        .append_child(
+    // A heading holds only phrasing.
+    assert!(matches!(
+        document.append_child(
             title,
             EventKind::CodeBlock {
                 value: Text::Literal("body\n"),
@@ -809,8 +830,9 @@ fn custom_heading_helpers_capture_the_same_leaf_set_and_line_endings_as_html() {
                 fence: None,
                 unclosed: false,
             },
-        )
-        .unwrap();
+        ),
+        Err(base_markdown::stream::StreamError::InvalidNesting)
+    ));
     for ending in ["Crème\r\n", "Other\r", "Final\n"] {
         let heading = document
             .append_child(root, EventKind::Start(Tag::Heading(2)))
@@ -834,7 +856,7 @@ fn custom_heading_helpers_capture_the_same_leaf_set_and_line_endings_as_html() {
     document
         .append_child(heading, EventKind::HardBreak)
         .unwrap();
-    assert_eq!(document.text_content(title), "Titlebody\n");
+    assert_eq!(document.text_content(title), "Title");
     let headings = document.headings(&HeadingOptions::default());
     assert_eq!(
         headings
@@ -874,15 +896,44 @@ fn item_source_spacing_preserves_crlf_boundaries_and_detached_hints() {
         ("a\nb", 1, 2, false),
         ("a\n\nb", 2, 3, true),
     ] {
+        let paragraph = || EventKind::Start(Tag::Paragraph { tight: true });
+        let end = source.len()..source.len();
         let kinds = [
-            (EventKind::Start(Tag::Document(None)), 0..0),
-            (EventKind::Start(Tag::Item { block_end: false }), 0..0),
+            (
+                EventKind::Start(Tag::Document {
+                    line_ending: None,
+                    frontmatter: None,
+                }),
+                0..0,
+            ),
+            (
+                EventKind::Start(Tag::List {
+                    start: None,
+                    tight: true,
+                }),
+                0..0,
+            ),
+            (
+                EventKind::Start(Tag::Item {
+                    block_end: false,
+                    checked: None,
+                }),
+                0..0,
+            ),
+            (paragraph(), 0..previous_end),
             (EventKind::Text(Text::Literal("a")), 0..previous_end),
+            (
+                EventKind::End(TagKind::Paragraph),
+                previous_end..previous_end,
+            ),
+            (paragraph(), next_start..source.len()),
             (
                 EventKind::Text(Text::Literal("b")),
                 next_start..source.len(),
             ),
-            (EventKind::End(TagKind::Item), source.len()..source.len()),
+            (EventKind::End(TagKind::Paragraph), end.clone()),
+            (EventKind::End(TagKind::Item), end.clone()),
+            (EventKind::End(TagKind::List), end.clone()),
             (
                 EventKind::End(TagKind::Document),
                 source.len()..source.len(),
@@ -893,7 +944,8 @@ fn item_source_spacing_preserves_crlf_boundaries_and_detached_hints() {
         let mut builder = AstBuilder::new();
         builder.consume(&mut events, usize::MAX).unwrap();
         let mut document = builder.finish(source).unwrap();
-        let item = document.children(document.root()).next().unwrap();
+        let list = document.children(document.root()).next().unwrap();
+        let item = document.children(list).next().unwrap();
         for detached in [false, true] {
             if detached {
                 document.detach(item).unwrap();
@@ -941,10 +993,7 @@ fn item_source_spacing_handles_all_line_endings_and_reordered_provenance() {
     assert!(!document
         .replace_heading_section(root, 0, &empty(), true, true)
         .unwrap());
-    assert!(document.frontmatter_value(paragraph).is_none());
-    let larger = Document::parse("a *b* c **d** e", &ParseOptions::default()).unwrap();
-    let foreign = larger.descendants(larger.root()).last().unwrap();
-    assert!(document.frontmatter_value(foreign).is_none());
+    assert!(document.node(paragraph).is_some());
 }
 
 #[test]
@@ -964,8 +1013,11 @@ fn section_copy_preserves_nested_siblings_empty_containers_and_insertion_boundar
             EventKind::Start(Tag::Paragraph { tight: false }),
         )
         .unwrap();
+    let tail = replacement
+        .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+        .unwrap();
     replacement
-        .append_child(root, EventKind::Text(Text::Literal("tail")))
+        .append_child(tail, EventKind::Text(Text::Literal("tail")))
         .unwrap();
     let expected = html(&replacement);
     for (prefix, suffix) in [("", ""), ("# Keep\n\nprefix\n\n", "# End\n\nsuffix")] {
@@ -1009,7 +1061,13 @@ fn section_removal_splices_item_children_and_retains_detached_subtrees() {
             )
             .unwrap();
         let item = document
-            .append_child(list, EventKind::Start(Tag::Item { block_end: false }))
+            .append_child(
+                list,
+                EventKind::Start(Tag::Item {
+                    block_end: false,
+                    checked: None,
+                }),
+            )
             .unwrap();
         let paragraph = document
             .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
@@ -1054,7 +1112,7 @@ fn section_removal_splices_item_children_and_retains_detached_subtrees() {
         );
         assert_eq!(document.text_content(quote), "detached");
         assert!(
-            matches!(document.node(item).unwrap().kind, EventKind::Start(Tag::Item {block_end}) if block_end == keep_suffix)
+            matches!(document.node(item).unwrap().kind, EventKind::Start(Tag::Item {block_end, ..}) if block_end == keep_suffix)
         );
         assert!(matches!(
             document.node(paragraph).unwrap().kind,

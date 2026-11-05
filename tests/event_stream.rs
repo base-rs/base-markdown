@@ -183,19 +183,34 @@ fn consumers_reject_broken_streams_and_propagate_writer_errors() {
         vec![],
         vec![event(EventKind::Text(Text::Literal("x")))],
         vec![event(EventKind::End(TagKind::Document))],
-        vec![event(EventKind::Start(Tag::Document(None)))],
+        vec![event(EventKind::Start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        }))],
         vec![
-            event(EventKind::Start(Tag::Document(None))),
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })),
             event(EventKind::End(TagKind::Paragraph)),
         ],
         vec![
-            event(EventKind::Start(Tag::Document(None))),
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })),
             event(EventKind::End(TagKind::Document)),
             event(EventKind::Text(Text::Literal("x"))),
         ],
         vec![
-            event(EventKind::Start(Tag::Document(None))),
-            event(EventKind::Start(Tag::Document(None))),
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })),
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })),
         ],
     ] {
         let mut output = String::new();
@@ -210,7 +225,10 @@ fn consumers_reject_broken_streams_and_propagate_writer_errors() {
     assert!(builder.finish("").is_err());
     let mut builder = AstBuilder::new();
     let mut malformed = vec![
-        event(EventKind::Start(Tag::Document(None))),
+        event(EventKind::Start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        })),
         event(EventKind::Text(Text::Source(0..1))),
         event(EventKind::End(TagKind::Document)),
     ]
@@ -260,14 +278,29 @@ fn edits_and_consumers_validate_the_same_contract() {
         (text, EventKind::Text(Text::Source(999..1000))),
         (paragraph, EventKind::Text(Text::Literal("hidden"))),
         (root, EventKind::Start(Tag::Paragraph { tight: false })),
-        (text, EventKind::Start(Tag::Document(None))),
+        (
+            text,
+            EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            }),
+        ),
         (text, EventKind::End(TagKind::Paragraph)),
         (paragraph, EventKind::Start(Tag::Heading(0))),
+        // A paragraph cannot become a heading, nor text inline code, in place.
+        (paragraph, EventKind::Start(Tag::Heading(2))),
+        (
+            text,
+            EventKind::Code {
+                value: Text::Literal("x"),
+                language: None,
+            },
+        ),
     ] {
         assert!(document.set_kind(id, kind).is_err());
     }
     document
-        .set_kind(paragraph, EventKind::Start(Tag::Heading(2)))
+        .set_kind(paragraph, EventKind::Start(Tag::Paragraph { tight: true }))
         .unwrap();
     document
         .set_kind(text, EventKind::Text(Text::Literal("new")))
@@ -281,9 +314,9 @@ fn edits_and_consumers_validate_the_same_contract() {
         &mut output,
     )
     .unwrap();
-    assert_eq!(output, "<h2>new!</h2>");
+    assert_eq!(output, "<p>new!</p>");
     for kind in [
-        EventKind::Opaque {
+        EventKind::Html {
             value: Text::Source(1..2),
             block: true,
         },
@@ -300,7 +333,10 @@ fn edits_and_consumers_validate_the_same_contract() {
     ] {
         let input = vec![
             Ok(Event {
-                kind: EventKind::Start(Tag::Document(None)),
+                kind: EventKind::Start(Tag::Document {
+                    line_ending: None,
+                    frontmatter: None,
+                }),
                 span: 0..0,
             }),
             Ok(Event { kind, span: 0..0 }),
@@ -321,7 +357,10 @@ fn edits_and_consumers_validate_the_same_contract() {
     let mut builder = AstBuilder::new();
     let mut input = vec![
         Ok(Event {
-            kind: EventKind::Start(Tag::Document(None)),
+            kind: EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            }),
             span: 0..999,
         }),
         Ok(Event {
@@ -333,7 +372,10 @@ fn edits_and_consumers_validate_the_same_contract() {
     assert!(builder.consume(&mut input, usize::MAX).is_err());
     let input = vec![
         Ok(Event {
-            kind: EventKind::Start(Tag::Document(None)),
+            kind: EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            }),
             span: 0..1,
         }),
         Ok(Event {

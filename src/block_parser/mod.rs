@@ -1063,6 +1063,13 @@ impl Builder<'_> {
     }
 }
 
+/// The extent of the frontmatter that `source` starts with, after a byte order mark, from its
+/// opening fence through its closing fence, not counting the line ending after that.
+pub(crate) fn frontmatter_extent(source: &str) -> Option<core::ops::Range<usize>> {
+    let start = usize::from(source.starts_with('\u{feff}')) * 3;
+    frontmatter::scan(source.as_bytes(), start).map(|(end, _)| start..end)
+}
+
 /// Whether `source`, which starts with `[` at the start of a paragraph and has no container
 /// prefixes, starts with a definition.
 pub(crate) fn starts_definition(source: &str) -> bool {

@@ -5,9 +5,7 @@
 use super::{
     configure::IndentOptions,
     construct_name::ConstructName,
-    state::{
-        flow_children, list_number_too_long, unsupported_content, Info, State, MAX_LIST_NUMBER,
-    },
+    state::{flow_children, list_number_too_long, Info, State, MAX_LIST_NUMBER},
     util::{
         contains_control_or_whitespace::contains_control_or_whitespace,
         format_code_as_indented::format_code_as_indented,
@@ -437,13 +435,8 @@ impl State<'_> {
         };
         let mut first_empty = false;
         let mut has_rule = false;
+        // The content model holds only items in a list.
         for (index, child) in flow_children(document, node).enumerate() {
-            if !matches!(
-                document.node(child).unwrap().kind,
-                EventKind::Start(Tag::Item { .. })
-            ) {
-                return Err(unsupported_content());
-            }
             let first = flow_children(document, child).next();
             if index == 0 {
                 first_empty = first.is_none();
@@ -523,11 +516,11 @@ impl State<'_> {
         // The checkbox starts the item's content, as in `mdast-util-gfm-task-list-item`, so continuation lines indent to the content start the parser uses, which excludes the checkbox.
         // The text after the marker starts with the space or tab that separates them, which the text writer drops, so the marker is written with that character and a tab reads back as one.
         let item_task = item_task(document, node);
-        let task = item_task.map(|(marker, checked)| {
+        let task = item_task.map(|(paragraph, checked)| {
             let separator = document
-                .node(marker)
+                .node(paragraph)
                 .unwrap()
-                .next_sibling()
+                .first_child()
                 .and_then(|id| match &document.node(id).unwrap().kind {
                     EventKind::Text(text) => text.resolve(document.source()).ok(),
                     _ => None,
@@ -558,7 +551,7 @@ impl State<'_> {
         let start = self.output.len();
         let task_item = self
             .task_item
-            .replace((node, item_task.map(|(marker, _)| marker)));
+            .replace((node, item_task.map(|(paragraph, _)| paragraph)));
         self.container_flow(document, node)?;
         self.task_item = task_item;
         self.indent_lines(start, |line, index, blank, output| {
@@ -582,25 +575,22 @@ impl State<'_> {
         Ok(())
     }
 
-    /// Whether `node` is the task marker of the item its paragraph is in. Finding an item's task
-    /// marker reads past the definitions that start the item, so the marker of the item being
-    /// written is found once, rather than for each node that asks (#161).
-    pub(super) fn is_item_task<S: AsRef<str>>(&self, document: &Document<S>, node: NodeId) -> bool {
-        let node_ref = document.node(node).unwrap();
-        if !matches!(node_ref.kind, EventKind::TaskMarker(_)) {
-            return false;
-        }
-        let Some(item) = node_ref
-            .parent()
-            .and_then(|parent| document.node(parent).unwrap().parent())
-        else {
+    /// Whether `node` is the paragraph that a task item's checkbox is written before. Finding an
+    /// item's task paragraph reads past the definitions that start the item, so the paragraph of
+    /// the item being written is found once, rather than for each node that asks (#161).
+    pub(super) fn is_task_paragraph<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        node: NodeId,
+    ) -> bool {
+        let Some(item) = document.node(node).unwrap().parent() else {
             return false;
         };
-        let marker = match self.task_item {
-            Some((written, marker)) if written == item => marker,
-            _ => item_task(document, item).map(|(marker, _)| marker),
+        let paragraph = match self.task_item {
+            Some((written, paragraph)) if written == item => paragraph,
+            _ => item_task(document, item).map(|(paragraph, _)| paragraph),
         };
-        marker == Some(node)
+        paragraph == Some(node)
     }
 
     pub(super) fn item_spread<S: AsRef<str>>(&self, document: &Document<S>, node: NodeId) -> bool {
@@ -616,7 +606,7 @@ impl State<'_> {
     /// with a line that would close the fence switches to the other one, naming the format the
     /// fence implied when there is no hint, and a body that would close both cannot be written.
     /// Lines end at LF, CRLF or a lone CR, as the parser reads them; the body's own line endings
-    /// are written unchanged, so they read back as LF.
+    /// are written unchanged, so they read back as LF, which [`Document::normalize`] gives them.
     pub(super) fn frontmatter(
         &mut self,
         body: &str,
@@ -662,6 +652,8 @@ impl State<'_> {
             self.output.push_str(info);
         }
         self.output.push('\n');
+        // A parsed body ends each of its lines with a line ending, so one is written before the
+        // closing fence only after a body that is not empty and has none, which normalizing adds.
         let needs_line_ending = !body.is_empty() && !body.ends_with(['\r', '\n']);
         self.output
             .reserve(body.len() + fence.len() + usize::from(needs_line_ending) + 1);
@@ -674,13 +666,16 @@ impl State<'_> {
     }
 }
 
+// The paragraph that the checkbox of task item `item` is written before, its first block other
+// than definitions, and whether it is checked.
 fn item_task<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> Option<(NodeId, bool)> {
-    if !matches!(
-        document.node(item).expect("task item node exists").kind,
-        EventKind::Start(Tag::Item { .. })
-    ) {
+    let EventKind::Start(Tag::Item {
+        checked: Some(checked),
+        ..
+    }) = document.node(item).expect("task item node exists").kind
+    else {
         return None;
-    }
+    };
     let paragraph = flow_children(document, item).find(|child| {
         !matches!(
             document.node(*child).unwrap().kind,
@@ -696,11 +691,7 @@ fn item_task<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> Option<(Nod
     ) {
         return None;
     }
-    let marker = document.children(paragraph).next()?;
-    match document.node(marker).expect("task marker node exists").kind {
-        EventKind::TaskMarker(checked) => Some((marker, checked)),
-        _ => None,
-    }
+    Some((paragraph, checked))
 }
 
 // Line endings in values are LF, and a CR is a character reference, so it is kept.

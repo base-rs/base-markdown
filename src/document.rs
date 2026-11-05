@@ -4,16 +4,11 @@
 //! A source-backed arena document and its incremental pull consumer.
 use crate::stream::{Event, EventKind, StreamError, Text};
 use crate::{
-    markdown::{heading_as_setext, needs_blank_line},
+    markdown::{angle_reads_back, heading_as_setext, needs_blank_line},
     stream::{Tag, TagKind},
     NodeSyntax,
 };
-use alloc::{
-    borrow::Cow,
-    collections::{BTreeMap, BTreeSet},
-    string::String,
-    vec::Vec,
-};
+use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
 use core::{num::NonZeroUsize, ops::Range};
 
 /// A stable index into a document's contiguous node arena.
@@ -72,8 +67,8 @@ pub enum BuildProgress {
 pub struct AstBuilder {
     nodes: Vec<Node>,
     open: Vec<NodeId>,
-    // How many of the open containers are headings or images, which cannot hold a heading or footnote definition. Counting them keeps each start constant time, where looking through `open` made a deep nest of footnote definitions quadratic.
-    capturing: usize,
+    // How many of the open containers are links, which cannot hold a footnote reference at any depth. Counting them keeps each event constant time, where looking through `open` would make a deep nest quadratic.
+    links: usize,
     // Only the active container needs a tail. Opening a child resets it; closing that child makes the child the parent's new tail.
     last_child: Option<NodeId>,
     complete: bool,
@@ -99,7 +94,7 @@ impl AstBuilder {
     /// A zero budget does no work. Reaching the exact budget does not probe the iterator for another event.
     ///
     /// # Errors
-    /// Returns parser errors or [`StreamError::Unbalanced`] for malformed streams. A failed builder cannot be finished.
+    /// Returns parser errors, [`StreamError::Unbalanced`] for malformed streams, and [`StreamError::InvalidNesting`] for a node that its parent cannot hold. A failed builder cannot be finished.
     pub fn consume<'a>(
         &mut self,
         events: &mut impl Iterator<Item = Result<Event<'a>, StreamError>>,
@@ -144,8 +139,8 @@ impl AstBuilder {
         if let EventKind::End(kind) = event.kind {
             let id = self.open.pop().ok_or(StreamError::Unbalanced)?;
             let node = &mut self.nodes[id.index()];
-            if matches!(&node.kind, EventKind::Start(tag) if tag.kind().captures()) {
-                self.capturing -= 1;
+            if matches!(&node.kind, EventKind::Start(Tag::Link { .. })) {
+                self.links -= 1;
             }
             if !matches!(&node.kind, EventKind::Start(tag) if tag.kind() == kind) {
                 return Err(StreamError::Unbalanced);
@@ -157,25 +152,24 @@ impl AstBuilder {
             self.last_child = Some(id);
             return Ok(());
         }
-        if self.open.is_empty() {
-            if !self.nodes.is_empty()
-                || !matches!(&event.kind, EventKind::Start(tag) if tag.kind() == crate::stream::TagKind::Document)
+        if let Some(&parent) = self.open.last() {
+            // A nested document start is a node of the root class, which nothing holds.
+            let node = &self.nodes[parent.index()];
+            let EventKind::Start(tag) = &node.kind else {
+                unreachable!("only containers are open")
+            };
+            let first = node
+                .first_child
+                .map(|first| &self.nodes[first.index()].kind);
+            if !event.kind.nests_in(tag, first)
+                || self.links != 0 && matches!(event.kind, EventKind::FootnoteReference(_))
             {
-                return Err(StreamError::Unbalanced);
+                return Err(StreamError::InvalidNesting);
             }
-        } else if matches!(&event.kind, EventKind::Start(tag) if tag.kind() == crate::stream::TagKind::Document)
+        } else if !self.nodes.is_empty()
+            || !matches!(&event.kind, EventKind::Start(tag) if tag.kind() == TagKind::Document)
         {
             return Err(StreamError::Unbalanced);
-        }
-        if let EventKind::Start(tag) = &event.kind {
-            if self.capturing != 0
-                && matches!(
-                    tag.kind(),
-                    crate::stream::TagKind::Heading | crate::stream::TagKind::FootnoteDefinition
-                )
-            {
-                return Err(StreamError::Unbalanced);
-            }
         }
         let id = NodeId::new(self.nodes.len());
         let parent = self.open.last().copied();
@@ -196,8 +190,8 @@ impl AstBuilder {
         }
         self.last_child = if start { None } else { Some(id) };
         if let EventKind::Start(tag) = &self.nodes[id.index()].kind {
-            if tag.kind().captures() {
-                self.capturing += 1;
+            if tag.kind() == TagKind::Link {
+                self.links += 1;
             }
             self.open.push(id);
         }
@@ -216,7 +210,6 @@ impl AstBuilder {
             source,
             nodes: self.nodes,
             syntax: BTreeMap::new(),
-            edited: BTreeSet::new(),
             append_hint: None,
         };
         // Public producers can supply arbitrary offsets. Validate their contract once before exposing the document.
@@ -245,11 +238,6 @@ pub struct Document<S = String> {
     source: S,
     nodes: Vec<Node>,
     syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
-    // Opaque nodes whose value was replaced through `text_mut` or `set_kind`. A parsed frontmatter value
-    // with LF in place of the source's CRs is the whole block only until it is edited, even if the
-    // edit makes it equal again.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "BTreeSet::is_empty"))]
-    edited: BTreeSet<NodeId>,
     // The child that `append_child` last appended. It is still its parent's last child while it has that parent and no next sibling, so a run of appends to one parent does not scan the parent's children each time.
     #[cfg_attr(feature = "serde", serde(skip))]
     append_hint: Option<NodeId>,
@@ -321,71 +309,128 @@ impl<S: AsRef<str>> Document<S> {
 
     /// Replace a node's semantic value while preserving the arena's structure and provenance.
     ///
+    /// The new value must hold the same content as the old one, so the node's children, and its
+    /// place in its parent, stay valid without being checked: a container keeps its kind, except
+    /// that emphasis, strong and strikethrough are interchangeable, and a leaf keeps its variant,
+    /// with HTML staying a block or inline, and an inline root, whose children are phrasing,
+    /// takes no frontmatter. So a heading can change its level, a link its
+    /// destination, a code block its info and a list whether it is ordered, but a paragraph
+    /// cannot become a heading, nor text inline code. Rendering hints that depend on the tree,
+    /// such as [`Tag::Paragraph`]'s `tight` and [`Tag::Item`]'s `block_end`, are recomputed. The
+    /// root keeps its syntax, such as its frontmatter fences; any other node's syntax is reset.
+    /// Changing a node takes constant time, except that changing a paragraph or item refreshes
+    /// the item that holds it or itself from that item's children, and changing whether a list is
+    /// tight refreshes each of its items, so these take time linear in the children involved.
+    ///
     /// # Errors
-    /// Rejects invalid source ranges, end events, changing the root identity,
-    /// and replacing a container with children by a leaf.
+    /// Rejects invalid IDs and source ranges with [`StreamError::InvalidRange`], invalid values
+    /// with [`StreamError::InvalidValue`], and any other change of kind with
+    /// [`StreamError::InvalidNesting`].
     pub fn set_kind(&mut self, id: NodeId, kind: EventKind<'static>) -> Result<(), StreamError> {
         kind.validate(Some(self.source()))?;
         let node = self
             .nodes
             .get(id.index())
             .ok_or(StreamError::InvalidRange)?;
-        let document = matches!(&kind, EventKind::Start(Tag::Document(_)));
-        if matches!(&kind, EventKind::End(_))
-            || document != (id == self.root())
-            || (node.first_child.is_some() && !matches!(&kind, EventKind::Start(_)))
-        {
-            return Err(StreamError::Unbalanced);
+        if !interchangeable(&node.kind, &kind) {
+            return Err(StreamError::InvalidNesting);
         }
-        if let EventKind::Start(tag) = &kind {
-            self.check_capture(node.parent, tag.kind())?;
-            if self.descendants(id).skip(1).any(|child| matches!(&self.nodes[child.index()].kind, EventKind::Start(child_tag) if !tag.kind().allows_descendant(child_tag.kind()))) {
-                return Err(StreamError::Unbalanced);
+        // Frontmatter makes a root hold blocks, so an inline root cannot take it.
+        if let (EventKind::Start(tag), Some(first)) = (&kind, node.first_child) {
+            if !self.nodes[first.index()].kind.nests_in(tag, None) {
+                return Err(StreamError::InvalidNesting);
             }
         }
-        if matches!(kind, EventKind::Opaque { .. }) {
-            self.edited.insert(id);
-        } else {
-            self.edited.remove(&id);
-        }
+        let block = matches!(kind, EventKind::Start(Tag::Paragraph { .. }));
+        let loosened = match (&node.kind, &kind) {
+            (
+                EventKind::Start(Tag::List { tight: old, .. }),
+                EventKind::Start(Tag::List { tight: new, .. }),
+            ) => old != new,
+            _ => false,
+        };
         self.nodes[id.index()].kind = kind;
-        self.syntax.insert(id, None);
-        self.refresh_context(id);
-        self.refresh_item(self.nodes[id.index()].parent);
+        if id != self.root() {
+            self.syntax.insert(id, None);
+        }
+        if block {
+            // A paragraph's tightness follows its list, and an item's ending its last block.
+            self.refresh_paragraph(id);
+            self.refresh_item(self.nodes[id.index()].parent);
+        }
+        match self.nodes[id.index()].kind {
+            EventKind::Start(Tag::Item { .. }) => self.refresh_item(Some(id)),
+            // Only a list's tightness reaches its items' paragraphs and endings.
+            EventKind::Start(Tag::List { .. }) if loosened => {
+                let mut items = self.nodes[id.index()].first_child;
+                while let Some(item) = items {
+                    let mut child = self.nodes[item.index()].first_child;
+                    while let Some(paragraph) = child {
+                        self.refresh_paragraph(paragraph);
+                        child = self.nodes[paragraph.index()].next_sibling;
+                    }
+                    self.refresh_item(Some(item));
+                    items = self.nodes[item.index()].next_sibling;
+                }
+            }
+            _ => {}
+        }
         Ok(())
     }
 
-    /// Edit the text of a text/code/HTML/opaque leaf. Source-backed values detach on first mutation.
+    /// Edit the text of a text, soft break, code or HTML leaf. Source-backed values detach on
+    /// first mutation.
     ///
     /// # Errors
     /// Returns [`StreamError::InvalidRange`] for an invalid node ID or a non-text node.
     pub fn text_mut(&mut self, id: NodeId) -> Result<&mut String, StreamError> {
-        // Frontmatter's semantic body detaches independently of its retained fence metadata.
-        let body = if self.whole_frontmatter(id) {
-            self.frontmatter_value(id).map(String::from)
-        } else {
-            None
-        };
         let node = self
             .nodes
             .get_mut(id.index())
             .ok_or(StreamError::InvalidRange)?;
-        if matches!(node.kind, EventKind::Opaque { .. }) {
-            self.edited.insert(id);
-        }
         let (EventKind::Text(text)
         | EventKind::SoftBreak(text)
         | EventKind::Code { value: text, .. }
         | EventKind::CodeBlock { value: text, .. }
-        | EventKind::Html { value: text, .. }
-        | EventKind::Opaque { value: text, .. }) = &mut node.kind
+        | EventKind::Html { value: text, .. }) = &mut node.kind
         else {
             return Err(StreamError::InvalidRange);
         };
-        if let Some(body) = body {
-            *text = Text::from(body);
-        }
         text.to_mut(self.source.as_ref())
+    }
+
+    /// The body of the document's frontmatter, without its fences, or `None` when it has none.
+    /// The body is the lines between the fences, each with its line ending, so `---\na\n---` has
+    /// the body `a\n`, `---\n\n---` the body `\n`, and `---\n---` an empty one.
+    /// It is [`Tag::Document`]'s `frontmatter`; its fences and info are the root's
+    /// [`NodeSyntax::Frontmatter`].
+    pub fn frontmatter(&self) -> Option<&str> {
+        match &self.nodes[self.root().index()].kind {
+            EventKind::Start(Tag::Document {
+                frontmatter: Some(value),
+                ..
+            }) => Some(
+                value
+                    .resolve(self.source())
+                    .expect("document text is validated"),
+            ),
+            _ => None,
+        }
+    }
+
+    /// Edit the body of the document's frontmatter, or `None` when it has none; give a document
+    /// frontmatter with [`Document::set_kind`] on its root. A source-backed body detaches on first
+    /// mutation.
+    pub fn frontmatter_mut(&mut self) -> Option<&mut String> {
+        let source = self.source.as_ref();
+        let root = self.root().index();
+        match &mut self.nodes[root].kind {
+            EventKind::Start(Tag::Document {
+                frontmatter: Some(value),
+                ..
+            }) => Some(value.to_mut(source).expect("document text is validated")),
+            _ => None,
+        }
     }
 
     /// Traverse without a heap-allocated traversal stack or cloned owned strings.
@@ -423,6 +468,13 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
                 crate::stream::Tag::FootnoteDefinition(value) => {
                     crate::stream::Tag::FootnoteDefinition(value.borrowed())
                 }
+                crate::stream::Tag::Document {
+                    line_ending,
+                    frontmatter,
+                } => crate::stream::Tag::Document {
+                    line_ending: line_ending.clone(),
+                    frontmatter: frontmatter.as_ref().map(Text::borrowed),
+                },
                 _ => tag.clone(),
             };
             EventKind::Start(tag)
@@ -460,10 +512,6 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
             label: label.borrowed(),
             destination: destination.borrowed(),
             title: title.as_ref().map(Text::borrowed),
-        },
-        EventKind::Opaque { value, block } => EventKind::Opaque {
-            value: value.borrowed(),
-            block: *block,
         },
         EventKind::FootnoteReference(value) => EventKind::FootnoteReference(value.borrowed()),
         _ => kind.clone(),
@@ -715,50 +763,6 @@ impl<S: AsRef<str>> Document<S> {
         self.syntax.insert(id, syntax);
         Ok(())
     }
-    /// Frontmatter's body without its opening and closing fences. Edited bodies are returned directly.
-    pub fn frontmatter_value(&self, id: NodeId) -> Option<&str> {
-        let node = self.node(id)?;
-        let EventKind::Opaque { value: text, .. } = &node.kind else {
-            return None;
-        };
-        if !matches!(self.syntax(id), Some(NodeSyntax::Frontmatter { .. })) {
-            return None;
-        }
-        let value = text
-            .resolve(self.source())
-            .expect("document text is validated");
-        if self.whole_frontmatter(id) {
-            if let Some((_, _, _, body)) = crate::node_syntax::frontmatter(value) {
-                return value.get(body);
-            }
-        }
-        Some(value)
-    }
-    /// Whether the value of an opaque node is still the whole block it was parsed from, with its
-    /// fences, rather than an edited body. Its line endings are LF, whichever the source used, so
-    /// a block with a CR in the source is a value rather than the source range until it is edited.
-    /// A parsed block without a CR is always the source range, so a value for it is an edit, even
-    /// in a document rebuilt from another's events, which does not keep the record of edits.
-    fn whole_frontmatter(&self, id: NodeId) -> bool {
-        let Some(Node {
-            kind: EventKind::Opaque { value, .. },
-            span,
-            ..
-        }) = self.node(id)
-        else {
-            return false;
-        };
-        match value {
-            Text::Source(range) => range == span,
-            Text::Value(value) => {
-                !self.edited.contains(&id)
-                    && self.source().get(span.clone()).is_some_and(|raw| {
-                        raw.contains('\r') && crate::util::line_ending::normalizes_to(raw, value)
-                    })
-            }
-            Text::Literal(_) => false,
-        }
-    }
     /// Render the whole document through the shared event HTML writer.
     ///
     /// # Errors
@@ -787,14 +791,17 @@ impl<S: AsRef<str>> Document<S> {
             return self.render_html(options, output);
         }
         let start = Event {
-            kind: EventKind::Start(Tag::Document(None)),
+            kind: EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            }),
             span: 0..0,
         };
         let end = Event {
             kind: EventKind::End(TagKind::Document),
             span: self.source().len()..self.source().len(),
         };
-        crate::render_events(
+        crate::event_html_renderer::render_fragment(
             self.source(),
             core::iter::once(Ok(start))
                 .chain(self.subtree_events(id))
@@ -841,7 +848,14 @@ impl<S: AsRef<str>> Document<S> {
             .filter(|child| ends_item(&self.nodes[child.index()].kind))
             .last();
         let block_end = last.is_some_and(|last| !self.tight_paragraph(last));
-        self.nodes[id.index()].kind = EventKind::Start(Tag::Item { block_end });
+        set_block_end(&mut self.nodes[id.index()].kind, block_end);
+    }
+    fn refresh_paragraph(&mut self, id: NodeId) {
+        let tight = self.tight_paragraph(id);
+        if let EventKind::Start(Tag::Paragraph { tight: value }) = &mut self.nodes[id.index()].kind
+        {
+            *value = tight;
+        }
     }
     // The last child of `parent`, if the last node appended shows it: when appending in document order, `parent` is that node or one of its ancestors, and the nodes passed on the way up hold complete subtrees, which are not passed again.
     #[allow(clippy::option_option)]
@@ -870,7 +884,7 @@ impl<S: AsRef<str>> Document<S> {
         ) && ends_item(&self.nodes[child.index()].kind)
         {
             let block_end = !self.tight_paragraph(child);
-            self.nodes[parent.index()].kind = EventKind::Start(Tag::Item { block_end });
+            set_block_end(&mut self.nodes[parent.index()].kind, block_end);
         }
     }
     // Edits can change the context of existing paragraphs and item endings. Refresh those rendering hints without adding caches or links to every arena node.
@@ -878,33 +892,46 @@ impl<S: AsRef<str>> Document<S> {
         let mut current = Some(root);
         while let Some(id) = current {
             current = next_descendant(&self.nodes, root, id);
-            if matches!(
-                self.nodes[id.index()].kind,
-                EventKind::Start(Tag::Paragraph { .. })
-            ) {
-                self.nodes[id.index()].kind = EventKind::Start(Tag::Paragraph {
-                    tight: self.tight_paragraph(id),
-                });
-            }
+            self.refresh_paragraph(id);
             self.refresh_item(Some(id));
         }
     }
-    fn check_capture(&self, mut parent: Option<NodeId>, kind: TagKind) -> Result<(), StreamError> {
-        while let Some(id) = parent {
-            let node = &self.nodes[id.index()];
-            if matches!(&node.kind,EventKind::Start(tag) if !tag.kind().allows_descendant(kind)) {
-                return Err(StreamError::Unbalanced);
-            }
-            parent = node.parent;
+    // Check `kind` against the one content model as a child of `parent`, whose first child other
+    // than the node being placed is `first`, and against the rule that no link holds a footnote
+    // reference. See `TagKind::holds`.
+    fn check_nesting(
+        &self,
+        parent: NodeId,
+        first: Option<NodeId>,
+        kind: &EventKind<'_>,
+    ) -> Result<(), StreamError> {
+        let EventKind::Start(tag) = &self.nodes[parent.index()].kind else {
+            unreachable!("callers check that the parent is a container");
+        };
+        if !kind.nests_in(tag, first.map(|first| &self.nodes[first.index()].kind)) {
+            return Err(StreamError::InvalidNesting);
         }
         Ok(())
     }
+    // Whether `id` is a link or inside one. Links hold only phrasing, so the search stops at the
+    // first ancestor that is not phrasing.
+    fn in_link(&self, id: NodeId) -> bool {
+        let link = |kind: &EventKind<'_>| matches!(kind, EventKind::Start(Tag::Link { .. }));
+        core::iter::successors(Some(id), |id| self.nodes[id.index()].parent)
+            .map(|id| &self.nodes[id.index()].kind)
+            .find(|kind| link(kind) || kind.class() != crate::stream::Class::Phrasing)
+            .is_some_and(link)
+    }
     /// Append a new semantic node. Its source provenance is empty; values may still reference the source buffer.
     ///
-    /// Appending in document order, each node after the subtree before it is complete, takes amortized constant time per node. Appending to another parent scans its children.
+    /// Appending in document order, each node after the subtree before it is complete, takes amortized constant time per node, except that a footnote reference also walks up through the phrasing that holds it, to check that no link encloses it. Appending to another parent scans its children.
     ///
     /// # Errors
-    /// Rejects invalid parents, document/end kinds, source ranges, or forbidden nested capture containers.
+    /// Rejects an invalid or leaf parent and end events with [`StreamError::Unbalanced`],
+    /// invalid source ranges with [`StreamError::InvalidRange`], invalid values with
+    /// [`StreamError::InvalidValue`], and a node that the parent cannot hold, such as a document
+    /// root, a block in a paragraph, an item outside a list, phrasing in a root that holds blocks
+    /// or a footnote reference inside a link, with [`StreamError::InvalidNesting`].
     pub fn append_child(
         &mut self,
         parent: NodeId,
@@ -914,15 +941,13 @@ impl<S: AsRef<str>> Document<S> {
         if !matches!(
             self.node(parent).map(|node| &node.kind),
             Some(EventKind::Start(_))
-        ) {
+        ) || matches!(kind, EventKind::End(_))
+        {
             return Err(StreamError::Unbalanced);
         }
-        match &kind {
-            EventKind::End(_) | EventKind::Start(Tag::Document(_)) => {
-                return Err(StreamError::Unbalanced)
-            }
-            EventKind::Start(tag) => self.check_capture(Some(parent), tag.kind())?,
-            _ => {}
+        self.check_nesting(parent, self.nodes[parent.index()].first_child, &kind)?;
+        if matches!(kind, EventKind::FootnoteReference(_)) && self.in_link(parent) {
+            return Err(StreamError::InvalidNesting);
         }
         let previous = match self.appended_last_child(parent) {
             Some(previous) => previous,
@@ -1002,7 +1027,11 @@ impl<S: AsRef<str>> Document<S> {
     /// Move an existing subtree into a container, optionally before one of its children. No node or text allocation is required.
     ///
     /// # Errors
-    /// Rejects cycles, invalid IDs/positions, root moves, and forbidden capture nesting before modifying the tree.
+    /// Rejects cycles, a leaf parent and root moves with [`StreamError::Unbalanced`], invalid IDs
+    /// and positions with [`StreamError::InvalidRange`], and a subtree that the parent cannot
+    /// hold, as for [`Document::append_child`], or that holds a footnote reference when the parent
+    /// is in a link, with [`StreamError::InvalidNesting`], before modifying the tree. Moving a
+    /// subtree out of its parent always leaves that parent valid, if not normalized.
     pub fn attach(
         &mut self,
         parent: NodeId,
@@ -1031,10 +1060,20 @@ impl<S: AsRef<str>> Document<S> {
             }
             ancestor = self.nodes[current.index()].parent;
         }
-        for child in self.descendants(id) {
-            if let EventKind::Start(tag) = &self.nodes[child.index()].kind {
-                self.check_capture(Some(parent), tag.kind())?;
-            }
+        let first = match self.nodes[parent.index()].first_child {
+            Some(first) if first == id => self.nodes[id.index()].next_sibling,
+            first => first,
+        };
+        self.check_nesting(parent, first, &self.nodes[id.index()].kind)?;
+        if self.in_link(parent)
+            && self.descendants(id).any(|child| {
+                matches!(
+                    self.nodes[child.index()].kind,
+                    EventKind::FootnoteReference(_)
+                )
+            })
+        {
+            return Err(StreamError::InvalidNesting);
         }
         if before == Some(id) {
             return Ok(());
@@ -1076,7 +1115,10 @@ impl<S: AsRef<str>> Document<S> {
     /// `heading_index` counts direct children, including separator nodes. With `remove_subsections`, the section extends through headings deeper than the selected heading. Detached original nodes retain their IDs and can still be inspected or reattached.
     ///
     /// # Errors
-    /// Rejects invalid parent IDs. Returns `false` when the selected child is not a heading.
+    /// Rejects invalid parent IDs with [`StreamError::InvalidRange`], and an inline replacement
+    /// document, whose root holds phrasing, with [`StreamError::InvalidNesting`], before modifying
+    /// the tree. Returns `false` when the selected child is not a heading. Frontmatter is not
+    /// copied.
     pub fn replace_heading_section<T: AsRef<str>>(
         &mut self,
         parent: NodeId,
@@ -1094,6 +1136,17 @@ impl<S: AsRef<str>> Document<S> {
         let EventKind::Start(Tag::Heading(level)) = self.nodes[heading.index()].kind else {
             return Ok(false);
         };
+        // A parent that holds a heading holds blocks and separators, so only an inline
+        // replacement cannot be copied into it.
+        if replacement
+            .children(replacement.root())
+            .next()
+            .is_some_and(|first| {
+                replacement.nodes[first.index()].kind.class() == crate::stream::Class::Phrasing
+            })
+        {
+            return Err(StreamError::InvalidNesting);
+        }
         let first = if replace_heading {
             Some(heading)
         } else {
@@ -1107,7 +1160,7 @@ impl<S: AsRef<str>> Document<S> {
             }
             end = self.nodes[id.index()].next_sibling;
         }
-        // Selecting an existing heading proves this parent and all its ancestors accept heading/footnote captures. Every copied subtree is already validated in its source document.
+        // Every copied subtree is already validated in its source document.
         if !replace_heading {
             previous = Some(heading);
         }
@@ -1156,13 +1209,8 @@ impl<S: AsRef<str>> Document<S> {
                     .index()]
                 .parent;
             }
-            let body = source.frontmatter_value(original);
-            let kind = borrow_kind(&node.kind).map_text(|value| {
-                body.map_or_else(
-                    || value.materialized(source.source()),
-                    |body| Text::from(String::from(body)),
-                )
-            });
+            let kind =
+                borrow_kind(&node.kind).map_text(|value| value.materialized(source.source()));
             let next = if original == root { before } else { None };
             let id = self.insert_child(parent, kind, previous, next);
             if let Some(syntax) = source
@@ -1192,9 +1240,25 @@ fn ends_item(kind: &EventKind<'_>) -> bool {
         kind,
         EventKind::Separator { .. }
             | EventKind::Definition { .. }
-            | EventKind::Opaque { .. }
             | EventKind::Start(Tag::FootnoteDefinition(_))
     )
+}
+
+// Whether `set_kind` can replace `old` with `new` without checking the node's children, its
+// siblings or its ancestors: a container keeps its kind, except that emphasis, strong and
+// strikethrough are interchangeable, and a leaf keeps its variant, with HTML staying a block or
+// inline.
+fn interchangeable(old: &EventKind<'_>, new: &EventKind<'_>) -> bool {
+    let attention =
+        |kind: TagKind| matches!(kind, TagKind::Emphasis | TagKind::Strong | TagKind::Delete);
+    match (old, new) {
+        (EventKind::Start(old), EventKind::Start(new)) => {
+            let (old, new) = (old.kind(), new.kind());
+            old == new || attention(old) && attention(new)
+        }
+        (EventKind::Html { block: old, .. }, EventKind::Html { block: new, .. }) => old == new,
+        _ => core::mem::discriminant(old) == core::mem::discriminant(new),
+    }
 }
 
 /// Whether two nodes are emphasis, strong or strikethrough of the same kind, which form one run when adjacent.
@@ -1239,8 +1303,65 @@ fn unwritable_block(nodes: &[Node], node: &Node, source: &str) -> bool {
             core::iter::successors(node.first_child, |id| nodes[id.index()].next_sibling)
                 .all(|id| matches!(nodes[id.index()].kind, EventKind::Separator { .. }))
         }
+        EventKind::Start(Tag::Table) => {
+            table_rows(nodes, node).all(|row| nodes[row.index()].first_child.is_none())
+        }
         _ => false,
     }
+}
+
+// The rows of a table, through its heads and bodies, in order.
+fn table_rows<'a>(nodes: &'a [Node], table: &'a Node) -> impl Iterator<Item = NodeId> + 'a {
+    blocks(nodes, table.first_child)
+        .flat_map(move |group| blocks(nodes, nodes[group.index()].first_child))
+}
+
+// Whether a table has the shape the parser gives one, so that it is written as it is: a head of
+// one row, then at most one body of one row or more, with as many cells in each row, those in the
+// head marked as header cells and those in the body not, and each body cell aligned as the head
+// cell of its column.
+fn table_shaped(nodes: &[Node], table: &Node) -> bool {
+    let kind = |id: NodeId| &nodes[id.index()].kind;
+    let mut groups = blocks(nodes, table.first_child);
+    let (Some(head), body, None) = (groups.next(), groups.next(), groups.next()) else {
+        return false;
+    };
+    let mut rows = blocks(nodes, nodes[head.index()].first_child);
+    let (EventKind::Start(Tag::TableHead), Some(header), None) =
+        (kind(head), rows.next(), rows.next())
+    else {
+        return false;
+    };
+    let cells = |row: NodeId, header: bool| {
+        blocks(nodes, nodes[row.index()].first_child).map(move |cell| match kind(cell) {
+            EventKind::Start(Tag::TableCell {
+                alignment,
+                header: flag,
+            }) if *flag == header => Some(*alignment),
+            _ => None,
+        })
+    };
+    if cells(header, true).any(|cell| cell.is_none()) || cells(header, true).next().is_none() {
+        return false;
+    }
+    let Some(body) = body else {
+        return true;
+    };
+    matches!(kind(body), EventKind::Start(Tag::TableBody))
+        && blocks(nodes, nodes[body.index()].first_child)
+            .next()
+            .is_some()
+        && blocks(nodes, nodes[body.index()].first_child).all(|row| {
+            let mut columns = cells(header, true);
+            let mut row = cells(row, false);
+            loop {
+                match (columns.next(), row.next()) {
+                    (None, None) => return true,
+                    (Some(column), Some(Some(cell))) if column == Some(cell) => {}
+                    _ => return false,
+                }
+            }
+        })
 }
 
 // Whether a container holds phrasing, where separators, which are block-level, have no place.
@@ -1295,9 +1416,9 @@ fn reads_back_tight(nodes: &[Node], list: &Node) -> bool {
     let (Some(item), None) = (items.next(), items.next()) else {
         return false;
     };
-    let item = &nodes[item.index()];
-    matches!(item.kind, EventKind::Start(Tag::Item { .. }))
-        && blocks(nodes, item.first_child).nth(1).is_none()
+    blocks(nodes, nodes[item.index()].first_child)
+        .nth(1)
+        .is_none()
 }
 
 // The children from `first` on, without separators or the empty paragraphs normalizing removes.
@@ -1308,10 +1429,17 @@ fn blocks(nodes: &[Node], first: Option<NodeId>) -> impl Iterator<Item = NodeId>
     })
 }
 
-// Whether a node is an item that is empty once normalizing removes its empty paragraphs.
+// Set whether `item`, an item, ends in a block rather than a tight paragraph.
+fn set_block_end(item: &mut EventKind<'_>, value: bool) {
+    let EventKind::Start(Tag::Item { block_end, .. }) = item else {
+        unreachable!("only an item's ending is refreshed");
+    };
+    *block_end = value;
+}
+
+// Whether a child of a list, an item, is empty once normalizing removes its empty paragraphs.
 fn empty_item(nodes: &[Node], node: &Node) -> bool {
-    matches!(node.kind, EventKind::Start(Tag::Item { .. }))
-        && blocks(nodes, node.first_child).next().is_none()
+    blocks(nodes, node.first_child).next().is_none()
 }
 
 // Whether a node is an item of a tight list, whose blocks are written without a blank line between them.
@@ -1468,10 +1596,78 @@ fn block_phrasing(kind: &EventKind<'_>) -> bool {
     )
 }
 
-// The strikethrough, table cells and images that enclose a node.
+// Whether a link is written as an autolink, `<…>`, which is the only link the parser reads inside
+// another link's text: one stored in that form, without a title, whose only child is text that
+// reads back as an autolink to its destination, and in a table cell, without a `|`, as the
+// serializer writes it.
+fn autolink(
+    syntax: &BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
+    source: &str,
+    nodes: &[Node],
+    id: NodeId,
+    cell: bool,
+) -> bool {
+    let node = &nodes[id.index()];
+    let EventKind::Start(Tag::Link {
+        destination,
+        title: None,
+    }) = &node.kind
+    else {
+        return false;
+    };
+    let form = match syntax.get(&id) {
+        Some(stored) => stored.clone(),
+        None => crate::node_syntax::infer(source, node.span.clone(), &node.kind),
+    };
+    // Its text, joined as normalizing joins it.
+    let mut text = Cow::Borrowed("");
+    for child in core::iter::successors(node.first_child, |id| nodes[id.index()].next_sibling) {
+        let EventKind::Text(value) = &nodes[child.index()].kind else {
+            return false;
+        };
+        let value = value.resolve(source).expect("document text is validated");
+        if text.is_empty() {
+            text = Cow::Borrowed(value);
+        } else {
+            text.to_mut().push_str(value);
+        }
+    }
+    matches!(
+        form,
+        Some(NodeSyntax::Link {
+            form: crate::LinkForm::Angle
+        })
+    ) && angle_reads_back(
+        &text,
+        destination
+            .resolve(source)
+            .expect("document text is validated"),
+    ) && !(cell && text.contains('|'))
+}
+
+// Whether normalizing unwraps a node, given the nodes that enclose it: strikethrough inside other
+// strikethrough, and a link inside another link that is not written as an autolink.
+fn unwrapped(
+    syntax: &BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
+    source: &str,
+    nodes: &[Node],
+    id: NodeId,
+    enclosing: Enclosing,
+) -> bool {
+    match nodes[id.index()].kind {
+        EventKind::Start(Tag::Delete) => enclosing.deletes > 0,
+        EventKind::Start(Tag::Link { .. }) => {
+            enclosing.links > 0 && !autolink(syntax, source, nodes, id, enclosing.cells > 0)
+        }
+        _ => false,
+    }
+}
+
+// The strikethrough, links, table cells and images that enclose a node.
 #[derive(Clone, Copy, Default)]
 struct Enclosing {
     deletes: usize,
+    links: usize,
     cells: usize,
     images: usize,
 }
@@ -1480,12 +1676,14 @@ impl Enclosing {
     // Count a node as enclosing the nodes below it.
     fn enter(&mut self, kind: &EventKind<'_>) {
         self.deletes += usize::from(delete(kind));
+        self.links += usize::from(matches!(kind, EventKind::Start(Tag::Link { .. })));
         self.cells += usize::from(table_cell(kind));
         self.images += usize::from(image(kind));
     }
     // Stop counting a node once the nodes below it are passed.
     fn leave(&mut self, kind: &EventKind<'_>) {
         self.deletes -= usize::from(delete(kind));
+        self.links -= usize::from(matches!(kind, EventKind::Start(Tag::Link { .. })));
         self.cells -= usize::from(table_cell(kind));
         self.images -= usize::from(image(kind));
     }
@@ -1573,8 +1771,8 @@ fn trailing_edge(kind: &EventKind<'_>, source: &str) -> Edge {
     }
 }
 
-// Whether a child after a task marker is a break, or the one space that separates the marker from its text, given whether `separator` has been met already, which it updates. A marker followed only by these cannot be written, as nothing would follow the space written after it, and the parser keeps that space in the text after the marker.
-fn unwritten_after_marker(kind: &EventKind<'_>, source: &str, separator: &mut bool) -> bool {
+// Whether a child of a task item's paragraph is a break, or the one space that separates the checkbox from its text, given whether `separator` has been met already, which it updates. A checkbox followed only by these cannot be written, as nothing would follow the space written after it, and the parser keeps that space in the text after the checkbox.
+fn unwritten_after_checkbox(kind: &EventKind<'_>, source: &str, separator: &mut bool) -> bool {
     match kind {
         EventKind::SoftBreak(_) | EventKind::HardBreak => true,
         EventKind::Text(text)
@@ -1591,23 +1789,19 @@ fn unwritten_after_marker(kind: &EventKind<'_>, source: &str, separator: &mut bo
     }
 }
 
-// Whether the first and last children of `node` have no whitespace that normalization moves out of attached attention, and no break or task marker that it removes from the edges of a paragraph, heading or table cell. `unwritten_after_first` is whether every child after the first is a break or the one separating space, so that a task marker first is removed.
+// Whether the first and last children of `node` have no whitespace that normalization moves out of attached attention, and no break that it removes from the edges of a paragraph, heading or table cell. A soft break that starts the paragraph of a task item, after its checkbox, stays, as the parser reads it there; `task` is whether `node` is one.
 fn edges_normalized(
     node: &Node,
     first: &EventKind<'_>,
     last: &EventKind<'_>,
-    unwritten_after_first: bool,
+    task: bool,
     source: &str,
 ) -> bool {
     if attention(&node.kind) && node.parent.is_some() {
         leading_edge(first, source) == Edge::None && trailing_edge(last, source) == Edge::None
     } else if block_phrasing(&node.kind) {
-        let first_kept = match first {
-            EventKind::SoftBreak(_) => false,
-            EventKind::TaskMarker(_) => !unwritten_after_first,
-            _ => true,
-        };
-        first_kept && !matches!(last, EventKind::SoftBreak(_) | EventKind::HardBreak)
+        (task || !matches!(first, EventKind::SoftBreak(_)))
+            && !matches!(last, EventKind::SoftBreak(_) | EventKind::HardBreak)
     } else {
         true
     }
@@ -1681,11 +1875,26 @@ fn unwritten_block_value(value: &str, last: bool) -> bool {
         || !(last || value.is_empty() || value.ends_with('\n'))
 }
 
+// Write each CRLF and lone CR in the frontmatter of the root `kind` as LF, and add a final line ending to a body that is not empty and has none, as the parser stores each line of a body with its line ending.
+fn write_frontmatter_value(kind: &mut EventKind<'static>, source: &str) {
+    if let EventKind::Start(Tag::Document {
+        frontmatter: Some(value),
+        ..
+    }) = kind
+    {
+        write_lines(value, source, false);
+    }
+}
+
 // Write each CRLF and lone CR in the value of a code block as LF, and add a final line ending to a value without one unless the block is the last node of the document, as the parser reads the block back.
 fn write_block_value(kind: &mut EventKind<'static>, source: &str, last: bool) {
-    let EventKind::CodeBlock { value, .. } = kind else {
-        return;
-    };
+    if let EventKind::CodeBlock { value, .. } = kind {
+        write_lines(value, source, last);
+    }
+}
+
+// Write each CRLF and lone CR in `value` as LF, and add a final line ending to a value that is not empty and has none, unless `last`.
+fn write_lines(value: &mut Text<'static>, source: &str, last: bool) {
     let resolved = value.resolve(source).expect("document text is validated");
     if !unwritten_block_value(resolved, last) {
         return;
@@ -1896,23 +2105,82 @@ fn resume(
     (linked, current)
 }
 
-// Remove the soft breaks at either edge of the phrasing of `parent`, a paragraph, heading or table cell, and the hard breaks at its end, which the parser does not read there. A task marker that starts the phrasing with nothing after it but breaks and one text of the space or tab that separates it from its text is removed first, as nothing would be written after the separator, and the soft breaks it leaves at the start are removed too. Returns whether anything changed.
-fn trim_breaks(nodes: &mut [Node], parent: NodeId, source: &str) -> bool {
-    let mut changed = false;
-    while let Some(first) = nodes[parent.index()].first_child {
-        let kind = &nodes[first.index()].kind;
-        let removed = match kind {
+// Whether the phrasing of the task paragraph `paragraph` is only breaks and one text of the space or tab that separates the checkbox from its text, so that nothing would be written after the separator.
+fn unwritten_task(nodes: &[Node], paragraph: NodeId, source: &str) -> bool {
+    let mut separator = false;
+    core::iter::successors(nodes[paragraph.index()].first_child, |&id| {
+        nodes[id.index()].next_sibling
+    })
+    .all(|id| unwritten_after_checkbox(&nodes[id.index()].kind, source, &mut separator))
+}
+
+// Whether the task paragraph `paragraph` starts with what separates the checkbox from its text: a soft break, or text that starts with a space or tab, which the serializer writes after the checkbox.
+fn separated_task(nodes: &[Node], paragraph: NodeId, source: &str) -> bool {
+    nodes[paragraph.index()]
+        .first_child
+        .is_some_and(|first| match &nodes[first.index()].kind {
             EventKind::SoftBreak(_) => true,
-            EventKind::TaskMarker(_) => {
-                let mut separator = false;
-                core::iter::successors(nodes[first.index()].next_sibling, |&id| {
-                    nodes[id.index()].next_sibling
-                })
-                .all(|id| unwritten_after_marker(&nodes[id.index()].kind, source, &mut separator))
-            }
+            EventKind::Text(text) => text
+                .resolve(source)
+                .expect("document text is validated")
+                .starts_with([' ', '\t']),
             _ => false,
-        };
-        if !removed {
+        })
+}
+
+// The paragraph that the checkbox of the task item `item` is written before: its first child other than definitions and separators, if that is a paragraph, or `None` when `item` is not a task item.
+fn task_paragraph(nodes: &[Node], item: NodeId) -> Option<NodeId> {
+    if !matches!(
+        nodes[item.index()].kind,
+        EventKind::Start(Tag::Item {
+            checked: Some(_),
+            ..
+        })
+    ) {
+        return None;
+    }
+    core::iter::successors(nodes[item.index()].first_child, |&id| {
+        nodes[id.index()].next_sibling
+    })
+    .find(|&id| {
+        !matches!(
+            nodes[id.index()].kind,
+            EventKind::Definition { .. } | EventKind::Separator { .. }
+        )
+    })
+    .filter(|&id| {
+        matches!(
+            nodes[id.index()].kind,
+            EventKind::Start(Tag::Paragraph { .. })
+        )
+    })
+}
+
+// Make `item` an ordinary item rather than a task item.
+fn clear_task(nodes: &mut [Node], item: NodeId) {
+    let EventKind::Start(Tag::Item { checked, .. }) = &mut nodes[item.index()].kind else {
+        unreachable!("only task items are cleared");
+    };
+    *checked = None;
+}
+
+// Remove the soft breaks at either edge of the phrasing of `parent`, a paragraph, heading or table cell, and the hard breaks at its end, which the parser does not read there. `task` is whether `parent` is a task item's paragraph, whose checkbox is written before it: a soft break at its start stays, as the parser reads one there, unless nothing would be written after the checkbox, as the phrasing is only breaks and one text of the space or tab that separates the checkbox from its text, in which case the item stops being a task item first. Returns whether anything changed.
+fn trim_breaks(nodes: &mut [Node], parent: NodeId, source: &str, task: bool) -> bool {
+    let mut changed = false;
+    let mut leading = true;
+    if task {
+        if unwritten_task(nodes, parent, source) {
+            let item = nodes[parent.index()]
+                .parent
+                .expect("a task paragraph is in its item");
+            clear_task(nodes, item);
+            changed = true;
+        } else {
+            leading = false;
+        }
+    }
+    while let Some(first) = nodes[parent.index()].first_child.filter(|_| leading) {
+        if !matches!(nodes[first.index()].kind, EventKind::SoftBreak(_)) {
             break;
         }
         nodes[parent.index()].first_child = nodes[first.index()].next_sibling.take();
@@ -1945,27 +2213,31 @@ fn trim_breaks(nodes: &mut [Node], parent: NodeId, source: &str) -> bool {
 impl<S: AsRef<str>> Document<S> {
     /// Normalize every child list in place, so that the tree is one the Markdown serializer can write correctly and stably, in time linear in the size of the arena.
     ///
-    /// Empty text is removed, and so is emphasis, strong or strikethrough that has no children once its own children are normalized, such as emphasis of empty text or strong that holds only empty emphasis. Strikethrough inside other strikethrough, at any depth, is unwrapped: its children take its place, since strikethrough cannot be written inside strikethrough and renders the same once. Adjacent text is joined into the first text, adjacent inline code is joined into the first code when the second has no language of its own, as adjacent code spans cannot be written apart. Adjacent emphasis, strong or strikethrough of the same kind is merged by moving the children of the second to the end of the first.
+    /// Empty text is removed, and so is emphasis, strong or strikethrough that has no children once its own children are normalized, such as emphasis of empty text or strong that holds only empty emphasis. Strikethrough inside other strikethrough, at any depth, is unwrapped: its children take its place, since strikethrough cannot be written inside strikethrough and renders the same once. A link inside another link's text, at any depth, is unwrapped the same way, first of all, so its text stays and is normalized with what is around it, and one without children is removed, as the parser reads no link in a link's text other than an autolink: only a link stored as an autolink, `<…>`, without a title, whose children are text that reads back as an autolink to its destination, and in a table cell holds no `|`, stays. The serializer's `resource_link` option, which writes every link as a resource, is not known here, so such a link stays even when that option would write it as a resource that does not read back. A table is given the shape the parser gives one, so that it is written as it is: its rows, in order through its heads and bodies, become a head of the first row and a body of the others, if any, each row is given empty cells up to as many as the widest row has, each cell is marked as a header cell in the head and not in the body, and aligned as the head cell of its column, an empty head cell added being unaligned, and its separators are replaced with those the parser gives a table. A table without a cell cannot be written, so it is removed with one separator beside it. Adjacent text is joined into the first text, adjacent inline code is joined into the first code when the second has no language of its own, as adjacent code spans cannot be written apart. Adjacent emphasis, strong or strikethrough of the same kind is merged by moving the children of the second to the end of the first.
     ///
     /// Markdown cannot write whitespace at the edges of emphasis, strong or strikethrough, so it moves out: Unicode whitespace in text and soft breaks at either edge, and hard breaks at the end, move out through any attention nested at that edge to just before or after the outermost attention whose edge they are. Attention left empty is removed, and what moved out takes its place. A hard break at the start of attention stays, and links and images keep whitespace at their edges. The parser reads no break at the edges of a paragraph, heading or table cell, so soft breaks at either edge of its phrasing are removed, and so are hard breaks at the end of a paragraph or heading, including those that moved out of attention; a hard break at the start stays. Markdown cannot write a hard break in a table cell, so one there, at any depth and at its end too, becomes a space, which the serializer encodes where it is at the edge of the cell, so `| a&#x20; |` is written for a cell of `a` and a hard break.
     ///
-    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code or attention on either side is joined or merged too. Separators are block-level: one inside a paragraph, heading, table cell, emphasis, strong, strikethrough, link or image is removed, as the Markdown serializer writes nothing for it, and one between blocks stays where it is and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. Inline HTML without a value writes nothing, so it is removed, before anything above, and what was on either side meets: text joins, attention merges, and attention or a paragraph it leaves empty is removed, so a link reference after it starts its paragraph and is escaped as such, `[r]\: /u` rather than `[r]: /u`, which reads back as a definition. Inline HTML of whitespace alone stays, as it can be written between text. An HTML block whose value is empty or holds only spaces, tabs and line endings is written as blank lines, as no HTML block starts with whitespace alone, and a list without items, not counting separators, is written as nothing, or as a lone `-` where it is the only block of an item, so each is removed with one separator beside it, like an empty paragraph, and also before anything above, so the rules below see the items they leave empty: an item of `p` and a list whose only item holds a list without items is written `- p`, where `- p\n  -` read back as a heading. The parser produces none of these. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. An empty item cannot interrupt a paragraph, and a `-` alone under one is a setext underline, so in an item of a tight list, where no blank line can come between them, a list directly after a paragraph, not counting separators, cannot start with an empty item, one with no blocks once its empty paragraphs are removed: such a list's leading empty items are removed, as each next one becomes the first, so items of `p` and a list of an empty item and `a` are written `- p\n  - a`, where `- p\n  -` read back as a heading. Later empty items stay. A list left with no item is removed with one separator beside it, the one after it if there is one, and a list after it then follows the paragraph in turn. Only an ordered list that starts at 1 can interrupt a paragraph, so in an item of a tight list, an ordered list directly after a paragraph, not counting separators, that starts at another number, including one whose leading empty items were removed, is made to start at 1: `- p\n  3. a` reads back as text, so it is written `- p\n  1. a`. Its items and text stay; only its numbering changes. In an item of a tight list, two paragraphs in a row, not counting separators, cannot be written either, as the blank line between them would make the list loose, so once the rules above have run, each run of them is joined into its first paragraph, with a soft break between each, and the separators between them are removed: a tight list has no `<p>`, so this renders almost the same, and items of `a` and `b` are written `- a\n  b`. Some blocks in a row in an item of a tight list can be written apart only with a blank line between them, which makes the list loose, and the serializer decides which with the same rule: two block quotes, which would otherwise read back as one; a link reference definition or a heading that only a setext heading can write, as it holds a soft or hard break, after a paragraph, which neither can interrupt; and a paragraph, table, link reference definition or such a heading after a list or footnote definition that ends in a paragraph or link reference definition, through the last blocks of any containers in it, which would otherwise continue it lazily, or after a block quote whose last block is such a list or definition, where the line of `>` that would end the quote's paragraph is a blank line in that list or definition. Such a list is made loose, with the paragraphs of all its items, and its paragraphs in a row are then left apart. Any other heading there is written as an ATX heading, which interrupts a paragraph and ends the containers around it, with a line ending in its text written as `&#xA;`, so it leaves the list tight, as a parsed heading there always does; the serializer's options are not known here, so a heading with a soft break makes the list loose even when unwrapping would write it as a space. A block after a list that does not end in a paragraph or definition, such as one whose last item is empty or a heading, is written on the next line, a table after a paragraph interrupts it, and a block after a block quote that ends in a paragraph in any other way is written after a line of `>`, so these stay in a tight list. The parser keeps the space or tab that separates a task marker from its text at the start of that text, and Markdown cannot write a marker with nothing after its separator, so when the phrasing of a paragraph, heading or table cell starts with a task marker followed only by breaks and at most one text that is a single space or tab, the marker is removed, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a marker alone, or of a marker and a hard break, is left empty, and removed if it starts a list after a paragraph as above, and one of a marker and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the marker keeps it, including whitespace after the separator, which the serializer encodes, so a marker and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. The parser reads each line ending in inline code as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. Code in image text is written as alt text, where line endings can be written, so it keeps its own. The parser stores each line ending in a code block as LF, and the last line of a closed fence with its line ending, so in the value of such a block each CRLF and lone CR becomes LF, and a value that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty value stays, as `` ```\n``` `` reads back as one. The last node of the document, attached, keeps a value without a final line ending, as the parser stores one for an unclosed fence or indented code that ends the source without a line ending, such as `` ```\na ``, so normalizing a parsed document leaves it as it is. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
+    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code or attention on either side is joined or merged too. A separator sits between blocks, where it stays and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. Inline HTML without a value writes nothing, so it is removed, before anything above, and what was on either side meets: text joins, attention merges, and attention or a paragraph it leaves empty is removed, so a link reference after it starts its paragraph and is escaped as such, `[r]\: /u` rather than `[r]: /u`, which reads back as a definition. Inline HTML of whitespace alone stays, as it can be written between text. An HTML block whose value is empty or holds only spaces, tabs and line endings is written as blank lines, as no HTML block starts with whitespace alone, and a list without items, not counting separators, is written as nothing, or as a lone `-` where it is the only block of an item, so each is removed with one separator beside it, like an empty paragraph, and also before anything above, so the rules below see the items they leave empty: an item of `p` and a list whose only item holds a list without items is written `- p`, where `- p\n  -` read back as a heading. The parser produces none of these. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. An empty item cannot interrupt a paragraph, and a `-` alone under one is a setext underline, so in an item of a tight list, where no blank line can come between them, a list directly after a paragraph, not counting separators, cannot start with an empty item, one with no blocks once its empty paragraphs are removed: such a list's leading empty items are removed, as each next one becomes the first, so items of `p` and a list of an empty item and `a` are written `- p\n  - a`, where `- p\n  -` read back as a heading. Later empty items stay. A list left with no item is removed with one separator beside it, the one after it if there is one, and a list after it then follows the paragraph in turn. Only an ordered list that starts at 1 can interrupt a paragraph, so in an item of a tight list, an ordered list directly after a paragraph, not counting separators, that starts at another number, including one whose leading empty items were removed, is made to start at 1: `- p\n  3. a` reads back as text, so it is written `- p\n  1. a`. Its items and text stay; only its numbering changes. In an item of a tight list, two paragraphs in a row, not counting separators, cannot be written either, as the blank line between them would make the list loose, so once the rules above have run, each run of them is joined into its first paragraph, with a soft break between each, and the separators between them are removed: a tight list has no `<p>`, so this renders almost the same, and items of `a` and `b` are written `- a\n  b`. Some blocks in a row in an item of a tight list can be written apart only with a blank line between them, which makes the list loose, and the serializer decides which with the same rule: two block quotes, which would otherwise read back as one; a link reference definition or a heading that only a setext heading can write, as it holds a soft or hard break, after a paragraph, which neither can interrupt; and a paragraph, table, link reference definition or such a heading after a list or footnote definition that ends in a paragraph or link reference definition, through the last blocks of any containers in it, which would otherwise continue it lazily, or after a block quote whose last block is such a list or definition, where the line of `>` that would end the quote's paragraph is a blank line in that list or definition. Such a list is made loose, with the paragraphs of all its items, and its paragraphs in a row are then left apart. Any other heading there is written as an ATX heading, which interrupts a paragraph and ends the containers around it, with a line ending in its text written as `&#xA;`, so it leaves the list tight, as a parsed heading there always does; the serializer's options are not known here, so a heading with a soft break makes the list loose even when unwrapping would write it as a space. A block after a list that does not end in a paragraph or definition, such as one whose last item is empty or a heading, is written on the next line, a table after a paragraph interrupts it, and a block after a block quote that ends in a paragraph in any other way is written after a line of `>`, so these stay in a tight list. A task item's checkbox is written before its first block other than definitions and separators, and the parser keeps the space or tab that separates the checkbox from its text at the start of that text. Markdown cannot write a checkbox with nothing after its separator, so when that paragraph is only breaks and at most one text that is a single space or tab, the item stops being a task item, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a checkbox alone, or of a checkbox and a hard break, is left empty, and removed if it starts a list after a paragraph as above, and one of a checkbox and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the checkbox keeps it, including whitespace after the separator, which the serializer encodes, so a checkbox and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. Once the rules above have run, a task item whose first block other than definitions and separators is not a paragraph, or whose paragraph would write nothing after the checkbox, stops being a task item, and the paragraph of any other gets a space at its start when it does not start with a space, a tab or a soft break, as the serializer writes the checkbox's separator there and the parser reads it back as text. The parser reads each line ending in inline code as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. Code in image text is written as alt text, where line endings can be written, so it keeps its own. The parser stores each line ending in a code block as LF, and the last line of a closed fence with its line ending, so in the value of such a block each CRLF and lone CR becomes LF, and a value that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty value stays, as `` ```\n``` `` reads back as one. The last node of the document, attached, keeps a value without a final line ending, as the parser stores one for an unclosed fence or indented code that ends the source without a line ending, such as `` ```\na ``, so normalizing a parsed document leaves it as it is. The parser stores each line of frontmatter with its line ending, as LF, too, so in the root's frontmatter each CRLF and lone CR becomes LF, and a body that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty body stays, as `---\n---` reads back as one. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
     ///
     /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, adjacent attention of the same kind, such as `*a*_b_`, stays separate, and strikethrough inside strikethrough, such as `~a~~b~~c~`, stays nested. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
     ///
-    /// The IDs of removed text, HTML, breaks, task markers, attention, paragraphs, items, lists and separators, joined text, code and paragraphs, merged attention and unwrapped strikethrough no longer refer to nodes in the tree. Their arena slots remain, detached, but their contents are unspecified. Whitespace split off the edge of a text node is a new node with an empty span, and the text node keeps its ID and span with the rest of its value. The soft break between joined paragraphs is a new node with an empty span too, and the first paragraph keeps its ID. Whitespace and breaks that move whole, and a hard break that becomes a space, keep their IDs, code whose line endings become spaces keeps its ID and span, and so does a code block whose value is rewritten. Other IDs stay valid.
+    /// The IDs of removed text, HTML, breaks, attention, links, paragraphs, items, lists, tables, table heads and bodies, and separators, joined text, code and paragraphs, merged attention and unwrapped strikethrough and links no longer refer to nodes in the tree. Their arena slots remain, detached, but their contents are unspecified. Whitespace split off the edge of a text node is a new node with an empty span, and the text node keeps its ID and span with the rest of its value. The soft break between joined paragraphs is a new node with an empty span too, and the first paragraph keeps its ID, and so are the cells, heads, bodies and separators added to a table, and the space added before a task item's text. A table's rows and cells keep their IDs. Whitespace and breaks that move whole, and a hard break that becomes a space, keep their IDs, code whose line endings become spaces keeps its ID and span, and so does a code block whose value is rewritten. Other IDs stay valid.
     pub fn normalize(&mut self) {
         let mut scratch = Trailing::default();
         let mut blocks = Vec::new();
         for index in 0..self.nodes.len() {
             if self.nodes[index].parent.is_none() {
+                self.unwrap_links(NodeId::new(index));
                 self.remove_subtree(NodeId::new(index), &mut blocks);
                 self.normalize_subtree(NodeId::new(index), &mut scratch);
                 self.remove_empty_paragraphs(NodeId::new(index), &mut blocks);
                 self.join_tight_items(NodeId::new(index));
+                self.settle_tasks(NodeId::new(index));
             }
         }
         self.space_line_endings();
+        let source = self.source.as_ref();
+        write_frontmatter_value(&mut self.nodes[0].kind, source);
     }
 
     // Replace each line ending in inline code outside image text with a space, and give code block values the line endings the parser stores, in every subtree, attached or detached, once its child lists are normalized.
@@ -1990,19 +2262,41 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent attention of the same kind, a separator or HTML without a value in phrasing, or, outside phrasing, an HTML block that is empty or holds only spaces, tabs and line endings, or a list without items, not counting separators; no strikethrough is inside other strikethrough; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, ends with a hard break, or starts with a task marker followed only by breaks and at most one text that is a single space or tab; no inline code outside image text has a line ending in its value; no code block has a carriage return in its value, or a value that is not empty and has no final line ending unless it is the last node of the document; no attached paragraph is empty; no loose list has only one item with fewer than two blocks; no item of a tight list holds a list that starts with an empty item, or an ordered list that starts at a number other than 1, directly after a paragraph; and no item of a tight list holds two blocks in a row, not counting separators, that can be written apart only with a blank line between them, as [`Document::normalize`] lists, or two paragraphs in a row. This takes time linear in the size of the arena.
+    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent attention of the same kind, HTML without a value in phrasing, or, outside phrasing, an HTML block that is empty or holds only spaces, tabs and line endings, a list without items, not counting separators, or a table without a cell; no strikethrough is inside other strikethrough; no link is inside another link's text unless it is written as an autolink; no table with a cell has another shape than the one the parser gives a table; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, or ends with a hard break; no task item's checkbox is written before anything but a paragraph that starts with its separator and writes something after it; no inline code outside image text has a line ending in its value; neither the root's frontmatter nor any code block has a carriage return in its value, the frontmatter has no value that is not empty and has no final line ending, nor has any code block unless it is the last node of the document; no attached paragraph is empty; no loose list has only one item with fewer than two blocks; no item of a tight list holds a list that starts with an empty item, or an ordered list that starts at a number other than 1, directly after a paragraph; and no item of a tight list holds two blocks in a row, not counting separators, that can be written apart only with a blank line between them, as [`Document::normalize`] lists, or two paragraphs in a row. This takes time linear in the size of the arena.
     pub fn is_normalized(&self) -> bool {
         let source = self.source.as_ref();
         let nodes = &self.nodes;
+        if self
+            .frontmatter()
+            .is_some_and(|value| unwritten_block_value(value, false))
+        {
+            return false;
+        }
         (0..nodes.len())
             .filter(|&index| nodes[index].parent.is_none())
             .all(|index| {
                 let root = NodeId::new(index);
                 let mut enclosing = Enclosing::default();
                 let mut current = Some(root);
+                // The paragraph of the task item last met, as in `normalize_subtree`.
+                let mut task = None;
                 while let Some(id) = current {
                     let node = &nodes[id.index()];
-                    if (enclosing.deletes > 0 && delete(&node.kind))
+                    if let EventKind::Start(Tag::Item {
+                        checked: Some(_), ..
+                    }) = node.kind
+                    {
+                        match task_paragraph(nodes, id) {
+                            Some(paragraph)
+                                if !unwritten_task(nodes, paragraph, source)
+                                    && separated_task(nodes, paragraph, source) =>
+                            {
+                                task = Some(paragraph);
+                            }
+                            _ => return false,
+                        }
+                    }
+                    if unwrapped(&self.syntax, source, nodes, id, enclosing)
                         || (enclosing.cells > 0 && matches!(node.kind, EventKind::HardBreak))
                         || (enclosing.images == 0 && line_ending_in_code(&node.kind, source))
                     {
@@ -2020,8 +2314,6 @@ impl<S: AsRef<str>> Document<S> {
                     let phrasing = phrasing_container(&node.kind);
                     let mut kept: Option<&EventKind<'_>> = None;
                     let mut last = None;
-                    let mut unwritten_after_first = true;
-                    let mut separator = false;
                     let mut child = node.first_child;
                     while let Some(id) = child {
                         let node = &nodes[id.index()];
@@ -2035,12 +2327,13 @@ impl<S: AsRef<str>> Document<S> {
                         if !matches!(node.kind, EventKind::Separator { .. }) {
                             kept = Some(&node.kind);
                         }
-                        unwritten_after_first &= last.is_none()
-                            || unwritten_after_marker(&node.kind, source, &mut separator);
                         last = Some(&node.kind);
                         child = node.next_sibling;
                     }
-                    if reads_back_tight(nodes, node)
+                    if (matches!(node.kind, EventKind::Start(Tag::Table))
+                        && !unwritable_block(nodes, node, source)
+                        && !table_shaped(nodes, node))
+                        || reads_back_tight(nodes, node)
                         || empty_item_after_paragraph(nodes, node)
                         || misnumbered_after_paragraph(nodes, node)
                         || loosens(self, id)
@@ -2053,7 +2346,7 @@ impl<S: AsRef<str>> Document<S> {
                             node,
                             &nodes[first.index()].kind,
                             last,
-                            unwritten_after_first,
+                            task == Some(id),
                             source,
                         ) {
                             return false;
@@ -2075,6 +2368,13 @@ impl<S: AsRef<str>> Document<S> {
                     self.remove_empty_children(id, kept, unwritable_block);
                 }
             }
+            let node = &self.nodes[id.index()];
+            if matches!(node.kind, EventKind::Start(Tag::Table))
+                && !unwritable_block(&self.nodes, node, "")
+                && !table_shaped(&self.nodes, node)
+            {
+                self.shape_table(id, kept);
+            }
             if id == root {
                 return;
             }
@@ -2085,6 +2385,107 @@ impl<S: AsRef<str>> Document<S> {
                     .parent
                     .expect("a descendant has a parent before its subtree root"),
             };
+        }
+    }
+
+    // Give a table with a cell the shape the parser gives one: its rows, in order through its heads and bodies, become a head of the first row and a body of the others, reusing the first head and body, and each row is given empty cells up to the widest row, each cell marked as a header cell in the head and aligned as the head cell of its column, which an empty cell added to the head is not. Separators in the table are replaced with the ones the parser gives a table. `rows` is scratch storage.
+    fn shape_table(&mut self, table: NodeId, rows: &mut Vec<NodeId>) {
+        let nodes = &mut self.nodes;
+        rows.clear();
+        rows.extend(table_rows(nodes, &nodes[table.index()]));
+        let mut head = None;
+        let mut body = None;
+        let mut group = nodes[table.index()].first_child.take();
+        while let Some(id) = group {
+            group = nodes[id.index()].next_sibling.take();
+            nodes[id.index()].parent = None;
+            match nodes[id.index()].kind {
+                EventKind::Start(Tag::TableHead) if head.is_none() => head = Some(id),
+                EventKind::Start(Tag::TableBody) if body.is_none() => body = Some(id),
+                _ => {}
+            }
+            let mut child = nodes[id.index()].first_child.take();
+            while let Some(id) = child {
+                child = nodes[id.index()].next_sibling.take();
+                nodes[id.index()].parent = None;
+            }
+        }
+        let width = rows
+            .iter()
+            .map(|&row| blocks(nodes, nodes[row.index()].first_child).count())
+            .max()
+            .expect("a table with a cell has a row");
+        let mut columns = Vec::with_capacity(width);
+        for (index, &row) in rows.iter().enumerate() {
+            let header = index == 0;
+            let mut count = 0;
+            let mut last = None;
+            let mut cell = nodes[row.index()].first_child;
+            while let Some(id) = cell {
+                cell = nodes[id.index()].next_sibling;
+                let EventKind::Start(Tag::TableCell {
+                    alignment,
+                    header: flag,
+                }) = &mut nodes[id.index()].kind
+                else {
+                    unreachable!("a row holds only cells");
+                };
+                if header {
+                    columns.push(*alignment);
+                }
+                *alignment = columns[count];
+                *flag = header;
+                count += 1;
+                last = Some(id);
+            }
+            for column in count..width {
+                if header {
+                    columns.push(crate::AlignKind::None);
+                }
+                let alignment = columns[column];
+                let id = push_node(
+                    nodes,
+                    EventKind::Start(Tag::TableCell { alignment, header }),
+                    row,
+                );
+                match last {
+                    Some(last) => nodes[last.index()].next_sibling = Some(id),
+                    None => nodes[row.index()].first_child = Some(id),
+                }
+                last = Some(id);
+            }
+        }
+        // Link the head and body, with the separators the parser puts between rows and after the head, so they render alike.
+        let line = || EventKind::Separator {
+            value: Text::Literal("\n"),
+            conditional: false,
+        };
+        let head =
+            head.unwrap_or_else(|| push_node(nodes, EventKind::Start(Tag::TableHead), table));
+        nodes[head.index()].parent = Some(table);
+        nodes[table.index()].first_child = Some(head);
+        let (&first, rest) = rows.split_first().expect("a table with a cell has a row");
+        let after = push_node(nodes, line(), head);
+        nodes[head.index()].first_child = Some(first);
+        nodes[first.index()].parent = Some(head);
+        nodes[first.index()].next_sibling = Some(after);
+        let Some((&next, _)) = rest.split_first() else {
+            return;
+        };
+        let between = push_node(nodes, line(), table);
+        let body =
+            body.unwrap_or_else(|| push_node(nodes, EventKind::Start(Tag::TableBody), table));
+        nodes[body.index()].parent = Some(table);
+        nodes[head.index()].next_sibling = Some(between);
+        nodes[between.index()].next_sibling = Some(body);
+        nodes[body.index()].first_child = Some(next);
+        for pair in rest.windows(2) {
+            let separator = push_node(nodes, line(), body);
+            nodes[pair[0].index()].next_sibling = Some(separator);
+            nodes[separator.index()].next_sibling = Some(pair[1]);
+        }
+        for &row in rest {
+            nodes[row.index()].parent = Some(body);
         }
     }
 
@@ -2105,6 +2506,46 @@ impl<S: AsRef<str>> Document<S> {
                 }
             }
             current = next_descendant(&self.nodes, root, id);
+        }
+    }
+
+    // Once the rules above have run, make each task item whose checkbox cannot be written an ordinary item: one whose first block other than definitions is not a paragraph, or whose paragraph would write nothing after the checkbox. Give each other task item's paragraph what separates its checkbox from its text, a space, when it does not start with one, as the serializer writes one there and the parser reads it back as text.
+    fn settle_tasks(&mut self, root: NodeId) {
+        let source = self.source.as_ref();
+        let nodes = &mut self.nodes;
+        let mut current = Some(root);
+        while let Some(id) = current {
+            current = next_descendant(nodes, root, id);
+            if !matches!(
+                nodes[id.index()].kind,
+                EventKind::Start(Tag::Item {
+                    checked: Some(_),
+                    ..
+                })
+            ) {
+                continue;
+            }
+            let Some(paragraph) = task_paragraph(nodes, id)
+                .filter(|&paragraph| !unwritten_task(nodes, paragraph, source))
+            else {
+                clear_task(nodes, id);
+                continue;
+            };
+            if separated_task(nodes, paragraph, source) {
+                continue;
+            }
+            let first = nodes[paragraph.index()]
+                .first_child
+                .expect("a written task paragraph has children");
+            if let EventKind::Text(text) = &mut nodes[first.index()].kind {
+                text.to_mut(source)
+                    .expect("document text is validated")
+                    .insert(0, ' ');
+            } else {
+                let space = push_node(nodes, EventKind::Text(Text::Literal(" ")), paragraph);
+                nodes[space.index()].next_sibling = Some(first);
+                nodes[paragraph.index()].first_child = Some(space);
+            }
         }
     }
 
@@ -2366,22 +2807,75 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
+    // Unwrap each link inside another link that is not written as an autolink, from the top down, so that its children take its place and are checked in turn, before anything else is normalized, so that what it leaves, such as whitespace at the edge of attention or attention left empty, is normalized too.
+    fn unwrap_links(&mut self, root: NodeId) {
+        let mut enclosing = Enclosing::default();
+        let mut current = Some(root);
+        while let Some(id) = current {
+            let mut inner = enclosing;
+            inner.enter(&self.nodes[id.index()].kind);
+            if inner.links > 0 {
+                let mut linked: Option<NodeId> = None;
+                let mut child = self.nodes[id.index()].first_child;
+                while let Some(link) = child {
+                    child = self.nodes[link.index()].next_sibling;
+                    if !unwrapped(&self.syntax, self.source.as_ref(), &self.nodes, link, inner) {
+                        linked = Some(link);
+                        continue;
+                    }
+                    let nodes = &mut self.nodes;
+                    nodes[link.index()].parent = None;
+                    nodes[link.index()].next_sibling = None;
+                    // Link its children in its place, and continue from the first of them.
+                    let first = nodes[link.index()].first_child.take();
+                    let mut last = first;
+                    while let Some(node) = last {
+                        nodes[node.index()].parent = Some(id);
+                        last = nodes[node.index()].next_sibling;
+                        if last.is_none() {
+                            nodes[node.index()].next_sibling = child;
+                        }
+                    }
+                    if first.is_some() {
+                        child = first;
+                    }
+                    match linked {
+                        Some(linked) => nodes[linked.index()].next_sibling = child,
+                        None => nodes[id.index()].first_child = child,
+                    }
+                }
+            }
+            current = next_enclosed(&self.nodes, root, id, &mut enclosing);
+        }
+    }
+
     // Normalize each child list from the top down, so that children moved into attention are normalized with its own children, counting the strikethrough and table cells that enclose each node so that nested strikethrough is unwrapped and hard breaks in cells are replaced without searching ancestors.
     fn normalize_subtree(&mut self, root: NodeId, scratch: &mut Trailing) {
         let mut enclosing = Enclosing::default();
         let mut current = Some(root);
+        // The paragraph of the task item last met. It is the item's first child other than definitions and separators, so no other item is met before it.
+        let mut task = None;
         while let Some(id) = current {
+            if let Some(paragraph) = task_paragraph(&self.nodes, id) {
+                task = Some(paragraph);
+            }
             if self.nodes[id.index()].first_child.is_some() {
                 let mut inner = enclosing;
                 inner.enter(&self.nodes[id.index()].kind);
-                self.normalize_children(id, inner, scratch);
+                self.normalize_children(id, inner, scratch, task == Some(id));
             }
             current = next_enclosed(&self.nodes, root, id, &mut enclosing);
         }
     }
 
     // Normalize the children of `parent`, enclosed by `enclosing` including itself, in one pass: unwrap each strikethrough child of strikethrough in place, so its children are normalized next; replace each hard break in a table cell with a space; unlink each child joined into the last child kept as it is met, merging attention first; once no more attention merges into the last kept attention, move whitespace out of its end and of the attention nested there, and continue from what moved after it; and move whitespace out of the start of each attention child and of the attention nested there, and continue from what moved before it. Then remove the breaks at the edges of a paragraph, heading or table cell. Empty children have already been removed, and paragraphs emptied by removing breaks are removed afterwards.
-    fn normalize_children(&mut self, parent: NodeId, enclosing: Enclosing, scratch: &mut Trailing) {
+    fn normalize_children(
+        &mut self,
+        parent: NodeId,
+        enclosing: Enclosing,
+        scratch: &mut Trailing,
+        task: bool,
+    ) {
         let source = self.source.as_ref();
         let nodes = &mut self.nodes;
         let enclosed = enclosing.deletes > 0;
@@ -2525,7 +3019,7 @@ impl<S: AsRef<str>> Document<S> {
             nodes[id.index()].kind = removed;
         }
         if block_phrasing(&nodes[parent.index()].kind) {
-            changed |= trim_breaks(nodes, parent, source);
+            changed |= trim_breaks(nodes, parent, source, task);
         }
         if changed {
             self.refresh_item(Some(parent));
@@ -2542,15 +3036,12 @@ impl<'de> serde::Deserialize<'de> for Document<String> {
             nodes: Vec<Node>,
             #[serde(default)]
             syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
-            #[serde(default)]
-            edited: BTreeSet<NodeId>,
         }
         let stored = Stored::deserialize(deserializer)?;
         let document = Self {
             source: stored.source,
             nodes: stored.nodes,
             syntax: stored.syntax,
-            edited: stored.edited,
             append_hint: None,
         };
         document
@@ -2566,7 +3057,7 @@ impl<S: AsRef<str>> Document<S> {
     fn validate_storage(&self) -> Result<(), StreamError> {
         if !matches!(
             self.nodes.first().map(|node| &node.kind),
-            Some(EventKind::Start(Tag::Document(_)))
+            Some(EventKind::Start(Tag::Document { .. }))
         ) {
             return Err(StreamError::Unbalanced);
         }
@@ -2583,7 +3074,8 @@ impl<S: AsRef<str>> Document<S> {
                 pending.push((NodeId::new(index), None, false));
             }
         }
-        while let Some((id, parent, capture)) = pending.pop() {
+        // Each pending node comes with its parent and whether that parent is a link or inside one.
+        while let Some((id, parent, in_link)) = pending.pop() {
             let node = self.node(id).ok_or(StreamError::InvalidRange)?;
             if seen[id.index()] || node.parent != parent {
                 return Err(StreamError::Unbalanced);
@@ -2597,28 +3089,27 @@ impl<S: AsRef<str>> Document<S> {
             let container = matches!(node.kind, EventKind::Start(_));
             if matches!(node.kind, EventKind::End(_))
                 || (node.first_child.is_some() && !container)
-                || matches!(node.kind, EventKind::Start(Tag::Document(_))) != (id == self.root())
+                // The root is a document, checked above. Another detached document is a second
+                // root; a nested one is a node that nothing holds, checked below.
+                || (parent.is_none()
+                    && id != self.root()
+                    && matches!(node.kind, EventKind::Start(Tag::Document { .. })))
             {
                 return Err(StreamError::Unbalanced);
             }
-            if capture
-                && matches!(
-                    node.kind,
-                    EventKind::Start(Tag::Heading(_) | Tag::FootnoteDefinition(_))
-                )
-            {
-                return Err(StreamError::Unbalanced);
+            if let Some(parent) = parent {
+                let first = self.nodes[parent.index()].first_child;
+                self.check_nesting(parent, first, &node.kind)?;
+                if in_link && matches!(node.kind, EventKind::FootnoteReference(_)) {
+                    return Err(StreamError::InvalidNesting);
+                }
             }
             if let Some(next) = node.next_sibling {
-                pending.push((next, parent, capture));
+                pending.push((next, parent, in_link));
             }
             if let Some(child) = node.first_child {
-                let capture = capture
-                    || matches!(
-                        node.kind,
-                        EventKind::Start(Tag::Heading(_) | Tag::Image { .. })
-                    );
-                pending.push((child, Some(id), capture));
+                let in_link = in_link || matches!(node.kind, EventKind::Start(Tag::Link { .. }));
+                pending.push((child, Some(id), in_link));
             }
         }
         if seen.iter().any(|visited| !*visited) {

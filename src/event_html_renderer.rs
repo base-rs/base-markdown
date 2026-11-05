@@ -2,7 +2,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! One HTML writer for parser events and document traversal.
-use crate::stream::{Event, EventKind, StreamError, Tag, TagKind, Text};
+use crate::stream::{Class, Event, EventKind, StreamError, Tag, TagKind, Text};
 use crate::util::{
     constant::{SAFE_PROTOCOL_HREF, SAFE_PROTOCOL_SRC},
     encode::{find_escape, write_escaped},
@@ -37,6 +37,8 @@ struct Frame {
     flag: bool,
     level: u8,
     end: usize,
+    // The class of the container's first child, which decides what else the root can hold.
+    first: Option<Class>,
 }
 struct HeadingCapture {
     output: String,
@@ -65,9 +67,13 @@ pub struct EventHtmlRenderer<'a, W> {
     line_ending: LineEnding,
     last: Option<u8>,
     stack: Vec<Frame>,
-    // How many frames of `stack` are headings or images, which cannot hold a heading or footnote definition. Counting them keeps each start constant time, where looking through `stack` made a deep nest of footnote definitions quadratic.
-    capturing: usize,
+    // How many frames of `stack` are links, which cannot hold a footnote reference at any depth. Counting them keeps each event constant time, where looking through `stack` would make a deep nest quadratic.
+    links: usize,
     images: usize,
+    // The checkbox of the task item just opened, written at the start of its first paragraph.
+    task: Option<bool>,
+    // Whether the root is synthetic, around a subtree whose root it cannot hold.
+    fragment: bool,
     image_titles: Vec<Text<'static>>,
     captures: Vec<Capture>,
     notes: Vec<(String, String)>,
@@ -88,8 +94,10 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             line_ending: options.default_line_ending.clone(),
             last: None,
             stack: Vec::new(),
-            capturing: 0,
+            links: 0,
             images: 0,
+            task: None,
+            fragment: false,
             image_titles: Vec::new(),
             captures: Vec::new(),
             notes: Vec::new(),
@@ -163,14 +171,14 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     fn start(&mut self, tag: &Tag<'_>, end: usize) -> Result<(), StreamError> {
         let kind = tag.kind();
         if kind == TagKind::Document {
-            if self.started || !self.stack.is_empty() {
-                return Err(StreamError::Unbalanced);
+            // A document inside another is a node that nothing holds, as `AstBuilder` and
+            // `Document::append_child` reject it. One after the first ends is an event after the
+            // end, which `render` rejects as unbalanced.
+            if !self.stack.is_empty() {
+                return Err(StreamError::InvalidNesting);
             }
             self.started = true;
         } else if self.stack.is_empty() {
-            return Err(StreamError::Unbalanced);
-        }
-        if self.capturing != 0 && matches!(kind, TagKind::Heading | TagKind::FootnoteDefinition) {
             return Err(StreamError::Unbalanced);
         }
         let mut frame = Frame {
@@ -178,33 +186,32 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             flag: false,
             level: 0,
             end,
+            first: None,
         };
-        // Tags inside image alternative text contribute only their text content.
+        // Tags inside image alternative text contribute only their text content. Alt text holds
+        // only phrasing, so only phrasing tags check this.
         let tags = self.images == 0;
-        if !tags
-            && matches!(
-                kind,
-                TagKind::Table
-                    | TagKind::TableHead
-                    | TagKind::TableBody
-                    | TagKind::TableRow
-                    | TagKind::TableCell
-            )
-        {
-            self.stack.push(frame);
-            return Ok(());
-        }
         match tag {
-            Tag::Document(line_ending) => {
+            Tag::Document { line_ending, .. } => {
                 if let Some(value) = line_ending {
                     self.line_ending = value.clone();
                 }
+                // Frontmatter is a block before the root's first child. See `Tag::first_class`.
+                frame.first = tag.first_class(None);
             }
             Tag::Paragraph { tight } => {
                 frame.flag = *tight;
-                if tags && !tight {
+                if !tight {
                     self.terminate()?;
                     self.write("<p>")?;
+                }
+                if let Some(checked) = self.task.take() {
+                    self.write(match (self.options.task_list_item_checkable, checked) {
+                        (false, false) => "<input type=\"checkbox\" disabled=\"\" />",
+                        (false, true) => "<input type=\"checkbox\" disabled=\"\" checked=\"\" />",
+                        (true, false) => "<input type=\"checkbox\" />",
+                        (true, true) => "<input type=\"checkbox\" checked=\"\" />",
+                    })?;
                 }
             }
             Tag::Heading(level) => {
@@ -222,32 +229,27 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 }
             }
             Tag::BlockQuote => {
-                if tags {
-                    self.terminate()?;
-                    self.write("<blockquote>")?;
-                }
+                self.terminate()?;
+                self.write("<blockquote>")?;
             }
             Tag::List { start, .. } => {
                 frame.flag = start.is_some();
-                if tags {
-                    self.terminate()?;
-                    match start {
-                        None => self.write("<ul>")?,
-                        Some(1) => self.write("<ol>")?,
-                        Some(start) => {
-                            self.write("<ol start=\"")?;
-                            self.number(u64::from(*start))?;
-                            self.write("\">")?;
-                        }
+                self.terminate()?;
+                match start {
+                    None => self.write("<ul>")?,
+                    Some(1) => self.write("<ol>")?,
+                    Some(start) => {
+                        self.write("<ol start=\"")?;
+                        self.number(u64::from(*start))?;
+                        self.write("\">")?;
                     }
                 }
             }
-            Tag::Item { block_end } => {
+            Tag::Item { block_end, checked } => {
                 frame.flag = *block_end;
-                if tags {
-                    self.terminate()?;
-                    self.write("<li>")?;
-                }
+                self.terminate()?;
+                self.write("<li>")?;
+                self.task = *checked;
             }
             Tag::Emphasis => {
                 if tags {
@@ -346,18 +348,12 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 self.last = None;
             }
         }
-        if kind.captures() {
-            self.capturing += 1;
-        }
         self.stack.push(frame);
         Ok(())
     }
 
     fn end(&mut self, kind: TagKind, end: usize) -> Result<(), StreamError> {
         let frame = self.stack.pop().ok_or(StreamError::Unbalanced)?;
-        if frame.kind.captures() {
-            self.capturing -= 1;
-        }
         if frame.kind != kind {
             return Err(StreamError::Unbalanced);
         }
@@ -517,6 +513,18 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         }
         if CHECK {
             event.validate(Some(self.source))?;
+            self.check_nesting(&event.kind)?;
+        }
+        // A task item's checkbox waits for its paragraph past definitions and separators.
+        if self.task.is_some()
+            && !matches!(
+                event.kind,
+                EventKind::Start(Tag::Paragraph { .. })
+                    | EventKind::Definition { .. }
+                    | EventKind::Separator { .. }
+            )
+        {
+            self.task = None;
         }
         if let Some(heading) = &mut self.heading {
             crate::headings::append_text::<true>(&event.kind, self.source, &mut heading.text);
@@ -555,12 +563,8 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         }
                     }
                     EventKind::Rule => {
-                        if self.images == 0 {
-                            self.terminate()?;
-                            self.write("<hr />")
-                        } else {
-                            Ok(())
-                        }
+                        self.terminate()?;
+                        self.write("<hr />")
                     }
                     EventKind::Code { value, language } => {
                         if self.images == 0 {
@@ -594,14 +598,6 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         unclosed,
                         ..
                     } => {
-                        if self.images != 0 {
-                            return self.escaped(
-                                value
-                                    .resolve(self.source)
-                                    .expect("event values are source-valid"),
-                                true,
-                            );
-                        }
                         self.terminate()?;
                         let language = info.as_ref().and_then(|info| {
                             crate::stream::code_language(
@@ -644,20 +640,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                             self.escaped(value, !self.options.allow_dangerous_html)
                         }
                     }
-                    EventKind::TaskMarker(checked) => {
-                        if self.images == 0 {
-                            self.write(match (self.options.task_list_item_checkable, checked) {
-                                (false, false) => "<input type=\"checkbox\" disabled=\"\" />",
-                                (false, true) => {
-                                    "<input type=\"checkbox\" disabled=\"\" checked=\"\" />"
-                                }
-                                (true, false) => "<input type=\"checkbox\" />",
-                                (true, true) => "<input type=\"checkbox\" checked=\"\" />",
-                            })?;
-                        }
-                        Ok(())
-                    }
-                    EventKind::Definition { .. } | EventKind::Opaque { .. } => Ok(()),
+                    EventKind::Definition { .. } => Ok(()),
                     EventKind::FootnoteReference(value) => self.footnote_call(
                         value
                             .resolve(self.source)
@@ -669,6 +652,38 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                 }
             }
         }
+    }
+
+    // Check a node against the one content model: its parent must hold it, and no link can
+    // hold a footnote reference. Balance is checked where tags open and close.
+    fn check_nesting(&mut self, kind: &EventKind<'_>) -> Result<(), StreamError> {
+        match kind {
+            EventKind::Start(Tag::Link { .. }) => self.links += 1,
+            EventKind::End(TagKind::Link)
+                if self
+                    .stack
+                    .last()
+                    .is_some_and(|frame| frame.kind == TagKind::Link) =>
+            {
+                self.links -= 1;
+                return Ok(());
+            }
+            EventKind::End(_) | EventKind::Start(Tag::Document { .. }) => return Ok(()),
+            EventKind::FootnoteReference(_) if self.links != 0 => {
+                return Err(StreamError::InvalidNesting)
+            }
+            _ => {}
+        }
+        let fragment = self.fragment && self.stack.len() == 1;
+        let Some(frame) = self.stack.last_mut() else {
+            return Ok(());
+        };
+        let class = kind.class();
+        if !fragment && !frame.kind.holds(class, frame.first) {
+            return Err(StreamError::InvalidNesting);
+        }
+        frame.first.get_or_insert(class);
+        Ok(())
     }
 
     fn prefix(&mut self) -> Result<(), StreamError> {
@@ -862,6 +877,19 @@ pub fn render_events<'a>(
     EventHtmlRenderer::new(source, options, output).render(events)
 }
 
+/// Render a subtree's events inside a synthetic root, which does not check that it can hold the
+/// subtree's root, as a subtree can be any node, such as a list item or a table row.
+pub(crate) fn render_fragment<'a>(
+    source: &str,
+    events: impl IntoIterator<Item = Result<Event<'a>, StreamError>>,
+    options: &CompileOptions,
+    output: &mut impl fmt::Write,
+) -> Result<(), StreamError> {
+    let mut renderer = EventHtmlRenderer::new(source, options, output);
+    renderer.fragment = true;
+    renderer.render(events)
+}
+
 #[cfg(test)]
 mod tests {
     use super::EventHtmlRenderer;
@@ -930,7 +958,10 @@ mod tests {
             let mut renderer = EventHtmlRenderer::new("", &options, &mut writer);
             renderer
                 .event(Event {
-                    kind: EventKind::Start(Tag::Document(None)),
+                    kind: EventKind::Start(Tag::Document {
+                        line_ending: None,
+                        frontmatter: None,
+                    }),
                     span: 0..0,
                 })
                 .unwrap();

@@ -5,7 +5,7 @@
 use crate::block_parser::{Blocks, TopLevel};
 use crate::definitions::{Definitions, Seed};
 use crate::event_parser::EventParser;
-use crate::stream::{Event, EventKind, Tag, TagKind};
+use crate::stream::{Event, EventKind, Tag, TagKind, Text};
 use crate::ParseOptions;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -39,11 +39,11 @@ use alloc::vec::Vec;
 ///
 /// # Stability
 ///
-/// The events emitted across all pushes and the final [`IncrementalParser::finish`] are the events that [`EventParser`] yields for the accumulated source, without the document start and end events, provided that no link reference or footnote call is resolved by a definition in a later document-level block. Stability is defined by block structure: a block is emitted when it and every block before it are closed and no appended text can reinterpret them. Emitted events are never retracted.
+/// The events emitted across all pushes and the final [`IncrementalParser::finish`] are the events that [`EventParser`] yields for the accumulated source, without the document start and end events, whose frontmatter is [`IncrementalParser::frontmatter`] instead, provided that no link reference or footnote call is resolved by a definition in a later document-level block. Stability is defined by block structure: a block is emitted when it and every block before it are closed and no appended text can reinterpret them. Emitted events are never retracted.
 ///
 /// Reference resolution is scoped to make the output independent of how the text is divided. Inline content in a document-level block resolves against the definitions that begin before the end of that block, including definitions inside the block itself. A reference to a definition in a later document-level block remains literal text, whereas [`EventParser`] resolves forward references across the whole document.
 ///
-/// Container contents are not emitted separately: a list is emitted once it ends, because its tightness depends on every item. Frontmatter holds back all output until its closing fence arrives.
+/// Container contents are not emitted separately: a list is emitted once it ends, because its tightness depends on every item. Frontmatter holds back all output until its closing fence arrives, and is then [`IncrementalParser::frontmatter`].
 #[derive(Debug)]
 pub struct IncrementalParser<'a> {
     source: String,
@@ -61,6 +61,8 @@ pub struct IncrementalParser<'a> {
     finished: bool,
     // Whether the accumulated source has a CR, tracked per push so that preparation does not rescan the source.
     carriage_returns: bool,
+    // The body of the document's frontmatter, once it has closed.
+    frontmatter: Option<Text<'static>>,
 }
 
 impl<'a> IncrementalParser<'a> {
@@ -77,12 +79,26 @@ impl<'a> IncrementalParser<'a> {
             events: Vec::new(),
             finished: false,
             carriage_returns: false,
+            frontmatter: None,
         }
     }
 
     /// The accumulated source, which emitted text values refer to.
     pub fn source(&self) -> &str {
         &self.source
+    }
+
+    /// The body of the document's frontmatter, without its fences, or `None` for a document
+    /// without frontmatter. The closing fence alone does not show that the frontmatter is
+    /// complete, so it is `None` until the next complete line after the closing fence has been
+    /// pushed, or [`IncrementalParser::finish`] is called. It is the [`Tag::Document`]
+    /// `frontmatter` that [`EventParser`] yields for the accumulated source.
+    pub fn frontmatter(&self) -> Option<&str> {
+        self.frontmatter.as_ref().map(|value| {
+            value
+                .resolve(&self.source)
+                .expect("frontmatter is a value of the accumulated source")
+        })
     }
 
     /// The byte offset where the last emitted block ends. Appended text cannot change the events of the source before this offset.
@@ -140,6 +156,7 @@ impl<'a> IncrementalParser<'a> {
             self.emitted,
             None,
             &mut self.events,
+            &mut self.frontmatter,
         );
         self.stable = self.source.len();
         self.events.drain(..)
@@ -185,7 +202,14 @@ impl<'a> IncrementalParser<'a> {
             definitions,
             self.carriage_returns,
         );
-        deliver(parser, tops, self.emitted, Some(last), &mut self.events);
+        deliver(
+            parser,
+            tops,
+            self.emitted,
+            Some(last),
+            &mut self.events,
+            &mut self.frontmatter,
+        );
         self.stable = tops[last].end;
         self.seed.append(authored);
         self.anchor = tops[anchor].line;
@@ -203,13 +227,14 @@ fn complete_lines(source: &str, from: usize) -> usize {
         .map_or(0, |index| from + index + 1)
 }
 
-/// Move events into `output`, skipping the first `skip` document-level blocks and stopping after block `until`. Separators between blocks are delivered only with the block that follows them, unless delivering to the end of the document.
+/// Move events into `output`, skipping the first `skip` document-level blocks and stopping after block `until`. Separators between blocks are delivered only with the block that follows them, unless delivering to the end of the document. Frontmatter is the first document-level block when there is any, and it is delivered into `frontmatter`.
 fn deliver(
     mut parser: EventParser<'_>,
     tops: &[TopLevel],
     skip: usize,
     until: Option<usize>,
     output: &mut Vec<Event<'static>>,
+    frontmatter: &mut Option<Text<'static>>,
 ) {
     let mut block = 0;
     let mut depth = 0usize;
@@ -225,7 +250,16 @@ fn deliver(
             break;
         };
         match &event.kind {
-            EventKind::Start(Tag::Document(_)) | EventKind::End(TagKind::Document) => continue,
+            EventKind::Start(Tag::Document {
+                frontmatter: value, ..
+            }) => {
+                if let Some(value) = value {
+                    *frontmatter = Some(value.clone());
+                    block += 1;
+                }
+                continue;
+            }
+            EventKind::End(TagKind::Document) => continue,
             EventKind::Separator { .. } if depth == 0 => {
                 separators.push(event);
                 continue;
@@ -275,7 +309,7 @@ mod tests {
         let parser =
             EventParser::from_blocks(source, options, blocks, definitions, carriage_returns);
         let mut events = Vec::new();
-        deliver(parser, &outline.blocks, 0, None, &mut events);
+        deliver(parser, &outline.blocks, 0, None, &mut events, &mut None);
         events
     }
 

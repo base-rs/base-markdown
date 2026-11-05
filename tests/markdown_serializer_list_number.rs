@@ -15,7 +15,6 @@ use base_markdown::{
 use pretty_assertions::assert_eq;
 use support::fixture::{
     to_markdown as to, to_markdown_with_options as to_with, List, ListItem, Node, Paragraph, Text,
-    ThematicBreak,
 };
 
 fn item(value: &str) -> Node {
@@ -113,18 +112,13 @@ fn empty_list_is_written() {
 }
 
 #[test]
-fn non_item_child_is_unsupported_first() {
-    let list = Node::List(List {
-        children: vec![
-            item("a"),
-            Node::ThematicBreak(ThematicBreak { position: None }),
-        ],
-        position: None,
-        ordered: true,
-        start: Some(u32::MAX),
-        spread: false,
-    });
-    assert_eq!(to(&list).unwrap_err().rule_id, "unsupported-node");
+fn non_item_child_is_rejected() {
+    let mut document = ordered(u32::MAX, &["a"]).document();
+    let (list, _) = built_items(&document);
+    assert!(matches!(
+        document.append_child(list, EventKind::Rule),
+        Err(base_markdown::stream::StreamError::InvalidNesting)
+    ));
 }
 
 fn parse(source: &str) -> Document<&str> {
@@ -214,31 +208,24 @@ fn item_past_largest_start_does_not_wrap() {
     );
 }
 
-/// Separators among a list's children do not count as positions, so they do not raise the number
-/// of the items after them.
+/// A list holds only items: the parser writes no separator between them, so none can be added.
 #[test]
-fn separators_are_not_numbered() {
+fn separators_are_not_list_children() {
     let mut document = ordered(999_999_998, &["a", "b"]).document();
-    let (list, items) = built_items(&document);
-    for before in &items {
-        let separator = document
-            .append_child(
-                list,
-                EventKind::Separator {
-                    value: EventText::Literal("\n"),
-                    conditional: false,
-                },
-            )
-            .unwrap();
-        document.attach(list, separator, Some(*before)).unwrap();
-    }
-    assert_eq!(document.children(list).count(), 4);
+    let (list, _) = built_items(&document);
+    assert!(matches!(
+        document.append_child(
+            list,
+            EventKind::Separator {
+                value: EventText::Literal("\n"),
+                conditional: false,
+            },
+        ),
+        Err(base_markdown::stream::StreamError::InvalidNesting)
+    ));
+    assert_eq!(document.children(list).count(), 2);
     assert_eq!(
         to_markdown(&document).unwrap(),
         "999999998. a\n999999999. b\n"
-    );
-    assert_eq!(
-        to_markdown_node(&document, items[1], &Options::default()).unwrap(),
-        "999999999. b\n"
     );
 }

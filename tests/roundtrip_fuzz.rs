@@ -3,7 +3,7 @@
 
 //! Round-trip fuzz harness for normalizing and serializing Markdown, with fixed seeds and a checked-in baseline.
 //!
-//! Each input is parsed with [`ParseOptions::default`], the syntax `normalize_markdown` reads, or built by hand as a tree. It is then normalized, serialized with the default Markdown options, parsed again with the same options and normalized again. An input fails when either document is not normalized after normalizing (`normalized`), when the HTML of the two documents differs (`html`), when the HTML is the same but the canonical trees of `support::fixture::canonical` differ (`tree`), when serializing the second document gives different Markdown (`unstable`), or when serializing a parsed document returns an error (`error`). A panic is a hard failure whatever the baseline. A hand-built tree that the serializer rejects with an error is skipped and counted as rejected.
+//! Each input is parsed with [`ParseOptions::default`], the syntax `normalize_markdown` reads, or built by hand as a tree. It is then normalized, serialized with the default Markdown options, parsed again with the same options and normalized again. An input fails when either document is not normalized after normalizing (`normalized`), when the HTML of the two documents differs (`html`), when the HTML is the same but the canonical trees of `support::fixture::canonical` differ (`tree`), when serializing the second document gives different Markdown (`unstable`), or when serializing a parsed document returns an error (`error`). A source of the frontmatter corpus also fails as `tree` when its parsed body is not the body it was generated with. A panic is a hard failure whatever the baseline. A hand-built tree that the serializer rejects with an error is skipped and counted as rejected.
 //!
 //! Every corpus is generated from its own fixed seed by a small xorshift generator, so the inputs, and the counts, are the same on every platform, and the first inputs of a larger run are the inputs of a smaller one. At the default size, each corpus's failure count, rejected count and a digest of its sorted failing inputs must equal its line in `tests/roundtrip_fuzz_baseline.txt`, so a fix that hides a new failure in the same corpus still changes the digest. Any difference, up or down, fails the test.
 //!
@@ -162,6 +162,42 @@ fn edge(random: &mut Random) -> Input {
     Input::Source(source)
 }
 
+/// Opening fences of frontmatter, with and without a format hint.
+const FRONTMATTER_FENCE: &[&str] = &["---", "+++", "--- yaml", "+++toml", "---json title=x"];
+
+/// Lines of a frontmatter body: blank lines, whitespace, and lines that look like fences or blocks without closing the frontmatter.
+const FRONTMATTER_LINE: &[&str] = &[
+    "", "", " ", "\t", "a: b", "x = 1", "--", "----", "+++ x", "--- y", "- a", "# h", "a\\", "`",
+];
+
+/// What follows the closing fence.
+const FRONTMATTER_AFTER: &[&str] = &[
+    "",
+    "\n",
+    "\n\n",
+    "\n# h",
+    "\na",
+    "\n\na *b*",
+    "\n---\n",
+    "\n- a",
+];
+
+/// Frontmatter of zero or more lines, with a byte order mark, and LF, CRLF or CR line endings, followed by a little Markdown. The parser stores each line of the body with its line ending, as LF, which the generator knows, so a parser that loses a line is caught too.
+fn frontmatter(random: &mut Random) -> Input {
+    let bom = if random.below(4) == 0 { "\u{feff}" } else { "" };
+    let fence = random.pick(FRONTMATTER_FENCE);
+    let ending = random.pick(&["\n", "\r\n", "\r"]);
+    let mut body = String::new();
+    for _ in 0..random.below(4) {
+        body.push_str(random.pick(FRONTMATTER_LINE));
+        body.push('\n');
+    }
+    let close = format!("{}{}", &fence[..3], random.pick(&["", " ", "\t "]));
+    let after = random.pick(FRONTMATTER_AFTER);
+    let source = format!("{bom}{fence}\n{body}{close}{after}").replace('\n', ending);
+    Input::Frontmatter(source, body)
+}
+
 fn strike(random: &mut Random) -> Input {
     Input::Source(random.concatenate(STRIKE, 10))
 }
@@ -236,10 +272,14 @@ fn soft_breaks(mut document: Document) -> Document {
         }
         pending.extend(document.children(id));
     }
+    // A text cannot become a soft break in place, so a soft break takes its place.
     for id in soft {
-        document
-            .set_kind(id, EventKind::SoftBreak(EventText::Literal("\n")))
+        let parent = document.node(id).unwrap().parent().unwrap();
+        let soft = document
+            .append_child(parent, EventKind::SoftBreak(EventText::Literal("\n")))
             .unwrap();
+        document.attach(parent, soft, Some(id)).unwrap();
+        document.detach(id).unwrap();
     }
     document
 }
@@ -278,13 +318,15 @@ fn tree(random: &mut Random) -> Input {
 
 enum Input {
     Source(String),
+    /// A source that opens with frontmatter, and the body the parser should read from it.
+    Frontmatter(String, String),
     Tree(Node),
 }
 
 impl Input {
     fn describe(&self) -> String {
         match self {
-            Self::Source(source) => format!("{source:?}"),
+            Self::Source(source) | Self::Frontmatter(source, _) => format!("{source:?}"),
             Self::Tree(node) => format!("{:?}", format!("{node:?}")),
         }
     }
@@ -321,6 +363,12 @@ const CORPORA: &[Corpus] = &[
         name: "strike",
         seed: 0x9E37_79B9_7F4A_7C16,
         generate: strike,
+        marker: '*',
+    },
+    Corpus {
+        name: "frontmatter",
+        seed: 0xF0F0_F0F0,
+        generate: frontmatter,
         marker: '*',
     },
     Corpus {
@@ -424,6 +472,20 @@ fn check(input: &Input, options: &MarkdownOptions) -> Outcome {
             options,
             false,
         ),
+        Input::Frontmatter(source, body) => {
+            let document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+            // The parsed body is part of the tree: a body read wrongly is a tree failure, which the
+            // round trip alone cannot show, as the wrong body may well read back as itself.
+            if document.frontmatter() != Some(body.as_str()) {
+                return fail(
+                    "tree",
+                    String::new(),
+                    format!("Document:{body:?}"),
+                    format!("Document:{:?}", document.frontmatter()),
+                );
+            }
+            round_trip(document, options, false)
+        }
         Input::Tree(node) => round_trip(soft_breaks(node.document()), options, true),
     }
 }
@@ -549,7 +611,9 @@ fn run(corpus: &Corpus, count: usize, record: bool) -> Tally {
             }
         };
         let class = match &input {
-            Input::Source(source) => classifier.classify(source, &failure),
+            Input::Source(source) | Input::Frontmatter(source, _) => {
+                classifier.classify(source, &failure)
+            }
             Input::Tree(node) => classifier.classify(&format!("{node:?}"), &failure),
         };
         tally.failures += 1;
