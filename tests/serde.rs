@@ -437,8 +437,23 @@ fn serialized_code_info_strings_that_cannot_be_written_are_rejected() {
     ] {
         with(info).unwrap();
     }
-    // The former `Code` syntax is rejected.
-    let mut wire = base;
-    wire["syntax"] = json!({ (code + 1).to_string(): {"Code":{"info":{"Value":"x"}}} });
-    assert!(serde_json::from_value::<Document>(wire).is_err());
+    // The former `Code` syntax is rejected, as is any other syntax for code.
+    for (syntax, error) in [
+        (
+            json!({"Code":{"info":{"Value":"x"}}}),
+            "unknown variant `Code`",
+        ),
+        (json!({"ListItem":{"spread":true}}), "invalid source range"),
+    ] {
+        let mut wire = base.clone();
+        wire["syntax"] = json!({ (code + 1).to_string(): syntax });
+        let result = serde_json::from_value::<Document>(wire);
+        assert!(
+            result
+                .as_ref()
+                .is_err_and(|e| e.to_string().contains(error)),
+            "{:?}",
+            result
+        );
+    }
 }
