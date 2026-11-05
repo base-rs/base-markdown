@@ -19,11 +19,10 @@ const FULL_SPANS: u32 = bit(Autolink)
     | bit(TitleApostrophe)
     | bit(TitleQuote);
 const TITLES: u32 = bit(TitleApostrophe) | bit(TitleQuote);
-const LANGUAGE: u32 = bit(CodeFencedLangGraveAccent) | bit(CodeFencedLangTilde);
 /// The info string of a code fence, where the parser decodes escapes and references.
-const FENCE_INFO: u32 = LANGUAGE | bit(CodeFencedMetaGraveAccent) | bit(CodeFencedMetaTilde);
+const FENCE_INFO: u32 = bit(CodeFencedInfoGraveAccent) | bit(CodeFencedInfoTilde);
 /// Contexts the parser trims spaces and tabs from at both edges.
-const TRIMMED: u32 = bit(TableCell) | bit(CodeFencedMetaGraveAccent) | bit(CodeFencedMetaTilde);
+const TRIMMED: u32 = bit(TableCell) | FENCE_INFO;
 const NEWLINES: u32 = FENCE_INFO | bit(DestinationLiteral) | bit(HeadingAtx);
 
 #[derive(Clone, Copy)]
@@ -87,8 +86,7 @@ static RULES: &[Rule] = &[
     rule!(b'\t', B, Set(b"\n"), PHRASING, bit(TableCell)),
     rule!(b'\t', Previous(b'\n'), A, PHRASING, bit(TableCell)),
     rule!(b'\t', Encoded, A, PHRASING, bit(TableCell)),
-    rule!(b'\t', B, A, LANGUAGE, 0),
-    // The parser trims spaces and tabs at the edges of a table cell and of code fence metadata.
+    // The parser trims spaces and tabs at the edges of a table cell and of a code info string.
     rule!(b'\t', Before::Start, A, TRIMMED, 0),
     rule!(b'\t', B, After::End, TRIMMED, 0),
     // Line endings are LF, so a CR in a value is a character reference, and is written as one
@@ -104,7 +102,6 @@ static RULES: &[Rule] = &[
     rule!(b' ', B, Set(b"\n"), PHRASING, bit(TableCell)),
     rule!(b' ', Previous(b'\n'), A, PHRASING, bit(TableCell)),
     rule!(b' ', Encoded, A, PHRASING, bit(TableCell)),
-    rule!(b' ', B, A, LANGUAGE, 0),
     rule!(b' ', Before::Start, A, TRIMMED, 0),
     rule!(b' ', B, After::End, TRIMMED, 0),
     rule!(b'!', B, Set(b"["), PHRASING, FULL_SPANS),
@@ -152,18 +149,12 @@ static RULES: &[Rule] = &[
     rule!(b'_', B, A, PHRASING, FULL_SPANS),
     rule!(b'`', Line, A, 0, bit(TableCell)),
     rule!(b'`', EncodedLine, A, 0, bit(TableCell)),
-    rule!(
-        b'`',
-        B,
-        A,
-        bit(CodeFencedLangGraveAccent) | bit(CodeFencedMetaGraveAccent),
-        0,
-    ),
+    rule!(b'`', B, A, bit(CodeFencedInfoGraveAccent), 0),
     rule!(b'`', B, A, PHRASING, FULL_SPANS),
     rule!(b'~', Line, A, 0, bit(TableCell)),
     rule!(b'~', EncodedLine, A, 0, bit(TableCell)),
-    // A `~` at the start of the language of a tilde fence would lengthen the fence.
-    rule!(b'~', Before::Start, A, bit(CodeFencedLangTilde), 0),
+    // A `~` at the start of the info string of a tilde fence would lengthen the fence.
+    rule!(b'~', Before::Start, A, bit(CodeFencedInfoTilde), 0),
 ];
 
 // A first character outside every escape rule stays literal in any formatting scope.
@@ -573,7 +564,7 @@ mod tests {
                         Label,
                         DestinationRaw,
                         HeadingAtx,
-                        CodeFencedLangGraveAccent,
+                        CodeFencedInfoGraveAccent,
                     ] {
                         let mut actual = Vec::new();
                         collect(

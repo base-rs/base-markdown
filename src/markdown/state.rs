@@ -911,28 +911,13 @@ impl<'a> State<'a> {
                     .as_ref()
                     .map(|language| language.resolve(source).unwrap()),
             ),
-            EventKind::CodeBlock {
-                value, language, ..
-            } => {
+            EventKind::CodeBlock { value, info, .. } => {
                 let value = value.resolve(source).unwrap();
-                let language = language
+                let info = info
                     .as_ref()
-                    .map(|value| normalize_nul(value.resolve(source).unwrap()));
-                let language = language.as_deref();
-                let syntax = document.syntax(id);
-                let authored_info = match &syntax {
-                    Some(NodeSyntax::Code { info }) => {
-                        Some(normalize_nul(info.resolve(source).unwrap()))
-                    }
-                    _ => None,
-                };
-                let authored_info = authored_info.as_deref();
-                let meta = match (authored_info, language) {
-                    (Some(info), Some(language)) => code_meta(info, language),
-                    _ => None,
-                };
+                    .map(|info| normalize_nul(info.resolve(source).unwrap()));
                 let fence = core::mem::take(&mut self.fence_code);
-                self.code(value, language, meta, fence)
+                self.code(value, info.as_deref(), fence)
             }
             EventKind::Html { value, .. } => {
                 self.output.push_str(value.resolve(source).unwrap());
@@ -1205,14 +1190,11 @@ impl<'a> State<'a> {
         before: Option<NodeId>,
         id: NodeId,
     ) -> bool {
-        if let EventKind::CodeBlock {
-            value, language, ..
-        } = &document.node(id).unwrap().kind
-        {
+        if let EventKind::CodeBlock { value, info, .. } = &document.node(id).unwrap().kind {
             !fences_code(document, parent, before, spread)
                 && format_code_as_indented(
                     trim_terminal_ending(value.resolve(document.source()).unwrap()),
-                    language.is_none(),
+                    info.is_none(),
                     self,
                 )
         } else {
@@ -1894,26 +1876,6 @@ pub(super) fn flow_children<S: AsRef<str>>(
             EventKind::Separator { .. }
         )
     })
-}
-
-/// The metadata of code whose info string is `info` and language `language`, which the serializer
-/// writes after the language and one space. The info string starts with the language and a space
-/// or tab (`NodeSyntax::validate`), and the run of spaces and tabs after the language separates
-/// it from the metadata, so two spaces there are written as one, as the parser reads them
-/// either way. When nothing but whitespace follows the language, all of it but the first space or
-/// tab is the metadata, which is encoded so it reads back. An inferred info string is one that
-/// starts with the language too (`node_syntax::infer`).
-fn code_meta<'a>(info: &'a str, language: &str) -> Option<&'a str> {
-    let rest = info
-        .strip_prefix(language)
-        .expect("the info string of code starts with its language");
-    let metadata = rest.trim_start_matches([' ', '\t']);
-    let metadata = if metadata.is_empty() {
-        rest.get(1..).unwrap_or("")
-    } else {
-        metadata
-    };
-    (!metadata.is_empty()).then_some(metadata)
 }
 
 fn normalize_nul(value: &str) -> Cow<'_, str> {

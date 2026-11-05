@@ -38,7 +38,7 @@
 //! assert!(to_markdown(&document).unwrap().starts_with("# Introduction updated"));
 //! ```
 //!
-//! [`Document::append_child`], [`Document::detach`], and [`Document::attach`] edit structure without rebuilding the tree, and [`Document::replace_heading_section`] copies replacement content from another document. [`Document::render_node`] and [`to_markdown_node`] render individual subtrees. [`NodeSyntax`] carries optional authored formatting, such as reference style, code info strings, and frontmatter fences, so Markdown serialization can preserve it.
+//! [`Document::append_child`], [`Document::detach`], and [`Document::attach`] edit structure without rebuilding the tree, and [`Document::replace_heading_section`] copies replacement content from another document. [`Document::render_node`] and [`to_markdown_node`] render individual subtrees. [`NodeSyntax`] carries optional authored formatting, such as reference style and frontmatter fences, so Markdown serialization can preserve it.
 //!
 //! ## Parsing options
 //!

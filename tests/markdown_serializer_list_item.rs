@@ -881,7 +881,7 @@ fn fences_code_joined_by_a_line_ending_to_text_in_a_tight_item() {
                 item,
                 EventKind::CodeBlock {
                     value: Value::Literal("x"),
-                    language: None,
+                    info: None,
                     fence: None,
                     unclosed: false,
                 },
@@ -917,7 +917,7 @@ fn indents_code_after_text_in_an_item_written_spread() {
                     item,
                     EventKind::CodeBlock {
                         value: Value::Literal(value),
-                        language: None,
+                        info: None,
                         fence: None,
                         unclosed: false,
                     },

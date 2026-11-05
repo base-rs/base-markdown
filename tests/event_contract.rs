@@ -150,7 +150,7 @@ fn all_invalid_metadata_is_rejected_before_rendering_or_editing() {
         },
         EventKind::CodeBlock {
             value: Text::Literal("x"),
-            language: Some(bad()),
+            info: Some(bad()),
             fence: None,
             unclosed: false,
         },
@@ -305,21 +305,21 @@ fn inline_code_languages_outside_the_prefix_grammar_are_rejected() {
     }
 }
 
-fn block(language: Option<Text<'static>>) -> EventKind<'static> {
+fn block(info: Option<Text<'static>>) -> EventKind<'static> {
     EventKind::CodeBlock {
         value: Text::Literal("v\n"),
-        language,
+        info,
         fence: None,
         unclosed: false,
     }
 }
 
-/// A code block language that cannot be written is rejected wherever an event enters a document or
-/// renderer (#144): an empty one, which the parser reads as no language. Every other code language
-/// is written with whitespace, line endings, backticks and a `~` at its start encoded, so it is
-/// accepted.
+/// A code block info string that cannot be written is rejected wherever an event enters a
+/// document or renderer (#144, #188): an empty one, which the parser reads as no info string.
+/// Every other info string is written with the spaces and tabs at its edges, line endings,
+/// backticks and a `~` at its start encoded, so it is accepted.
 #[test]
-fn code_block_languages_that_cannot_be_written_are_rejected() {
+fn code_block_info_strings_that_cannot_be_written_are_rejected() {
     let options = Options::default();
     let source = "x\n\n```\n```\n";
     let mut ast = Document::parse(source, &options.parse).unwrap();
@@ -362,16 +362,16 @@ fn code_block_languages_that_cannot_be_written_are_rejected() {
     ] {
         check(&mut ast, block(Some(empty)), false);
     }
-    for language in [
-        "x", "~x", "`x", "a b", " x\t", "a\nb", "\r", "&amp;", "\\", "math",
+    for info in [
+        "x", "~x", "`x", "a b", " x\t", "a\nb", "\r", "&amp;", "\\", "math", " ",
     ] {
-        check(&mut ast, block(Some(Text::Literal(language))), true);
+        check(&mut ast, block(Some(Text::Literal(info))), true);
     }
     check(&mut ast, block(Some(Text::Source(0..1))), true);
-    // Out-of-range text is reported as such, in the language or the value.
+    // Out-of-range text is reported as such, in the info string or the value.
     let out_of_range = EventKind::CodeBlock {
         value: Text::Source(0..99),
-        language: Some(Text::Literal("x")),
+        info: Some(Text::Literal("x")),
         fence: None,
         unclosed: false,
     };
@@ -488,7 +488,7 @@ fn edits_detach_every_supported_leaf_and_preserve_arena_links() {
         },
         EventKind::CodeBlock {
             value: Text::Literal("x"),
-            language: None,
+            info: None,
             fence: None,
             unclosed: false,
         },
@@ -805,7 +805,7 @@ fn custom_block_events_inside_images_contribute_only_alt_text() {
         EventKind::End(TagKind::Table),
         EventKind::CodeBlock {
             value: Text::Literal("code\""),
-            language: None,
+            info: None,
             fence: None,
             unclosed: false,
         },
@@ -879,7 +879,7 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
     body.extend([
         EventKind::CodeBlock {
             value: Text::Literal("x"),
-            language: None,
+            info: None,
             fence: None,
             unclosed: false,
         },

@@ -165,7 +165,7 @@ mod tests {
         ));
         let block = EventKind::CodeBlock {
             value: Text::Literal("block\n"),
-            language: None,
+            info: None,
             fence: None,
             unclosed: false,
         };

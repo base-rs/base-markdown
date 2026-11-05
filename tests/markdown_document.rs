@@ -349,7 +349,7 @@ fn block_leaves_inside_a_heading_are_not_representable_in_markdown() {
     for kind in [
         EventKind::CodeBlock {
             value: Text::Literal("code\n"),
-            language: None,
+            info: None,
             fence: None,
             unclosed: false,
         },
@@ -459,7 +459,7 @@ fn empty_item_paragraphs_and_code_without_info_serialize() {
             document.root(),
             EventKind::CodeBlock {
                 value: Text::Literal("x\n"),
-                language: None,
+                info: None,
                 fence: None,
                 unclosed: false,
             },

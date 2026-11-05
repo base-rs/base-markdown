@@ -24,42 +24,24 @@ pub enum ConstructName {
     ///     ^
     /// ```
     Blockquote,
-    /// Code (fenced) language, when fenced with grave accents.
-    ///
-    /// ````markdown
-    /// > | ```js
-    ///        ^^
-    ///   | console.log(1)
-    ///   | ```
-    /// ````
-    CodeFencedLangGraveAccent,
-    /// Code (fenced) language, when fenced with tildes.
-    ///
-    /// ````markdown
-    /// > | ~~~js
-    ///        ^^
-    ///   | console.log(1)
-    ///   | ~~~
-    /// ````
-    CodeFencedLangTilde,
-    /// Code (fenced) meta string, when fenced with grave accents.
+    /// Code (fenced) info string, when fenced with grave accents.
     ///
     /// ````markdown
     /// > | ```js eval
-    ///           ^^^^
+    ///        ^^^^^^^
     ///   | console.log(1)
     ///   | ```
     /// ````
-    CodeFencedMetaGraveAccent,
-    /// Code (fenced) meta string, when fenced with tildes.
+    CodeFencedInfoGraveAccent,
+    /// Code (fenced) info string, when fenced with tildes.
     ///
     /// ````markdown
     /// > | ~~~js eval
-    ///           ^^^^
+    ///        ^^^^^^^
     ///   | console.log(1)
     ///   | ~~~
     /// ````
-    CodeFencedMetaTilde,
+    CodeFencedInfoTilde,
     /// Destination (literal) (occurs in definition, image, link).
     ///
     /// ```markdown

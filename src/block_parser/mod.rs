@@ -20,7 +20,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::{convert::TryFrom, ops::Range};
 use scanners::{
-    is_ascii_whitespace, scan_atx_heading, scan_blank_line, scan_closing_code_fence,
+    is_ascii_whitespace_no_nl, scan_atx_heading, scan_blank_line, scan_closing_code_fence,
     scan_code_fence, scan_hrule, scan_nextline, scan_setext_heading, scan_whitespace_no_nl,
     LineStart,
 };
@@ -962,11 +962,15 @@ impl Builder<'_> {
         let mut info = start + length;
         info += scan_whitespace_no_nl(&bytes[info..]);
         let mut at = info + scan_nextline(&bytes[info..]);
-        let info_end = info
+        // The info string is the rest of the line, trimmed of spaces and tabs at both edges.
+        let mut info_end = info
             + bytes[info..at]
                 .iter()
-                .position(|byte| is_ascii_whitespace(*byte))
+                .position(|byte| matches!(byte, b'\r' | b'\n'))
                 .unwrap_or(at - info);
+        while info_end > info && is_ascii_whitespace_no_nl(bytes[info_end - 1]) {
+            info_end -= 1;
+        }
         let code = self.blocks.codes.len();
         self.blocks.codes.push(Code {
             info: info..info_end,

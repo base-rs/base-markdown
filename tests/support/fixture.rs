@@ -386,25 +386,17 @@ fn append(
             ),
         },
         Node::Text(n) => EventKind::Text(value(&n.value)),
-        Node::Code(n) => {
-            let info = n
-                .lang
-                .as_ref()
-                .map(|lang| {
-                    format!(
-                        "{lang}{}",
-                        n.meta.as_ref().map_or(String::new(), |s| format!(" {s}"))
-                    )
+        Node::Code(n) => EventKind::CodeBlock {
+            value: block_value(&n.value),
+            info: n.lang.as_ref().map(|lang| {
+                value(&match &n.meta {
+                    Some(meta) => format!("{lang} {meta}"),
+                    None => lang.clone(),
                 })
-                .unwrap_or_default();
-            syntax = Some(NodeSyntax::Code { info: value(&info) });
-            EventKind::CodeBlock {
-                value: block_value(&n.value),
-                language: title(&n.lang),
-                fence: n.fence,
-                unclosed: false,
-            }
-        }
+            }),
+            fence: n.fence,
+            unclosed: false,
+        },
         Node::Definition(n) => EventKind::Definition {
             label: association(n.label.as_deref(), &n.identifier),
             destination: value(&n.url),
@@ -703,12 +695,6 @@ fn fixture_canonical<S: AsRef<str>>(document: &Document<S>) -> (Vec<String>, Vec
                 "reference:{kind:?}:{:?}",
                 normalize(label.resolve(document.source()).unwrap())
             )),
-            Some(NodeSyntax::Code { info }) => {
-                let info = info.resolve(document.source()).unwrap();
-                if !info.is_empty() {
-                    syntax.push(format!("code-info:{info:?}"));
-                }
-            }
             Some(NodeSyntax::Frontmatter {
                 info,
                 fence,
@@ -790,18 +776,16 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
             EventKind::Code { value, language } => {
                 format!("Code:{:?}:{:?}", text(&value), language.as_ref().map(text))
             }
-            EventKind::CodeBlock {
-                value, language, ..
-            } => {
+            EventKind::CodeBlock { value, info, .. } => {
                 let body = text(&value);
-                let language = language.as_ref().map(text);
+                let info = info.as_ref().map(text);
                 if !body.is_empty() && !body.ends_with('\n') {
                     last_code = Some((
                         output.len(),
-                        format!("CodeBlock:{:?}:{language:?}", format!("{body}\n")),
+                        format!("CodeBlock:{:?}:{info:?}", format!("{body}\n")),
                     ));
                 }
-                format!("CodeBlock:{body:?}:{language:?}")
+                format!("CodeBlock:{body:?}:{info:?}")
             }
             EventKind::Html { value, .. } => format!("Html:{:?}", text(&value)),
             EventKind::Definition {

@@ -449,7 +449,9 @@ fn values<'a>(kind: &'a EventKind<'a>) -> Vec<&'a Value<'a>> {
         | EventKind::Start(Tag::FootnoteDefinition(value)) => vec![value],
         EventKind::Code { value, language }
         | EventKind::CodeBlock {
-            value, language, ..
+            value,
+            info: language,
+            ..
         } => IntoIterator::into_iter([Some(value), language.as_ref()])
             .flatten()
             .collect(),

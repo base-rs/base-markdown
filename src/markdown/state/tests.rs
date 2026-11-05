@@ -93,7 +93,7 @@ fn literal_lookahead_matches_rendering_across_scopes_and_wrapping_modes() {
         ConstructName::Label,
         ConstructName::DestinationRaw,
         ConstructName::HeadingAtx,
-        ConstructName::CodeFencedLangGraveAccent,
+        ConstructName::CodeFencedInfoGraveAccent,
     ];
     for line_wrapping in [LineWrapping::Preserve, LineWrapping::Unwrap] {
         let options = Options {
@@ -137,7 +137,7 @@ fn joins_code_and_spread_items_consistently() {
             root,
             EventKind::CodeBlock {
                 value: Text::Literal("indented\n"),
-                language: None,
+                info: None,
                 fence: None,
                 unclosed: false,
             },
