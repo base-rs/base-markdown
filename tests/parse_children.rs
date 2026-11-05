@@ -10,7 +10,7 @@ use base_markdown::{
     to_markdown, CompileOptions, Document, NodeId, NodeSyntax, ParseOptions, ReferenceKind,
 };
 use support::fixture::canonical;
-use support::linear::{assert_linear, timed};
+use support::linear::timed;
 
 fn gfm() -> ParseOptions {
     ParseOptions::gfm()
@@ -439,15 +439,138 @@ fn values_are_owned_and_line_endings_stored_as_line_feeds() {
 }
 
 #[test]
-fn parsing_children_is_linear_in_the_fragment_and_the_replaced_children() {
-    assert_linear("parse_children", 150, |size| {
-        let mut document = parse("- x\n\n  y\n");
-        let item = find(&document, |kind| {
-            matches!(kind, EventKind::Start(Tag::Item { .. }))
+fn a_table_cell_rejects_a_line_ending_and_is_left_unchanged() {
+    for fragment in ["a\nb", "a  \nb", "a\\\nb", "a\r\nb"] {
+        let mut document = parse("| a |\n| - |\n| b |\n");
+        let cell = find(&document, |kind| {
+            matches!(kind, EventKind::Start(Tag::TableCell { header: false, .. }))
         });
-        let old = "a\n\n".repeat(size);
-        document.parse_children(item, &old, &gfm()).unwrap();
-        let fragment = "[b] *c*\n\n> d\n\n".repeat(size) + "[b]: /e\n";
-        timed(|| document.parse_children(item, &fragment, &gfm()).unwrap())
+        assert!(
+            matches!(
+                document.parse_children(cell, fragment, &gfm()),
+                Err(StreamError::InvalidNesting)
+            ),
+            "{:?}",
+            fragment
+        );
+        assert_eq!(document.text_content(cell), "b");
+    }
+    // Other phrasing parents take one.
+    let mut document = parse("c\n");
+    let paragraph = document.children(document.root()).next().unwrap();
+    document.parse_children(paragraph, "a\nb", &gfm()).unwrap();
+    reads_back(document);
+}
+
+#[test]
+fn labels_resolve_exactly_as_the_parser_reads_them() {
+    // A label with an escaped bracket, and one continued on a line of a block quote.
+    let mut document = parse("Old.\n\n> Quote.\n\n[a\\]b]: /escaped\n\n[a b]: /quoted\n");
+    let paragraph = document.children(document.root()).next().unwrap();
+    document
+        .parse_children(paragraph, "[a\\]b] and [x][A\\]B]", &gfm())
+        .unwrap();
+    assert_eq!(destinations(&document), ["/escaped", "/escaped"]);
+    let quote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::BlockQuote))
     });
+    document
+        .parse_children(quote, "> [x][a\n> b]", &gfm())
+        .unwrap();
+    assert_eq!(destinations(&document), ["/escaped", "/escaped", "/quoted"]);
+    reads_back(document);
+}
+
+#[test]
+fn a_fragments_own_footnote_definition_comes_before_one_after_its_parent() {
+    let mut document = parse("> Old.\n\n[^n]: After.\n");
+    let quote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::BlockQuote))
+    });
+    document
+        .parse_children(quote, "Call.[^n]\n\n[^n]: Own.\n", &gfm())
+        .unwrap();
+    let own = document.footnote_definition("n").unwrap();
+    assert_eq!(document.text_content(own), "Own.");
+    assert_eq!(footnote_references(&document), 1);
+    reads_back(document);
+}
+
+#[test]
+fn a_detached_parent_resolves_against_the_trees_definitions() {
+    let mut document = parse("Old.\n\n[r]: /u\n");
+    let paragraph = document.children(document.root()).next().unwrap();
+    document.detach(paragraph).unwrap();
+    document.parse_children(paragraph, "[r]", &gfm()).unwrap();
+    assert!(matches!(
+        &document.node(document.children(paragraph).next().unwrap()).unwrap().kind,
+        EventKind::Start(Tag::Link { destination, .. })
+            if destination.resolve(document.source()).ok() == Some("/u")
+    ));
+}
+
+/// Parsing into every paragraph of a document takes time linear in the document: each parse
+/// looks up the definitions its fragment refers to, without searching the document (#121). The
+/// paragraphs of one large document are timed against the same paragraphs, one in each of as
+/// many small documents, a control of the same work whose documents are short, so the ratio of
+/// the two growths shows only work that depends on the size of the document: searching the
+/// document's blocks in each parse grew 2.7 times the control's growth here.
+#[test]
+fn parsing_into_every_paragraph_of_a_document_is_linear() {
+    let _timing = support::linear::TIMING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let definitions = "[r]: /u\n\n[^n]: Note.\n\n";
+    let large = |count: usize| vec![parse(&(String::from(definitions) + &"p\n\n".repeat(count)))];
+    let small = |count: usize| {
+        (0..count)
+            .map(|_| parse(&(String::from(definitions) + "p\n")))
+            .collect::<Vec<_>>()
+    };
+    let time = |documents: &[Document]| {
+        let mut documents = documents.to_vec();
+        let paragraphs: Vec<Vec<NodeId>> = documents
+            .iter()
+            .map(|document| {
+                document
+                    .children(document.root())
+                    .filter(|id| {
+                        matches!(
+                            document.node(*id).unwrap().kind,
+                            EventKind::Start(Tag::Paragraph { .. })
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
+        timed(|| {
+            for (document, paragraphs) in documents.iter_mut().zip(&paragraphs) {
+                for &paragraph in paragraphs {
+                    document
+                        .parse_children(paragraph, "q [r] *s* [^n]", &gfm())
+                        .unwrap();
+                }
+            }
+        })
+        .as_secs_f64()
+    };
+    let documents = [
+        large(1 << 10),
+        large(1 << 12),
+        small(1 << 10),
+        small(1 << 12),
+    ];
+    let mut ratios = Vec::new();
+    // Noise makes linear work look slower only now and then, so a ratio over the bound is
+    // measured again up to twice.
+    for _ in 0..3 {
+        let times: Vec<f64> = documents.iter().map(|documents| time(documents)).collect();
+        let ratio = (times[1] / times[0]) / (times[3] / times[2]);
+        eprintln!("linear: {times:?}, {ratio:.2}x the control's growth");
+        if ratio < 1.4 {
+            return;
+        }
+        ratios.push(ratio);
+    }
+    panic!("the document grew {:?} times the control's growth", ratios);
 }

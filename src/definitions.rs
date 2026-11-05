@@ -7,6 +7,7 @@ use crate::util::normalize_identifier::{
     normalize_identifier, normalize_reference_identifier_into,
 };
 use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
+use core::cell::RefCell;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Definition<'a> {
@@ -63,9 +64,9 @@ impl Seed {
         });
     }
 
-    /// Append the footnote definition of another document labelled `label`.
-    pub fn push_footnote(&mut self, label: &str) {
-        let key = normalize_identifier(label);
+    /// Append the footnote definition of another document whose identifier is `key`.
+    pub fn push_footnote(&mut self, key: &str) {
+        let key = String::from(key);
         let index = self.footnotes.len();
         self.footnote_index.entry(key.clone()).or_insert(index);
         self.footnotes.push(key);
@@ -90,7 +91,14 @@ pub(crate) struct Definitions<'a> {
     footnote_order: Vec<usize>,
     // Lookups ignore definitions starting at or after this offset. Incremental parsing scopes each top-level block to the definitions authored before its end.
     limit: Option<usize>,
+    // When recording, each key looked up: whether it is a footnote's, the key, and whether it
+    // was found.
+    lookups: Option<RefCell<Vec<Lookup>>>,
 }
+
+/// A key looked up while recording: whether it is a footnote's, the key, and whether a
+/// definition was found.
+pub(crate) type Lookup = (bool, String, bool);
 
 impl<'a> Definitions<'a> {
     /// Create definitions that extend `seed` with those of the parsed source.
@@ -101,8 +109,31 @@ impl<'a> Definitions<'a> {
         }
     }
 
+    /// Record the keys looked up from now on, and whether each was found.
+    pub fn record(&mut self) {
+        self.lookups = Some(RefCell::default());
+    }
+
+    /// The keys looked up since recording started, which it must have.
+    pub fn take_lookups(&mut self) -> Vec<Lookup> {
+        let lookups = self.lookups.as_mut().expect("lookups are recorded");
+        core::mem::take(lookups.get_mut())
+    }
+
+    fn note(&self, footnote: bool, key: &str, found: bool) {
+        if let Some(lookups) = &self.lookups {
+            lookups
+                .borrow_mut()
+                .push((footnote, String::from(key), found));
+        }
+    }
+
+    // Whether no reference can resolve, so that references need not be looked up. While recording,
+    // they are looked up anyway.
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty() && self.seed.map_or(true, |seed| seed.entries.is_empty())
+        self.entries.is_empty()
+            && self.seed.map_or(true, |seed| seed.entries.is_empty())
+            && self.lookups.is_none()
     }
 
     fn seed_entries(&self) -> usize {
@@ -154,6 +185,12 @@ impl<'a> Definitions<'a> {
 
     // The index keeps the first authored definition of each key, so an invisible match has no visible predecessor. Seeded definitions precede the parsed source.
     pub fn find(&self, key: &str) -> Option<usize> {
+        let found = self.lookup(key);
+        self.note(false, key, found.is_some());
+        found
+    }
+
+    fn lookup(&self, key: &str) -> Option<usize> {
         let index = match self.seed.and_then(|seed| seed.index.get(key)) {
             Some(&index) => index,
             None => {
@@ -200,11 +237,6 @@ impl<'a> Definitions<'a> {
         }
     }
 
-    /// Whether a definition labelled `label`, as authored, is visible.
-    pub fn defines(&self, label: &str) -> bool {
-        self.find(&owned_reference_key(label)).is_some()
-    }
-
     pub fn push_footnote(&mut self, source: &str, start: usize, label: &Text<'_>) -> usize {
         let index = self.seed_footnotes() + self.footnotes.len();
         self.footnote_starts.push(start);
@@ -224,6 +256,12 @@ impl<'a> Definitions<'a> {
     }
 
     pub fn find_footnote(&self, key: &str) -> Option<usize> {
+        let found = self.lookup_footnote(key);
+        self.note(true, key, found.is_some());
+        found
+    }
+
+    fn lookup_footnote(&self, key: &str) -> Option<usize> {
         if let Some(&index) = self.seed.and_then(|seed| seed.footnote_index.get(key)) {
             return Some(index)
                 .filter(|&index| self.visible(self.seed.unwrap().footnote_starts[index]));
@@ -257,7 +295,7 @@ pub(crate) fn find_index<T>(
 // Reference keys fold ASCII letters to lowercase after the shared Unicode fold.
 // This preserves equality while allowing ordinary lowercase source labels to be borrowed.
 // Footnote keys retain their existing uppercase spelling because they appear in HTML IDs.
-fn owned_reference_key(value: &str) -> String {
+pub(crate) fn owned_reference_key(value: &str) -> String {
     let mut key = String::with_capacity(value.len());
     normalize_reference_identifier_into(value, &mut key);
     key

@@ -71,6 +71,8 @@ pub struct AstBuilder {
     links: usize,
     // Only the active container needs a tail. Opening a child resets it; closing that child makes the child the parent's new tail.
     last_child: Option<NodeId>,
+    // The definitions built, in document order, for the document's index.
+    definitions: Vec<NodeId>,
     complete: bool,
     failed: bool,
 }
@@ -189,6 +191,9 @@ impl AstBuilder {
             }
         }
         self.last_child = if start { None } else { Some(id) };
+        if is_definition(&self.nodes[id.index()].kind) {
+            self.definitions.push(id);
+        }
         if let EventKind::Start(tag) = &self.nodes[id.index()].kind {
             if tag.kind() == TagKind::Link {
                 self.links += 1;
@@ -206,18 +211,22 @@ impl AstBuilder {
         if self.failed || !self.complete {
             return Err(StreamError::Unbalanced);
         }
-        let document = Document {
+        let mut document = Document {
             source,
             nodes: self.nodes,
             syntax: BTreeMap::new(),
             append_hint: None,
+            definitions: DefinitionIndex::default(),
         };
+        let definitions = self.definitions;
         // Public producers can supply arbitrary offsets. Validate their contract once before exposing the document.
         for event in document.events() {
             event
                 .expect("arena traversal cannot fail")
                 .validate(Some(document.source()))?;
         }
+        document.definitions =
+            DefinitionIndex::build(&document.nodes, document.source.as_ref(), definitions);
         Ok(document)
     }
 
@@ -241,6 +250,131 @@ pub struct Document<S = String> {
     // The child that `append_child` last appended. It is still its parent's last child while it has that parent and no next sibling, so a run of appends to one parent does not scan the parent's children each time.
     #[cfg_attr(feature = "serde", serde(skip))]
     append_hint: Option<NodeId>,
+    // The attached definitions by normalized label, rebuilt from the tree when it is loaded.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    definitions: DefinitionIndex,
+}
+
+// The attached link reference and footnote definitions of a document, each label's unsorted: a
+// lookup compares the positions of its few entries on demand, so edits never reorder them.
+#[derive(Clone, Debug, Default)]
+struct DefinitionIndex {
+    references: BTreeMap<String, Definitions>,
+    footnotes: BTreeMap<String, Definitions>,
+}
+
+// The definitions of one label, almost always one, which needs no allocation beyond its key.
+#[derive(Clone, Debug)]
+struct Definitions {
+    first: NodeId,
+    rest: Vec<NodeId>,
+}
+
+impl Definitions {
+    fn iter(&self) -> impl Iterator<Item = NodeId> + '_ {
+        core::iter::once(self.first).chain(self.rest.iter().copied())
+    }
+}
+
+impl DefinitionIndex {
+    // Index definitions given in document order.
+    fn build(nodes: &[Node], source: &str, ids: Vec<NodeId>) -> Self {
+        // A stable sort keeps each label's definitions in document order, and a map built from
+        // sorted entries is built in bulk.
+        fn group(mut entries: Vec<(String, NodeId)>) -> BTreeMap<String, Definitions> {
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
+            let mut groups: Vec<(String, Definitions)> = Vec::new();
+            for (key, id) in entries {
+                match groups.last_mut() {
+                    Some((last, definitions)) if *last == key => definitions.rest.push(id),
+                    _ => groups.push((
+                        key,
+                        Definitions {
+                            first: id,
+                            rest: Vec::new(),
+                        },
+                    )),
+                }
+            }
+            groups.into_iter().collect()
+        }
+        let (mut references, mut footnotes) = (Vec::new(), Vec::new());
+        for id in ids {
+            let (footnote, key) = definition_key(&nodes[id.index()].kind, source)
+                .expect("only definitions are indexed");
+            if footnote {
+                footnotes.push((key, id));
+            } else {
+                references.push((key, id));
+            }
+        }
+        Self {
+            references: group(references),
+            footnotes: group(footnotes),
+        }
+    }
+    fn map(&mut self, footnote: bool) -> &mut BTreeMap<String, Definitions> {
+        if footnote {
+            &mut self.footnotes
+        } else {
+            &mut self.references
+        }
+    }
+    fn insert(&mut self, (footnote, key): (bool, String), id: NodeId) {
+        match self.map(footnote).entry(key) {
+            alloc::collections::btree_map::Entry::Occupied(mut entry) => {
+                entry.get_mut().rest.push(id);
+            }
+            alloc::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(Definitions {
+                    first: id,
+                    rest: Vec::new(),
+                });
+            }
+        }
+    }
+    fn remove(&mut self, (footnote, key): (bool, String), id: NodeId) {
+        let map = self.map(footnote);
+        let definitions = map
+            .get_mut(&key)
+            .expect("an indexed definition is under its key");
+        if definitions.first == id {
+            if definitions.rest.is_empty() {
+                map.remove(&key);
+            } else {
+                definitions.first = definitions.rest.swap_remove(0);
+            }
+        } else {
+            let at = definitions
+                .rest
+                .iter()
+                .position(|entry| *entry == id)
+                .expect("an indexed definition is under its key");
+            definitions.rest.swap_remove(at);
+        }
+    }
+}
+
+fn is_definition(kind: &EventKind<'_>) -> bool {
+    matches!(
+        kind,
+        EventKind::Definition { .. } | EventKind::Start(Tag::FootnoteDefinition { .. })
+    )
+}
+
+fn definition_key(kind: &EventKind<'_>, source: &str) -> Option<(bool, String)> {
+    let (footnote, value) = match kind {
+        EventKind::Definition { label, .. } => (false, label),
+        // The identifier is the normalized form of the label.
+        EventKind::Start(Tag::FootnoteDefinition { identifier, .. }) => (true, identifier),
+        _ => return None,
+    };
+    let value = value.resolve(source).expect("document text is validated");
+    Some(if footnote {
+        (true, String::from(value))
+    } else {
+        (false, crate::definitions::owned_reference_key(value))
+    })
 }
 
 impl<S: AsRef<str>> Document<S> {
@@ -249,39 +383,38 @@ impl<S: AsRef<str>> Document<S> {
     /// # Errors
     /// Returns stream validation errors; built-in Markdown parsing has no syntax errors.
     pub fn parse(source: S, options: &crate::ParseOptions) -> Result<Self, StreamError> {
-        Self::parse_seeded(source, options, None)
-    }
-
-    // Parse with the definitions of `seed`, from another document, preceding those of `source`.
-    fn parse_seeded(
-        source: S,
-        options: &crate::ParseOptions,
-        seed: Option<&crate::definitions::Seed>,
-    ) -> Result<Self, StreamError> {
         let mut builder = AstBuilder::new();
-        let text = source.as_ref();
-        let mut events = match seed {
-            None => crate::EventParser::new(text, options),
-            Some(seed) => {
-                let (blocks, definitions) = crate::block_parser::Blocks::parse_seeded(
-                    text,
-                    options,
-                    crate::definitions::Definitions::seeded(seed),
-                );
-                let carriage_returns = memchr::memchr(b'\r', text.as_bytes()).is_some();
-                crate::EventParser::from_blocks(
-                    text,
-                    options,
-                    blocks,
-                    definitions,
-                    carriage_returns,
-                )
-            }
-        };
+        let mut events = crate::EventParser::new(source.as_ref(), options);
         if builder.consume(&mut events, usize::MAX).is_err() {
             unreachable!("the built-in Markdown producer yields a balanced semantic stream");
         }
         builder.finish(source)
+    }
+
+    // Parse with the definitions of `seed`, from another document, preceding those of `source`,
+    // recording the keys of the references and footnote calls looked up.
+    fn parse_recorded(
+        source: S,
+        options: &crate::ParseOptions,
+        seed: &crate::definitions::Seed,
+    ) -> (Self, Vec<crate::definitions::Lookup>) {
+        let mut builder = AstBuilder::new();
+        let text = source.as_ref();
+        let mut definitions = crate::definitions::Definitions::seeded(seed);
+        definitions.record();
+        let (blocks, definitions) =
+            crate::block_parser::Blocks::parse_seeded(text, options, definitions);
+        let carriage_returns = memchr::memchr(b'\r', text.as_bytes()).is_some();
+        let mut events =
+            crate::EventParser::from_blocks(text, options, blocks, definitions, carriage_returns);
+        if builder.consume(&mut events, usize::MAX).is_err() {
+            unreachable!("the built-in Markdown producer yields a balanced semantic stream");
+        }
+        let lookups = events.take_lookups();
+        let document = builder
+            .finish(source)
+            .expect("the built-in Markdown producer yields a valid document");
+        (document, lookups)
     }
 
     /// The immutable source buffer.
@@ -299,6 +432,117 @@ impl<S: AsRef<str>> Document<S> {
     /// Access a node by stable index.
     pub fn node(&self, id: NodeId) -> Option<&Node> {
         self.nodes.get(id.index())
+    }
+
+    /// The link reference definition that a reference labelled `label` resolves to: the first
+    /// attached [`EventKind::Definition`] in document order whose label matches, compared as the
+    /// parser compares them, case-insensitively and with each run of whitespace as one space. So
+    /// `document.definition("Foo  bar")` finds `[foo bar]: /u`. Detached definitions do not count.
+    ///
+    /// The document keeps its attached definitions indexed by label as it is edited, so a lookup
+    /// takes time logarithmic in the number of labels and linear in the length of `label`, plus,
+    /// for a label that `k` definitions share, O(k · (depth + siblings)) to find the first of
+    /// them, comparing their ancestors and scanning siblings where their paths part.
+    ///
+    /// ```
+    /// use base_markdown::{Document, ParseOptions};
+    ///
+    /// let document =
+    ///     Document::parse("[Foo]: /first\n\n[foo]: /second\n".to_owned(), &ParseOptions::default())
+    ///         .unwrap();
+    /// let first = document.children(document.root()).next();
+    /// assert_eq!(document.definition("FOO"), first);
+    /// assert_eq!(document.definition("bar"), None);
+    /// ```
+    pub fn definition(&self, label: &str) -> Option<NodeId> {
+        let key = crate::definitions::owned_reference_key(label);
+        self.first_definition(self.definitions.references.get(&key)?.iter())
+    }
+
+    /// The footnote definition that a footnote call labelled `label`, written `[^label]`, resolves
+    /// to: the first attached [`Tag::FootnoteDefinition`] in document order whose identifier is
+    /// the normalized form of `label`, as the parser normalizes it. Detached definitions do not
+    /// count. A lookup takes the time [`Document::definition`] does.
+    ///
+    /// ```
+    /// use base_markdown::{Document, ParseOptions};
+    ///
+    /// let document =
+    ///     Document::parse("[^Note]: Text.\n".to_owned(), &ParseOptions::gfm()).unwrap();
+    /// let definition = document.children(document.root()).next();
+    /// assert_eq!(document.footnote_definition("note"), definition);
+    /// assert_eq!(document.footnote_definition("other"), None);
+    /// ```
+    pub fn footnote_definition(&self, label: &str) -> Option<NodeId> {
+        let key = crate::util::normalize_identifier::normalize_identifier(label);
+        self.first_definition(self.definitions.footnotes.get(&key)?.iter())
+    }
+
+    // The first of some attached nodes in document order.
+    fn first_definition(&self, ids: impl Iterator<Item = NodeId>) -> Option<NodeId> {
+        ids.reduce(|first, id| if self.precedes(id, first) { id } else { first })
+    }
+
+    // Whether `a` comes before `b` in document order, both being in one tree: an ancestor comes
+    // before its descendants, and otherwise the two paths part at siblings, which are scanned.
+    fn precedes(&self, a: NodeId, b: NodeId) -> bool {
+        let path = |id: NodeId| {
+            let mut path: Vec<_> =
+                core::iter::successors(Some(id), |id| self.nodes[id.index()].parent).collect();
+            path.reverse();
+            path
+        };
+        let (a, b) = (path(a), path(b));
+        let common = a.iter().zip(&b).take_while(|(a, b)| a == b).count();
+        match (a.get(common), b.get(common)) {
+            (Some(&a), Some(&b)) => {
+                core::iter::successors(self.nodes[a.index()].next_sibling, |id| {
+                    self.nodes[id.index()].next_sibling
+                })
+                .any(|id| id == b)
+            }
+            // One path holds the other, so one node is an ancestor of the other, or is it.
+            (a, _) => a.is_none() && b.len() > common,
+        }
+    }
+
+    // Whether a node is in the tree under the root.
+    fn attached(&self, id: NodeId) -> bool {
+        core::iter::successors(Some(id), |id| self.nodes[id.index()].parent).last()
+            == Some(self.root())
+    }
+
+    // Index the definitions of the tree from scratch.
+    fn index_definitions(&mut self) {
+        let root = self.root();
+        let mut ids = Vec::new();
+        let mut current = Some(root);
+        while let Some(id) = current {
+            if is_definition(&self.nodes[id.index()].kind) {
+                ids.push(id);
+            }
+            current = next_descendant(&self.nodes, root, id);
+        }
+        self.definitions = DefinitionIndex::build(&self.nodes, self.source.as_ref(), ids);
+    }
+
+    // Add the definitions in the subtree at `root` to the index, or remove them.
+    fn index_subtree(&mut self, root: NodeId, add: bool) {
+        let mut current = Some(root);
+        while let Some(id) = current {
+            self.index_node(id, add);
+            current = next_descendant(&self.nodes, root, id);
+        }
+    }
+
+    fn index_node(&mut self, id: NodeId, add: bool) {
+        if let Some(key) = definition_key(&self.nodes[id.index()].kind, self.source.as_ref()) {
+            if add {
+                self.definitions.insert(key, id);
+            } else {
+                self.definitions.remove(key, id);
+            }
+        }
     }
 
     /// Replace a node's semantic value while preserving the arena's structure and provenance.
@@ -343,7 +587,15 @@ impl<S: AsRef<str>> Document<S> {
             ) => old != new,
             _ => false,
         };
+        // A definition's label may change, and with it its key.
+        let indexed = definition_key(&kind, self.source()).filter(|_| self.attached(id));
+        if indexed.is_some() {
+            self.index_node(id, false);
+        }
         self.nodes[id.index()].kind = kind;
+        if let Some(key) = indexed {
+            self.definitions.insert(key, id);
+        }
         if id != self.root() {
             self.syntax.insert(id, None);
         }
@@ -975,7 +1227,11 @@ impl<S: AsRef<str>> Document<S> {
             Some(previous) => previous,
             None => self.children(parent).last(),
         };
+        let indexed = definition_key(&kind, self.source()).filter(|_| self.attached(parent));
         let id = self.insert_child(parent, kind, previous, None);
+        if let Some(key) = indexed {
+            self.definitions.insert(key, id);
+        }
         self.append_hint = Some(id);
         self.refresh_context(id);
         self.refresh_item_after_append(parent, id);
@@ -1027,6 +1283,9 @@ impl<S: AsRef<str>> Document<S> {
         let Some(parent) = node.parent else {
             return Ok(());
         };
+        if self.attached(parent) {
+            self.index_subtree(id, false);
+        }
         self.unlink_child(id, parent);
         self.refresh_context(id);
         self.refresh_item(Some(parent));
@@ -1101,6 +1360,13 @@ impl<S: AsRef<str>> Document<S> {
             return Ok(());
         }
         let former_parent = self.nodes[id.index()].parent;
+        let (was, will) = (
+            former_parent.is_some_and(|parent| self.attached(parent)),
+            self.attached(parent),
+        );
+        if was != will {
+            self.index_subtree(id, will);
+        }
         if let Some(parent) = former_parent {
             self.unlink_child(id, parent);
         }
@@ -1123,6 +1389,11 @@ impl<S: AsRef<str>> Document<S> {
     pub fn extract_children(&mut self, parent: NodeId) -> Result<Vec<NodeId>, StreamError> {
         self.node(parent).ok_or(StreamError::InvalidRange)?;
         let children: Vec<_> = self.children(parent).collect();
+        if self.attached(parent) {
+            for &id in &children {
+                self.index_subtree(id, false);
+            }
+        }
         self.nodes[parent.index()].first_child = None;
         for &id in &children {
             self.nodes[id.index()].parent = None;
@@ -1186,6 +1457,7 @@ impl<S: AsRef<str>> Document<S> {
         if !replace_heading {
             previous = Some(heading);
         }
+        let attached = self.attached(parent);
         // A section is one contiguous sibling range: splice it out once, retaining stable IDs and independent detached subtrees.
         if first != end {
             if let Some(previous) = previous {
@@ -1197,6 +1469,9 @@ impl<S: AsRef<str>> Document<S> {
             while at != end {
                 let id = at.expect("the section ends in the selected sibling chain");
                 at = self.nodes[id.index()].next_sibling;
+                if attached {
+                    self.index_subtree(id, false);
+                }
                 self.nodes[id.index()].parent = None;
                 self.nodes[id.index()].next_sibling = None;
                 self.refresh_context(id);
@@ -1204,7 +1479,11 @@ impl<S: AsRef<str>> Document<S> {
             self.refresh_item(Some(parent));
         }
         for child in replacement.children(replacement.root()) {
-            previous = Some(self.copy_subtree(replacement, child, parent, previous, end, false));
+            let copied = self.copy_subtree(replacement, child, parent, previous, end, false);
+            if attached {
+                self.index_subtree(copied, true);
+            }
+            previous = Some(copied);
         }
         self.refresh_item(Some(parent));
         Ok(true)
@@ -1218,9 +1497,10 @@ impl<S: AsRef<str>> Document<S> {
     /// a footnote definition holds blocks, so `markdown` is read as a document's blocks.
     ///
     /// References and footnote calls in `markdown` resolve against this document's definitions,
-    /// as they will when the document is written and read back; one that does not resolve stays
-    /// text. A block fragment's own definitions become nodes of this document, available to the
-    /// rest of it as written: for each label, the first definition in document order wins, so
+    /// those in the tree, which [`Document::definition`] and [`Document::footnote_definition`]
+    /// find, as they will when the document is written and read back; one that does not resolve
+    /// stays text. A block fragment's own definitions become nodes of this document, available to
+    /// the rest of it as written: for each label, the first definition in document order wins, so
     /// the fragment's references resolve first to a definition before the parent, then to the
     /// fragment's own, then to one after the parent. Definitions among the replaced children no
     /// longer count. A reference keeps its reference syntax, as it reads back to the same
@@ -1235,9 +1515,10 @@ impl<S: AsRef<str>> Document<S> {
     /// `markdown` can be dropped afterwards. The replaced children are detached, keeping their
     /// IDs, as [`Document::extract_children`] leaves them.
     ///
-    /// Parsing takes time linear in the size of `markdown` and of the replaced children, plus,
-    /// when `markdown` holds a `[`, the blocks of the document outside paragraphs, headings and
-    /// tables, which are searched for definitions.
+    /// Parsing takes time linear in the size of `markdown` and of the replaced children, plus the
+    /// time to look up, as [`Document::definition`] does, each definition of the document that
+    /// `markdown` refers to. A fragment that refers to one is parsed twice, first to find the
+    /// labels it refers to, then with their definitions.
     ///
     /// ```
     /// use base_markdown::{stream::{EventKind, Tag}, to_markdown, Document, ParseOptions};
@@ -1268,7 +1549,9 @@ impl<S: AsRef<str>> Document<S> {
     /// table head, table body or table row parent, which holds no Markdown that parses on its own,
     /// and, for a parent that holds phrasing, a fragment that parses into anything other than one
     /// paragraph, such as `# h`, `a\n\nb`, `- x`, a setext heading or a definition, as its
-    /// blocks cannot be in the parent. The tree is not modified on error.
+    /// blocks cannot be in the parent, and, for a table cell, which is one line of its row, a
+    /// fragment that holds a soft or hard break, such as `a\nb`. The tree is not modified on
+    /// error.
     pub fn parse_children(
         &mut self,
         parent: NodeId,
@@ -1279,6 +1562,7 @@ impl<S: AsRef<str>> Document<S> {
         else {
             return Err(StreamError::Unbalanced);
         };
+        let cell = tag.kind() == TagKind::TableCell;
         let phrasing = match tag.kind().content() {
             crate::stream::Content::Phrasing => true,
             crate::stream::Content::Root | crate::stream::Content::Blocks => false,
@@ -1294,14 +1578,52 @@ impl<S: AsRef<str>> Document<S> {
             html_tag_namespaces: options.html_tag_namespaces,
             strikethrough_single_tilde: options.strikethrough_single_tilde,
         };
-        // Only a `[` starts a reference or footnote call, or a definition.
-        let seed = if memchr::memchr(b'[', markdown.as_bytes()).is_some() {
-            self.definitions_around(parent, markdown, &options, phrasing)
-        } else {
-            crate::definitions::Seed::default()
-        };
-        let fragment = Document::parse_seeded(markdown, &options, Some(&seed))
-            .expect("the built-in Markdown producer yields a valid document");
+        // The fragment is parsed with no definitions of this document, then, if it looked up any
+        // that this document has, again with those, until it looks up no more. Resolving a
+        // reference only makes the brackets around it text, which looks up nothing new, so a
+        // fragment is parsed at most twice in practice.
+        let footnotes = !self.in_link(parent);
+        let mut seed = crate::definitions::Seed::default();
+        let mut considered = [
+            alloc::collections::BTreeSet::new(),
+            alloc::collections::BTreeSet::new(),
+        ];
+        let (mut fragment, mut lookups) = Document::parse_recorded(markdown, &options, &seed);
+        loop {
+            let mut grew = false;
+            for (footnote, key, found) in lookups {
+                if footnote && !footnotes || considered[usize::from(footnote)].contains(&key) {
+                    continue;
+                }
+                // A key not seeded yet is found only among the fragment's own definitions.
+                if let Some(id) = self.seed_definition(parent, footnote, &key, found) {
+                    grew = true;
+                    match &self.nodes[id.index()].kind {
+                        EventKind::Definition {
+                            label,
+                            destination,
+                            title,
+                        } => {
+                            fn resolve<'v>(value: &'v Text<'_>, source: &'v str) -> &'v str {
+                                value.resolve(source).expect("document text is validated")
+                            }
+                            let source = self.source();
+                            seed.push(
+                                resolve(label, source),
+                                resolve(destination, source),
+                                title.as_ref().map(|title| resolve(title, source)),
+                            );
+                        }
+                        _ => seed.push_footnote(&key),
+                    }
+                }
+                considered[usize::from(footnote)].insert(key);
+            }
+            if !grew {
+                break;
+            }
+            (fragment, lookups) = Document::parse_recorded(markdown, &options, &seed);
+        }
         // A block quote, an item and a footnote definition hold the blocks and separators that a
         // document's root holds, so a flow parent holds every child of the fragment's root.
         let from = if phrasing {
@@ -1323,79 +1645,59 @@ impl<S: AsRef<str>> Document<S> {
         } else {
             Some(fragment.root())
         };
+        // A table cell is one line of its row, so it holds no line ending.
+        if cell
+            && from.is_some_and(|from| {
+                fragment.descendants(from).any(|id| {
+                    matches!(
+                        fragment.nodes[id.index()].kind,
+                        EventKind::SoftBreak(_) | EventKind::HardBreak
+                    )
+                })
+            })
+        {
+            return Err(StreamError::InvalidNesting);
+        }
         self.extract_children(parent)
             .expect("the parent is a node of this document");
+        let attached = self.attached(parent);
         let mut previous = None;
         if let Some(from) = from {
             for child in fragment.children(from) {
-                previous = Some(self.copy_subtree(&fragment, child, parent, previous, None, true));
+                let copied = self.copy_subtree(&fragment, child, parent, previous, None, true);
+                if attached {
+                    self.index_subtree(copied, true);
+                }
+                previous = Some(copied);
             }
         }
         self.refresh_item(Some(parent));
         Ok(())
     }
-    // The definitions a fragment parsed into the children of `parent` resolves against: this
-    // document's, in document order, without those among `parent`'s children, which the fragment
-    // replaces. Definitions after `parent` come after the fragment's own, which `markdown` parsed
-    // as blocks with `options` holds when `parent` holds blocks. Footnote definitions are left
-    // out inside a link, which cannot hold a footnote reference. Only blocks outside phrasing and
-    // tables are searched, as nothing else holds a definition.
-    fn definitions_around<'a>(
-        &'a self,
+    // The definition of this document that a fragment parsed into the children of `parent`
+    // resolves the key to, if any: the first in document order, not counting those among
+    // `parent`'s children, which the fragment replaces, nor one after `parent` when the fragment
+    // defines the key itself, `found`, as its own definition comes first.
+    fn seed_definition(
+        &self,
         parent: NodeId,
-        markdown: &str,
-        options: &crate::ParseOptions,
-        phrasing: bool,
-    ) -> crate::definitions::Seed {
-        let own = (!phrasing).then(|| crate::block_parser::Blocks::parse(markdown, options).1);
-        let footnotes = !self.in_link(parent);
-        let mut seed = crate::definitions::Seed::default();
-        let source = self.source();
-        let resolve = |value: &'a Text<'a>| -> &'a str {
-            value.resolve(source).expect("document text is validated")
+        footnote: bool,
+        key: &str,
+        found: bool,
+    ) -> Option<NodeId> {
+        let index = if footnote {
+            &self.definitions.footnotes
+        } else {
+            &self.definitions.references
         };
-        let root = self.root();
-        let mut after = false;
-        let mut current = Some(root);
-        while let Some(id) = current {
-            let node = &self.nodes[id.index()];
-            match &node.kind {
-                EventKind::Definition {
-                    label,
-                    destination,
-                    title,
-                } => {
-                    let label = resolve(label);
-                    if !(after && own.as_ref().is_some_and(|own| own.defines(label))) {
-                        seed.push(label, resolve(destination), title.as_ref().map(resolve));
-                    }
-                }
-                EventKind::Start(Tag::FootnoteDefinition {
-                    identifier: label, ..
-                }) if footnotes => {
-                    seed.push_footnote(resolve(label));
-                }
-                _ => {}
-            }
-            let descend = id != parent
-                && matches!(
-                    node.kind,
-                    EventKind::Start(
-                        Tag::Document { .. }
-                            | Tag::BlockQuote
-                            | Tag::List { .. }
-                            | Tag::Item { .. }
-                            | Tag::FootnoteDefinition { .. }
-                    )
-                );
-            after |= id == parent;
-            current = descend.then_some(node.first_child).flatten().or_else(|| {
-                core::iter::successors(Some(id), |id| self.nodes[id.index()].parent)
-                    .take_while(|id| *id != root)
-                    .find_map(|id| self.nodes[id.index()].next_sibling)
-            });
-        }
-        seed
+        let replaced = |id: &NodeId| {
+            core::iter::successors(self.nodes[id.index()].parent, |id| {
+                self.nodes[id.index()].parent
+            })
+            .any(|id| id == parent)
+        };
+        let first = self.first_definition(index.get(key)?.iter().filter(|id| !replaced(id)))?;
+        (!(found && self.precedes(parent, first))).then_some(first)
     }
     // Copy the subtree at `root` of `source` into `parent`, after `previous` and before `before`,
     // owning its values and syntax, with `references` keeping reference syntax too. The caller
@@ -2568,6 +2870,8 @@ impl<S: AsRef<str>> Document<S> {
         self.space_line_endings();
         let source = self.source.as_ref();
         write_frontmatter_value(&mut self.nodes[0].kind, source);
+        // Removing and reshaping nodes can remove definitions and change their labels.
+        self.index_definitions();
     }
 
     // Replace each line ending in inline code with a space, give code block values the line endings the parser stores, and give labels the shape that reads back wherever they are written, in every subtree, attached or detached, once its child lists are normalized.
@@ -3368,15 +3672,17 @@ impl<'de> serde::Deserialize<'de> for Document<String> {
             syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
         }
         let stored = Stored::deserialize(deserializer)?;
-        let document = Self {
+        let mut document = Self {
             source: stored.source,
             nodes: stored.nodes,
             syntax: stored.syntax,
             append_hint: None,
+            definitions: DefinitionIndex::default(),
         };
         document
             .validate_storage()
             .map_err(serde::de::Error::custom)?;
+        document.index_definitions();
         Ok(document)
     }
 }

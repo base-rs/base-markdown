@@ -64,6 +64,12 @@ impl EventParser<'_> {
         self
     }
 
+    /// The keys of references and footnote calls looked up so far, when `definitions` recorded
+    /// them.
+    pub(crate) fn take_lookups(&mut self) -> alloc::vec::Vec<crate::definitions::Lookup> {
+        self.definitions.take_lookups()
+    }
+
     /// Resolve references and footnote calls in subsequently consumed blocks only against definitions starting before `limit`.
     pub(crate) fn set_definition_limit(&mut self, limit: Option<usize>) {
         self.definitions.set_limit(limit);
