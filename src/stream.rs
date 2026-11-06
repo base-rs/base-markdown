@@ -334,8 +334,9 @@ pub enum Tag<'a> {
 /// definition of its label in document order does. A [`Document`][crate::Document] stores a
 /// reference only as [`Target::Reference`], its name, and finds the binding when asked, with
 /// [`Document::destination`][crate::Document::destination], so the reference follows edits to the
-/// definitions. The event stream of a parser carries [`Target::Resolved`], the name with the
-/// destination and title the parser bound it to.
+/// definitions. An event stream carries resolved targets only: a parser's, and a document's
+/// events, give a bound reference as [`Target::Resolved`], the name with the destination and
+/// title it is bound to, and an unbound one as the text it reads back as.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Target<'a> {
@@ -349,13 +350,17 @@ pub enum Target<'a> {
     /// document stores a reference. One whose label no definition in the document has is
     /// unbound: it is valid, but not normalized, as it reads back as text, which
     /// [`Document::normalize`][crate::Document::normalize] makes it. A document's events give a
-    /// bound one as [`Target::Resolved`], and the HTML renderer writes an unbound one as the text
-    /// it reads back as.
+    /// bound one as [`Target::Resolved`] and an unbound one as the text it reads back as, so no
+    /// stream carries this form, and [`crate::render_events`] rejects it with
+    /// [`StreamError::InvalidValue`], as it leads nowhere without the definitions of a document.
     Reference(Box<Reference<'a>>),
-    /// A reference with the destination and title of the definition it is bound to, as the event
-    /// stream carries it. [`AstBuilder`][crate::AstBuilder] keeps only the reference, and a
-    /// document's edits reject this form with [`StreamError::InvalidValue`], since the destination
-    /// would not follow its definitions.
+    /// A reference with the destination and title of the definition it is bound to, as an event
+    /// stream carries it. A document does not store this form, as the destination would not
+    /// follow its definitions: [`AstBuilder`][crate::AstBuilder] stores the reference by name
+    /// when the document's definitions bind its label to that destination and title, and
+    /// otherwise a [`Target::Resource`] to them, and
+    /// [`Document::set_kind`][crate::Document::set_kind] and
+    /// [`Document::append_child`][crate::Document::append_child] store it as a resource to them.
     Resolved(Box<Resolved<'a>>),
 }
 

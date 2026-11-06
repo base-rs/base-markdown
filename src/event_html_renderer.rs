@@ -32,9 +32,6 @@ fn decimal(mut value: u64, buffer: &mut [u8; 20]) -> &str {
     core::str::from_utf8(&buffer[start..]).expect("decimal digits are ASCII")
 }
 
-// The `level` of the frame of a reference that no definition binds, written as text.
-const UNBOUND: u8 = u8::MAX;
-
 struct Frame {
     kind: TagKind,
     flag: bool,
@@ -78,8 +75,6 @@ pub struct EventHtmlRenderer<'a, W> {
     // Whether the root is synthetic, around a subtree whose root it cannot hold.
     fragment: bool,
     image_titles: Vec<Text<'static>>,
-    // What each open unbound reference writes after its text.
-    unbound: Vec<String>,
     captures: Vec<Capture>,
     notes: Vec<(String, String)>,
     calls: Vec<FootnoteCall>,
@@ -104,7 +99,6 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             task: None,
             fragment: false,
             image_titles: Vec::new(),
-            unbound: Vec::new(),
             captures: Vec::new(),
             notes: Vec::new(),
             calls: Vec::new(),
@@ -272,19 +266,11 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     self.write("<del>")?;
                 }
             }
-            Tag::Link(crate::stream::Target::Reference(reference))
-            | Tag::Image(crate::stream::Target::Reference(reference)) => {
-                // A reference no definition binds reads back as text: its brackets and label
-                // around its text.
-                let image = matches!(tag, Tag::Image(_));
-                frame.level = UNBOUND;
-                let label = reference
-                    .label
-                    .resolve(self.source)
-                    .expect("event values are source-valid");
-                let (open, close) = crate::bindings::unbound_text(reference.kind, label, image);
-                self.escaped(open, true)?;
-                self.unbound.push(close);
+            // A stream carries resolved targets only: a reference by name leads nowhere without
+            // the definitions of a document.
+            Tag::Link(crate::stream::Target::Reference(_))
+            | Tag::Image(crate::stream::Target::Reference(_)) => {
+                return Err(StreamError::InvalidValue);
             }
             Tag::Link(target) => {
                 let (destination, title) = target
@@ -385,13 +371,6 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         }
         if end < frame.end {
             return Err(StreamError::InvalidRange);
-        }
-        if frame.level == UNBOUND {
-            let end = self
-                .unbound
-                .pop()
-                .expect("an unbound reference keeps its end");
-            return self.escaped(&end, true);
         }
         if kind == TagKind::Image {
             self.images -= 1;
@@ -900,8 +879,16 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
 
 /// Render events with the shared HTML writer.
 ///
+/// A stream carries resolved targets only, as a parser's and a document's events do: a link or
+/// image whose target is a [`Target::Reference`][crate::stream::Target::Reference] by name is
+/// rejected. A footnote call is rendered from the stream alone, so one that no footnote
+/// definition in the stream calls fails the render with [`StreamError::Unbalanced`], while a
+/// document built from such a stream, with [`AstBuilder`][crate::AstBuilder], keeps the call and
+/// renders it as the text it reads back as, as it does any unbound call.
+///
 /// # Errors
-/// Returns parser, malformed-stream, invalid-range, or output errors.
+/// Returns parser, malformed-stream, invalid-range, or output errors, and
+/// [`StreamError::InvalidValue`] for a reference by name.
 pub fn render_events<'a>(
     source: &str,
     events: impl IntoIterator<Item = Result<Event<'a>, StreamError>>,

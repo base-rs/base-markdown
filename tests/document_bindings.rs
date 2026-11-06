@@ -8,7 +8,7 @@
 mod support;
 use base_markdown::{
     markdown::{to_markdown, to_markdown_node},
-    stream::{Event, EventKind, Reference, Resolved, Tag, Target, Text},
+    stream::{Event, EventKind, Reference, Resolved, StreamError, Tag, Target, Text},
     to_html, AstBuilder, Document, EventParser, NodeId, ParseOptions, ReferenceKind,
 };
 use support::fixture::canonical;
@@ -611,6 +611,66 @@ fn reference_work_is_linear() {
     });
 }
 
+/// The per-subtree operations look a reference up in the document's index of its definitions,
+/// so calling one on each section of a document takes time linear in the document: each is
+/// timed against a control of as many resources.
+#[test]
+fn per_section_work_is_linear() {
+    // `count` sections, each a heading that holds a reference, or a resource, to its own
+    // definition and another to a label of `duplicates` definitions, which come before the
+    // sections, and the sections' definitions after them. Several definitions of a label are
+    // found among themselves, in time linear in the siblings between them, not in the document.
+    let sections = |duplicates: usize| {
+        move |count: usize, control: bool| {
+            let mut source = String::new();
+            for _ in 0..duplicates {
+                source.push_str("[d]: /d\n");
+            }
+            for index in 0..count {
+                if control {
+                    source.push_str(&format!("# h [a{index}](/u) [d](/d)\n\n"));
+                } else {
+                    source.push_str(&format!("# h [a{index}] [d]\n\n"));
+                }
+            }
+            for index in 0..count {
+                source.push_str(&format!("[a{index}]: /u\n"));
+            }
+            parse(&source)
+        }
+    };
+    let each = |document: &Document, run: &dyn Fn(NodeId)| {
+        for id in document.children(document.root()) {
+            run(id);
+        }
+    };
+    for duplicates in [1, 4] {
+        let make = sections(duplicates);
+        growth_against_control("text_content", make, |document| {
+            each(document, &|id| {
+                document.text_content(id);
+            });
+        });
+        growth_against_control("render_node", make, |document| {
+            each(document, &|id| {
+                document
+                    .render_node(id, &Default::default(), &mut String::new())
+                    .unwrap();
+            });
+        });
+        growth_against_control("to_markdown_node", make, |document| {
+            each(document, &|id| {
+                to_markdown_node(document, id, &Default::default()).unwrap();
+            });
+        });
+        growth_against_control("subtree_events", make, |document| {
+            each(document, &|id| {
+                document.subtree_events(id).for_each(drop);
+            });
+        });
+    }
+}
+
 /// The events of `source`, from the parser, with `edit` applied to each.
 fn parsed_events(source: &str, edit: impl Fn(&mut EventKind<'_>)) -> Vec<Event<'_>> {
     EventParser::new(source, &ParseOptions::gfm())
@@ -863,61 +923,329 @@ fn normalizing_detached_references() {
 /// A stream that carries a reference by name, which no definition binds in it, renders it as
 /// the text it reads back as.
 #[test]
-fn streamed_references_by_name_render_as_text() {
+fn streamed_references_by_name_are_rejected() {
     use base_markdown::stream::TagKind;
+    // A stream carries resolved targets only, as a reference by name leads nowhere without the
+    // definitions of a document.
     let event = |kind| Event { kind, span: 0..0 };
-    let reference = |kind, label| {
-        Target::Reference(Box::new(Reference {
-            kind,
-            label: Text::Literal(label),
-        }))
+    for image in [false, true] {
+        let target = Target::Reference(Box::new(Reference {
+            kind: ReferenceKind::Full,
+            label: Text::Literal("x"),
+        }));
+        let (start, end) = if image {
+            (Tag::Image(target), TagKind::Image)
+        } else {
+            (Tag::Link(target), TagKind::Link)
+        };
+        let events = vec![
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })),
+            event(EventKind::Start(Tag::Paragraph { tight: false })),
+            event(EventKind::Start(start)),
+            event(EventKind::Text(Text::Literal("a"))),
+            event(EventKind::End(end)),
+            event(EventKind::End(TagKind::Paragraph)),
+            event(EventKind::End(TagKind::Document)),
+        ];
+        let mut output = String::new();
+        assert!(matches!(
+            base_markdown::render_events(
+                "",
+                events.into_iter().map(Ok),
+                &base_markdown::Options::gfm().compile,
+                &mut output,
+            ),
+            Err(StreamError::InvalidValue)
+        ));
+    }
+}
+
+/// A document keeps its index of definitions as it is edited: after each edit of a random
+/// sequence, every lookup finds what a walk of the attached document finds.
+#[test]
+fn lookups_follow_every_edit() {
+    let labels = ["a", "A", "a  b", "A\nB", "b", "ä", "Ä", "c"];
+    let identifiers = ["N", "M", "O"];
+    let source = "# s\n\n[a]: /1\n> [A]: /2\n> - [b]: /3\n>\n> [^N]: x [c] [^M]\n\n# t [b]\n\n[a  b]: /4\n[^m]: y [ä]\n[ä]: /5\n\n# u\n\n[a][] [^n] [x][c]\n\n[c]: /c\n";
+    let replacement = parse("[c]: /6\n[A]: /7\n\n> [^o]: z\n> [b]: /8\n");
+    let check = |document: &Document| {
+        let bindings = document.bindings();
+        for label in labels {
+            assert_eq!(document.definition(label), bindings.definition(label));
+        }
+        for identifier in identifiers {
+            assert_eq!(
+                document.footnote_definition(identifier),
+                bindings.footnote_definition(identifier)
+            );
+        }
     };
-    let events = vec![
-        event(EventKind::Start(Tag::Document {
-            line_ending: None,
-            frontmatter: None,
-        })),
-        event(EventKind::Start(Tag::Paragraph { tight: false })),
-        event(EventKind::Start(Tag::Link(reference(
-            ReferenceKind::Full,
-            "x",
-        )))),
-        event(EventKind::Text(Text::Literal("a"))),
-        event(EventKind::End(TagKind::Link)),
-        event(EventKind::Start(Tag::Image(reference(
-            ReferenceKind::Shortcut,
-            "b",
-        )))),
-        event(EventKind::Text(Text::Literal("b"))),
-        event(EventKind::End(TagKind::Image)),
-        event(EventKind::End(TagKind::Paragraph)),
-        event(EventKind::End(TagKind::Document)),
-    ];
-    // A writer that fails at the opening bracket fails the render.
-    struct Failing;
-    impl std::fmt::Write for Failing {
-        fn write_str(&mut self, value: &str) -> std::fmt::Result {
-            if value.contains('[') {
-                Err(std::fmt::Error)
-            } else {
-                Ok(())
+    let attached = |document: &Document, mut id: NodeId| {
+        while let Some(parent) = document.node(id).unwrap().parent() {
+            id = parent;
+        }
+        id == document.root()
+    };
+    for seed in 0..64_u64 {
+        let mut state = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+        let mut next = |bound: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            std::convert::TryFrom::try_from(state % bound as u64).unwrap()
+        };
+        let mut document = parse(source);
+        check(&document);
+        // Every node met, attached or detached.
+        let mut known: Vec<NodeId> = Vec::new();
+        for _ in 0..64 {
+            for id in document.descendants(document.root()) {
+                if !known.contains(&id) {
+                    known.push(id);
+                }
             }
+            let id = known[next(known.len())];
+            let other = known[next(known.len())];
+            match next(7) {
+                0 => {
+                    let label = labels[next(labels.len())];
+                    let kind = match &document.node(id).unwrap().kind {
+                        EventKind::Definition { .. } => EventKind::Definition {
+                            label: Text::from(label.to_owned()),
+                            destination: Text::Literal("/e"),
+                            title: None,
+                        },
+                        EventKind::Start(Tag::FootnoteDefinition { .. }) => {
+                            EventKind::Start(Tag::FootnoteDefinition {
+                                identifier: Text::Literal(identifiers[next(identifiers.len())]),
+                                label: None,
+                            })
+                        }
+                        _ => continue,
+                    };
+                    let _ = document.set_kind(id, kind);
+                }
+                1 => {
+                    let label = labels[next(labels.len())];
+                    let identifier = Text::Literal(identifiers[next(identifiers.len())]);
+                    let kind = match next(4) {
+                        0 => EventKind::Definition {
+                            label: Text::Literal(label),
+                            destination: Text::Literal("/n"),
+                            title: None,
+                        },
+                        1 => EventKind::Start(Tag::FootnoteDefinition {
+                            identifier,
+                            label: None,
+                        }),
+                        2 => EventKind::Start(Tag::Link(Target::Reference(Box::new(Reference {
+                            kind: ReferenceKind::Full,
+                            label: Text::Literal(label),
+                        })))),
+                        _ => EventKind::FootnoteReference {
+                            identifier,
+                            label: None,
+                        },
+                    };
+                    if let Ok(id) = document.append_child(id, kind) {
+                        known.push(id);
+                    }
+                }
+                2 => {
+                    let _ = document.detach(id);
+                }
+                3 => {
+                    let _ = document.attach(id, other, None);
+                }
+                4 => {
+                    let _ = document.extract_children(id);
+                }
+                5 => {
+                    let _ = document.replace_heading_section(
+                        id,
+                        next(8),
+                        &replacement,
+                        next(2) == 0,
+                        next(2) == 0,
+                    );
+                }
+                _ => {
+                    document.normalize();
+                    // Normalizing leaves no reference unbound in its tree, other than a
+                    // detached root, and no footnote call in the attached document.
+                    let bindings = document.bindings();
+                    for &id in &known {
+                        let node = document.node(id).unwrap();
+                        match &node.kind {
+                            EventKind::Start(Tag::Link(Target::Reference(_)))
+                            | EventKind::Start(Tag::Image(Target::Reference(_)))
+                                if node.parent().is_some() =>
+                            {
+                                assert!(document.destination(id).is_some(), "seed {}", seed);
+                            }
+                            EventKind::FootnoteReference { identifier, .. }
+                                if attached(&document, id) =>
+                            {
+                                let identifier = identifier.resolve(document.source()).unwrap();
+                                assert!(bindings.footnote_definition(identifier).is_some());
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            check(&document);
         }
     }
-    assert!(base_markdown::render_events(
-        "",
-        events.clone().into_iter().map(Ok),
-        &base_markdown::Options::gfm().compile,
-        &mut Failing,
-    )
-    .is_err());
-    let mut output = String::new();
-    base_markdown::render_events(
-        "",
-        events.into_iter().map(Ok),
-        &base_markdown::Options::gfm().compile,
-        &mut output,
-    )
-    .unwrap();
-    assert_eq!(output, "<p>[a][x]![b]</p>");
+}
+
+/// The text an unbound reference opens with is an event at its start, with an empty span, as
+/// its children follow it.
+#[test]
+fn unbound_reference_text_starts_where_it_does() {
+    let source = "a [b][x] c\n\n[x]: /u\n";
+    let mut document = parse(source);
+    document.detach(definition(&document, "x")).unwrap();
+    let link = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::Link(_)))
+    });
+    let start = document.node(link).unwrap().span.start;
+    let events: Vec<_> = document.subtree_events(link).map(Result::unwrap).collect();
+    assert!(
+        matches!(&events[0].kind, EventKind::Text(text) if text.resolve(source).ok() == Some("["))
+    );
+    assert_eq!(events[0].span, start..start);
+}
+
+/// Of several definitions of a label, the first in document order binds it, whichever was
+/// indexed first, also where one holds another, and edits of a detached tree leave the
+/// document's lookups as they are.
+#[test]
+fn lookups_order_nested_and_detached_definitions() {
+    let footnote = |identifier| {
+        EventKind::Start(Tag::FootnoteDefinition {
+            identifier: Text::Literal(identifier),
+            label: None,
+        })
+    };
+    let mut document = parse("[^n]\n\n[^n]: x\n");
+    let outer = document.footnote_definition("N").unwrap();
+    let inner = document.append_child(outer, footnote("N")).unwrap();
+    assert_eq!(document.footnote_definition("N"), Some(outer));
+    // Relabelled away and back, the outer definition is indexed after the inner one.
+    document.set_kind(outer, footnote("Z")).unwrap();
+    assert_eq!(document.footnote_definition("N"), Some(inner));
+    document.set_kind(outer, footnote("N")).unwrap();
+    assert_eq!(document.footnote_definition("N"), Some(outer));
+    assert_eq!(document.footnote_definition("Z"), None);
+
+    let mut document = parse("> # a\n>\n> [x]: /1\n\n[r][x]\n");
+    let quote = document.children(document.root()).next().unwrap();
+    document.detach(quote).unwrap();
+    let replacement = parse("[x]: /2\n");
+    assert!(document
+        .replace_heading_section(quote, 0, &replacement, true, true)
+        .unwrap());
+    assert_eq!(document.definition("x"), None);
+    assert_eq!(document.bindings().definition("x"), None);
+    document.attach(document.root(), quote, None).unwrap();
+    let x = document.definition("x").unwrap();
+    assert_eq!(document.bindings().definition("x"), Some(x));
+    assert!(matches!(
+        &document.node(x).unwrap().kind,
+        EventKind::Definition { destination, .. } if destination.resolve(document.source()).ok() == Some("/2")
+    ));
+}
+
+/// Normalizing a normalized document looks nothing up, but any edit after it can unbind a
+/// reference or add one that nothing binds, which the next normalizing then makes text.
+#[test]
+fn edits_after_normalizing_unbind() {
+    let is_text = |document: &Document, id: NodeId| {
+        matches!(document.node(id).unwrap().kind, EventKind::Text(_))
+    };
+    // A reference appended without a definition.
+    let mut document = parse("a\n");
+    document.normalize();
+    let paragraph = document.children(document.root()).next().unwrap();
+    let link = document
+        .append_child(
+            paragraph,
+            EventKind::Start(Tag::Link(Target::Reference(Box::new(Reference {
+                kind: ReferenceKind::Full,
+                label: Text::Literal("x"),
+            })))),
+        )
+        .unwrap();
+    document
+        .append_child(link, EventKind::Text(Text::Literal("t")))
+        .unwrap();
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert!(is_text(&document, link));
+    assert!(document.is_normalized());
+    // A definition moved into a detached tree.
+    let mut document = parse("> q\n\n[x][y]\n\n[y]: /u\n");
+    let quote = document.children(document.root()).next().unwrap();
+    document.detach(quote).unwrap();
+    document.normalize();
+    let link = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::Link(_)))
+    });
+    document
+        .attach(quote, definition(&document, "y"), None)
+        .unwrap();
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert!(is_text(&document, link));
+}
+
+/// A built document whose stream gave a reference by name, or a footnote call without its
+/// definition, has them unbound, so normalizing makes them text.
+#[test]
+fn built_names_without_definitions_are_unbound() {
+    use base_markdown::stream::TagKind;
+    let event = |kind| Event { kind, span: 0..0 };
+    for (name, end) in [
+        (
+            EventKind::Start(Tag::Link(Target::Reference(Box::new(Reference {
+                kind: ReferenceKind::Shortcut,
+                label: Text::Literal("x"),
+            })))),
+            Some(TagKind::Link),
+        ),
+        (
+            EventKind::FootnoteReference {
+                identifier: Text::Literal("X"),
+                label: None,
+            },
+            None,
+        ),
+    ] {
+        let mut events = vec![
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })),
+            event(EventKind::Start(Tag::Paragraph { tight: false })),
+            event(name),
+        ];
+        if let Some(end) = end {
+            events.push(event(EventKind::Text(Text::Literal("x"))));
+            events.push(event(EventKind::End(end)));
+        }
+        events.push(event(EventKind::End(TagKind::Paragraph)));
+        events.push(event(EventKind::End(TagKind::Document)));
+        let mut document = build(events, "");
+        assert!(!document.is_normalized());
+        document.normalize();
+        assert!(document.is_normalized());
+        let paragraph = document.children(document.root()).next().unwrap();
+        assert!(document
+            .children(paragraph)
+            .all(|id| matches!(document.node(id).unwrap().kind, EventKind::Text(_))));
+    }
 }

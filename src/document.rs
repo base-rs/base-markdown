@@ -72,6 +72,8 @@ pub struct AstBuilder {
     links: usize,
     // Only the active container needs a tail. Opening a child resets it; closing that child makes the child the parent's new tail.
     last_child: Option<NodeId>,
+    // The definitions and footnote definitions built, which the document indexes.
+    definitions: Vec<NodeId>,
     complete: bool,
     failed: bool,
 }
@@ -190,6 +192,12 @@ impl AstBuilder {
             }
         }
         self.last_child = if start { None } else { Some(id) };
+        if matches!(
+            self.nodes[id.index()].kind,
+            EventKind::Definition { .. } | EventKind::Start(Tag::FootnoteDefinition { .. })
+        ) {
+            self.definitions.push(id);
+        }
         if let EventKind::Start(tag) = &self.nodes[id.index()].kind {
             if tag.kind() == TagKind::Link {
                 self.links += 1;
@@ -212,11 +220,15 @@ impl AstBuilder {
             nodes: self.nodes,
             syntax: BTreeMap::new(),
             append_hint: None,
+            index: crate::bindings::Index::default(),
+            settled: false,
         };
         // Public producers can supply arbitrary offsets. Validate their contract once before
         // exposing the document, node by node, as the events of the document would be.
         let source = document.source.as_ref();
         let mut resolved = Vec::new();
+        // The references by name and footnote calls, which may be unbound.
+        let mut names = Vec::new();
         for (index, node) in document.nodes.iter().enumerate() {
             if node.span.start > node.span.end || source.get(node.span.clone()).is_none() {
                 return Err(StreamError::InvalidRange);
@@ -228,8 +240,18 @@ impl AstBuilder {
             ) {
                 resolved.push(index);
             }
+            if matches!(
+                node.kind,
+                EventKind::Start(
+                    Tag::Link(Target::Reference(_)) | Tag::Image(Target::Reference(_))
+                ) | EventKind::FootnoteReference { .. }
+            ) {
+                names.push(index);
+            }
         }
+        document.index = crate::bindings::Index::new(source, &document.nodes, self.definitions);
         document.store_resolved(&resolved);
+        document.settled = document.bound(&names);
         Ok(document)
     }
 
@@ -253,6 +275,15 @@ pub struct Document<S = String> {
     // The child that `append_child` last appended. It is still its parent's last child while it has that parent and no next sibling, so a run of appends to one parent does not scan the parent's children each time.
     #[cfg_attr(feature = "serde", serde(skip))]
     append_hint: Option<NodeId>,
+    // Every definition and footnote definition of the attached document, by key, kept as the
+    // document is edited, so that a lookup does not walk the document.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    index: crate::bindings::Index,
+    // Whether every reference and footnote call, in every tree, is known to be bound: set for a
+    // built document whose references all came resolved and bound, and by normalizing, and
+    // cleared by any edit of the tree, so that normalizing an unedited document looks up none.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    settled: bool,
 }
 
 impl<S: AsRef<str>> Document<S> {
@@ -306,6 +337,8 @@ impl<S: AsRef<str>> Document<S> {
     /// with [`StreamError::InvalidValue`], and any other change of kind with
     /// [`StreamError::InvalidNesting`].
     pub fn set_kind(&mut self, id: NodeId, kind: EventKind<'static>) -> Result<(), StreamError> {
+        // An edit may unbind a reference, or add one that nothing binds.
+        self.settled = false;
         let kind = stored(kind);
         kind.validate(Some(self.source()))?;
         let node = self
@@ -329,7 +362,16 @@ impl<S: AsRef<str>> Document<S> {
             ) => old != new,
             _ => false,
         };
+        // A definition's key is indexed while it is attached.
+        // A definition stays one, as only interchangeable kinds replace each other.
+        let indexed = defines(&kind) && self.attached(id);
+        if indexed {
+            self.index.remove(self.source.as_ref(), &self.nodes, id);
+        }
         self.nodes[id.index()].kind = kind;
+        if indexed {
+            self.index.insert(self.source.as_ref(), &self.nodes, id);
+        }
         if id != self.root() {
             self.syntax.insert(id, None);
         }
@@ -427,60 +469,75 @@ impl<S: AsRef<str>> Document<S> {
 
     /// The link reference definition that a reference labelled `label` leads to in the attached
     /// document: the first in document order whose label matches, as the parser matches labels.
-    /// This looks through the document, in time linear in its size, so a caller with many
-    /// lookups builds [`Document::bindings`] once instead.
+    /// A document keeps an index of its definitions by label as it is edited, so this takes
+    /// constant expected time when one definition has the label, and otherwise time linear in
+    /// how many do, times the depth of each and the siblings between them, to find the first.
     pub fn definition(&self, label: &str) -> Option<NodeId> {
-        let key = crate::definitions::reference_key(label);
-        let source = self.source();
-        self.descendants(self.root()).find(|&id| {
-            matches!(&self.nodes[id.index()].kind, EventKind::Definition { label, .. }
-                if crate::definitions::reference_key(
-                    label.resolve(source).expect("document text is validated"),
-                ) == key)
-        })
+        crate::bindings::Lookup::new(self.context(), self.root(), false).definition(
+            self.context(),
+            label,
+            &mut crate::bindings::Scratch::default(),
+        )
     }
 
     /// The footnote definition that a footnote call with the normalized identifier `identifier`
     /// calls in the attached document: the first in document order with that identifier. This
-    /// takes time linear in the size of the document, like [`Document::definition`].
+    /// takes time like [`Document::definition`].
     pub fn footnote_definition(&self, identifier: &str) -> Option<NodeId> {
-        let source = self.source();
-        self.descendants(self.root()).find(|&id| {
-            matches!(&self.nodes[id.index()].kind,
-                EventKind::Start(Tag::FootnoteDefinition { identifier: value, .. })
-                if value.resolve(source).expect("document text is validated") == identifier)
-        })
+        crate::bindings::Lookup::new(self.context(), self.root(), false).footnote_definition(
+            self.context(),
+            identifier,
+            &mut crate::bindings::Scratch::default(),
+        )
     }
 
     /// The destination and title that link or image `id` leads to: its own for a resource, and
     /// for a reference those of the definition it is bound to, in the tree that holds it, which
     /// is the document when it is attached and the detached subtree otherwise, as it renders.
     /// `None` for an unbound reference or a node that is not a link or image. This takes time
-    /// linear in the size of that tree, like [`Document::definition`];
-    /// [`Bindings::destination`] answers many lookups in the attached document.
+    /// like [`Document::definition`], with the depth of `id`, in the attached document, and
+    /// time linear in the size of a detached tree.
     pub fn destination(&self, id: NodeId) -> Option<(&str, Option<&str>)> {
         let kind = &self.node(id)?.kind;
-        let EventKind::Start(Tag::Link(target) | Tag::Image(target)) = kind else {
-            return None;
-        };
-        // A resource leads where it says, so it needs no table.
-        let table = if target.destination().is_some() {
-            crate::bindings::Table::default()
-        } else {
-            crate::bindings::Table::new(
-                self.source(),
-                &self.nodes,
-                tree_root(&self.nodes, id),
-                false,
+        let cx = self.context();
+        crate::bindings::destination(self.source(), &self.nodes, kind, |label| {
+            crate::bindings::Lookup::new(cx, tree_root(&self.nodes, id), false).definition(
+                cx,
+                label,
+                &mut crate::bindings::Scratch::default(),
             )
-        };
-        crate::bindings::destination(self.source(), &self.nodes, &table, kind)
+        })
+    }
+
+    // What a lookup of this document reads.
+    pub(crate) fn context(&self) -> crate::bindings::Context<'_> {
+        crate::bindings::Context {
+            source: self.source(),
+            nodes: &self.nodes,
+            index: &self.index,
+            root: self.root(),
+        }
+    }
+
+    // Whether `id` is in the attached document, in time linear in its depth.
+    fn attached(&self, id: NodeId) -> bool {
+        tree_root(&self.nodes, id) == self.root()
+    }
+
+    // Whether each reference by name and footnote call at `names` in the arena, all attached, is bound.
+    fn bound(&self, names: &[usize]) -> bool {
+        let cx = self.context();
+        let mut lookup = crate::bindings::Lookup::new(cx, cx.root, true);
+        let mut scratch = crate::bindings::Scratch::default();
+        names
+            .iter()
+            .all(|&index| !lookup.unbound(cx, &self.nodes[index].kind, &mut scratch))
     }
 
     // Store each resolved reference that a builder was given, at `resolved` in the arena, by its
     // name when its label binds to a definition in this document with the destination and title
     // it was resolved to, and otherwise as a resource to them, so that it keeps its meaning
-    // whatever the definitions it was built with. One pass builds the bindings.
+    // whatever the definitions it was built with.
     fn store_resolved(&mut self, resolved: &[usize]) {
         if resolved.is_empty() {
             return;
@@ -488,8 +545,9 @@ impl<S: AsRef<str>> Document<S> {
         let source = self.source.as_ref();
         let names: Vec<bool> = {
             let nodes = &self.nodes;
-            let table = crate::bindings::Table::new(source, nodes, self.root(), false);
-            let mut scratch = String::new();
+            let cx = self.context();
+            let mut lookup = crate::bindings::Lookup::new(cx, self.root(), true);
+            let mut scratch = crate::bindings::Scratch::default();
             resolved
                 .iter()
                 .map(|&index| {
@@ -499,8 +557,8 @@ impl<S: AsRef<str>> Document<S> {
                     else {
                         unreachable!("only resolved references are stored")
                     };
-                    table
-                        .definition(text(&target.reference.label, source), &mut scratch)
+                    lookup
+                        .definition(cx, text(&target.reference.label, source), &mut scratch)
                         .is_some_and(|definition| {
                             let (destination, title) =
                                 crate::bindings::definition_target(nodes, definition);
@@ -531,6 +589,14 @@ impl<S: AsRef<str>> Document<S> {
     }
 }
 
+// Whether `kind` is a definition or footnote definition, which the index of a document holds.
+fn defines(kind: &EventKind<'_>) -> bool {
+    matches!(
+        kind,
+        EventKind::Definition { .. } | EventKind::Start(Tag::FootnoteDefinition { .. })
+    )
+}
+
 // `kind` as a document stores it: a resolved reference as a resource to where it leads, as the
 // definitions of the document it is put in may lead elsewhere, and anything else as it is.
 fn stored(kind: EventKind<'static>) -> EventKind<'static> {
@@ -542,6 +608,7 @@ fn stored(kind: EventKind<'static>) -> EventKind<'static> {
 }
 
 // Whether a document can store `kind` as it is: not a resolved reference.
+#[cfg(feature = "serde")]
 fn storable(kind: &EventKind<'_>) -> Result<(), StreamError> {
     match kind {
         EventKind::Start(Tag::Link(Target::Resolved(_)) | Tag::Image(Target::Resolved(_))) => {
@@ -573,11 +640,18 @@ pub struct DocumentEvents<'a, S> {
     current: Option<NodeId>,
     root: NodeId,
     closing: bool,
-    // The bindings of the tree that holds `root`, built at the first reference or footnote call.
-    table: Option<crate::bindings::Table<'a>>,
-    scratch: String,
+    names: Names,
+}
+
+// What a traversal knows of the references and footnote calls it meets.
+#[derive(Default)]
+struct Names {
+    // Where the tree that holds the traversal looks bindings up, from the first reference or
+    // footnote call.
+    lookup: Option<crate::bindings::Lookup>,
+    scratch: crate::bindings::Scratch,
     // Whether each reference open in the traversal is unbound, innermost last.
-    references: Vec<bool>,
+    open: Vec<bool>,
 }
 
 // Borrow values rather than cloning Cow::Owned strings. Structural metadata has no owned storage.
@@ -647,50 +721,52 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
 }
 
 impl<'a, S: AsRef<str>> DocumentEvents<'a, S> {
-    // The events of the subtree under `current`, if any, looking references up in `table`, the
-    // bindings of the tree that holds it, once built.
+    // The events of the subtree under `current`, if any, looking references up with `lookup`,
+    // that of the tree that holds it, once made.
     fn new(
         document: &'a Document<S>,
         current: Option<NodeId>,
-        table: Option<crate::bindings::Table<'a>>,
+        lookup: Option<crate::bindings::Lookup>,
     ) -> Self {
         Self {
             document,
             current,
             root: current.unwrap_or(document.root()),
             closing: false,
-            table,
-            scratch: String::new(),
-            references: Vec::new(),
+            names: Names {
+                lookup,
+                ..Names::default()
+            },
         }
     }
 
-    // The bindings of the tree that holds `root`, built at the first call.
-    fn table(&mut self) -> &crate::bindings::Table<'a> {
+    // The binding of the label or identifier of the reference or footnote call `kind` in the
+    // tree that holds `root`.
+    fn binding(&mut self, kind: &EventKind<'_>) -> Option<NodeId> {
         let (document, root) = (self.document, self.root);
-        self.table.get_or_insert_with(|| {
-            crate::bindings::Table::new(
-                document.source(),
-                &document.nodes,
-                tree_root(&document.nodes, root),
-                true,
-            )
-        })
+        let cx = document.context();
+        let names = &mut self.names;
+        let lookup = names.lookup.get_or_insert_with(|| {
+            // A traversal of the whole document is a pass over all of it.
+            crate::bindings::Lookup::new(cx, tree_root(&document.nodes, root), root == cx.root)
+        });
+        match kind {
+            EventKind::FootnoteReference { identifier, .. } => {
+                lookup.footnote_definition(cx, text(identifier, cx.source), &mut names.scratch)
+            }
+            kind => lookup.definition_of(cx, kind, &mut names.scratch),
+        }
     }
 
-    // The event `kind` starts: a bound reference resolved, and an unbound reference or footnote
-    // call as the text it reads back as up to its children.
-    fn resolved(&mut self, kind: &'a EventKind<'static>) -> EventKind<'a> {
+    // The event that starts the reference or footnote call `node`: a bound reference resolved,
+    // and an unbound reference or footnote call as the text it reads back as up to its
+    // children, which starts where it does.
+    fn named(&mut self, node: &'a Node) -> Event<'a> {
         let source = self.document.source();
-        match kind {
+        let definition = self.binding(&node.kind);
+        let kind = match &node.kind {
+            EventKind::FootnoteReference { .. } if definition.is_some() => borrow_kind(&node.kind),
             EventKind::FootnoteReference { identifier, label } => {
-                if self
-                    .table()
-                    .footnote_definition(text(identifier, source))
-                    .is_some()
-                {
-                    return borrow_kind(kind);
-                }
                 EventKind::Text(Text::from(crate::bindings::unbound_footnote_text(text(
                     label.as_ref().unwrap_or(identifier),
                     source,
@@ -700,14 +776,12 @@ impl<'a, S: AsRef<str>> DocumentEvents<'a, S> {
                 tag @ (Tag::Link(Target::Reference(reference))
                 | Tag::Image(Target::Reference(reference))),
             ) => {
-                let mut scratch = core::mem::take(&mut self.scratch);
-                let definition = self
-                    .table()
-                    .definition(text(&reference.label, source), &mut scratch);
-                self.scratch = scratch;
-                self.references.push(definition.is_none());
+                self.names.open.push(definition.is_none());
                 let Some(definition) = definition else {
-                    return EventKind::Text(Text::Literal(unbound_open(kind)));
+                    return Event {
+                        kind: EventKind::Text(Text::Literal(unbound_open(&node.kind))),
+                        span: node.span.start..node.span.start,
+                    };
                 };
                 let (destination, title) =
                     crate::bindings::definition_target(&self.document.nodes, definition);
@@ -722,35 +796,84 @@ impl<'a, S: AsRef<str>> DocumentEvents<'a, S> {
                     Tag::Image(target)
                 })
             }
-            kind => borrow_kind(kind),
+            _ => unreachable!("only a reference or footnote call is named"),
+        };
+        Event {
+            kind,
+            span: node.span.clone(),
         }
     }
 
-    // The event that closes container `kind`: its end, or for an unbound reference the text of
-    // what follows its children.
-    fn closed(&mut self, kind: &'a EventKind<'static>, tag: TagKind) -> EventKind<'a> {
+    // The event that closes the reference `node`: its end, or for an unbound reference the text
+    // of what follows its children.
+    fn closed(&mut self, node: &'a Node) -> Event<'a> {
+        let span = node.span.end..node.span.end;
         let EventKind::Start(
-            Tag::Link(Target::Reference(reference)) | Tag::Image(Target::Reference(reference)),
-        ) = kind
+            tag @ (Tag::Link(Target::Reference(reference))
+            | Tag::Image(Target::Reference(reference))),
+        ) = &node.kind
         else {
-            return EventKind::End(tag);
+            unreachable!("only a reference is closed by name")
         };
         if !self
-            .references
+            .names
+            .open
             .pop()
             .expect("a reference is closed after it is started")
         {
-            return EventKind::End(tag);
+            return Event {
+                kind: EventKind::End(tag.kind()),
+                span,
+            };
         }
         let label = text(&reference.label, self.document.source());
         let (_, close) =
-            crate::bindings::unbound_text(reference.kind, label, tag == TagKind::Image);
-        EventKind::Text(Text::from(close))
+            crate::bindings::unbound_text(reference.kind, label, matches!(tag, Tag::Image(_)));
+        Event {
+            kind: EventKind::Text(Text::from(close)),
+            span,
+        }
     }
 
-    // The bindings this traversal built, to look up the next with.
-    fn into_table(self) -> Option<crate::bindings::Table<'a>> {
-        self.table
+    // The event of a reference or footnote call, opened or closed, after which the traversal
+    // advances. Kept out of line, so that other nodes take the path they take without names.
+    #[cold]
+    #[inline(never)]
+    fn next_named(&mut self, id: NodeId) -> Event<'a> {
+        let node = &self.document.nodes[id.index()];
+        let event = if self.closing {
+            self.closed(node)
+        } else {
+            self.named(node)
+        };
+        self.advance(id, node);
+        event
+    }
+
+    // Move past node `id` to the next event, inline in each path of `next`, which is hot.
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
+    fn advance(&mut self, id: NodeId, node: &Node) {
+        if !self.closing && matches!(node.kind, EventKind::Start(_)) {
+            if let Some(child) = node.first_child {
+                self.current = Some(child);
+            } else {
+                self.closing = true;
+            }
+        } else if id == self.root {
+            self.current = None;
+        } else if let Some(sibling) = node.next_sibling {
+            self.current = Some(sibling);
+            self.closing = false;
+        } else {
+            self.current = node.parent;
+            self.closing = true;
+        }
+    }
+
+    // Where this traversal looked bindings up, to look up the next with.
+    fn into_lookup(self) -> Option<crate::bindings::Lookup> {
+        self.names.lookup
     }
 }
 
@@ -781,40 +904,28 @@ impl<'a, S: AsRef<str>> Iterator for DocumentEvents<'a, S> {
     fn next(&mut self) -> Option<Self::Item> {
         let id = self.current?;
         let node = &self.document.nodes[id.index()];
+        if matches!(
+            node.kind,
+            EventKind::Start(Tag::Link(Target::Reference(_)) | Tag::Image(Target::Reference(_)))
+        ) || (!self.closing && matches!(node.kind, EventKind::FootnoteReference { .. }))
+        {
+            return Some(Ok(self.next_named(id)));
+        }
         let event = if self.closing {
             match &node.kind {
                 EventKind::Start(tag) => Event {
-                    kind: self.closed(&node.kind, tag.kind()),
+                    kind: EventKind::End(tag.kind()),
                     span: node.span.end..node.span.end,
                 },
                 _ => unreachable!("only container nodes are closed"),
             }
         } else {
-            let kind = self.resolved(&node.kind);
-            // Text of an unbound reference's opening bracket starts where it does.
-            let span =
-                if matches!(kind, EventKind::Text(_)) && matches!(node.kind, EventKind::Start(_)) {
-                    node.span.start..node.span.start
-                } else {
-                    node.span.clone()
-                };
-            Event { kind, span }
-        };
-        if !self.closing && matches!(node.kind, EventKind::Start(_)) {
-            if let Some(child) = node.first_child {
-                self.current = Some(child);
-            } else {
-                self.closing = true;
+            Event {
+                kind: borrow_kind(&node.kind),
+                span: node.span.clone(),
             }
-        } else if id == self.root {
-            self.current = None;
-        } else if let Some(sibling) = node.next_sibling {
-            self.current = Some(sibling);
-            self.closing = false;
-        } else {
-            self.current = node.parent;
-            self.closing = true;
-        }
+        };
+        self.advance(id, node);
         Some(Ok(event))
     }
 }
@@ -896,15 +1007,15 @@ impl<S: AsRef<str>> Document<S> {
     pub fn text_content(&self, id: NodeId) -> String {
         self.collect_text::<false>(id, &mut None)
     }
-    // The text of the subtree under `id`, looking references up in `table`, the bindings of the
-    // tree that holds it, once built.
-    fn collect_text<'d, const HEADING: bool>(
-        &'d self,
+    // The text of the subtree under `id`, looking references up with `lookup`, that of the tree
+    // that holds it, once made.
+    fn collect_text<const HEADING: bool>(
+        &self,
         id: NodeId,
-        table: &mut Option<crate::bindings::Table<'d>>,
+        lookup: &mut Option<crate::bindings::Lookup>,
     ) -> String {
         let mut text = String::new();
-        let mut events = DocumentEvents::new(self, self.node(id).map(|_| id), table.take());
+        let mut events = DocumentEvents::new(self, self.node(id).map(|_| id), lookup.take());
         for event in events.by_ref() {
             crate::headings::append_text::<HEADING>(
                 &event.expect("document traversal cannot fail").kind,
@@ -912,18 +1023,18 @@ impl<S: AsRef<str>> Document<S> {
                 &mut text,
             );
         }
-        *table = events.into_table();
+        *lookup = events.into_lookup();
         text
     }
     /// Extract headings and anchors using the HTML writer's rules. Filtered headings still reserve their anchors.
     pub fn headings(&self, options: &crate::HeadingOptions) -> Vec<crate::HeadingEntry> {
         let mut anchors = crate::headings::AnchorGenerator::default();
         let mut entries = Vec::new();
-        // Every heading is in the attached document, so they share its bindings.
-        let mut table = None;
+        // Every heading is in the attached document, so they share its lookup.
+        let mut lookup = None;
         for id in self.descendants(self.root()) {
             if let EventKind::Start(Tag::Heading(level)) = self.nodes[id.index()].kind {
-                let mut text = self.collect_text::<true>(id, &mut table);
+                let mut text = self.collect_text::<true>(id, &mut lookup);
                 text.truncate(crate::util::line_ending::trim_terminal_ending(&text).len());
                 let anchor = anchors.anchor_for(&text);
                 if (options.min_level..=options.max_level).contains(&level) {
@@ -1206,6 +1317,8 @@ impl<S: AsRef<str>> Document<S> {
         parent: NodeId,
         kind: EventKind<'static>,
     ) -> Result<NodeId, StreamError> {
+        // An edit may unbind a reference, or add one that nothing binds.
+        self.settled = false;
         let kind = stored(kind);
         kind.validate(Some(self.source()))?;
         if !matches!(
@@ -1224,6 +1337,9 @@ impl<S: AsRef<str>> Document<S> {
             None => self.children(parent).last(),
         };
         let id = self.insert_child(parent, kind, previous, None);
+        if defines(&self.nodes[id.index()].kind) && self.attached(parent) {
+            self.index.insert(self.source.as_ref(), &self.nodes, id);
+        }
         self.append_hint = Some(id);
         self.refresh_context(id);
         self.refresh_item_after_append(parent, id);
@@ -1263,11 +1379,15 @@ impl<S: AsRef<str>> Document<S> {
         self.link_child(parent, id, previous, next);
         id
     }
-    /// Detach a subtree without moving its arena slots or invalidating IDs.
+    /// Detach a subtree without moving its arena slots or invalidating IDs. This takes time
+    /// linear in the containers of blocks of the subtree, besides its parent's children before
+    /// it, to remove its definitions from the document's index of them.
     ///
     /// # Errors
     /// Rejects invalid IDs and detaching the document root.
     pub fn detach(&mut self, id: NodeId) -> Result<(), StreamError> {
+        // An edit may unbind a reference, or add one that nothing binds.
+        self.settled = false;
         if id == self.root() {
             return Err(StreamError::Unbalanced);
         }
@@ -1275,6 +1395,10 @@ impl<S: AsRef<str>> Document<S> {
         let Some(parent) = node.parent else {
             return Ok(());
         };
+        if self.attached(parent) {
+            self.index
+                .remove_tree(self.source.as_ref(), &self.nodes, id);
+        }
         self.unlink_child(id, parent);
         self.refresh_context(id);
         self.refresh_item(Some(parent));
@@ -1294,7 +1418,7 @@ impl<S: AsRef<str>> Document<S> {
         self.nodes[id.index()].parent = None;
         self.nodes[id.index()].next_sibling = None;
     }
-    /// Move an existing subtree into a container, optionally before one of its children. No node or text allocation is required.
+    /// Move an existing subtree into a container, optionally before one of its children. No node or text allocation is required. Moving a subtree into or out of the attached document takes time linear in its containers of blocks too, to add its definitions to the document's index of them or remove them.
     ///
     /// # Errors
     /// Rejects cycles, a leaf parent and root moves with [`StreamError::Unbalanced`], invalid IDs
@@ -1308,6 +1432,8 @@ impl<S: AsRef<str>> Document<S> {
         id: NodeId,
         before: Option<NodeId>,
     ) -> Result<(), StreamError> {
+        // An edit may unbind a reference, or add one that nothing binds.
+        self.settled = false;
         if id == self.root()
             || !matches!(
                 self.node(parent).map(|node| &node.kind),
@@ -1349,6 +1475,12 @@ impl<S: AsRef<str>> Document<S> {
             return Ok(());
         }
         let former_parent = self.nodes[id.index()].parent;
+        // Its definitions are indexed while it is attached, wherever in the document it is.
+        let (was_attached, attached) = (self.attached(id), self.attached(parent));
+        if was_attached && !attached {
+            self.index
+                .remove_tree(self.source.as_ref(), &self.nodes, id);
+        }
         if let Some(parent) = former_parent {
             self.unlink_child(id, parent);
         }
@@ -1357,6 +1489,10 @@ impl<S: AsRef<str>> Document<S> {
             .take_while(|child| Some(*child) != before)
             .last();
         self.link_child(parent, id, previous, before);
+        if attached && !was_attached {
+            self.index
+                .insert_tree(self.source.as_ref(), &self.nodes, id);
+        }
         self.refresh_context(id);
         if former_parent != Some(parent) {
             self.refresh_item(former_parent);
@@ -1364,13 +1500,23 @@ impl<S: AsRef<str>> Document<S> {
         self.refresh_item(Some(parent));
         Ok(())
     }
-    /// Detach all direct children, returning their stable IDs in order.
+    /// Detach all direct children, returning their stable IDs in order, in time linear in their
+    /// containers of blocks when `parent` is attached, to remove their definitions from the
+    /// document's index of them.
     ///
     /// # Errors
     /// Rejects invalid node IDs.
     pub fn extract_children(&mut self, parent: NodeId) -> Result<Vec<NodeId>, StreamError> {
+        // An edit may unbind a reference, or add one that nothing binds.
+        self.settled = false;
         self.node(parent).ok_or(StreamError::InvalidRange)?;
         let children: Vec<_> = self.children(parent).collect();
+        if self.attached(parent) {
+            for &id in &children {
+                self.index
+                    .remove_tree(self.source.as_ref(), &self.nodes, id);
+            }
+        }
         self.nodes[parent.index()].first_child = None;
         for &id in &children {
             self.nodes[id.index()].parent = None;
@@ -1402,6 +1548,8 @@ impl<S: AsRef<str>> Document<S> {
         replace_heading: bool,
         remove_subsections: bool,
     ) -> Result<bool, StreamError> {
+        // An edit may unbind a reference, or add one that nothing binds.
+        self.settled = false;
         self.node(parent).ok_or(StreamError::InvalidRange)?;
         let mut children = self.children(parent);
         let mut previous = children.by_ref().take(heading_index).last();
@@ -1439,6 +1587,8 @@ impl<S: AsRef<str>> Document<S> {
         if !replace_heading {
             previous = Some(heading);
         }
+        // The definitions of the attached document are indexed.
+        let attached = self.attached(parent);
         // A section is one contiguous sibling range: splice it out once, retaining stable IDs and independent detached subtrees.
         if first != end {
             if let Some(previous) = previous {
@@ -1450,6 +1600,10 @@ impl<S: AsRef<str>> Document<S> {
             while at != end {
                 let id = at.expect("the section ends in the selected sibling chain");
                 at = self.nodes[id.index()].next_sibling;
+                if attached {
+                    self.index
+                        .remove_tree(self.source.as_ref(), &self.nodes, id);
+                }
                 self.nodes[id.index()].parent = None;
                 self.nodes[id.index()].next_sibling = None;
                 self.refresh_context(id);
@@ -1458,8 +1612,12 @@ impl<S: AsRef<str>> Document<S> {
         }
         let bindings = replacement.bindings();
         for child in replacement.children(replacement.root()) {
-            previous =
-                Some(self.copy_subtree(replacement, &bindings, child, parent, previous, end));
+            let copy = self.copy_subtree(replacement, &bindings, child, parent, previous, end);
+            if attached {
+                self.index
+                    .insert_tree(self.source.as_ref(), &self.nodes, copy);
+            }
+            previous = Some(copy);
         }
         Ok(true)
     }
@@ -2269,13 +2427,14 @@ fn label_change(kind: &EventKind<'_>, source: &str, one_line: bool) -> Option<La
 }
 
 // Apply `label_change` to node `id`. A reference that becomes a resource takes the destination
-// and title of the definition it is bound to in the tree under `root`, whose bindings `table`
-// holds once the first such reference builds them.
+// and title of the definition it is bound to in the tree under `root`, looked up with `lookup`
+// once the first such reference makes it, and `index`, that of the attached document.
 fn normalize_label(
     nodes: &mut [Node],
+    index: &crate::bindings::Index,
     root: NodeId,
     id: NodeId,
-    table: &mut Option<crate::bindings::Table<'static>>,
+    lookup: &mut Option<crate::bindings::Lookup>,
     source: &str,
     one_line: bool,
 ) {
@@ -2285,11 +2444,15 @@ fn normalize_label(
     // A reference whose label is dropped becomes a resource to where it leads.
     let resource = match (&nodes[id.index()].kind, &change) {
         (kind @ EventKind::Start(Tag::Link(_) | Tag::Image(_)), LabelChange::Drop) => {
-            let definition = table
-                .get_or_insert_with(|| {
-                    crate::bindings::Table::new(source, nodes, root, false).into_owned()
-                })
-                .definition_of(kind, source, &mut String::new())
+            let cx = crate::bindings::Context {
+                source,
+                nodes: &*nodes,
+                index,
+                root: NodeId::new(0),
+            };
+            let definition = lookup
+                .get_or_insert_with(|| crate::bindings::Lookup::new(cx, root, true))
+                .definition_of(cx, kind, &mut crate::bindings::Scratch::default())
                 .expect("normalizing leaves no unbound reference");
             match &nodes[definition.index()].kind {
                 EventKind::Definition {
@@ -2651,7 +2814,9 @@ impl<S: AsRef<str>> Document<S> {
         let mut blocks = Vec::new();
         for index in 0..self.nodes.len() {
             if self.nodes[index].parent.is_none() {
-                self.unbind(NodeId::new(index));
+                if !self.settled {
+                    self.unbind(NodeId::new(index));
+                }
                 self.unwrap_links(NodeId::new(index));
                 self.remove_subtree(NodeId::new(index), &mut blocks);
                 self.normalize_subtree(NodeId::new(index), &mut scratch);
@@ -2663,25 +2828,35 @@ impl<S: AsRef<str>> Document<S> {
         self.space_line_endings();
         let source = self.source.as_ref();
         write_frontmatter_value(&mut self.nodes[0].kind, source);
+        // What normalizing leaves of a tree binds its references, and what it removes holds none.
+        self.settled = true;
     }
 
     // Replace each line ending in inline code with a space, give code block values the line endings the parser stores, and give labels the shape that reads back wherever they are written, in every subtree, attached or detached, once its child lists are normalized.
     fn space_line_endings(&mut self) {
         let source = self.source.as_ref();
-        let nodes = &mut self.nodes;
+        let (nodes, definitions) = (&mut self.nodes, &self.index);
         for index in 0..nodes.len() {
             if nodes[index].parent.is_some() {
                 continue;
             }
             let root = NodeId::new(index);
             // Only a reference whose label is dropped looks up its binding, so the tree's
-            // bindings are built at the first one.
-            let mut table = None;
+            // lookup is made at the first one.
+            let mut lookup = None;
             let mut enclosing = Enclosing::default();
             let mut current = Some(root);
             while let Some(id) = current {
                 space_line_endings(&mut nodes[id.index()].kind, source);
-                normalize_label(nodes, root, id, &mut table, source, enclosing.one_line());
+                normalize_label(
+                    nodes,
+                    definitions,
+                    root,
+                    id,
+                    &mut lookup,
+                    source,
+                    enclosing.one_line(),
+                );
                 current = next_enclosed(nodes, root, id, &mut enclosing);
                 let last = current.is_none() && index == 0;
                 write_block_value(&mut nodes[id.index()].kind, source, last);
@@ -2691,6 +2866,7 @@ impl<S: AsRef<str>> Document<S> {
 
     /// Whether [`Document::normalize`] would change nothing: no reference or footnote call, other than the root of a detached subtree, is unbound in its tree, which depends on the definitions anywhere in that tree; no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent attention of the same kind, HTML without a value in phrasing, or, outside phrasing, an HTML block that is empty or holds only spaces, tabs and line endings, a list without items, not counting separators, or a table without a cell; no strikethrough is inside other strikethrough; no link is inside another link's text unless it is written as an autolink; no table with a cell has another shape than the one the parser gives a table; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, or ends with a hard break; no task item's checkbox is written before anything but a paragraph that starts with its separator and writes something after it; no inline code has a line ending in its value; no label of a link, image, definition or footnote call has a line whose leading tabs start a block at some columns only, a tab where it is longer than the parser reads at some column, or a line ending in an ATX heading or table cell, and no shortcut or collapsed reference has a label longer than a full reference's can be at some column; neither the root's frontmatter nor any code block has a carriage return in its value, the frontmatter has no value that is not empty and has no final line ending, nor has any code block unless it is the last node of the document; no attached paragraph is empty; no loose list has only one item with fewer than two blocks; no item of a tight list holds a list that starts with an empty item, or an ordered list that starts at a number other than 1, directly after a paragraph; and no item of a tight list holds two blocks in a row, not counting separators, that can be written apart only with a blank line between them, as [`Document::normalize`] lists, or two paragraphs in a row. This takes time linear in the size of the arena.
     pub fn is_normalized(&self) -> bool {
+        let cx = self.context();
         let source = self.source.as_ref();
         let nodes = &self.nodes;
         if self
@@ -2703,9 +2879,9 @@ impl<S: AsRef<str>> Document<S> {
             .filter(|&index| nodes[index].parent.is_none())
             .all(|index| {
                 let root = NodeId::new(index);
-                // Built at the first reference or footnote call, as a tree may have none.
-                let mut table = None;
-                let mut scratch = String::new();
+                // Made at the first reference or footnote call, as a tree may have none.
+                let mut lookup = None;
+                let mut scratch = crate::bindings::Scratch::default();
                 let mut enclosing = Enclosing::default();
                 let mut current = Some(root);
                 // The paragraph of the task item last met, as in `normalize_subtree`.
@@ -2726,13 +2902,12 @@ impl<S: AsRef<str>> Document<S> {
                             _ => return false,
                         }
                     }
-                    if (id != root
+                    if (!self.settled
+                        && id != root
                         && names(&node.kind)
-                        && table
-                            .get_or_insert_with(|| {
-                                crate::bindings::Table::new(source, nodes, root, true)
-                            })
-                            .unbound(&node.kind, source, &mut scratch))
+                        && lookup
+                            .get_or_insert_with(|| crate::bindings::Lookup::new(cx, root, true))
+                            .unbound(cx, &node.kind, &mut scratch))
                         || unwrapped(&self.syntax, source, nodes, id, enclosing)
                         || (enclosing.cells > 0 && matches!(node.kind, EventKind::HardBreak))
                         || line_ending_in_code(&node.kind, source)
@@ -3290,22 +3465,22 @@ impl<S: AsRef<str>> Document<S> {
     // Replace each reference and footnote call in the tree under `root`, other than `root` itself,
     // that no definition in that tree binds with the text it reads back as: a reference keeps its
     // ID, as text of its opening bracket, followed by its children and then new text of what
-    // follows them, and a footnote call becomes text, with its ID too. One pass builds the tree's
-    // bindings and another replaces, so this takes time linear in the size of the tree.
+    // follows them, and a footnote call becomes text, with its ID too. One pass finds them and
+    // another replaces, so this takes time linear in the size of the tree.
     fn unbind(&mut self, root: NodeId) {
-        let source = self.source.as_ref();
+        let cx = self.context();
         let nodes = &self.nodes;
-        // Built at the first reference or footnote call, as a tree may have none.
-        let mut table = None;
-        let mut scratch = String::new();
+        // Made at the first reference or footnote call, as a tree may have none.
+        let mut lookup = None;
+        let mut scratch = crate::bindings::Scratch::default();
         let mut unbound = Vec::new();
         let mut current = next_descendant(nodes, root, root);
         while let Some(id) = current {
             let kind = &nodes[id.index()].kind;
             if names(kind)
-                && table
-                    .get_or_insert_with(|| crate::bindings::Table::new(source, nodes, root, true))
-                    .unbound(kind, source, &mut scratch)
+                && lookup
+                    .get_or_insert_with(|| crate::bindings::Lookup::new(cx, root, true))
+                    .unbound(cx, kind, &mut scratch)
             {
                 unbound.push(id);
             }
@@ -3548,15 +3723,19 @@ impl<'de> serde::Deserialize<'de> for Document<String> {
             syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
         }
         let stored = Stored::deserialize(deserializer)?;
-        let document = Self {
+        let mut document = Self {
             source: stored.source,
             nodes: stored.nodes,
             syntax: stored.syntax,
             append_hint: None,
+            index: crate::bindings::Index::default(),
+            settled: false,
         };
         document
             .validate_storage()
             .map_err(serde::de::Error::custom)?;
+        document.index =
+            crate::bindings::Index::of_tree(&document.source, &document.nodes, document.root());
         Ok(document)
     }
 }

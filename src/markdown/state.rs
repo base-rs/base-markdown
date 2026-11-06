@@ -18,7 +18,7 @@ use crate::markdown::{
     LineWrapping, Options,
 };
 use crate::{
-    bindings::Table,
+    bindings::{Lookup, Scratch},
     message::Message,
     stream::{EventKind, Tag, Target},
     util::line_ending::{line_endings, trim_terminal_ending},
@@ -44,8 +44,8 @@ enum Before<'a> {
 /// written as one only when the definition it is bound to is the one it would read back bound to.
 #[derive(Debug)]
 struct WrittenBindings {
-    tree: Table<'static>,
-    written: Option<Table<'static>>,
+    tree: Lookup,
+    written: Option<Lookup>,
 }
 
 pub struct State<'a> {
@@ -80,7 +80,7 @@ pub struct State<'a> {
     /// The bindings of what is being written, built at the first reference written.
     bindings: Option<WrittenBindings>,
     /// Room for a reference key that is not the label itself.
-    key: String,
+    key: Scratch,
     /// Where the phrasing of the paragraph, heading or table cell being written starts. A prefix
     /// added later, such as a list item's indent, puts it at the start of a line.
     pub(super) line_start: usize,
@@ -1222,7 +1222,7 @@ impl<'a> State<'a> {
             stack: Vec::new(),
             serialization_root: None,
             bindings: None,
-            key: String::new(),
+            key: Scratch::default(),
             line_start: 0,
             label_end: None,
             definition_colon: None,
@@ -1243,23 +1243,22 @@ impl<'a> State<'a> {
         document: &Document<S>,
         id: NodeId,
     ) -> Option<(NodeId, bool)> {
-        let source = document.source();
-        let nodes = document.nodes();
-        let root = self.serialization_root.unwrap_or(document.root());
+        let cx = document.context();
+        let root = self.serialization_root.unwrap_or(cx.root);
         let bindings = self.bindings.get_or_insert_with(|| {
-            let tree = crate::document::tree_root(nodes, root);
+            let tree = crate::document::tree_root(cx.nodes, root);
             WrittenBindings {
-                tree: Table::new(source, nodes, tree, false).into_owned(),
-                written: (root != tree)
-                    .then(|| Table::new(source, nodes, root, false).into_owned()),
+                // Writing all of a tree looks up every reference in it.
+                tree: Lookup::new(cx, tree, root == tree),
+                written: (root != tree).then(|| Lookup::new(cx, root, false)),
             }
         });
-        let kind = &nodes[id.index()].kind;
-        let definition = bindings.tree.definition_of(kind, source, &mut self.key)?;
-        let Some(written) = &bindings.written else {
+        let kind = &cx.nodes[id.index()].kind;
+        let definition = bindings.tree.definition_of(cx, kind, &mut self.key)?;
+        let Some(written) = &mut bindings.written else {
             return Some((definition, true));
         };
-        let first = written.definition_of(kind, source, &mut self.key);
+        let first = written.definition_of(cx, kind, &mut self.key);
         Some((definition, first == Some(definition)))
     }
 
