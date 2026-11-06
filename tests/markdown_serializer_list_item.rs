@@ -534,12 +534,13 @@ fn task_item_after_definitions(size: usize) -> Document<String> {
             }),
         )
         .unwrap();
-    for _ in 0..size {
+    for index in 0..size {
         document
             .append_child(
                 item,
                 EventKind::Definition {
-                    label: Value::Literal("a"),
+                    // Each its own label, as an edit adds no second definition of one.
+                    label: Value::from(format!("a{}", index)),
                     destination: Value::Literal("/u"),
                     title: None,
                 },

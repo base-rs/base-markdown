@@ -510,7 +510,10 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     /// Consume one event without retaining it.
     ///
     /// # Errors
-    /// Propagates invalid source ranges, malformed streams, and writer errors.
+    /// Propagates invalid source ranges, malformed streams, and writer errors. Rejects invalid
+    /// values with [`StreamError::InvalidValue`], including a reference by name,
+    /// [`Target::Reference`][crate::stream::Target::Reference], as a stream carries resolved
+    /// targets only.
     // Consume the public event while borrowing it through internal helpers to avoid copies.
     #[allow(clippy::needless_pass_by_value)]
     pub fn event(&mut self, event: Event<'_>) -> Result<(), StreamError> {

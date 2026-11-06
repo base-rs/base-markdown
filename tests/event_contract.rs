@@ -1316,10 +1316,14 @@ fn definition_labels_longer_than_the_parser_reads_are_rejected() {
     ];
     let mut check = |label: &String, valid: bool| {
         let kind = definition(Text::from(label.clone()));
-        let root = ast.root();
         let results = [
             ast.set_kind(id, kind.clone()),
-            ast.append_child(root, kind.clone()).map(drop),
+            // A fresh document, as an edit adds no second definition of a label.
+            {
+                let mut fresh = Document::parse("", &options.parse).unwrap();
+                let root = fresh.root();
+                fresh.append_child(root, kind.clone()).map(drop)
+            },
             render("", kind.clone()),
             AstBuilder::new()
                 .consume(&mut document(vec![kind]).into_iter(), usize::MAX)

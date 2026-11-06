@@ -60,10 +60,10 @@ const SOURCE: &str =
 /// document is written as a tree that reads back as itself.
 #[test]
 fn references_follow_edits_to_definitions() {
-    // Nothing edited: everything is bound.
+    // Nothing edited: everything is bound, and normalizing drops the copy of `a`.
     let document = parse(SOURCE);
-    assert!(document.is_normalized());
-    assert_eq!(round_trip(document), SOURCE);
+    assert!(!document.is_normalized());
+    assert_eq!(round_trip(document), SOURCE.replace("[A]: /4\n\n", ""));
 
     // Removing a definition unbinds its references.
     let mut document = parse(SOURCE);
@@ -85,21 +85,23 @@ fn references_follow_edits_to_definitions() {
     assert!(written.starts_with("[a] [b][x]"), "{:?}", written);
 
     // Relabelling a definition unbinds the references to its old label and binds those to its new
-    // one.
+    // one, which no other definition may have, as an edit adds no copy.
     let mut document = parse(SOURCE);
     let id = definition(&document, "c");
-    document
-        .set_kind(
-            id,
-            EventKind::Definition {
-                label: Text::Literal("x"),
-                destination: Text::Literal("/5"),
-                title: None,
-            },
-        )
-        .unwrap();
+    let relabelled = |label| EventKind::Definition {
+        label: Text::Literal(label),
+        destination: Text::Literal("/5"),
+        title: None,
+    };
+    let before = to_markdown(&document).unwrap();
+    assert!(matches!(
+        document.set_kind(id, relabelled("X")),
+        Err(StreamError::InvalidValue)
+    ));
+    assert_eq!(to_markdown(&document).unwrap(), before);
+    document.set_kind(id, relabelled("q")).unwrap();
+    assert_eq!(document.definition("Q"), Some(id));
     assert!(!document.is_normalized());
-    // The first `x` is still the first.
     assert!(html(&document).contains("<a href=\"/2\">b</a>"));
     let written = round_trip(document);
     assert!(
@@ -108,8 +110,30 @@ fn references_follow_edits_to_definitions() {
         written
     );
 
-    // Moving a definition before the first of its label makes it the binding.
+    // Moving a definition of a label defined more than once would reorder the binding, so it is
+    // rejected, and once normalizing drops the copy, the one left moves.
     let mut document = parse(SOURCE);
+    let first = document.children(document.root()).next().unwrap();
+    let before = to_markdown(&document).unwrap();
+    for id in [definition(&document, "a"), {
+        let ids: Vec<_> = document.descendants(document.root()).collect();
+        ids.into_iter()
+            .rev()
+            .find(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Definition { .. }
+                )
+            })
+            .unwrap()
+    }] {
+        assert!(matches!(
+            document.attach(document.root(), id, Some(first)),
+            Err(StreamError::InvalidValue)
+        ));
+    }
+    assert_eq!(to_markdown(&document).unwrap(), before);
+    document.normalize();
     let upper = document
         .descendants(document.root())
         .filter(|&id| {
@@ -124,30 +148,32 @@ fn references_follow_edits_to_definitions() {
     document
         .attach(document.root(), upper, Some(first))
         .unwrap();
-    assert!(html(&document).contains("<a href=\"/4\">a</a>"));
+    assert!(html(&document).contains("<img src=\"/3\" alt=\"c\" />"));
     let written = round_trip(document);
     assert!(
-        written.starts_with("[A]: /4\n\n[a] [b][x]"),
+        written.starts_with("[c]: /3\n\n[a] [b][x]"),
         "{:?}",
         written
     );
 
-    // Adding a definition binds a reference by name that was unbound.
+    // Adding a definition binds a reference by name that was unbound, and one of a label already
+    // bound is rejected, as an edit adds no copy.
     let mut document = parse(SOURCE);
+    let root = document.root();
+    let added = EventKind::Definition {
+        label: Text::Literal("C"),
+        destination: Text::Literal("/6"),
+        title: None,
+    };
+    let before = to_markdown(&document).unwrap();
+    assert!(matches!(
+        document.append_child(root, added.clone()),
+        Err(StreamError::InvalidValue)
+    ));
+    assert_eq!(to_markdown(&document).unwrap(), before);
     document.detach(definition(&document, "c")).unwrap();
     assert!(!document.is_normalized());
-    let root = document.root();
-    document
-        .append_child(
-            root,
-            EventKind::Definition {
-                label: Text::Literal("C"),
-                destination: Text::Literal("/6"),
-                title: None,
-            },
-        )
-        .unwrap();
-    assert!(document.is_normalized());
+    document.append_child(root, added).unwrap();
     assert!(html(&document).contains("<img src=\"/6\" alt=\"c\" />"));
     let written = round_trip(document);
     assert!(written.ends_with("[C]: /6\n"), "{:?}", written);
@@ -379,21 +405,25 @@ fn subtrees_write_references_bound_outside_as_resources() {
 /// the subtree that uses it.
 #[test]
 fn binding_edges() {
-    // A footnote definition with an edited identifier binds the calls of that identifier, ahead
-    // of a later definition of it.
+    // A footnote definition cannot take an identifier another one has, as an edit adds no copy,
+    // and once that one is gone it binds the calls of the identifier.
     let mut document = parse("[^n] [^m]\n\n[^n]: note\n\n[^m]: other\n");
     let note = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::FootnoteDefinition { .. }))
     });
-    document
-        .set_kind(
-            note,
-            EventKind::Start(Tag::FootnoteDefinition {
-                identifier: Text::Value("M".into()),
-                label: Some(Text::Value("m".into())),
-            }),
-        )
-        .unwrap();
+    let renamed = EventKind::Start(Tag::FootnoteDefinition {
+        identifier: Text::Value("M".into()),
+        label: Some(Text::Value("m".into())),
+    });
+    let before = to_markdown(&document).unwrap();
+    assert!(matches!(
+        document.set_kind(note, renamed.clone()),
+        Err(StreamError::InvalidValue)
+    ));
+    assert_eq!(to_markdown(&document).unwrap(), before);
+    let other = document.footnote_definition("M").unwrap();
+    document.detach(other).unwrap();
+    document.set_kind(note, renamed).unwrap();
     assert_eq!(document.footnote_definition("M"), Some(note));
     assert!(!document.is_normalized());
     let written = round_trip(document);
@@ -493,10 +523,20 @@ fn growth_against_control(
     make: impl Fn(usize, bool) -> Document,
     run: impl Fn(&Document),
 ) {
+    growth_against_control_from(1 << 8, label, make, run);
+}
+
+/// [`growth_against_control`] from `small` items, for work whose quadratic part shows only at
+/// larger sizes.
+fn growth_against_control_from(
+    small: usize,
+    label: &str,
+    make: impl Fn(usize, bool) -> Document,
+    run: impl Fn(&Document),
+) {
     let _timing = support::linear::TIMING
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let small = 1 << 10;
     let large = small * support::linear::SCALE;
     let documents = [
         make(small, false),
@@ -549,10 +589,10 @@ fn reference_work_is_linear() {
     growth_against_control("render", bound, |document| {
         html(document);
     });
-    growth_against_control("write", bound, |document| {
+    growth_against_control_from(1 << 7, "write", bound, |document| {
         to_markdown(document).unwrap();
     });
-    growth_against_control("write a subtree", bound, |document| {
+    growth_against_control_from(1 << 7, "write a subtree", bound, |document| {
         let quote = document.children(document.root()).next().unwrap();
         to_markdown_node(document, quote, &Default::default()).unwrap();
     });
@@ -596,7 +636,7 @@ fn reference_work_is_linear() {
         source.push_str("\n\n[a]: /u\n");
         parse(&source)
     };
-    growth_against_control("write a deep subtree", deep, |document| {
+    growth_against_control_from(1 << 7, "write a deep subtree", deep, |document| {
         let quote = document
             .descendants(document.root())
             .filter(|&id| {
@@ -617,21 +657,24 @@ fn reference_work_is_linear() {
 #[test]
 fn per_section_work_is_linear() {
     // `count` sections, each a heading that holds a reference, or a resource, to its own
-    // definition and another to a label of `duplicates` definitions, which come before the
-    // sections, and the sections' definitions after them. Several definitions of a label are
-    // found among themselves, in time linear in the siblings between them, not in the document.
-    let sections = |duplicates: usize| {
+    // definition and another to `d`, whose definition comes before the sections and, with
+    // `copies`, has copies spread among them, halfway and after them, with the sections'
+    // definitions after them. A binding is found at once, wherever its copies are.
+    let sections = |copies: bool| {
         move |count: usize, control: bool| {
-            let mut source = String::new();
-            for _ in 0..duplicates {
-                source.push_str("[d]: /d\n");
-            }
+            let mut source = String::from("[d]: /d\n\n");
             for index in 0..count {
                 if control {
                     source.push_str(&format!("# h [a{index}](/u) [d](/d)\n\n"));
                 } else {
                     source.push_str(&format!("# h [a{index}] [d]\n\n"));
                 }
+                if copies && index == count / 2 {
+                    source.push_str("[d]: /2\n\n");
+                }
+            }
+            if copies {
+                source.push_str("[d]: /3\n\n");
             }
             for index in 0..count {
                 source.push_str(&format!("[a{index}]: /u\n"));
@@ -644,8 +687,8 @@ fn per_section_work_is_linear() {
             run(id);
         }
     };
-    for duplicates in [1, 4] {
-        let make = sections(duplicates);
+    {
+        let make = sections(true);
         growth_against_control("text_content", make, |document| {
             each(document, &|id| {
                 document.text_content(id);
@@ -668,7 +711,49 @@ fn per_section_work_is_linear() {
                 document.subtree_events(id).for_each(drop);
             });
         });
+        growth_against_control("headings", make, |document| {
+            drop(document.headings(&Default::default()));
+        });
     }
+}
+
+/// A label defined twice, with the copies far apart from the first definitions, costs a
+/// lookup no more than one defined once, in every pass over the whole document: `count`
+/// references, then a definition of each, then a copy of each, against a control whose second
+/// definitions have labels of their own.
+#[test]
+fn whole_document_work_with_copies_far_apart_is_linear() {
+    let source = |count: usize, control: bool| {
+        let mut source = String::new();
+        for index in 0..count {
+            source.push_str(&format!("[a{index}] "));
+        }
+        source.push_str("\n\n");
+        for index in 0..count {
+            source.push_str(&format!("[a{index}]: /1\n\n"));
+        }
+        let second = if control { "b" } else { "a" };
+        for index in 0..count {
+            source.push_str(&format!("[{second}{index}]: /2\n\n"));
+        }
+        source
+    };
+    let make = |count, control| parse(&source(count, control));
+    growth_against_control_from(1 << 9, "parse", make, |document| {
+        drop(parse(document.source()));
+    });
+    growth_against_control_from(1 << 9, "render_html", make, |document| {
+        drop(html(document));
+    });
+    growth_against_control_from(1 << 7, "to_markdown", make, |document| {
+        to_markdown(document).unwrap();
+    });
+    growth_against_control_from(1 << 9, "headings", make, |document| {
+        drop(document.headings(&Default::default()));
+    });
+    growth_against_control("normalize", make, |document| {
+        document.clone().normalize();
+    });
 }
 
 /// The events of `source`, from the parser, with `edit` applied to each.
@@ -1131,13 +1216,23 @@ fn lookups_order_nested_and_detached_definitions() {
             label: None,
         })
     };
+    // A definition nested in one of its own identifier would be a copy, which no edit adds, in
+    // either order.
     let mut document = parse("[^n]\n\n[^n]: x\n");
     let outer = document.footnote_definition("N").unwrap();
-    let inner = document.append_child(outer, footnote("N")).unwrap();
-    assert_eq!(document.footnote_definition("N"), Some(outer));
-    // Relabelled away and back, the outer definition is indexed after the inner one.
+    assert!(matches!(
+        document.append_child(outer, footnote("N")),
+        Err(StreamError::InvalidValue)
+    ));
     document.set_kind(outer, footnote("Z")).unwrap();
+    let inner = document.append_child(outer, footnote("N")).unwrap();
     assert_eq!(document.footnote_definition("N"), Some(inner));
+    assert!(matches!(
+        document.set_kind(outer, footnote("N")),
+        Err(StreamError::InvalidValue)
+    ));
+    assert_eq!(document.footnote_definition("Z"), Some(outer));
+    document.detach(inner).unwrap();
     document.set_kind(outer, footnote("N")).unwrap();
     assert_eq!(document.footnote_definition("N"), Some(outer));
     assert_eq!(document.footnote_definition("Z"), None);
@@ -1248,4 +1343,319 @@ fn built_names_without_definitions_are_unbound() {
             .children(paragraph)
             .all(|id| matches!(document.node(id).unwrap().kind, EventKind::Text(_))));
     }
+}
+
+/// A label is looked up by its key, in which a run of spaces is one space.
+#[test]
+fn labels_with_runs_of_spaces_bind_by_their_key() {
+    let document = parse("[x][a  b]\n\n[a b]: /u\n");
+    let id = definition(&document, "a b");
+    assert_eq!(document.definition("a  b"), Some(id));
+    assert_eq!(document.bindings().definition("a  b"), Some(id));
+    assert_eq!(html(&document), "<p><a href=\"/u\">x</a></p>\n");
+    let document = parse("[x][a b]\n\n[a  b]: /u\n");
+    assert_eq!(document.definition("a b"), document.definition("a  b"));
+    assert_eq!(html(&document), "<p><a href=\"/u\">x</a></p>\n");
+}
+
+/// What a test compares to check that a document is unchanged.
+fn state(document: &Document) -> (String, String, String, usize) {
+    (
+        format!("{:?}", canonical(document)),
+        html(document),
+        to_markdown(document).unwrap(),
+        document.nodes().len(),
+    )
+}
+
+/// Check that `edit` is rejected as adding a copy of a binding, and leaves `document` as it was.
+fn adds_a_copy<T>(
+    document: &mut Document,
+    edit: impl FnOnce(&mut Document) -> Result<T, StreamError>,
+) {
+    let before = state(document);
+    assert!(matches!(edit(document), Err(StreamError::InvalidValue)));
+    assert_eq!(state(document), before);
+}
+
+fn link_definition(label: &'static str) -> EventKind<'static> {
+    EventKind::Definition {
+        label: Text::Literal(label),
+        destination: Text::Literal("/new"),
+        title: None,
+    }
+}
+
+fn footnote_definition(identifier: &'static str) -> EventKind<'static> {
+    EventKind::Start(Tag::FootnoteDefinition {
+        identifier: Text::Literal(identifier),
+        label: None,
+    })
+}
+
+/// An edit that would give the attached document a second definition of a label or identifier
+/// is rejected before it changes anything, by every edit that adds definitions.
+#[test]
+fn edits_add_no_copy_of_a_binding() {
+    let source = "[a] [^n]\n\n[a]: /1\n\n[^n]: note\n\n> quote\n";
+    let mut document = parse(source);
+    let root = document.root();
+    let note = document.footnote_definition("N").unwrap();
+    let quote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::BlockQuote))
+    });
+    // Appending, at the root or nested in a footnote definition or block quote.
+    adds_a_copy(&mut document, |document| {
+        document.append_child(root, link_definition("A"))
+    });
+    adds_a_copy(&mut document, |document| {
+        document.append_child(note, link_definition("a"))
+    });
+    adds_a_copy(&mut document, |document| {
+        document.append_child(quote, link_definition("a"))
+    });
+    adds_a_copy(&mut document, |document| {
+        document.append_child(root, footnote_definition("N"))
+    });
+    // Relabelling into a bound label, while keeping its own key is an edit like any other.
+    let b = document.append_child(root, link_definition("b")).unwrap();
+    adds_a_copy(&mut document, |document| {
+        document.set_kind(b, link_definition("a"))
+    });
+    adds_a_copy(&mut document, |document| {
+        document.set_kind(b, link_definition("A"))
+    });
+    let other = document
+        .append_child(root, footnote_definition("O"))
+        .unwrap();
+    adds_a_copy(&mut document, |document| {
+        document.set_kind(other, footnote_definition("N"))
+    });
+    document.set_kind(b, link_definition("B")).unwrap();
+    assert_eq!(document.definition("b"), Some(b));
+    // Attaching a detached subtree with a definition of a bound label, or with two of one label.
+    let detached = document
+        .append_child(root, EventKind::Start(Tag::BlockQuote))
+        .unwrap();
+    document.detach(detached).unwrap();
+    let inner = document
+        .append_child(detached, link_definition("a"))
+        .unwrap();
+    adds_a_copy(&mut document, |document| {
+        document.attach(root, detached, None)
+    });
+    document.set_kind(inner, link_definition("c")).unwrap();
+    document
+        .append_child(detached, link_definition("C"))
+        .unwrap();
+    adds_a_copy(&mut document, |document| {
+        document.attach(root, detached, None)
+    });
+    adds_a_copy(&mut document, |document| {
+        document.attach(quote, detached, None)
+    });
+    // A detached subtree is a tree of its own, which binds its own references.
+    document.extract_children(detached).unwrap();
+    document
+        .append_child(detached, link_definition("c"))
+        .unwrap();
+    document.attach(root, detached, None).unwrap();
+    assert!(document.definition("c").is_some());
+    // The only definition of a label, detached, can be attached again.
+    document.detach(note).unwrap();
+    assert!(html(&document).contains("[^n]"));
+    document.attach(root, note, None).unwrap();
+    assert_eq!(document.footnote_definition("N"), Some(note));
+    assert!(html(&document).contains("data-footnote-ref"));
+
+    // Moving a definition of a label defined more than once would reorder its copies.
+    let mut document = parse("[a]\n\n[a]: /1\n\np\n\n[a]: /2\n");
+    let root = document.root();
+    let first = definition(&document, "a");
+    let copy = document.children(root).last().unwrap();
+    adds_a_copy(&mut document, |document| document.attach(root, first, None));
+    adds_a_copy(&mut document, |document| {
+        document.attach(root, copy, Some(first))
+    });
+    // Detaching a copy unbinds it, so attaching it again adds a copy, as attaching the binding
+    // again would once the copy has taken its place.
+    document.detach(copy).unwrap();
+    adds_a_copy(&mut document, |document| document.attach(root, copy, None));
+    document.attach(root, first, None).unwrap();
+    assert_eq!(document.definition("a"), Some(first));
+
+    // Replacing a section with one that defines a label bound outside it, or defines one twice;
+    // a label that only the replaced section defines can be defined again.
+    let mut document = parse("[a] [b]\n\n[a]: /1\n\n# s\n\n[b]: /2\n\n# t\n");
+    let root = document.root();
+    let index = document
+        .children(root)
+        .position(|id| document.text_content(id) == "s")
+        .unwrap();
+    for replacement in [
+        "[a]: /3\n",
+        "[c]: /3\n\n[C]: /4\n",
+        "> [^x]: a\n>\n> [^x]: b\n",
+    ] {
+        let replacement = parse(replacement);
+        adds_a_copy(&mut document, |document| {
+            document.replace_heading_section(root, index, &replacement, true, false)
+        });
+    }
+    let replacement = parse("# s\n\n[b]: /5\n");
+    assert!(document
+        .replace_heading_section(root, index, &replacement, true, false)
+        .unwrap());
+    assert!(html(&document).contains("<a href=\"/5\">b</a>"));
+}
+
+/// Removing the binding of a label makes its next copy in document order the binding, and
+/// removing a copy leaves the binding as it is.
+#[test]
+fn removing_a_binding_binds_its_next_copy() {
+    let source = "[x]\n\n[x]: /1\n\n> [x]: /2\n\n- [x]: /3\n\n[x]: /4\n";
+    let destination = |document: &Document| {
+        let link = find(document, |kind| {
+            matches!(kind, EventKind::Start(Tag::Link(_)))
+        });
+        assert_eq!(
+            document.destination(link),
+            document.bindings().destination(link)
+        );
+        document
+            .destination(link)
+            .map(|(destination, _)| destination.to_owned())
+    };
+    let definitions = |document: &Document| -> Vec<NodeId> {
+        document
+            .descendants(document.root())
+            .filter(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Definition { .. }
+                )
+            })
+            .collect()
+    };
+    let mut document = parse(source);
+    let ids = definitions(&document);
+    assert_eq!(destination(&document).as_deref(), Some("/1"));
+    // A copy goes, and the binding stays.
+    document.detach(ids[2]).unwrap();
+    assert_eq!(destination(&document).as_deref(), Some("/1"));
+    // The binding goes, by a new label, and the next copy binds, then by detaching.
+    document.set_kind(ids[0], link_definition("y")).unwrap();
+    assert_eq!(destination(&document).as_deref(), Some("/2"));
+    let quote = document.node(ids[1]).unwrap().parent().unwrap();
+    document.extract_children(quote).unwrap();
+    assert_eq!(destination(&document).as_deref(), Some("/4"));
+    assert!(html(&document).contains("<a href=\"/4\">x</a>"));
+    document.detach(ids[3]).unwrap();
+    assert_eq!(destination(&document), None);
+
+    // Replacing the section that holds the binding binds the copy after it.
+    let mut document = parse("[x]\n\n# s\n\n[x]: /1\n\n# t\n\n[x]: /2\n");
+    let root = document.root();
+    let index = document
+        .children(root)
+        .position(|id| document.text_content(id) == "s")
+        .unwrap();
+    assert!(document
+        .replace_heading_section(root, index, &parse("# s\n"), true, false)
+        .unwrap());
+    assert_eq!(destination(&document).as_deref(), Some("/2"));
+}
+
+/// Detaching a definition leaves the others bound, wherever the index placed them: here two
+/// labels whose hashes share the last slot of the index's first table, so that the second
+/// wraps to its start and moves back when the first goes.
+#[test]
+fn detaching_a_definition_keeps_the_others_bound() {
+    // The FNV-1a hash the index files a label by, in the last of its first 8 slots.
+    let last = |label: &String| {
+        label.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        }) & 7
+            == 7
+    };
+    let labels: Vec<String> = (0..)
+        .map(|index| format!("k{}", index))
+        .filter(last)
+        .take(2)
+        .collect();
+    let source = format!(
+        "[{0}] [{1}]\n\n[{0}]: /0\n\n[{1}]: /1\n",
+        labels[0], labels[1]
+    );
+    let mut document = parse(&source);
+    let links: Vec<NodeId> = document
+        .descendants(document.root())
+        .filter(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Start(Tag::Link(_))
+            )
+        })
+        .collect();
+    let first = document
+        .descendants(document.root())
+        .find(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Definition { .. }
+            )
+        })
+        .unwrap();
+    document.detach(first).unwrap();
+    let destination = |link| {
+        document
+            .destination(link)
+            .map(|(destination, _)| destination.to_owned())
+    };
+    assert_eq!(destination(links[0]), None);
+    assert_eq!(destination(links[1]).as_deref(), Some("/1"));
+}
+
+/// Normalizing removes each copy of a binding, which renders nothing, so every label is defined
+/// once, the document renders as it did, and normalizing again changes nothing.
+#[test]
+fn normalizing_removes_copies() {
+    for source in [
+        "[a]\n\n[a]: /1\n\n[a]: /2\n\n[A]: /3\n",
+        "[a]\n\n[a]: /1\n[a]: /2\n\np\n",
+        "[x]\n\n> [x]: /1\n\n[x]: /2\n\n> [x]: /3\n",
+        "[x]\n\n[x]: /1\n\n- a\n\n  [x]: /2\n- b\n",
+        "[^a]\n\n[^a]: one\n\n[^a]: two\n",
+        "[^a]\n\n[^a]: x\n\n    [^a]: y\n",
+        // A definition in a copy of a footnote definition can be the binding of its own label,
+        // which stays where it is in document order.
+        "[^a] [x] [y]\n\n[^a]: one\n\n[^a]: two [x]\n\n    [x]: /in\n    [y]: /y\n    [x]: /no\n\n[x]: /out\n",
+        "[^a] [x]\n\n[^a]: one\n\n[^a]: [x]: /in\n\n[x]: /out\n\n[^a]: > [x]: /3\n",
+    ] {
+        let mut document = parse(source);
+        assert!(!document.is_normalized(), "{:?}", source);
+        let rendered = html(&document);
+        document.normalize();
+        assert!(document.is_normalized(), "{:?}", source);
+        assert_eq!(html(&document), rendered, "{:?}", source);
+        let once = state(&document);
+        document.normalize();
+        assert_eq!(state(&document), once, "{:?}", source);
+        let written = round_trip(document);
+        assert_eq!(to_html(&written), rendered, "{:?}: {:?}", source, written);
+        let reparsed = parse(&written);
+        assert!(reparsed.is_normalized(), "{:?}", written);
+    }
+    // A detached tree's copies are its own, removed as well, so it can then be attached.
+    let mut document = parse("[a]\n\n> [b]: /1\n>\n> [b]: /2\n");
+    let root = document.root();
+    let quote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::BlockQuote))
+    });
+    document.detach(quote).unwrap();
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert!(document.is_normalized());
+    document.attach(root, quote, None).unwrap();
+    assert_eq!(document.descendants(quote).count(), 2);
 }

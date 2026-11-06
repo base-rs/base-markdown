@@ -1249,8 +1249,8 @@ impl<'a> State<'a> {
             let tree = crate::document::tree_root(cx.nodes, root);
             WrittenBindings {
                 // Writing all of a tree looks up every reference in it.
-                tree: Lookup::new(cx, tree, root == tree),
-                written: (root != tree).then(|| Lookup::new(cx, root, false)),
+                tree: Lookup::new(cx, tree),
+                written: (root != tree).then(|| Lookup::new(cx, root)),
             }
         });
         let kind = &cx.nodes[id.index()].kind;

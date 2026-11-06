@@ -13,8 +13,8 @@ use alloc::{string::String, vec, vec::Vec};
 ///
 /// A reference is a name and a definition a binding of it: the first link reference definition
 /// in document order whose label matches a reference's, as the parser matches labels, is the one
-/// it leads to, and the first footnote definition with a footnote call's identifier is the one
-/// it calls. A document stores no binding, so the next table built sees every edit to its
+/// it leads to, and the first footnote definition with a footnote call's identifier to end, which
+/// is one nested in another of its identifier before the other, is the one it calls. A document stores no binding, so the next table built sees every edit to its
 /// definitions. A `Bindings` borrows the document, so it cannot outlive an edit.
 ///
 /// [`Document::bindings`][crate::Document::bindings] builds the table of the attached document,
@@ -43,7 +43,8 @@ pub(crate) struct Scratch {
     other: String,
 }
 
-// The nodes of one key, in no order: the first inserted, and any others.
+// The nodes of one key: the first inserted, which is its binding, and the copies of it inserted
+// after, in the order inserted.
 #[derive(Clone, Debug)]
 struct Entry {
     hash: u64,
@@ -54,6 +55,10 @@ struct Entry {
 impl Entry {
     fn contains(&self, id: NodeId) -> bool {
         self.first == id || self.more.contains(&id)
+    }
+
+    fn nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
+        core::iter::once(self.first).chain(self.more.iter().copied())
     }
 }
 
@@ -103,9 +108,16 @@ impl KeyMap {
         ))
     }
 
-    // Add `id` to the entry of its key, which `matches` recognizes by its first node, keeping
-    // only the first node of a key unless `all` is set.
-    fn insert(&mut self, hash: u64, id: NodeId, all: bool, matches: impl FnMut(&Entry) -> bool) {
+    // Add `id` to the entry of its key, which `matches` recognizes by its first node, after the
+    // nodes already there, keeping only the first node of a key unless `all` is set. Whether
+    // `id` is the first of its key.
+    fn insert(
+        &mut self,
+        hash: u64,
+        id: NodeId,
+        all: bool,
+        matches: impl FnMut(&Entry) -> bool,
+    ) -> bool {
         if let Some(slot) = self.find(hash, matches) {
             if all {
                 self.slots[slot]
@@ -114,7 +126,7 @@ impl KeyMap {
                     .more
                     .push(id);
             }
-            return;
+            return false;
         }
         if (self.len + 1) * 2 > self.slots.len() {
             let size = (self.slots.len() * 2).max(8);
@@ -130,6 +142,7 @@ impl KeyMap {
             more: Vec::new(),
         });
         self.len += 1;
+        true
     }
 
     // Put `entry`, of a key no entry has, in the first empty slot from its home.
@@ -141,9 +154,10 @@ impl KeyMap {
         self.slots[slot] = Some(entry);
     }
 
-    // Remove `id` from the entry of hash `hash` that holds it, and the entry once it is empty,
-    // moving back the entries after it that it displaced.
-    fn remove(&mut self, hash: u64, id: NodeId) {
+    // Remove `id` from the entry of hash `hash` that holds it, making the next node of the entry
+    // its first when `id` was, and the entry once it is empty, moving back the entries after it
+    // that it displaced. Whether `id` was or left a copy.
+    fn remove(&mut self, hash: u64, id: NodeId) -> bool {
         let mut slot = self
             .find(hash, |entry| entry.contains(id))
             .expect("an indexed node is in the entry of its key");
@@ -156,12 +170,12 @@ impl KeyMap {
                 .iter()
                 .position(|&other| other == id)
                 .expect("the entry holds the node");
-            entry.more.swap_remove(at);
-            return;
+            entry.more.remove(at);
+            return true;
         }
-        if let Some(next) = entry.more.pop() {
-            entry.first = next;
-            return;
+        if !entry.more.is_empty() {
+            entry.first = entry.more.remove(0);
+            return true;
         }
         self.slots[slot] = None;
         self.len -= 1;
@@ -180,6 +194,7 @@ impl KeyMap {
             }
             next = (next + 1) & self.mask();
         }
+        false
     }
 }
 
@@ -191,7 +206,17 @@ fn indexed_key<'v>(
     id: NodeId,
     scratch: &'v mut String,
 ) -> (bool, u64, &'v str) {
-    match &nodes[id.index()].kind {
+    defined_key(&nodes[id.index()].kind, source, scratch)
+}
+
+// The hashed key that `kind`, a definition or footnote definition, defines, and whether it is a
+// footnote definition.
+fn defined_key<'v>(
+    kind: &'v EventKind<'_>,
+    source: &'v str,
+    scratch: &'v mut String,
+) -> (bool, u64, &'v str) {
+    match kind {
         EventKind::Definition { label, .. } => {
             let (hash, key) = hashed_reference_key(text(label, source), scratch);
             (false, hash, key)
@@ -256,17 +281,40 @@ fn next_block(nodes: &[Node], root: NodeId, id: NodeId) -> Option<NodeId> {
     }
 }
 
-// Each definition and footnote definition of the tree under `root`, in document order.
+// Each definition and footnote definition of the tree under `root`, in the order they end, which
+// is document order but for a footnote definition, which comes after what it holds. The first of
+// a key in this order binds it, as the renderer shows the first footnote definition of an
+// identifier to end, which is one nested in another before the other.
 fn each_definition(nodes: &[Node], root: NodeId, mut visit: impl FnMut(NodeId)) {
+    let footnote = |id: NodeId| {
+        matches!(
+            nodes[id.index()].kind,
+            EventKind::Start(Tag::FootnoteDefinition { .. })
+        )
+    };
     let mut current = Some(root);
     while let Some(id) = current {
-        if matches!(
-            nodes[id.index()].kind,
-            EventKind::Definition { .. } | EventKind::Start(Tag::FootnoteDefinition { .. })
-        ) {
+        if matches!(nodes[id.index()].kind, EventKind::Definition { .. }) {
             visit(id);
         }
-        current = next_block(nodes, root, id);
+        // Each footnote definition this leaves, from the deepest, ends here.
+        let next = next_block(nodes, root, id);
+        let node = &nodes[id.index()];
+        if !(holds_blocks(&node.kind) && node.first_child().is_some()) {
+            let mut at = id;
+            loop {
+                if footnote(at) {
+                    visit(at);
+                }
+                if at == root || nodes[at.index()].next_sibling().is_some() {
+                    break;
+                }
+                at = nodes[at.index()]
+                    .parent()
+                    .expect("a descendant has a parent before its subtree root");
+            }
+        }
+        current = next;
     }
 }
 
@@ -279,6 +327,8 @@ struct Keys {
 }
 
 impl Keys {
+    // Add `id`, keeping all of a key's nodes when `all` is set; whether it is the first of its
+    // key.
     fn insert(
         &mut self,
         source: &str,
@@ -286,7 +336,7 @@ impl Keys {
         id: NodeId,
         all: bool,
         scratch: &mut Scratch,
-    ) {
+    ) -> bool {
         let (footnote, hash, key) = indexed_key(source, nodes, id, &mut scratch.key);
         let map = if footnote {
             &mut self.footnotes
@@ -297,7 +347,7 @@ impl Keys {
         let label = written_label(source, nodes, id);
         map.insert(hash, id, all, |entry| {
             has_key(source, nodes, entry, (label, key), other)
-        });
+        })
     }
 
     fn map(&self, footnote: bool) -> &KeyMap {
@@ -353,6 +403,20 @@ impl Table {
         Self { keys }
     }
 
+    // The definitions and footnote definitions of the tree under `root` that are copies, each
+    // after the first of its key there, in document order.
+    pub(crate) fn copies(source: &str, nodes: &[Node], root: NodeId) -> Vec<NodeId> {
+        let mut keys = Keys::default();
+        let mut scratch = Scratch::default();
+        let mut copies = Vec::new();
+        each_definition(nodes, root, |id| {
+            if !keys.insert(source, nodes, id, false, &mut scratch) {
+                copies.push(id);
+            }
+        });
+        copies
+    }
+
     // The definition, or footnote definition, that a label or identifier names.
     fn get(
         &self,
@@ -371,20 +435,29 @@ impl Table {
 }
 
 // Every definition and footnote definition of the attached document, by key, which a document
-// keeps as it is edited. A key's one definition is its binding; of several, the first in
-// document order is, found among them alone when asked.
+// keeps as it is edited. A key's first definition in document order is its binding, and any
+// others are copies of it, which only a parsed, built or loaded document has, in document order:
+// an edit adds no copy, so removing the binding makes the next copy the binding without
+// comparing where they are.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Index {
     keys: Keys,
+    // How many copies there are.
+    copies: usize,
 }
 
+// The keys a tree defines: whether each is of a footnote definition, and the key.
+pub(crate) type DefinedKeys = Vec<(bool, String)>;
+
 impl Index {
-    // The index of definitions and footnote definitions `ids`, each attached.
+    // The index of definitions and footnote definitions `ids`, each attached, in document order.
     pub(crate) fn new(source: &str, nodes: &[Node], ids: impl IntoIterator<Item = NodeId>) -> Self {
         let mut index = Self::default();
         let mut scratch = Scratch::default();
         for id in ids {
-            index.keys.insert(source, nodes, id, true, &mut scratch);
+            if !index.keys.insert(source, nodes, id, true, &mut scratch) {
+                index.copies += 1;
+            }
         }
         index
     }
@@ -392,23 +465,31 @@ impl Index {
     // The index of the attached document, whose root is `root`.
     #[cfg(feature = "serde")]
     pub(crate) fn of_tree(source: &str, nodes: &[Node], root: NodeId) -> Self {
-        let mut ids = Vec::new();
-        each_definition(nodes, root, |id| ids.push(id));
-        Self::new(source, nodes, ids)
+        Self::new(source, nodes, definitions(nodes, root))
     }
 
-    // Add the definitions of the subtree under `root`, which has just been attached.
+    // Whether any key has a copy.
+    pub(crate) fn has_copies(&self) -> bool {
+        self.copies > 0
+    }
+
+    // Add the definitions of the subtree under `root`, which has just been attached, and whose
+    // keys `admits` accepted.
     pub(crate) fn insert_tree(&mut self, source: &str, nodes: &[Node], root: NodeId) {
         let mut scratch = Scratch::default();
         each_definition(nodes, root, |id| {
-            self.keys.insert(source, nodes, id, true, &mut scratch);
+            let first = self.keys.insert(source, nodes, id, true, &mut scratch);
+            debug_assert!(first, "an edit adds no copy");
         });
     }
 
-    // Add definition `id`, which has just been attached or changed its key.
+    // Add definition `id`, which has just been attached or changed its key to one that `admits`
+    // accepted.
     pub(crate) fn insert(&mut self, source: &str, nodes: &[Node], id: NodeId) {
-        self.keys
+        let first = self
+            .keys
             .insert(source, nodes, id, true, &mut Scratch::default());
+        debug_assert!(first, "an edit adds no copy");
     }
 
     // Remove the definitions of the subtree under `root`, which is about to be detached.
@@ -426,15 +507,66 @@ impl Index {
 
     fn remove_key(&mut self, source: &str, nodes: &[Node], id: NodeId, scratch: &mut String) {
         let (footnote, hash, _) = indexed_key(source, nodes, id, scratch);
-        if footnote {
-            self.keys.footnotes.remove(hash, id);
+        let copy = if footnote {
+            self.keys.footnotes.remove(hash, id)
         } else {
-            self.keys.definitions.remove(hash, id);
+            self.keys.definitions.remove(hash, id)
+        };
+        if copy {
+            self.copies -= 1;
         }
     }
 
-    // The binding of a label or identifier: its one definition, or the first in document order
-    // of its several, found among them alone, and kept in `firsts`, if given, by its slot.
+    // Whether each definition and footnote definition of the subtree under `root`, which is
+    // attached, is the only one of its key, so that moving it within the document moves no
+    // binding.
+    pub(crate) fn movable(&self, source: &str, nodes: &[Node], root: NodeId) -> bool {
+        let mut scratch = Scratch::default();
+        let mut movable = true;
+        each_definition(nodes, root, |id| {
+            let (footnote, hash, key) = indexed_key(source, nodes, id, &mut scratch.key);
+            let label = written_label(source, nodes, id);
+            movable &= self
+                .keys
+                .entry(
+                    source,
+                    nodes,
+                    footnote,
+                    label,
+                    (hash, key),
+                    &mut scratch.other,
+                )
+                .map_or(true, |(_, entry)| entry.more.is_empty());
+        });
+        movable
+    }
+
+    // Whether the attached document can take definitions of `keys`, each of which a tree
+    // defines once, when the definitions for which `leaving` holds leave it: whether no other
+    // definition of the document has any of them, as an edit adds no copy.
+    pub(crate) fn admits(
+        &self,
+        source: &str,
+        nodes: &[Node],
+        keys: &[(bool, String)],
+        leaving: impl Fn(NodeId) -> bool,
+    ) -> bool {
+        let mut other = String::new();
+        keys.iter().all(|(footnote, key)| {
+            self.keys
+                .entry(
+                    source,
+                    nodes,
+                    *footnote,
+                    key,
+                    (hash_key(key), key),
+                    &mut other,
+                )
+                .map_or(true, |(_, entry)| entry.nodes().all(&leaving))
+        })
+    }
+
+    // The binding of a label or identifier: the first of its definitions.
     fn get(
         &self,
         source: &str,
@@ -442,86 +574,45 @@ impl Index {
         label: &str,
         footnote: bool,
         scratch: &mut Scratch,
-        firsts: Option<&mut Firsts>,
     ) -> Option<NodeId> {
         let key = lookup_key(label, footnote, &mut scratch.key);
-        let (slot, entry) =
+        let (_, entry) =
             self.keys
                 .entry(source, nodes, footnote, label, key, &mut scratch.other)?;
-        if entry.more.is_empty() {
-            return Some(entry.first);
-        }
-        let first = || {
-            entry.more.iter().fold(entry.first, |first, &id| {
-                if precedes(nodes, id, first) {
-                    id
-                } else {
-                    first
-                }
-            })
-        };
-        let Some(firsts) = firsts else {
-            return Some(first());
-        };
-        let firsts = &mut firsts[usize::from(footnote)];
-        if firsts.is_empty() {
-            firsts.resize(self.keys.map(footnote).slots.len(), None);
-        }
-        Some(*firsts[slot].get_or_insert_with(first))
+        Some(entry.first)
     }
 }
 
-// The first definition of each key of several, by its slot in the index, of reference
-// definitions and of footnote definitions, as a pass finds them.
-type Firsts = [Vec<Option<NodeId>>; 2];
+// The definitions and footnote definitions of the tree under `root`, in document order.
+pub(crate) fn definitions(nodes: &[Node], root: NodeId) -> Vec<NodeId> {
+    let mut ids = Vec::new();
+    each_definition(nodes, root, |id| ids.push(id));
+    ids
+}
 
-// Whether `a` comes before `b` in document order, where both are distinct and in one tree: in
-// time linear in their depth and in the siblings between their ancestors.
-fn precedes(nodes: &[Node], a: NodeId, b: NodeId) -> bool {
-    let depth = |mut id: NodeId| {
-        let mut depth = 0;
-        while let Some(parent) = nodes[id.index()].parent() {
-            depth += 1;
-            id = parent;
+// The keys of the definitions and footnote definitions of the tree under `root`, or `None` when
+// two of them share one.
+pub(crate) fn tree_keys(source: &str, nodes: &[Node], root: NodeId) -> Option<DefinedKeys> {
+    let mut keys = Keys::default();
+    let mut scratch = Scratch::default();
+    let mut defined = Vec::new();
+    let mut single = true;
+    each_definition(nodes, root, |id| {
+        if keys.insert(source, nodes, id, false, &mut scratch) {
+            let (footnote, _, key) = indexed_key(source, nodes, id, &mut scratch.key);
+            defined.push((footnote, String::from(key)));
+        } else {
+            single = false;
         }
-        depth
-    };
-    let up = |id: NodeId| nodes[id.index()].parent().expect("both are in one tree");
-    let (mut a, mut b) = (a, b);
-    let (mut depth_a, mut depth_b) = (depth(a), depth(b));
-    // An ancestor comes before what it holds.
-    while depth_a > depth_b {
-        a = up(a);
-        depth_a -= 1;
-        if a == b {
-            return false;
-        }
-    }
-    while depth_b > depth_a {
-        b = up(b);
-        depth_b -= 1;
-        if a == b {
-            return true;
-        }
-    }
-    while up(a) != up(b) {
-        a = up(a);
-        b = up(b);
-    }
-    // Walk on from both at once, so that this takes time linear in the siblings between them
-    // whichever comes first: one meets the other, or reaches the end of its siblings first.
-    let (mut from_a, mut from_b) = (Some(a), Some(b));
-    loop {
-        from_a = from_a.and_then(|id| nodes[id.index()].next_sibling());
-        from_b = from_b.and_then(|id| nodes[id.index()].next_sibling());
-        match (from_a, from_b) {
-            (Some(id), _) if id == b => return true,
-            (_, Some(id)) if id == a => return false,
-            (None, _) => return false,
-            (_, None) => return true,
-            _ => {}
-        }
-    }
+    });
+    single.then_some(defined)
+}
+
+// The key that `kind` defines, if it is a definition or footnote definition.
+pub(crate) fn kind_key(kind: &EventKind<'_>, source: &str) -> (bool, String) {
+    let mut scratch = String::new();
+    let (footnote, _, key) = defined_key(kind, source, &mut scratch);
+    (footnote, String::from(key))
 }
 
 // The document a lookup reads: its source, nodes, the index of its attached definitions and its
@@ -537,19 +628,17 @@ pub(crate) struct Context<'d> {
 // Where the references of one tree look their bindings up, which owns nothing of the document.
 #[derive(Clone, Debug)]
 pub(crate) enum Lookup {
-    // The attached document, through its index. A pass over the whole document keeps the
-    // binding of each key of several definitions it finds, to find it once; another finds it
-    // among them each time.
-    Attached(Option<Firsts>),
+    // The attached document, through its index.
+    Attached,
     // A detached tree, or a subtree, through a table of it.
     Tree(Table),
 }
 
 impl Lookup {
-    // The lookup of the tree whose root is `tree`, for a pass over all of it when `whole` is set.
-    pub(crate) fn new(cx: Context<'_>, tree: NodeId, whole: bool) -> Self {
+    // The lookup of the tree whose root is `tree`.
+    pub(crate) fn new(cx: Context<'_>, tree: NodeId) -> Self {
         if tree == cx.root {
-            Self::Attached(whole.then(Firsts::default))
+            Self::Attached
         } else {
             Self::Tree(Table::new(cx.source, cx.nodes, tree))
         }
@@ -564,14 +653,7 @@ impl Lookup {
     ) -> Option<NodeId> {
         match self {
             Self::Tree(table) => table.get(cx.source, cx.nodes, label, footnote, scratch),
-            Self::Attached(firsts) => cx.index.get(
-                cx.source,
-                cx.nodes,
-                label,
-                footnote,
-                scratch,
-                firsts.as_mut(),
-            ),
+            Self::Attached => cx.index.get(cx.source, cx.nodes, label, footnote, scratch),
         }
     }
 

@@ -774,6 +774,29 @@ fn copied_references_keep_bound_targets_and_unbound_text() {
             .children(root)
             .position(|id| document.text_content(id) == "Replace")
             .unwrap();
+        if !missing {
+            // The copied definition would be a copy of this document's, which no edit adds.
+            let before = base_markdown::to_markdown(&document).unwrap();
+            assert!(matches!(
+                document.replace_heading_section(root, index, &replacement, true, true),
+                Err(base_markdown::stream::StreamError::InvalidValue)
+            ));
+            assert_eq!(base_markdown::to_markdown(&document).unwrap(), before);
+            let old = document
+                .children(root)
+                .find(|id| {
+                    matches!(
+                        document.node(*id).unwrap().kind,
+                        EventKind::Definition { .. }
+                    )
+                })
+                .unwrap();
+            document.detach(old).unwrap();
+        }
+        let index = document
+            .children(root)
+            .position(|id| document.text_content(id) == "Replace")
+            .unwrap();
         document
             .replace_heading_section(root, index, &replacement, true, true)
             .unwrap();
