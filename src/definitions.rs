@@ -240,6 +240,20 @@ pub(crate) fn reference_key(value: &str) -> Cow<'_, str> {
     }
 }
 
+// The reference key of `value`: `Ok` with the value itself when it is its own key, and
+// otherwise `Err` with the key, normalized into `scratch`.
+pub(crate) fn reference_key_in<'v, 's>(
+    value: &'v str,
+    scratch: &'s mut String,
+) -> Result<&'v str, &'s str> {
+    if is_canonical_reference_key(value) {
+        Ok(value)
+    } else {
+        normalize_reference_identifier_into(value, scratch);
+        Err(scratch)
+    }
+}
+
 fn is_canonical_reference_key(value: &str) -> bool {
     let mut previous = b' ';
     for byte in value.bytes() {

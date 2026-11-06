@@ -39,6 +39,15 @@ enum Before<'a> {
     Output(&'a str, core::ops::Range<usize>),
 }
 
+/// The bindings of the tree that holds what is being written, the document when it is
+/// attached, and of the subtree being written when it is not that whole tree: a reference is
+/// written as one only when the definition it is bound to is the one it would read back bound to.
+#[derive(Debug)]
+struct WrittenBindings {
+    tree: Table<'static>,
+    written: Option<Table<'static>>,
+}
+
 pub struct State<'a> {
     pub output: String,
     pub(super) scratch: String,
@@ -68,13 +77,10 @@ pub struct State<'a> {
     pub options: &'a Options,
     pub stack: Vec<ConstructName>,
     pub serialization_root: Option<NodeId>,
-    /// The bindings of the tree that holds the node being written, the document when it is
-    /// attached, built at the first reference written.
-    bindings: Option<Table<'static>>,
-    /// The bindings of the subtree being written, when it is not a whole tree, built at the first
-    /// reference written: a reference is written as one only when the definition it is bound to
-    /// is the one it would read back bound to.
-    written: Option<Table<'static>>,
+    /// The bindings of what is being written, built at the first reference written.
+    bindings: Option<WrittenBindings>,
+    /// Room for a reference key that is not the label itself.
+    key: String,
     /// Where the phrasing of the paragraph, heading or table cell being written starts. A prefix
     /// added later, such as a list item's indent, puts it at the start of a line.
     pub(super) line_start: usize,
@@ -1216,7 +1222,7 @@ impl<'a> State<'a> {
             stack: Vec::new(),
             serialization_root: None,
             bindings: None,
-            written: None,
+            key: String::new(),
             line_start: 0,
             label_end: None,
             definition_colon: None,
@@ -1239,20 +1245,21 @@ impl<'a> State<'a> {
     ) -> Option<(NodeId, bool)> {
         let source = document.source();
         let nodes = document.nodes();
-        let written = self.serialization_root.unwrap_or(document.root());
-        let tree = crate::document::tree_root(nodes, written);
+        let root = self.serialization_root.unwrap_or(document.root());
+        let bindings = self.bindings.get_or_insert_with(|| {
+            let tree = crate::document::tree_root(nodes, root);
+            WrittenBindings {
+                tree: Table::new(source, nodes, tree, false).into_owned(),
+                written: (root != tree)
+                    .then(|| Table::new(source, nodes, root, false).into_owned()),
+            }
+        });
         let kind = &nodes[id.index()].kind;
-        let definition = self
-            .bindings
-            .get_or_insert_with(|| Table::new(source, nodes, tree).into_owned())
-            .definition_of(kind, source)?;
-        if written == tree {
+        let definition = bindings.tree.definition_of(kind, source, &mut self.key)?;
+        let Some(written) = &bindings.written else {
             return Some((definition, true));
-        }
-        let first = self
-            .written
-            .get_or_insert_with(|| Table::new(source, nodes, written).into_owned())
-            .definition_of(kind, source);
+        };
+        let first = written.definition_of(kind, source, &mut self.key);
         Some((definition, first == Some(definition)))
     }
 

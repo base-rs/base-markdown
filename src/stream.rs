@@ -391,10 +391,14 @@ impl<'s> Target<'s> {
         }
     }
 
-    /// This target as a document stores it: a resolved reference by its name alone.
-    pub(crate) fn unresolved(self) -> Self {
+    /// This target with a resolved reference as a resource to where it leads, which keeps its
+    /// meaning whatever the definitions of the document it is put in.
+    pub(crate) fn resource(self) -> Self {
         match self {
-            Self::Resolved(resolved) => Self::Reference(Box::new(resolved.reference)),
+            Self::Resolved(resolved) => Self::Resource {
+                destination: resolved.destination,
+                title: resolved.title,
+            },
             target => target,
         }
     }

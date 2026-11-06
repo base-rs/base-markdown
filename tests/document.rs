@@ -743,7 +743,7 @@ fn escaped_footnote_labels_and_nul_code_info_roundtrip() {
 }
 
 #[test]
-fn copied_references_keep_bound_targets_and_unbound_names() {
+fn copied_references_keep_bound_targets_and_unbound_text() {
     for missing in [false, true] {
         let mut document = Document::parse(
             "# Keep\n\n[ref]: /old\n\n# Replace\n\nold\n",
@@ -780,17 +780,15 @@ fn copied_references_keep_bound_targets_and_unbound_names() {
         drop(replacement);
         let markdown = base_markdown::to_markdown(&document).unwrap();
         // A bound reference leads where it did, whatever this document defines; an unbound one
-        // stays a name, which this document's definition binds.
-        assert!(markdown.contains(if missing {
-            "[x][ref] ![y][ref]"
+        // is copied as the text it rendered as, which this document's definition does not bind.
+        if missing {
+            assert!(!markdown.contains("[x][ref]"), "{:?}", markdown);
+            assert!(html(&document).contains("<p>[x][ref] ![y][ref] <a"));
+            assert!(!html(&document).contains("/old\">x"));
         } else {
-            "[x](/new \"title\") ![y](/new \"title\")"
-        }));
-        assert!(html(&document).contains(if missing {
-            "<a href=\"/old\">x</a>"
-        } else {
-            "<a href=\"/new\" title=\"title\">x</a>"
-        }));
+            assert!(markdown.contains("[x](/new \"title\") ![y](/new \"title\")"));
+            assert!(html(&document).contains("<a href=\"/new\" title=\"title\">x</a>"));
+        }
         // A link's form is its own, so it is copied.
         assert!(markdown.contains("<https://a.b>"));
         assert_eq!(

@@ -8,7 +8,7 @@
 mod support;
 use base_markdown::{
     markdown::{to_markdown, to_markdown_node},
-    stream::{Event, EventKind, Reference, Resolved, StreamError, Tag, Target, Text},
+    stream::{Event, EventKind, Reference, Resolved, Tag, Target, Text},
     to_html, AstBuilder, Document, EventParser, NodeId, ParseOptions, ReferenceKind,
 };
 use support::fixture::canonical;
@@ -286,8 +286,9 @@ fn lookups_find_the_first_definition_of_a_label() {
 }
 
 /// A parsed document's events are the parser's: each bound reference is given resolved, with
-/// its definition's destination and title. A builder keeps only the name, and a document's edits
-/// reject a resolved reference, as its destination would not follow its definitions.
+/// its definition's destination and title. A builder keeps only the name of one bound to the
+/// same target, and a document's edits store a resolved reference as a resource, as its
+/// destination would not follow its definitions.
 #[test]
 fn events_resolve_and_documents_store_names() {
     let source = "[a][x] ![b][x] [c]\n\n[x]: /u \"t\"\n";
@@ -337,14 +338,17 @@ fn events_resolve_and_documents_store_names() {
         destination: Text::Literal("/v"),
         title: None,
     }))));
-    assert!(matches!(
-        document.set_kind(link, resolved.clone()),
-        Err(StreamError::InvalidValue)
-    ));
-    assert!(matches!(
-        document.append_child(paragraph, resolved),
-        Err(StreamError::InvalidValue)
-    ));
+    // A resolved reference is stored as a resource to where it leads, whatever the document's
+    // definitions of its label.
+    let resource = EventKind::Start(Tag::Link(Target::Resource {
+        destination: Text::Literal("/v"),
+        title: None,
+    }));
+    document.set_kind(link, resolved.clone()).unwrap();
+    assert_eq!(document.node(link).unwrap().kind, resource);
+    let appended = document.append_child(paragraph, resolved).unwrap();
+    assert_eq!(document.node(appended).unwrap().kind, resource);
+    assert_eq!(document.destination(appended), Some(("/v", None)));
 }
 
 /// A subtree is written with references only to the definitions it holds that are the bindings
@@ -519,7 +523,7 @@ fn growth_against_control(
 }
 
 /// Resolving, rendering, writing and normalizing references takes time linear in the document,
-/// up to the logarithm of a lookup, however many references and definitions it has: each is
+/// as a lookup takes constant expected time, however many references and definitions it has: each is
 /// timed against a control of as many resources, whose growth the references' would exceed
 /// `SCALE` times if a lookup scanned the document.
 #[test]
@@ -582,4 +586,338 @@ fn reference_work_is_linear() {
         let mut document = document.clone();
         document.normalize();
     });
+    // `count` references, or as many resources, in a block quote nested `count` deep, bound
+    // outside it: writing the deepest quote finds the tree it is in once, not once a reference.
+    let deep = |count: usize, control: bool| {
+        let mut source = "> ".repeat(count);
+        for _ in 0..count {
+            source.push_str(if control { "[a](/u) " } else { "[a] " });
+        }
+        source.push_str("\n\n[a]: /u\n");
+        parse(&source)
+    };
+    growth_against_control("write a deep subtree", deep, |document| {
+        let quote = document
+            .descendants(document.root())
+            .filter(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Start(Tag::BlockQuote)
+                )
+            })
+            .last()
+            .unwrap();
+        to_markdown_node(document, quote, &Default::default()).unwrap();
+    });
+}
+
+/// The events of `source`, from the parser, with `edit` applied to each.
+fn parsed_events(source: &str, edit: impl Fn(&mut EventKind<'_>)) -> Vec<Event<'_>> {
+    EventParser::new(source, &ParseOptions::gfm())
+        .map(Result::unwrap)
+        .map(|mut event| {
+            edit(&mut event.kind);
+            event
+        })
+        .collect()
+}
+
+/// A document built from `events` of `source`.
+fn build<'s>(events: Vec<Event<'s>>, source: &'s str) -> Document<&'s str> {
+    let mut builder = AstBuilder::new();
+    builder
+        .consume(&mut events.into_iter().map(Ok), usize::MAX)
+        .unwrap();
+    builder.finish(source).unwrap()
+}
+
+fn rewrite(destination: &mut Text<'_>) {
+    *destination = Text::Literal("/rewritten");
+}
+
+/// A resolved reference never loses its meaning: a builder keeps its name only when it binds to
+/// a definition with the destination and title it was resolved to in the built document, and
+/// otherwise stores it as a resource to them, whatever edited its events or left its definition
+/// out.
+#[test]
+fn built_references_keep_their_targets() {
+    let source = "[a][x] [b](/r)\n\n[x]: /u\n";
+    let link = |document: &Document<&str>| {
+        document
+            .descendants(document.root())
+            .find(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Start(Tag::Link(_))
+                )
+            })
+            .unwrap()
+    };
+    // Each link's destination rewritten, but not the definition's: both lead to the rewritten
+    // destination, so the reference is stored as a resource.
+    let built = build(
+        parsed_events(source, |kind| match kind {
+            EventKind::Start(Tag::Link(Target::Resolved(resolved))) => {
+                rewrite(&mut resolved.destination);
+            }
+            EventKind::Start(Tag::Link(Target::Resource { destination, .. })) => {
+                rewrite(destination);
+            }
+            _ => {}
+        }),
+        source,
+    );
+    assert_eq!(
+        html(&built),
+        "<p><a href=\"/rewritten\">a</a> <a href=\"/rewritten\">b</a></p>\n"
+    );
+    assert_eq!(
+        built.node(link(&built)).unwrap().kind,
+        EventKind::Start(Tag::Link(Target::Resource {
+            destination: Text::Literal("/rewritten"),
+            title: None,
+        }))
+    );
+    // The definition rewritten too: the reference binds to it, so it keeps its name.
+    let built = build(
+        parsed_events(source, |kind| match kind {
+            EventKind::Start(Tag::Link(Target::Resolved(resolved))) => {
+                rewrite(&mut resolved.destination);
+            }
+            EventKind::Definition { destination, .. } => rewrite(destination),
+            _ => {}
+        }),
+        source,
+    );
+    assert!(matches!(
+        built.node(link(&built)).unwrap().kind,
+        EventKind::Start(Tag::Link(Target::Reference(_)))
+    ));
+    assert_eq!(built.destination(link(&built)), Some(("/rewritten", None)));
+    // A different title, or no definition, leaves a resource to where it led.
+    for edit in [
+        (|kind: &mut EventKind<'_>| {
+            if let EventKind::Definition { title, .. } = kind {
+                *title = Some(Text::Literal("t"));
+            }
+        }) as fn(&mut EventKind<'_>),
+        |kind| {
+            if let EventKind::Definition { label, .. } = kind {
+                *label = Text::Literal("y");
+            }
+        },
+    ] {
+        let built = build(parsed_events(source, edit), source);
+        assert!(matches!(
+            built.node(link(&built)).unwrap().kind,
+            EventKind::Start(Tag::Link(Target::Resource { .. }))
+        ));
+        assert_eq!(built.destination(link(&built)), Some(("/u", None)));
+    }
+    let events = parsed_events(source, |_| {})
+        .into_iter()
+        .filter(|event| !matches!(event.kind, EventKind::Definition { .. }))
+        .collect();
+    let built = build(events, source);
+    assert_eq!(built.destination(link(&built)), Some(("/u", None)));
+
+    // The events of a subtree bound to a definition outside it build a subtree that leads where
+    // it did, and render as it does in the document.
+    let source = "> [a] ![b][a]\n\n[a]: /u \"t\"\n";
+    let document = Document::parse(source, &ParseOptions::gfm()).unwrap();
+    let quote = document.children(document.root()).next().unwrap();
+    let mut rendered = String::new();
+    document
+        .render_node(quote, &base_markdown::Options::gfm().compile, &mut rendered)
+        .unwrap();
+    assert_eq!(
+        rendered,
+        "<blockquote>\n<p><a href=\"/u\" title=\"t\">a</a> <img src=\"/u\" alt=\"b\" title=\"t\" /></p>\n</blockquote>"
+    );
+    let mut events = vec![Event {
+        kind: EventKind::Start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        }),
+        span: 0..0,
+    }];
+    events.extend(document.subtree_events(quote).map(Result::unwrap));
+    events.push(Event {
+        kind: EventKind::End(base_markdown::stream::TagKind::Document),
+        span: source.len()..source.len(),
+    });
+    let built = build(events, source);
+    assert_eq!(html(&built).trim_end(), rendered.trim_end());
+}
+
+/// The bindings of the attached document cover it alone: a detached subtree's references are
+/// bound by its own definitions, as it renders, which [`Document::destination`] gives.
+#[test]
+fn detached_references_are_bound_in_their_own_tree() {
+    let mut document = parse("> [a]\n>\n> [a]: /inner\n\n[a]: /outer\n");
+    let quote = document.children(document.root()).next().unwrap();
+    let link = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::Link(_)))
+    });
+    assert_eq!(
+        document.bindings().destination(link),
+        Some(("/inner", None))
+    );
+    document.detach(quote).unwrap();
+    assert_eq!(document.destination(link), Some(("/inner", None)));
+    assert_eq!(document.bindings().destination(link), None);
+    let mut rendered = String::new();
+    document
+        .render_node(quote, &base_markdown::Options::gfm().compile, &mut rendered)
+        .unwrap();
+    assert!(rendered.contains("href=\"/inner\""), "{}", rendered);
+}
+
+/// A reference or footnote call that nothing binds renders, reads and gives its heading the
+/// text it reads back as, as it is once normalized.
+#[test]
+fn unbound_references_are_text_everywhere() {
+    let mut document = parse("# [b] and ![c][b] x[^n]\n\n[b]: /u\n\n[^n]: note\n");
+    document.detach(definition(&document, "b")).unwrap();
+    let footnote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::FootnoteDefinition { .. }))
+    });
+    document.detach(footnote).unwrap();
+    let heading = document.children(document.root()).next().unwrap();
+    let expected = "[b] and ![c][b] x[^n]";
+    assert_eq!(document.text_content(heading), expected);
+    let headings = document.headings(&Default::default());
+    assert_eq!(headings[0].text, expected);
+    let mut normalized = document.clone();
+    normalized.normalize();
+    let written = to_markdown(&normalized).unwrap();
+    let reparsed = parse(&written);
+    let mut read = reparsed.headings(&Default::default());
+    read[0].node = headings[0].node;
+    assert_eq!(read, headings);
+    // It renders as text, with the heading's id, and no footnote section.
+    assert_eq!(html(&document), html(&normalized));
+    assert_eq!(html(&document), to_html(&written));
+    assert!(!html(&document).contains("footnote"), "{}", html(&document));
+}
+
+/// A footnote call whose definition is detached renders as the text it reads back as, without
+/// an error or a footnote section.
+#[test]
+fn unbound_footnote_calls_render_as_text() {
+    let mut document = parse("x [^n]\n\n[^n]: x\n");
+    let footnote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::FootnoteDefinition { .. }))
+    });
+    document.detach(footnote).unwrap();
+    assert_eq!(html(&document), "<p>x [^n]</p>\n");
+    let call = find(&document, |kind| {
+        matches!(kind, EventKind::FootnoteReference { .. })
+    });
+    let mut rendered = String::new();
+    document
+        .render_node(call, &base_markdown::Options::gfm().compile, &mut rendered)
+        .unwrap();
+    assert_eq!(rendered, "[^n]");
+}
+
+/// Normalizing leaves the root of a detached subtree as it is, even a reference nothing in its
+/// tree binds, and forgets the syntax of a reference it makes text.
+#[test]
+fn normalizing_detached_references() {
+    let mut document = parse("x [a]\n\n[a]: /u\n");
+    assert!(document.is_normalized());
+    let link = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::Link(_)))
+    });
+    document.detach(link).unwrap();
+    assert!(document.is_normalized());
+    document.normalize();
+    assert!(matches!(
+        document.node(link).unwrap().kind,
+        EventKind::Start(Tag::Link(Target::Reference(_)))
+    ));
+
+    let mut document = parse("x [a]\n\n[a]: /u\n");
+    let link = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::Link(_)))
+    });
+    document
+        .set_syntax(
+            link,
+            Some(base_markdown::NodeSyntax::Link {
+                form: base_markdown::LinkForm::Explicit,
+            }),
+        )
+        .unwrap();
+    document.detach(definition(&document, "a")).unwrap();
+    assert!(!document.is_normalized());
+    document.normalize();
+    assert!(matches!(
+        document.node(link).unwrap().kind,
+        EventKind::Text(_)
+    ));
+    assert_eq!(document.syntax(link), None);
+}
+
+/// A stream that carries a reference by name, which no definition binds in it, renders it as
+/// the text it reads back as.
+#[test]
+fn streamed_references_by_name_render_as_text() {
+    use base_markdown::stream::TagKind;
+    let event = |kind| Event { kind, span: 0..0 };
+    let reference = |kind, label| {
+        Target::Reference(Box::new(Reference {
+            kind,
+            label: Text::Literal(label),
+        }))
+    };
+    let events = vec![
+        event(EventKind::Start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        })),
+        event(EventKind::Start(Tag::Paragraph { tight: false })),
+        event(EventKind::Start(Tag::Link(reference(
+            ReferenceKind::Full,
+            "x",
+        )))),
+        event(EventKind::Text(Text::Literal("a"))),
+        event(EventKind::End(TagKind::Link)),
+        event(EventKind::Start(Tag::Image(reference(
+            ReferenceKind::Shortcut,
+            "b",
+        )))),
+        event(EventKind::Text(Text::Literal("b"))),
+        event(EventKind::End(TagKind::Image)),
+        event(EventKind::End(TagKind::Paragraph)),
+        event(EventKind::End(TagKind::Document)),
+    ];
+    // A writer that fails at the opening bracket fails the render.
+    struct Failing;
+    impl std::fmt::Write for Failing {
+        fn write_str(&mut self, value: &str) -> std::fmt::Result {
+            if value.contains('[') {
+                Err(std::fmt::Error)
+            } else {
+                Ok(())
+            }
+        }
+    }
+    assert!(base_markdown::render_events(
+        "",
+        events.clone().into_iter().map(Ok),
+        &base_markdown::Options::gfm().compile,
+        &mut Failing,
+    )
+    .is_err());
+    let mut output = String::new();
+    base_markdown::render_events(
+        "",
+        events.into_iter().map(Ok),
+        &base_markdown::Options::gfm().compile,
+        &mut output,
+    )
+    .unwrap();
+    assert_eq!(output, "<p>[a][x]![b]</p>");
 }
