@@ -1038,6 +1038,18 @@ impl<S: AsRef<str>> Document<S> {
         lookup: &mut Option<crate::bindings::Lookup>,
     ) -> String {
         let mut text = String::new();
+        // In a settled document every reference is bound, so its text is that of its nodes, as
+        // it would be given as an event, and no lookup is needed.
+        if self.settled && self.node(id).is_some() && tree_root(&self.nodes, id) == self.root() {
+            for child in self.descendants(id) {
+                crate::headings::append_text::<HEADING>(
+                    &self.nodes[child.index()].kind,
+                    self.source(),
+                    &mut text,
+                );
+            }
+            return text;
+        }
         let mut events = DocumentEvents::new(self, self.node(id).map(|_| id), lookup.take());
         for event in events.by_ref() {
             crate::headings::append_text::<HEADING>(
