@@ -1627,6 +1627,10 @@ fn normalizing_removes_copies() {
         "[x]\n\n[x]: /1\n\n- a\n\n  [x]: /2\n- b\n",
         "[^a]\n\n[^a]: one\n\n[^a]: two\n",
         "[^a]\n\n[^a]: x\n\n    [^a]: y\n",
+        // The separator before a copy that ends a document without a line ending ends the
+        // output, so it stays, while in a container, the container's end ends it.
+        "[a]: /1\n[a]\n\n[a]: /2",
+        "> [a]: /1\n> [a]\n>\n> [a]: /2\n",
         // A definition in a copy of a footnote definition can be the binding of its own label,
         // which stays where it is in document order.
         "[^a] [x] [y]\n\n[^a]: one\n\n[^a]: two [x]\n\n    [x]: /in\n    [y]: /y\n    [x]: /no\n\n[x]: /out\n",
@@ -1646,6 +1650,14 @@ fn normalizing_removes_copies() {
         let reparsed = parse(&written);
         assert!(reparsed.is_normalized(), "{:?}", written);
     }
+    // The renderer counts the calls in a copy of a footnote definition, though it shows nothing
+    // of the copy, so they give back references to calls that are not in the output, which go
+    // with the copy.
+    let mut document = parse("[^a]: x\n\n[^a]: y [^a]\n");
+    assert!(html(&document).contains("data-footnote-backref"));
+    assert!(!html(&document).contains("id=\"user-content-fnref-a\""));
+    document.normalize();
+    assert_eq!(html(&document), "");
     // A detached tree's copies are its own, removed as well, so it can then be attached.
     let mut document = parse("[a]\n\n> [b]: /1\n>\n> [b]: /2\n");
     let root = document.root();
