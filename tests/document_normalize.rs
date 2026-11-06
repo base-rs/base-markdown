@@ -3,6 +3,7 @@
 
 mod support;
 
+use base_markdown::stream::Target;
 use base_markdown::{
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
     to_markdown, AstBuilder, CompileOptions, Document, NodeId, NodeSyntax, ParseOptions,
@@ -128,9 +129,14 @@ fn describe<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> String {
                 language.resolve(document.source()).unwrap()
             ))
         ),
-        EventKind::Start(Tag::Link { destination, .. }) => format!(
+        EventKind::Start(Tag::Link(target)) => format!(
             "link {:?}({})",
-            destination.resolve(document.source()).unwrap(),
+            match target.destination() {
+                Some((destination, _)) => destination.resolve(document.source()).unwrap(),
+                None => document
+                    .destination(id)
+                    .map_or("", |(destination, _)| destination),
+            },
             children()
         ),
         kind => format!("{kind:?}({})", children()),
@@ -398,11 +404,10 @@ fn unwraps_links_in_links_that_are_not_autolinks() {
     document
         .set_kind(
             inner,
-            EventKind::Start(Tag::Link {
+            EventKind::Start(Tag::Link(Target::Resource {
                 destination: Text::Literal("http://a.b"),
                 title: Some(Text::Literal("t")),
-                reference: None,
-            }),
+            })),
         )
         .unwrap();
     document.normalize();
@@ -1128,11 +1133,10 @@ fn link(
     children: Vec<Result<Event<'static>, StreamError>>,
 ) -> Vec<Result<Event<'static>, StreamError>> {
     attention(
-        Tag::Link {
+        Tag::Link(Target::Resource {
             destination: Text::Literal("http://a.b"),
             title: None,
-            reference: None,
-        },
+        }),
         TagKind::Link,
         children,
     )
@@ -2169,11 +2173,10 @@ fn image(
     children: Vec<Result<Event<'static>, StreamError>>,
 ) -> Vec<Result<Event<'static>, StreamError>> {
     attention(
-        Tag::Image {
+        Tag::Image(Target::Resource {
             destination: Text::Literal("u"),
             title: None,
-            reference: None,
-        },
+        }),
         TagKind::Image,
         children,
     )

@@ -32,6 +32,9 @@ fn decimal(mut value: u64, buffer: &mut [u8; 20]) -> &str {
     core::str::from_utf8(&buffer[start..]).expect("decimal digits are ASCII")
 }
 
+// The `level` of the frame of a reference that no definition binds, written as text.
+const UNBOUND: u8 = u8::MAX;
+
 struct Frame {
     kind: TagKind,
     flag: bool,
@@ -75,6 +78,8 @@ pub struct EventHtmlRenderer<'a, W> {
     // Whether the root is synthetic, around a subtree whose root it cannot hold.
     fragment: bool,
     image_titles: Vec<Text<'static>>,
+    // What each open unbound reference writes after its text.
+    unbound: Vec<String>,
     captures: Vec<Capture>,
     notes: Vec<(String, String)>,
     calls: Vec<FootnoteCall>,
@@ -99,6 +104,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             task: None,
             fragment: false,
             image_titles: Vec::new(),
+            unbound: Vec::new(),
             captures: Vec::new(),
             notes: Vec::new(),
             calls: Vec::new(),
@@ -266,9 +272,24 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     self.write("<del>")?;
                 }
             }
-            Tag::Link {
-                destination, title, ..
-            } => {
+            Tag::Link(crate::stream::Target::Reference(reference))
+            | Tag::Image(crate::stream::Target::Reference(reference)) => {
+                // A reference no definition binds reads back as text: its brackets and label
+                // around its text.
+                let image = matches!(tag, Tag::Image(_));
+                frame.level = UNBOUND;
+                let label = reference
+                    .label
+                    .resolve(self.source)
+                    .expect("event values are source-valid");
+                let (open, close) = crate::bindings::unbound_text(reference.kind, label, image);
+                self.escaped(open, true)?;
+                self.unbound.push(close);
+            }
+            Tag::Link(target) => {
+                let (destination, title) = target
+                    .destination()
+                    .expect("a reference by name is handled above");
                 if tags {
                     self.write("<a href=\"")?;
                     self.destination(
@@ -289,9 +310,10 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     self.write("\">")?;
                 }
             }
-            Tag::Image {
-                destination, title, ..
-            } => {
+            Tag::Image(target) => {
+                let (destination, title) = target
+                    .destination()
+                    .expect("a reference by name is handled above");
                 frame.flag = tags;
                 if tags {
                     self.write("<img src=\"")?;
@@ -363,6 +385,13 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         }
         if end < frame.end {
             return Err(StreamError::InvalidRange);
+        }
+        if frame.level == UNBOUND {
+            let end = self
+                .unbound
+                .pop()
+                .expect("an unbound reference keeps its end");
+            return self.escaped(&end, true);
         }
         if kind == TagKind::Image {
             self.images -= 1;

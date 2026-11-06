@@ -6,7 +6,7 @@
 #![cfg(feature = "serde")]
 
 use base_markdown::{
-    stream::{Event, EventKind, Reference, Tag, Text},
+    stream::{Event, EventKind, Reference, Resolved, Tag, Target, Text},
     CodeFence, Document, LinkForm, NodeSyntax, Options, ReferenceKind,
 };
 use serde_json::{json, Value};
@@ -53,23 +53,13 @@ fn document_serialization_preserves_source_edits_metadata_and_detached_subtrees(
             )
         })
         .unwrap();
-    let EventKind::Start(Tag::Link {
-        destination, title, ..
-    }) = document.node(link).unwrap().kind.clone()
-    else {
-        unreachable!("found a link");
-    };
     document
         .set_kind(
             link,
-            EventKind::Start(Tag::Link {
-                destination,
-                title,
-                reference: Some(Box::new(Reference {
-                    kind: ReferenceKind::Full,
-                    label: Text::Literal("name"),
-                })),
-            }),
+            EventKind::Start(Tag::Link(Target::Reference(Box::new(Reference {
+                kind: ReferenceKind::Full,
+                label: Text::Literal("Name"),
+            })))),
         )
         .unwrap();
     let code = document
@@ -478,4 +468,38 @@ fn serialized_code_info_strings_that_cannot_be_written_are_rejected() {
             result
         );
     }
+}
+
+// A document stores a reference by name, so its wire form has no destination, and a resolved one,
+// whose destination would not follow its definitions, is rejected.
+#[test]
+fn references_are_stored_by_name() {
+    let document = Document::parse(
+        String::from("[a][x]\n\n[x]: /u \"t\"\n"),
+        &Options::gfm().parse,
+    )
+    .unwrap();
+    let mut wire = serde_json::to_value(&document).unwrap();
+    let link = &wire["nodes"][2]["kind"]["Start"]["Link"];
+    assert_eq!(
+        link,
+        &json!({"Reference": {"kind": "full", "label": {"Source": {"start": 4, "end": 5}}}})
+    );
+    let restored: Document = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(html(&restored), "<p><a href=\"/u\" title=\"t\">a</a></p>\n");
+    let resolved = EventKind::Start(Tag::Link(Target::Resolved(Box::new(Resolved {
+        reference: Reference {
+            kind: ReferenceKind::Full,
+            label: Text::Literal("x"),
+        },
+        destination: Text::Literal("/v"),
+        title: None,
+    }))));
+    wire["nodes"][2]["kind"] = serde_json::to_value(&resolved).unwrap();
+    let error = serde_json::from_value::<Document>(wire).unwrap_err();
+    assert!(
+        error.to_string().contains("invalid"),
+        "{:?}",
+        error.to_string()
+    );
 }

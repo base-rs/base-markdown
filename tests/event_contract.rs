@@ -1,6 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
+use base_markdown::stream::Target;
 use base_markdown::{
     render_events,
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
@@ -185,16 +186,14 @@ fn footnote_ids_survive_a_call_writer_failure() {
 fn all_invalid_metadata_is_rejected_before_rendering_or_editing() {
     let bad = || Text::Source(1..2);
     let kinds = vec![
-        EventKind::Start(Tag::Link {
+        EventKind::Start(Tag::Link(Target::Resource {
             destination: bad(),
             title: None,
-            reference: None,
-        }),
-        EventKind::Start(Tag::Image {
+        })),
+        EventKind::Start(Tag::Image(Target::Resource {
             destination: Text::Literal("x"),
             title: Some(bad()),
-            reference: None,
-        }),
+        })),
         EventKind::Start(Tag::FootnoteDefinition {
             identifier: bad(),
             label: None,
@@ -822,11 +821,10 @@ fn capture_nesting_is_checked_during_construction_rendering_and_edits() {
     let options = Options::gfm();
     for parent in [
         Tag::Heading(1),
-        Tag::Image {
+        Tag::Image(Target::Resource {
             destination: Text::Literal("x"),
             title: None,
-            reference: None,
-        },
+        }),
     ] {
         for child in [
             Tag::Heading(2),
@@ -878,11 +876,10 @@ fn capture_nesting_is_checked_during_construction_rendering_and_edits() {
     assert!(matches!(
         ast.set_kind(
             quote,
-            EventKind::Start(Tag::Image {
+            EventKind::Start(Tag::Image(Target::Resource {
                 destination: Text::Literal("x"),
-                title: None,
-                reference: None
-            }),
+                title: None
+            })),
         ),
         Err(StreamError::InvalidNesting)
     ));
@@ -891,11 +888,10 @@ fn capture_nesting_is_checked_during_construction_rendering_and_edits() {
 #[test]
 fn custom_phrasing_inside_images_contributes_only_alt_text() {
     let image = |inner: Vec<EventKind<'static>>| {
-        let mut events = vec![EventKind::Start(Tag::Image {
+        let mut events = vec![EventKind::Start(Tag::Image(Target::Resource {
             destination: Text::Literal("x"),
             title: None,
-            reference: None,
-        })];
+        }))];
         events.extend(inner);
         events.push(EventKind::End(TagKind::Image));
         document(events)
@@ -1086,20 +1082,18 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
         ));
     }
     // Every container that an image can hold contributes only its textual children.
-    let mut body = vec![EventKind::Start(Tag::Image {
+    let mut body = vec![EventKind::Start(Tag::Image(Target::Resource {
         destination: Text::Literal("x"),
         title: None,
-        reference: None,
-    })];
+    }))];
     for tag in [
         Tag::Emphasis,
         Tag::Strong,
         Tag::Delete,
-        Tag::Link {
+        Tag::Link(Target::Resource {
             destination: Text::Literal("y"),
             title: None,
-            reference: None,
-        },
+        }),
     ] {
         let kind = tag.kind();
         body.extend([EventKind::Start(tag), text(), EventKind::End(kind)]);
@@ -1192,17 +1186,15 @@ fn deferred_image_titles_retain_values_until_the_image_closes() {
         Text::from(source.to_string()),
     ] {
         let body = vec![
-            EventKind::Start(Tag::Image {
+            EventKind::Start(Tag::Image(Target::Resource {
                 destination: Text::Literal("image"),
                 title: Some(title),
-                reference: None,
-            }),
+            })),
             EventKind::Text(Text::Literal("outer ")),
-            EventKind::Start(Tag::Image {
+            EventKind::Start(Tag::Image(Target::Resource {
                 destination: Text::Literal("nested"),
                 title: Some(Text::Literal("ignored")),
-                reference: None,
-            }),
+            })),
             EventKind::Text(Text::Literal("inner")),
             EventKind::End(TagKind::Image),
             EventKind::End(TagKind::Image),
@@ -1232,11 +1224,10 @@ fn deferred_image_titles_retain_values_until_the_image_closes() {
         renderer
             .event(Event {
                 span: 0..0,
-                kind: EventKind::Start(Tag::Image {
+                kind: EventKind::Start(Tag::Image(Target::Resource {
                     destination: Text::Literal("image"),
                     title: Some(Text::Value(Cow::Borrowed(&title))),
-                    reference: None,
-                }),
+                })),
             })
             .unwrap();
     }

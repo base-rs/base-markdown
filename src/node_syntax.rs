@@ -341,11 +341,9 @@ pub(crate) fn infer(
         .get(span.clone())
         .expect("document source extents are validated before syntax inference");
     match kind {
-        EventKind::Start(Tag::Link {
-            destination,
-            reference: None,
-            ..
-        }) => link_form(source, raw, destination),
+        EventKind::Start(Tag::Link(crate::stream::Target::Resource { destination, .. })) => {
+            link_form(source, raw, destination)
+        }
         // The root's span is the whole source, which starts with its frontmatter.
         EventKind::Start(Tag::Document {
             frontmatter: Some(_),

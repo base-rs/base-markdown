@@ -54,16 +54,9 @@ pub(crate) fn heading_as_setext<S: AsRef<str>>(
         // A label is written as it is, so one that holds a line ending needs a setext heading
         // wherever it is, and a link or footnote call is never empty.
         let label = match kind {
-            EventKind::Start(
-                Tag::Link {
-                    reference: Some(reference),
-                    ..
-                }
-                | Tag::Image {
-                    reference: Some(reference),
-                    ..
-                },
-            ) => Some(&reference.label),
+            EventKind::Start(Tag::Link(target) | Tag::Image(target)) => {
+                target.reference().map(|reference| &reference.label)
+            }
             EventKind::FootnoteReference { identifier, label } => {
                 Some(label.as_ref().unwrap_or(identifier))
             }

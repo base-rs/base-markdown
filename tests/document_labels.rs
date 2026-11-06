@@ -5,6 +5,7 @@
 //! be assigned, and normalizing gives each the shape that reads back wherever it is written.
 
 mod support;
+use base_markdown::stream::Target;
 use base_markdown::{
     markdown::{to_markdown, to_markdown_with_options},
     stream::{EventKind, Reference, Tag, Text},
@@ -15,16 +16,7 @@ use support::linear::timed;
 /// The label a node is written with, if it has one.
 fn label_of<'a>(document: &'a Document<String>, kind: &'a EventKind<'_>) -> Option<&'a str> {
     let label = match kind {
-        EventKind::Start(
-            Tag::Link {
-                reference: Some(reference),
-                ..
-            }
-            | Tag::Image {
-                reference: Some(reference),
-                ..
-            },
-        ) => &reference.label,
+        EventKind::Start(Tag::Link(target) | Tag::Image(target)) => &target.reference()?.label,
         EventKind::Definition { label, .. } => label,
         EventKind::FootnoteReference { identifier, label }
         | EventKind::Start(Tag::FootnoteDefinition { identifier, label }) => {
@@ -427,25 +419,36 @@ fn headings_with_labels_that_hold_line_endings_are_setext() {
 #[test]
 fn normalizing_spaces_line_endings_in_labels_written_on_one_line() {
     let reference = |label: &str| {
-        EventKind::Start(Tag::Link {
-            destination: Text::Literal("/u"),
-            title: None,
-            reference: Some(Box::new(Reference {
-                kind: ReferenceKind::Full,
-                label: Text::from(label.to_owned()),
-            })),
-        })
+        EventKind::Start(Tag::Link(Target::Reference(Box::new(Reference {
+            kind: ReferenceKind::Full,
+            label: Text::from(label.to_owned()),
+        }))))
     };
     let mut document = parse("### [x][a b]\n\n[a b]: /u\n");
     let link = labelled(&document)[0];
     document.set_kind(link, reference("a\n  b")).unwrap();
     assert!(!document.is_normalized());
     assert_eq!(normalized(document), "### [x][a b]\n\n[a b]: /u\n");
-    // A label that is then too long cannot be written, so the link is a resource.
+    // A label that is then too long cannot be written, so the link is a resource to where its
+    // definition leads.
     let mut document = parse("### [x][a b]\n\n[a b]: /u\n");
     let long = format!("{}\n{}", "a".repeat(500), "a".repeat(499));
     document.set_kind(link, reference(&long)).unwrap();
-    assert_eq!(normalized(document), "### [x](/u)\n\n[a b]: /u\n");
+    let definition = labelled(&document)[1];
+    document
+        .set_kind(
+            definition,
+            EventKind::Definition {
+                label: Text::from(long.clone()),
+                destination: Text::Literal("/v"),
+                title: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        normalized(document),
+        format!("### [x](/v)\n\n[{}]: /v\n", long)
+    );
     // A footnote call in a table cell.
     let mut document = parse("| [^a] |\n| - |\n\n[^a]: x\n");
     let call = labelled(&document)[0];
@@ -533,14 +536,10 @@ fn normalizing_indents_label_lines_that_start_a_block() {
             destination: Text::Literal("/u"),
             title: None,
         },
-        EventKind::Start(Tag::Link {
-            destination: Text::Literal("/u"),
-            title: None,
-            reference: Some(Box::new(Reference {
-                kind: ReferenceKind::Full,
-                label: Text::Literal("a\n  > b"),
-            })),
-        }),
+        EventKind::Start(Tag::Link(Target::Reference(Box::new(Reference {
+            kind: ReferenceKind::Full,
+            label: Text::Literal("a\n  > b"),
+        })))),
         EventKind::FootnoteReference {
             identifier: Text::Literal("```"),
             label: Some(Text::Literal("\n ```")),
@@ -562,14 +561,10 @@ fn normalizing_indents_label_lines_that_start_a_block() {
 #[test]
 fn label_lines_that_would_be_delimiter_rows_read_back() {
     let reference = |label: &'static str| {
-        EventKind::Start(Tag::Link {
-            destination: Text::Literal("/u"),
-            title: None,
-            reference: Some(Box::new(Reference {
-                kind: ReferenceKind::Full,
-                label: Text::Literal(label),
-            })),
-        })
+        EventKind::Start(Tag::Link(Target::Reference(Box::new(Reference {
+            kind: ReferenceKind::Full,
+            label: Text::Literal(label),
+        }))))
     };
     let mut document = parse(
         "[x][a b |-| c] [x][a b :-: c] [x][a | - | c] [^a]\n\n[a b |-| c]: /u\n\n[a b :-: c]: /u\n\n[a | - | c]: /u\n\n[d]: /u\n\n[^a]: x\n",
@@ -598,9 +593,11 @@ fn label_lines_that_would_be_delimiter_rows_read_back() {
         .unwrap();
     assert!(!document.is_normalized());
     document.normalize();
+    // No footnote definition's label holds whitespace, so a footnote call whose label does is
+    // unbound, and becomes the text it reads back as, with each line ending a space.
     assert_eq!(
         to_markdown(&document).unwrap(),
-        "[x][a\nb\n    |-|\nc] [x][a\nb\n    :-:\nc] [x][a\n    | - |\nc] [^a\n    |-|\nc]\n\n[a b |-| c]: /u\n\n[a b :-: c]: /u\n\n[a | - | c]: /u\n\n[a\n    |-|\nc]: /u\n\n[^a]: x\n"
+        "[x][a\nb\n    |-|\nc] [x][a\nb\n    :-:\nc] [x][a\n    | - |\nc] \\[^a |-| c]\n\n[a b |-| c]: /u\n\n[a b :-: c]: /u\n\n[a | - | c]: /u\n\n[a\n    |-|\nc]: /u\n\n[^a]: x\n"
     );
     // A parsed label can hold such a line: as a lazy line in a block quote, under a head with
     // another number of cells, or parsed without tables. It is indented too, wherever the label

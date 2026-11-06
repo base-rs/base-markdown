@@ -4,6 +4,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
+use base_markdown::stream::Target;
 use base_markdown::stream::{EventKind, Reference, Tag, Text as EventText};
 use pretty_assertions::assert_eq;
 use support::fixture::rejected;
@@ -14,14 +15,10 @@ use support::fixture::{ImageReference, Node, Paragraph, ReferenceKind};
 fn image_reference() {
     // An empty label does not read back as one, so it is rejected (#192).
     assert!(rejected(
-        EventKind::Start(Tag::Image {
-            destination: EventText::Literal(""),
-            title: None,
-            reference: Some(Box::new(Reference {
-                kind: base_markdown::ReferenceKind::Full,
-                label: EventText::Literal(""),
-            })),
-        }),
+        EventKind::Start(Tag::Image(Target::Reference(Box::new(Reference {
+            kind: base_markdown::ReferenceKind::Full,
+            label: EventText::Literal(""),
+        })))),
         true
     ));
     assert_eq!(

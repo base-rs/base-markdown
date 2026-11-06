@@ -56,6 +56,7 @@
 
 extern crate alloc;
 mod align_kind;
+mod bindings;
 mod block_parser;
 mod byte_scan;
 mod code_fence;
@@ -82,6 +83,7 @@ pub use util::sanitize_uri::sanitize;
 pub use util::line_ending::LineEnding;
 
 pub use align_kind::AlignKind;
+pub use bindings::Bindings;
 pub use code_fence::CodeFence;
 pub use configuration::{CompileOptions, Constructs, Options, ParseOptions};
 pub use document::{

@@ -3,7 +3,7 @@
 
 //! Compact inline candidates, resolved in reusable storage for the active block.
 use crate::definitions::Definitions;
-use crate::stream::{Event, EventKind, Tag, TagKind, Text};
+use crate::stream::{Event, EventKind, Tag, TagKind, Target, Text};
 use crate::util::char::{classify_opt, Kind as CharacterKind};
 use crate::util::character_reference::{scan as scan_character_reference, Reference};
 use crate::util::normalize_identifier::{
@@ -106,6 +106,19 @@ struct Link {
     destination: Range<usize>,
     title: Option<Range<usize>>,
 }
+// What the events of references and footnote calls carry: by default their labels and, for a
+// reference, the destination and title it resolves to.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum Targets {
+    #[default]
+    Resolved,
+    // No labels, and a reference as a resource, for a consumer that never reads labels, such as
+    // direct HTML rendering, which then neither records nor builds them.
+    Destinations,
+    // A reference as its name alone, for a document, which stores it so.
+    Names,
+}
+
 #[derive(Default)]
 pub(crate) struct InlineParser {
     nodes: Vec<Node>,
@@ -121,9 +134,8 @@ pub(crate) struct InlineParser {
     // The label ranges of the references and footnote calls resolved in a scan, and the form of
     // each reference, by node, sorted before events are pulled. A footnote call is a shortcut.
     labels: Vec<(usize, Range<usize>, ReferenceKind)>,
-    // Whether events leave out the labels of references and footnote calls, for a consumer that
-    // never reads them, such as direct HTML rendering, which then neither records nor builds them.
-    pub(crate) skip_labels: bool,
+    // What the events of references and footnote calls carry.
+    pub(crate) targets: Targets,
     code_info: Vec<CodeInfo>,
     normalized: bool,
     table: bool,
@@ -618,7 +630,7 @@ impl InlineParser {
                                     }
                                     let node =
                                         self.append(footnote_start, end, Kind::Footnote(index));
-                                    if !self.skip_labels {
+                                    if self.targets != Targets::Destinations {
                                         self.labels.push((node, label, ReferenceKind::Shortcut));
                                     }
                                     at = end;
@@ -721,7 +733,7 @@ impl InlineParser {
                                 resolved = definitions
                                     .find(&self.reference_key)
                                     .map(|index| (end, Kind::Reference(tag, index)));
-                                if resolved.is_some() && !self.skip_labels {
+                                if resolved.is_some() && self.targets != Targets::Destinations {
                                     self.labels.push((bracket.node, label, form));
                                 }
                             }
@@ -1055,7 +1067,8 @@ impl InlineParser {
                 }
                 Kind::Footnote(footnote) => EventKind::FootnoteReference {
                     identifier: Text::from(definitions.footnote_key(footnote).to_string()),
-                    label: (!self.skip_labels).then(|| self.read_label(source, index).1),
+                    label: (self.targets != Targets::Destinations)
+                        .then(|| self.read_label(source, index).1),
                 },
                 Kind::NamedEntity(index) => EventKind::Text(Text::Literal(
                     crate::util::constant::CHARACTER_REFERENCES[index].1,
@@ -1068,21 +1081,20 @@ impl InlineParser {
                 Kind::Task => continue,
                 Kind::Autolink(prefix) => {
                     let prefix = prefix.as_str();
-                    EventKind::Start(Tag::Link {
+                    EventKind::Start(Tag::Link(Target::Resource {
                         destination: if prefix.is_empty() {
                             self.text(source, node.start..node.end)
                         } else {
                             Text::from(alloc::format!("{prefix}{}", &source[node.start..node.end]))
                         },
                         title: None,
-                        reference: None,
-                    })
+                    }))
                 }
                 Kind::Html => EventKind::Html {
                     value: self.html_text(source, node.start..node.end),
                     block: false,
                 },
-                Kind::AngleLink(email) => EventKind::Start(Tag::Link {
+                Kind::AngleLink(email) => EventKind::Start(Tag::Link(Target::Resource {
                     destination: if email {
                         Text::from(alloc::format!(
                             "mailto:{}",
@@ -1092,8 +1104,7 @@ impl InlineParser {
                         self.text(source, node.start + 1..node.end - 1)
                     },
                     title: None,
-                    reference: None,
-                }),
+                })),
                 Kind::Code(_) | Kind::CodeInfo(_) => {
                     let (count, start, language) = match node.kind {
                         Kind::CodeInfo(index) => {
@@ -1121,18 +1132,11 @@ impl InlineParser {
                             .title
                             .clone()
                             .map(|range| self.title(source, range, options));
+                        let target = Target::Resource { destination, title };
                         if tag == TagKind::Link {
-                            Tag::Link {
-                                destination,
-                                title,
-                                reference: None,
-                            }
+                            Tag::Link(target)
                         } else {
-                            Tag::Image {
-                                destination,
-                                title,
-                                reference: None,
-                            }
+                            Tag::Image(target)
                         }
                     }
                     _ => unreachable!("inline candidates open only inline containers"),
@@ -1140,24 +1144,33 @@ impl InlineParser {
                 Kind::End(tag) => EventKind::End(tag),
                 Kind::Reference(tag, definition) => {
                     let definition = definitions.entry(definition);
-                    let destination = definition.destination.clone();
-                    let title = definition.title.clone();
-                    let reference = (!self.skip_labels).then(|| {
+                    let destination = || definition.destination.clone();
+                    let title = || definition.title.clone();
+                    // A consumer that leaves out labels, the HTML renderer, takes the destination
+                    // alone, and a document the name alone.
+                    let target = if self.targets == Targets::Destinations {
+                        Target::Resource {
+                            destination: destination(),
+                            title: title(),
+                        }
+                    } else if self.targets == Targets::Names {
                         let (kind, label) = self.read_label(source, index);
-                        alloc::boxed::Box::new(crate::stream::Reference { kind, label })
-                    });
-                    EventKind::Start(if tag == TagKind::Link {
-                        Tag::Link {
-                            destination,
-                            title,
-                            reference,
-                        }
+                        Target::Reference(alloc::boxed::Box::new(crate::stream::Reference {
+                            kind,
+                            label,
+                        }))
                     } else {
-                        Tag::Image {
-                            destination,
-                            title,
-                            reference,
-                        }
+                        let (kind, label) = self.read_label(source, index);
+                        Target::Resolved(alloc::boxed::Box::new(crate::stream::Resolved {
+                            reference: crate::stream::Reference { kind, label },
+                            destination: destination(),
+                            title: title(),
+                        }))
+                    };
+                    EventKind::Start(if tag == TagKind::Link {
+                        Tag::Link(target)
+                    } else {
+                        Tag::Image(target)
                     })
                 }
             };

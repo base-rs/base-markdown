@@ -226,13 +226,13 @@ pub(crate) fn find_index<T>(
 // Reference keys fold ASCII letters to lowercase after the shared Unicode fold.
 // This preserves equality while allowing ordinary lowercase source labels to be borrowed.
 // Footnote keys retain their existing uppercase spelling because they appear in HTML IDs.
-fn owned_reference_key(value: &str) -> String {
+pub(crate) fn owned_reference_key(value: &str) -> String {
     let mut key = String::with_capacity(value.len());
     normalize_reference_identifier_into(value, &mut key);
     key
 }
 
-fn reference_key(value: &str) -> Cow<'_, str> {
+pub(crate) fn reference_key(value: &str) -> Cow<'_, str> {
     if is_canonical_reference_key(value) {
         Cow::Borrowed(value)
     } else {
