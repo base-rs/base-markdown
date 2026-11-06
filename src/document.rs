@@ -3606,14 +3606,16 @@ impl<S: AsRef<str>> Document<S> {
     // separator ends the output, as an empty paragraph is removed. A
     // definition in a footnote definition that is a copy, which is the first of its own label or
     // identifier, binds, so it takes the place of the copy, keeping where it is in document order.
-    // This takes time linear in the containers of blocks of the tree, besides the siblings of
-    // each definition moved out of a copy.
+    // This takes time linear in the keys of the document's index for the attached document, and
+    // in the containers of blocks of a detached tree, besides the siblings of the parent of each
+    // copy and of each definition moved out of one.
     fn drop_copies(&mut self, root: NodeId) {
         let attached = root == self.root();
-        if attached && !self.index.has_copies() {
-            return;
-        }
-        let copies = crate::bindings::Table::copies(self.source.as_ref(), &self.nodes, root);
+        let copies = if attached {
+            self.index.copies()
+        } else {
+            crate::bindings::Table::copies(self.source.as_ref(), &self.nodes, root)
+        };
         if copies.is_empty() {
             return;
         }
@@ -3690,10 +3692,10 @@ impl<S: AsRef<str>> Document<S> {
                 next = Some(id);
             }
             self.nodes[parent.index()].first_child = next;
+            // A paragraph's context is its parent and theirs, which stay for each node kept,
+            // while a definition or footnote definition moved out of a copy has none, so only
+            // the parent's ending changes.
             if changed {
-                for &id in &kept {
-                    self.refresh_context(id);
-                }
                 self.refresh_item(Some(parent));
             }
         }

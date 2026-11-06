@@ -473,6 +473,17 @@ impl Index {
         self.copies > 0
     }
 
+    // The copies of every key, in no particular order, in time linear in the keys.
+    pub(crate) fn copies(&self) -> Vec<NodeId> {
+        let mut copies = Vec::with_capacity(self.copies);
+        for map in [&self.keys.definitions, &self.keys.footnotes] {
+            for entry in map.slots.iter().flatten() {
+                copies.extend_from_slice(&entry.more);
+            }
+        }
+        copies
+    }
+
     // Add the definitions of the subtree under `root`, which has just been attached, and whose
     // keys `admits` accepted.
     pub(crate) fn insert_tree(&mut self, source: &str, nodes: &[Node], root: NodeId) {
