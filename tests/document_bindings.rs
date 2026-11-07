@@ -1821,9 +1821,10 @@ fn normalizing_removes_copies() {
     );
     assert!(normalized.contains("id=\"user-content-fnref-b\""));
     assert!(!normalized.contains("fnref-b-2"));
-    // A copy goes alone: every separator renders its line ending where it is, whatever is
-    // beside it, so each stays, and the HTML is unchanged. The separator after each copy is
-    // moved there from the end of the document, an order the parser does not give.
+    // Separators that the parser could not have given, as an edit leaves them, stay where a copy
+    // goes, and so does the end of the document, which the copy is not next to, so the HTML is
+    // unchanged. The separator after each copy is moved there from the end of the document, an
+    // order the parser does not give.
     let kinds = |document: &Document| -> Vec<String> {
         document
             .children(document.root())
@@ -1943,6 +1944,64 @@ fn normalizing_removes_copies() {
         normalizes_soundly(&mut document, source);
         assert_eq!(html(&document), normalized, "{:?}", source);
         assert_eq!(to_html(&round_trip(document)), normalized, "{:?}", source);
+    }
+    // Where a copy goes from after a list, the list is written next to what came after the copy,
+    // or at the end of the output, and the parser puts a line ending there that the tree may not
+    // have, or none where it has one (exception 5): the separators the parser puts there are
+    // given instead, so the output reads back as the tree, separators too, and the HTML gains or
+    // loses that line ending. So is a paragraph made loose given the one after it, and a table
+    // that ends an item the one after it that a blank line in the item gives.
+    let separators = |document: &Document| -> Vec<(String, bool)> {
+        document
+            .descendants(document.root())
+            .filter_map(|id| match &document.node(id).unwrap().kind {
+                EventKind::Separator { value, conditional } => Some((
+                    value.resolve(document.source()).unwrap().to_owned(),
+                    *conditional,
+                )),
+                _ => None,
+            })
+            .collect()
+    };
+    for (source, normalized) in [
+        ("- [c]: /6\n\n[c]: /6\n", "<ul>\n<li></li>\n</ul>\n"),
+        ("- [c]: /6\n\n[c]: /6", "<ul>\n<li></li>\n</ul>\n"),
+        ("* [^n]:\n[^n]: [b]: /3\n", "<ul>\n<li></li>\n</ul>"),
+        ("1. [a]: /5\n\n[c]: /6\n[a]: /1\n\n", "<ol>\n<li></li>\n</ol>"),
+        (
+            "  [^n]:\n* q r\n  [^n]: [a]: /2\n",
+            "<ul>\n<li>\n<p>q r</p>\n</li>\n</ul>\n",
+        ),
+        (
+            "- [a]: /1\n  | a |\n  | - |\n\n[a]: /1\n",
+            "<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n</ul>\n",
+        ),
+        (
+            "> - [b]: /3\n>   | a |\n>   | - |\n>\n> [b]: /3\n\n[a]: /2\n",
+            "<blockquote>\n<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n</ul>\n</blockquote>\n",
+        ),
+        (
+            "[a]: /1\n\n- - | a |\n    | - |\n  [a]: /2\n\n  p\n",
+            "<ul>\n<li>\n<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n</ul>\n<p>p</p>\n</li>\n</ul>\n",
+        ),
+        (
+            "[b]: /3\n\n> | a |\n> | - |\n>\n> [b]: /3\n",
+            "<blockquote>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</blockquote>\n",
+        ),
+        (
+            "- - [a]: /1\n    | a |\n    | - |\n  [a]: /2\n- b\n",
+            "<ul>\n<li>\n<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n</ul>\n</li>\n<li>b</li>\n</ul>\n",
+        ),
+    ] {
+        let mut document = parse(source);
+        normalizes_soundly(&mut document, source);
+        assert_eq!(html(&document), normalized, "{:?}", source);
+        let written = round_trip(document.clone());
+        let reparsed = parse(&written);
+        assert_eq!(separators(&reparsed), separators(&document), "{:?}", written);
+        let mut again = reparsed;
+        again.normalize();
+        assert_eq!(to_markdown(&again).unwrap(), written, "{:?}", source);
     }
     // Removing copies changes no item's ending, as one never ends an item.
     for source in [

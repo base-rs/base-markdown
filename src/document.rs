@@ -2540,6 +2540,13 @@ fn join_text(left: &mut Text<'static>, right: &Text<'_>, source: &str) {
     }
 }
 
+// Marks of the children kept when copies are removed: a copy went, or a node moved in, just
+// before the child; the child is a separator that came just after a copy; and the child moved
+// in from a copy.
+const CHANGED: u8 = 1;
+const AFTER_COPY: u8 = 2;
+const MOVED: u8 = 4;
+
 // Add a constructed node to the arena as a child of `parent`, with an empty span, for the caller to link.
 fn push_node(nodes: &mut Vec<Node>, kind: EventKind<'static>, parent: NodeId) -> NodeId {
     let id = NodeId::new(nodes.len());
@@ -3063,7 +3070,7 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code or attention on either side is joined or merged too. A separator sits between blocks, where it stays and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. Inline HTML without a value writes nothing, so it is removed, before anything above, and what was on either side meets: text joins, attention merges, and attention or a paragraph it leaves empty is removed, so a link reference after it starts its paragraph and is escaped as such, `[r]\: /u` rather than `[r]: /u`, which reads back as a definition. Inline HTML of whitespace alone stays, as it can be written between text. An HTML block whose value is empty or holds only spaces, tabs and line endings is written as blank lines, as no HTML block starts with whitespace alone, and a list without items, not counting separators, is written as nothing, or as a lone `-` where it is the only block of an item, so each is removed with one separator beside it, like an empty paragraph, and also before anything above, so the rules below see the items they leave empty: an item of `p` and a list whose only item holds a list without items is written `- p`, where `- p\n  -` read back as a heading. The parser produces none of these. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. An empty item cannot interrupt a paragraph, and a `-` alone under one is a setext underline, so in an item of a tight list, where no blank line can come between them, a list directly after a paragraph, not counting separators, cannot start with an empty item, one with no blocks once its empty paragraphs are removed: such a list's leading empty items are removed, as each next one becomes the first, so items of `p` and a list of an empty item and `a` are written `- p\n  - a`, where `- p\n  -` read back as a heading. Later empty items stay. A list left with no item is removed with one separator beside it, the one after it if there is one, and a list after it then follows the paragraph in turn. Only an ordered list that starts at 1 can interrupt a paragraph, so in an item of a tight list, an ordered list directly after a paragraph, not counting separators, that starts at another number, including one whose leading empty items were removed, is made to start at 1: `- p\n  3. a` reads back as text, so it is written `- p\n  1. a`. Its items and text stay; only its numbering changes. In an item of a tight list, two paragraphs in a row, not counting separators, cannot be written either, as the blank line between them would make the list loose, so once the rules above have run, each run of them is joined into its first paragraph, with a soft break between each, and the separators between them are removed: a tight list has no `<p>`, so this renders almost the same, and items of `a` and `b` are written `- a\n  b`. Some blocks in a row in an item of a tight list can be written apart only with a blank line between them, which makes the list loose, and the serializer decides which with the same rule: two block quotes, which would otherwise read back as one; a link reference definition or a heading that only a setext heading can write, as it holds a soft or hard break, after a paragraph, which neither can interrupt, and a paragraph, link reference definition or such a heading after a table, whose rows it would be read as, which the parser never gives but a definition hoisted out of a copy can be; and a paragraph, table, link reference definition or such a heading after a list or footnote definition that ends in a paragraph or link reference definition, through the last blocks of any containers in it, which would otherwise continue it lazily, or after a block quote whose last block is such a list or definition, where the line of `>` that would end the quote's paragraph is a blank line in that list or definition. Such a list is made loose, with the paragraphs of all its items, and its paragraphs in a row are then left apart. Any other heading there is written as an ATX heading, which interrupts a paragraph and ends the containers around it, with a line ending in its text written as `&#xA;`, so it leaves the list tight, as a parsed heading there always does; the serializer's options are not known here, so a heading with a soft break makes the list loose even when unwrapping would write it as a space. A block after a list that does not end in a paragraph or definition, such as one whose last item is empty or a heading, is written on the next line, a table after a paragraph interrupts it, and a block after a block quote that ends in a paragraph in any other way is written after a line of `>`, so these stay in a tight list. A task item's checkbox is written before its first block other than definitions and separators, and the parser keeps the space or tab that separates the checkbox from its text at the start of that text. Markdown cannot write a checkbox with nothing after its separator, so when that paragraph is only breaks and at most one text that is a single space or tab, the item stops being a task item, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a checkbox alone, or of a checkbox and a hard break, is left empty, and removed if it starts a list after a paragraph as above, and one of a checkbox and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the checkbox keeps it, including whitespace after the separator, which the serializer encodes, so a checkbox and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. Once the rules above have run, a task item whose first block other than definitions and separators is not a paragraph, or whose paragraph would write nothing after the checkbox, stops being a task item, and the paragraph of any other gets a space at its start when it does not start with a space, a tab or a soft break, as the serializer writes the checkbox's separator there and the parser reads it back as text. The parser reads each line ending in inline code as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. This holds in image text too, which is written as phrasing, like link text. The parser stores each line ending in a code block as LF, and the last line of a closed fence with its line ending, so in the value of such a block each CRLF and lone CR becomes LF, and a value that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty value stays, as `` ```\n``` `` reads back as one. The last node of the document, attached, keeps a value without a final line ending, as the parser stores one for an unclosed fence or indented code that ends the source without a line ending, such as `` ```\na ``, so normalizing a parsed document leaves it as it is. The parser stores each line of frontmatter with its line ending, as LF, too, so in the root's frontmatter each CRLF and lone CR becomes LF, and a body that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty body stays, as `---\n---` reads back as one. A label of a link, image, definition or footnote call is written as it is, so it is given the shape that reads back wherever it is written with the default parse options: a line of it after the first that would start a block there, such as `# b`, `> b`, a fence, a list item or an HTML block, which a parser with that construct turned off reads as part of the label, or whose leading tabs would start one at some columns and not at others, or that could be a table's delimiter row under whatever line is written before it, has its leading whitespace written as four spaces, which starts none; a label longer than the parser reads at some column, counting each tab as four, has its other tabs written as one space each. An ATX heading or table cell cannot hold a line ending, so in a label there each run of whitespace that holds one becomes one space. A link or image whose label is still longer than a full reference's can be at some column cannot be written as a reference, so it becomes a resource, with the destination and title of the definition it is bound to, which renders the same, and such a footnote call loses its label and is written as its identifier when that fits. Other lines are left as they are, so a parsed label changes only where one of these holds, such as a line `|-|` under a head of another number of cells, which a head of the right number, written before the label, would make a table. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
     ///
-    /// A reference is a name, and leads where the first definition of its label in document order does, so being normalized is a property of the whole document, not of each node: removing or relabelling a definition anywhere can leave references elsewhere unbound. A reference that no link reference definition in its tree binds, the document for an attached node and its own detached subtree for a detached one, reads back as text, so before anything above it becomes that text: the reference keeps its ID, as text of its opening bracket, `[`, or `![` for an image, followed by its children and then new text of `]`, `][]` or `][` with its label and `]` after, for a shortcut, collapsed or full reference, with the label's character escapes and references decoded and each run of whitespace in it that holds a line ending written as one space, as the text around it is then normalized with it. A footnote call that no footnote definition in its tree binds becomes text of `[^`, its label, or its identifier without one, decoded the same way, and `]`, with its ID. The root of a detached subtree stays, like any other node there. So `[b][x]` without a definition of `x` becomes text `[b][x]`, which the serializer writes `\[b]\[x]`. A tree may hold copies of a binding, later definitions or footnote definitions of a label or identifier, which a parsed, built or loaded document may have and no edit adds; they bind nothing and render nothing, so each is removed, before anything above, and each tree then defines each label once. The separators beside it stay, as each renders its line ending wherever it is and the parser puts none after a definition, and an item above it keeps the spread it had, which is otherwise read from the source between its blocks, where the copy's lines would count as blank. A footnote definition binds its identifier when it is the first to end, so of one nested in another of its identifier, the nested one binds and the other is the copy. A definition or footnote definition in a footnote definition that is a copy, which is not a copy itself, binds its own label, so it takes the place of the copy, where it stays in document order, with what it holds, the copies in which go in turn. Each copy removed is then a detached subtree of its own, normalized in the same call like any other, so the references in it that it does not bind, which were bound in the tree it left, become text, and the copies it still holds go. This is one pass from the root in document order, so the result depends on the tree alone, and it takes time linear in the copies, the containers above them and their children, and what the copies hold. The root of a detached subtree is never a copy, as it comes first in its tree, so a footnote definition left a detached root when a copy around it goes, or one detached from a copy of itself, stays and loses the copy it holds. The HTML stays the same, with four exceptions: where copies leave the only item of a loose list with fewer than two blocks, which the rule above then makes tight; where a footnote definition that is a copy holds footnote calls, which the renderer counts, numbering footnotes by their first call in document order, though it shows nothing of the copy, so footnote numbering, anchors and entries then follow only the visible calls (#225): a call's number and the id of its anchor can change, as `fnref-x-3` becomes `fnref-x-2`, the entries can change order, their back references to calls that are not in the output go, and a footnote called only there loses its entry; and where a copy was the only block of an item that starts a list directly after a paragraph in an item of a tight list, which is then empty and removed by the rule below, as `- p\n  -` reads back as a heading; and where removing a copy, or hoisting a definition out of one, leaves two blocks in a row in an item of a tight list that can be written apart only with a blank line, as the rules below decide, such as two paragraphs, which are then joined with a soft break, or a definition after a paragraph, which makes the list loose.
+    /// A reference is a name, and leads where the first definition of its label in document order does, so being normalized is a property of the whole document, not of each node: removing or relabelling a definition anywhere can leave references elsewhere unbound. A reference that no link reference definition in its tree binds, the document for an attached node and its own detached subtree for a detached one, reads back as text, so before anything above it becomes that text: the reference keeps its ID, as text of its opening bracket, `[`, or `![` for an image, followed by its children and then new text of `]`, `][]` or `][` with its label and `]` after, for a shortcut, collapsed or full reference, with the label's character escapes and references decoded and each run of whitespace in it that holds a line ending written as one space, as the text around it is then normalized with it. A footnote call that no footnote definition in its tree binds becomes text of `[^`, its label, or its identifier without one, decoded the same way, and `]`, with its ID. The root of a detached subtree stays, like any other node there. So `[b][x]` without a definition of `x` becomes text `[b][x]`, which the serializer writes `\[b]\[x]`. A tree may hold copies of a binding, later definitions or footnote definitions of a label or identifier, which a parsed, built or loaded document may have and no edit adds; they bind nothing and render nothing, so each is removed, before anything above, and each tree then defines each label once. Each place a copy leaves, or a definition hoisted out of one fills, is given the separators the parser puts there between the blocks then beside it, or at the end of the document, so that the output reads back as the tree, unless those already there could not be the parser's, as an edit leaves them; and an item above it keeps the spread it had, which is otherwise read from the source between its blocks, where the copy's lines would count as blank. A footnote definition binds its identifier when it is the first to end, so of one nested in another of its identifier, the nested one binds and the other is the copy. A definition or footnote definition in a footnote definition that is a copy, which is not a copy itself, binds its own label, so it takes the place of the copy, where it stays in document order, with what it holds, the copies in which go in turn. Each copy removed is then a detached subtree of its own, normalized in the same call like any other, so the references in it that it does not bind, which were bound in the tree it left, become text, and the copies it still holds go. This is one pass from the root in document order, so the result depends on the tree alone, and it takes time linear in the copies, the containers above them and their children, and what the copies hold. The root of a detached subtree is never a copy, as it comes first in its tree, so a footnote definition left a detached root when a copy around it goes, or one detached from a copy of itself, stays and loses the copy it holds. The HTML stays the same, with five exceptions: where copies leave the only item of a loose list with fewer than two blocks, which the rule above then makes tight; where a footnote definition that is a copy holds footnote calls, which the renderer counts, numbering footnotes by their first call in document order, though it shows nothing of the copy, so footnote numbering, anchors and entries then follow only the visible calls (#225): a call's number and the id of its anchor can change, as `fnref-x-3` becomes `fnref-x-2`, the entries can change order, their back references to calls that are not in the output go, and a footnote called only there loses its entry; and where a copy was the only block of an item that starts a list directly after a paragraph in an item of a tight list, which is then empty and removed by the rule below, as `- p\n  -` reads back as a heading; and where removing a copy, or hoisting a definition out of one, leaves two blocks in a row in an item of a tight list that can be written apart only with a blank line, as the rules below decide, such as two paragraphs, which are then joined with a soft break, or a definition after a paragraph, which makes the list loose; and a line ending where a copy after a list, or at the end of the document, goes or a definition hoisted out of one lands, which the parser puts, or does not put, between the list and what is then written after it, or at the end of the output, as `- [c]: /6\n\n[c]: /6\n` renders `<ul>\n<li></li>\n</ul>` but normalizes to `- [c]: /6\n`, which renders a line ending after the list.
     ///
     /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, adjacent attention of the same kind, such as `*a*_b_`, stays separate, and strikethrough inside strikethrough, such as `~a~~b~~c~`, stays nested. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
     ///
@@ -3115,13 +3122,17 @@ impl<S: AsRef<str>> Document<S> {
         if unbind {
             self.unbind(root);
         }
-        self.drop_copies(root, &mut scratch.copies, removed);
+        let end = self.drop_copies(root, &mut scratch.copies, removed);
         self.unwrap_links(root);
         self.remove_subtree(root, &mut scratch.blocks);
         self.normalize_subtree(root, &mut scratch.trailing);
         self.remove_empty_paragraphs(root, &mut scratch.blocks);
         self.join_tight_items(root);
         self.settle_tasks(root);
+        // The last leaf is only known once the rules above have run.
+        if let Some(parsed) = end {
+            self.settle_final_separator(parsed);
+        }
     }
 
     // Replace each line ending in inline code with a space, give code block values the line endings the parser stores, and give labels the shape that reads back wherever they are written, in every subtree, attached or detached, once its child lists are normalized.
@@ -3621,15 +3632,15 @@ impl<S: AsRef<str>> Document<S> {
         nodes[list.index()].first_child = current;
     }
 
-    // Make `list` tight or loose, with the paragraphs of its items, which are its only paragraphs that render differently. A separator after a paragraph made tight is removed, as the parser puts none there.
+    // Make `list` tight or loose, with the paragraphs of its items, which are its only paragraphs that render differently. A separator after a paragraph made tight is removed, as the parser puts none there, and one is added after a paragraph made loose that a block follows, as the parser puts one there.
     fn set_tight(&mut self, list: NodeId, tight: bool) {
         let EventKind::Start(Tag::List { start, .. }) = self.nodes[list.index()].kind else {
             unreachable!("only a list is made tight or loose");
         };
         self.nodes[list.index()].kind = EventKind::Start(Tag::List { start, tight });
         let mut item = self.nodes[list.index()].first_child;
-        while let Some(id) = item {
-            let mut child = self.nodes[id.index()].first_child;
+        while let Some(item_id) = item {
+            let mut child = self.nodes[item_id.index()].first_child;
             while let Some(id) = child {
                 if matches!(
                     self.nodes[id.index()].kind,
@@ -3637,19 +3648,24 @@ impl<S: AsRef<str>> Document<S> {
                 ) {
                     self.nodes[id.index()].kind = EventKind::Start(Tag::Paragraph { tight });
                     // The parser puts no separator after a tight paragraph, so one after a
-                    // paragraph made tight goes, as it would render a line ending of its own.
+                    // paragraph made tight goes, as it would render a line ending of its own, and
+                    // one after a loose paragraph that a block follows.
                     let next = self.nodes[id.index()].next_sibling;
                     if tight && separator(&self.nodes, next) {
                         let gone = next.expect("a separator follows");
                         self.nodes[id.index()].next_sibling =
                             self.nodes[gone.index()].next_sibling.take();
                         self.nodes[gone.index()].parent = None;
+                    } else if !tight && next.is_some() && !separator(&self.nodes, next) {
+                        let added = self.new_separator(item_id, "\n", false);
+                        self.nodes[added.index()].next_sibling = next;
+                        self.nodes[id.index()].next_sibling = Some(added);
                     }
                 }
                 child = self.nodes[id.index()].next_sibling;
             }
-            self.refresh_item(Some(id));
-            item = self.nodes[id.index()].next_sibling;
+            self.refresh_item(Some(item_id));
+            item = self.nodes[item_id.index()].next_sibling;
         }
     }
 
@@ -3802,9 +3818,10 @@ impl<S: AsRef<str>> Document<S> {
 
     // Remove each definition and footnote definition of the tree under `root` that is a copy, one
     // after the first of its label or identifier there, which binds nothing and renders nothing.
-    // Separators stay: each renders its line ending where it is, whatever is beside it, and the
-    // parser puts one only after a block that renders, never after a definition, so the output
-    // is unchanged. A definition or footnote definition in a footnote definition that is a copy,
+    // Each place a copy goes from, or a definition moves into, is given the separators the
+    // parser puts there, so that the output reads back as the tree, and the end of the document
+    // once normalizing is done, which can add or remove a line ending in the HTML (exception 5
+    // of `normalize`). A definition or footnote definition in a footnote definition that is a copy,
     // which is not a copy itself, binds, so it takes the place of the copy, in document order,
     // with what it holds. An item above a copy keeps the spread it has, which is inferred from
     // the source between its blocks, where a removed copy's lines would read as blank.
@@ -3813,7 +3830,12 @@ impl<S: AsRef<str>> Document<S> {
     // holds a copy, once, and of each container of a copy that a definition leaves, so the result
     // depends on the tree alone, and this takes time linear in the copies, the containers above
     // them and their children, and what the copies hold.
-    fn drop_copies(&mut self, root: NodeId, scratch: &mut Copies, removed: &mut Vec<NodeId>) {
+    fn drop_copies(
+        &mut self,
+        root: NodeId,
+        scratch: &mut Copies,
+        removed: &mut Vec<NodeId>,
+    ) -> Option<bool> {
         let attached = root == self.root();
         // Every copy is removed below, so the index can lose them all at once.
         let copies = if attached {
@@ -3822,7 +3844,7 @@ impl<S: AsRef<str>> Document<S> {
             crate::bindings::Table::copies(self.source.as_ref(), &self.nodes, root)
         };
         if copies.is_empty() {
-            return;
+            return None;
         }
         scratch.reserve(self.nodes.len());
         let Copies {
@@ -3846,7 +3868,17 @@ impl<S: AsRef<str>> Document<S> {
         debug_assert!(!copy[root.index()], "a tree's root is the first of its key");
         let mut kept = Vec::new();
         let mut moved = Vec::new();
+        let mut marks = Vec::new();
+        let mut settled = Vec::new();
+        let mut tails = Vec::new();
         let mut pending = vec![root];
+        // The container whose last block ends the document, through block quotes, lists and
+        // items, as the parser picks the separator that ends it, and whether a copy went from
+        // the end of one of them.
+        let mut end_chain = attached.then_some(root);
+        let mut ends_changed = false;
+        // Whether the separators at the end of the document could be the parser's.
+        let mut end_parsed = true;
         while let Some(parent) = pending.pop() {
             kept.clear();
             // The item's blocks change below, so its spread is pinned first, as its descendants
@@ -3860,29 +3892,374 @@ impl<S: AsRef<str>> Document<S> {
                 self.syntax
                     .insert(parent, Some(NodeSyntax::ListItem { spread }));
             }
+            // Whether a copy went or a node moved in just before each node kept, and after the
+            // last.
+            marks.clear();
+            let mut changed = false;
+            // Whether the last node was a copy.
+            let mut after = false;
             let mut current = self.nodes[parent.index()].first_child;
             while let Some(id) = current {
                 current = self.nodes[id.index()].next_sibling.take();
                 if !copy[id.index()] {
+                    let after_copy = after && separator(&self.nodes, Some(id));
                     kept.push(id);
+                    marks.push(
+                        if core::mem::take(&mut changed) {
+                            CHANGED
+                        } else {
+                            0
+                        } | if after_copy { AFTER_COPY } else { 0 },
+                    );
+                    after = false;
                     continue;
                 }
+                changed = true;
+                after = true;
                 self.nodes[id.index()].parent = None;
                 removed.push(id);
                 // What a copy holds that binds stays, and the copies in it go with it.
                 self.bound_in_copy(id, copy, &mut moved);
                 for &inner in &moved {
                     self.nodes[inner.index()].parent = Some(parent);
+                    kept.push(inner);
+                    marks.push(CHANGED | MOVED);
                 }
-                kept.append(&mut moved);
+                after &= moved.is_empty();
+                moved.clear();
+            }
+            // The arena grows only below, so the marks cover every node kept.
+            pending.extend(kept.iter().rev().filter(|id| above[id.index()]));
+            let document_end = Some(parent) == end_chain;
+            let (end, parsed) =
+                self.settle_separators(parent, &mut kept, &marks, changed, &mut settled);
+            core::mem::swap(&mut kept, &mut settled);
+            if parent == root && attached {
+                end_parsed = parsed;
+            }
+            if document_end {
+                ends_changed |= end;
+                end_chain = kept
+                    .iter()
+                    .rev()
+                    .find(|&&id| !separator(&self.nodes, Some(id)))
+                    .copied()
+                    .filter(|&id| {
+                        matches!(
+                            self.nodes[id.index()].kind,
+                            EventKind::Start(Tag::BlockQuote | Tag::List { .. } | Tag::Item { .. })
+                        )
+                    });
             }
             // No rendering hint changes: a paragraph's context is its parent and theirs, which
             // stay for each node kept, and an item's ending is its last child other than a
             // definition, a footnote definition or a separator, which are all that go or move.
             self.set_children(parent, &kept);
-            pending.extend(kept.iter().rev().filter(|id| above[id.index()]));
+            tails.extend_from_slice(&kept);
+        }
+        // What follows a list or footnote definition kept above may have changed, so the
+        // separator after a table that ends it, in an item, is settled again, once the arena
+        // the marks cover is no longer read.
+        for &id in &tails {
+            self.settle_table_tail(id);
         }
         scratch.clear();
+        ends_changed.then_some(end_parsed)
+    }
+
+    // Give each place in `kept`, the children of `parent`, where a copy went or a node moved in
+    // the separators the parser puts there, into `settled`, so that the written blocks read
+    // back as they are. `marks` marks each node kept with `CHANGED` when such a place is just
+    // before it, `AFTER_COPY` when it is a separator that came just after a copy and `MOVED`
+    // when it moved in from a copy, and `tail` says whether a place is after the last. Between
+    // two blocks, the parser puts one separator unless `parted` says otherwise; at the end of a
+    // container, one only where `table_line_after` says. The separators there are left as they
+    // are when the parser could not have given them, as only an edit leaves: two in one place,
+    // or, except at the end of the document, one after a copy. The end of the document is
+    // settled once normalizing is done, as it depends on its last leaf; this returns whether
+    // what is after its last block changed or the block moved in, and whether the separators
+    // after it could be the parser's.
+    fn settle_separators(
+        &mut self,
+        parent: NodeId,
+        kept: &mut Vec<NodeId>,
+        marks: &[u8],
+        tail: bool,
+        settled: &mut Vec<NodeId>,
+    ) -> (bool, bool) {
+        settled.clear();
+        let mut last = None;
+        let mut last_moved = false;
+        let mut from = 0;
+        let mut touched = false;
+        // Separators in the current place, and whether those since the last block could be
+        // the parser's, but for one after a copy.
+        let mut place = 0;
+        let mut parsed = true;
+        let mut after_copy = false;
+        for (&id, &change) in kept.iter().zip(marks) {
+            let changed = change & CHANGED != 0;
+            touched |= changed;
+            if separator(&self.nodes, Some(id)) {
+                if changed {
+                    place = 0;
+                }
+                place += 1;
+                parsed &= place == 1;
+                after_copy |= change & AFTER_COPY != 0;
+                settled.push(id);
+                continue;
+            }
+            if let Some(last) = last.filter(|_| touched && parsed && !after_copy) {
+                let wanted = self.parted(last, id);
+                self.settle(parent, settled, from, wanted);
+            }
+            last_moved = change & MOVED != 0;
+            touched = false;
+            place = 0;
+            parsed = true;
+            after_copy = false;
+            settled.push(id);
+            last = Some(id);
+            from = settled.len();
+        }
+        let end = touched || tail;
+        if parent != self.root() {
+            if let Some(last) = last.filter(|_| end && parsed && !after_copy) {
+                let wanted = self.table_line_after(parent, last);
+                self.settle(parent, settled, from, wanted);
+            }
+        }
+        kept.clear();
+        (end || last_moved, parsed)
+    }
+
+    // Whether the parser puts a separator after `last`, the last block of `parent`: only after
+    // a table in an item or footnote definition that a blank line follows in it, as the line is
+    // after the table's span. The writer puts one there before the next item of a loose list,
+    // and before a block after the footnote definition or the list, but in an item that
+    // records no spread, or after an item or footnote definition that either ends, but not
+    // after a block quote, as the line is outside it.
+    fn table_line_after(&self, parent: NodeId, last: NodeId) -> bool {
+        if !matches!(self.nodes[last.index()].kind, EventKind::Start(Tag::Table))
+            || !matches!(
+                self.nodes[parent.index()].kind,
+                EventKind::Start(Tag::Item { .. } | Tag::FootnoteDefinition { .. })
+            )
+        {
+            return false;
+        }
+        let mut at = parent;
+        loop {
+            let next = core::iter::successors(self.nodes[at.index()].next_sibling, |id| {
+                self.nodes[id.index()].next_sibling
+            })
+            .find(|&id| !separator(&self.nodes, Some(id)));
+            let container = self.nodes[at.index()].parent;
+            if next.is_some() {
+                return if matches!(
+                    self.nodes[at.index()].kind,
+                    EventKind::Start(Tag::Item { .. })
+                ) {
+                    container.is_some_and(|list| {
+                        matches!(
+                            self.nodes[list.index()].kind,
+                            EventKind::Start(Tag::List { tight: false, .. })
+                        )
+                    })
+                } else {
+                    !container.is_some_and(|container| self.unspread_item(container))
+                };
+            }
+            at = match container {
+                Some(container)
+                    if matches!(
+                        self.nodes[container.index()].kind,
+                        EventKind::Start(
+                            Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition { .. }
+                        )
+                    ) =>
+                {
+                    container
+                }
+                _ => return false,
+            };
+        }
+    }
+
+    // Whether `id` is an item that records no spread, whose blocks are written without a blank
+    // line between them.
+    fn unspread_item(&self, id: NodeId) -> bool {
+        matches!(
+            self.syntax(id),
+            Some(NodeSyntax::ListItem { spread: false })
+        )
+    }
+
+    // Give the table that ends `block`, a list or footnote definition, through the last items
+    // and footnote definitions in it, the separator after it that `table_line_after` says the
+    // parser puts there, unless what is after it could not be the parser's, two or more.
+    fn settle_table_tail(&mut self, block: NodeId) {
+        let mut at = block;
+        loop {
+            let kind = &self.nodes[at.index()].kind;
+            if !matches!(
+                kind,
+                EventKind::Start(
+                    Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition { .. }
+                )
+            ) || (at == block && matches!(kind, EventKind::Start(Tag::Item { .. })))
+            {
+                return;
+            }
+            let Some(last) = self.flow_children(at).last() else {
+                return;
+            };
+            if !matches!(self.nodes[last.index()].kind, EventKind::Start(Tag::Table)) {
+                at = last;
+                continue;
+            }
+            let tail = self.nodes[last.index()].next_sibling;
+            let wanted = self.table_line_after(at, last);
+            match tail {
+                Some(one) if !wanted && self.nodes[one.index()].next_sibling.is_none() => {
+                    self.nodes[last.index()].next_sibling = None;
+                    self.nodes[one.index()].parent = None;
+                }
+                None if wanted => {
+                    let separator = self.new_separator(at, "\n", false);
+                    self.nodes[last.index()].next_sibling = Some(separator);
+                }
+                _ => {}
+            }
+            return;
+        }
+    }
+
+    // Leave one separator at the end of `settled`, after its index `from`, if `wanted`, and
+    // none otherwise.
+    fn settle(&mut self, parent: NodeId, settled: &mut Vec<NodeId>, from: usize, wanted: bool) {
+        let keep = from + usize::from(wanted);
+        if settled.len() < keep {
+            let separator = self.new_separator(parent, "\n", false);
+            settled.push(separator);
+        }
+        for gone in settled.drain(keep..) {
+            self.nodes[gone.index()].parent = None;
+            self.nodes[gone.index()].next_sibling = None;
+        }
+    }
+
+    // Whether the parser puts a separator between the blocks `previous` and `next`: after every
+    // block but a definition, a footnote definition, an item and a tight paragraph, and after a
+    // list unless a definition follows.
+    fn parted(&self, previous: NodeId, next: NodeId) -> bool {
+        match self.nodes[previous.index()].kind {
+            EventKind::Definition { .. }
+            | EventKind::Start(
+                Tag::FootnoteDefinition { .. } | Tag::Item { .. } | Tag::Paragraph { tight: true },
+            ) => false,
+            EventKind::Start(Tag::List { .. }) => {
+                !matches!(self.nodes[next.index()].kind, EventKind::Definition { .. })
+            }
+            _ => true,
+        }
+    }
+
+    // Give the document the separator the parser puts after its last block as it is written:
+    // none after a definition, a line ending after a block whose last leaf, through block
+    // quotes, lists and items, holds content, and otherwise one that only ends the output.
+    // `parsed` says whether the separators there could be the parser's; if not, which only an
+    // edit leaves, they stay.
+    fn settle_final_separator(&mut self, parsed: bool) {
+        let root = self.root();
+        let mut last = None;
+        let mut separators = Vec::new();
+        for id in self.children(root) {
+            if separator(&self.nodes, Some(id)) {
+                separators.push(id);
+            } else {
+                last = Some(id);
+                separators.clear();
+            }
+        }
+        let last = last.expect("the binding of a copy removed stays");
+        if !parsed {
+            return;
+        }
+        let wanted = self.final_separator(last);
+        let keep = usize::from(wanted.is_some()).min(separators.len());
+        for &gone in &separators[keep..] {
+            self.nodes[gone.index()].parent = None;
+            self.nodes[gone.index()].next_sibling = None;
+        }
+        match (separators.first(), wanted) {
+            (None, Some((value, conditional))) => {
+                let separator = self.new_separator(root, value, conditional);
+                self.nodes[last.index()].next_sibling = Some(separator);
+            }
+            (Some(_), None) => self.nodes[last.index()].next_sibling = None,
+            (Some(&one), Some((value, conditional))) => {
+                self.nodes[one.index()].next_sibling = None;
+                let EventKind::Separator {
+                    value: old,
+                    conditional: was,
+                } = &self.nodes[one.index()].kind
+                else {
+                    unreachable!("a separator was found");
+                };
+                let same = *was == conditional
+                    && old
+                        .resolve(self.source.as_ref())
+                        .expect("document text is validated")
+                        == value;
+                if !same {
+                    self.nodes[one.index()].kind = EventKind::Separator {
+                        value: Text::Literal(value),
+                        conditional,
+                    };
+                }
+            }
+            (None, None) => {}
+        }
+    }
+
+    // The separator the parser puts after `last`, the last block of a document, as it is
+    // written; see `settle_final_separator`.
+    fn final_separator(&self, last: NodeId) -> Option<(&'static str, bool)> {
+        if matches!(self.nodes[last.index()].kind, EventKind::Definition { .. }) {
+            return None;
+        }
+        let mut leaf = last;
+        while matches!(
+            self.nodes[leaf.index()].kind,
+            EventKind::Start(Tag::BlockQuote | Tag::List { .. } | Tag::Item { .. })
+        ) {
+            let Some(child) = self.flow_children(leaf).last() else {
+                break;
+            };
+            leaf = child;
+        }
+        let populated = matches!(
+            self.nodes[leaf.index()].kind,
+            EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_) | Tag::Table)
+                | EventKind::Rule
+                | EventKind::CodeBlock { .. }
+                | EventKind::Html { block: true, .. }
+        );
+        Some(if populated { ("\n", false) } else { ("", true) })
+    }
+
+    // A new separator of `value` in `parent`, to be linked by the caller.
+    fn new_separator(&mut self, parent: NodeId, value: &'static str, conditional: bool) -> NodeId {
+        push_node(
+            &mut self.nodes,
+            EventKind::Separator {
+                value: Text::Literal(value),
+                conditional,
+            },
+            parent,
+        )
     }
 
     // Take out of the copy `copy` each definition and footnote definition in it that binds, the
