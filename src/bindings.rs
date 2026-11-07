@@ -531,6 +531,13 @@ impl Table {
     // The definitions and footnote definitions of the tree under `root` that are copies, each
     // after the first of its key there, in document order.
     pub(crate) fn copies(source: &str, nodes: &[Node], root: NodeId) -> Vec<NodeId> {
+        // A tree of one definition, such as each copy that normalizing removed, has no copy,
+        // and is found so without filing it.
+        let mut count = 0;
+        each_definition(nodes, root, |_| count += 1);
+        if count < 2 {
+            return Vec::new();
+        }
         let mut keys = Keys::default();
         let mut scratch = Scratch::default();
         let mut copies = Vec::new();
