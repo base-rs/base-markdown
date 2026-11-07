@@ -1748,6 +1748,8 @@ fn normalizing_removes_copies() {
         // The separator before a copy that ends a document without a line ending ends the
         // output, so it stays, while in a container, the container's end ends it.
         "[a]: /1\n[a]\n\n[a]: /2",
+        // So does the one before copies that are the last children of a document kept.
+        "[b]: /1\n\na\n\n[b]: /2\n\n[b]: /3\n",
         "> [a]: /1\n> [a]\n>\n> [a]: /2\n",
         // A definition in a copy of a footnote definition can be the binding of its own label,
         // which stays where it is in document order.
@@ -1776,6 +1778,36 @@ fn normalizing_removes_copies() {
     assert!(!html(&document).contains("id=\"user-content-fnref-a\""));
     document.normalize();
     assert_eq!(html(&document), "");
+    // A copy takes the separator after it, not the one before, which stays, as does the
+    // definition between them.
+    let mut document = parse("p\n\n[a]: /1\n\n[a]: /2\n\n> q\n");
+    let root = document.root();
+    let children: Vec<NodeId> = document.children(root).collect();
+    let last = *children.last().unwrap();
+    document.detach(last).unwrap();
+    document.attach(root, last, Some(children[4])).unwrap();
+    document.normalize();
+    let kinds: Vec<String> = document
+        .children(root)
+        .map(|id| {
+            let kind = format!("{:?}", document.node(id).unwrap().kind);
+            kind[..kind.find(|c: char| !c.is_alphanumeric()).unwrap()].to_owned()
+        })
+        .collect();
+    assert_eq!(kinds, ["Start", "Separator", "Definition", "Start"]);
+    assert_eq!(document.children(root).nth(3), Some(children[4]));
+    // Removing copies changes no item's ending, as one never ends an item.
+    for source in [
+        "- a\n\n  [x]: /1\n  [x]: /2\n- b\n",
+        "- a\n  [x]: /1\n\n  [x]: /2\n",
+        "[x]: /0\n\n1. > a\n   [^x]: b\n\n   [x]: /2\n",
+    ] {
+        let mut document = parse(source);
+        let rendered = html(&document);
+        normalizes_soundly(&mut document, source);
+        assert_eq!(html(&document), rendered, "{:?}", source);
+        assert_eq!(to_html(&round_trip(document)), rendered, "{:?}", source);
+    }
     // A detached tree's copies are its own, removed as well, so it can then be attached.
     let mut document = parse("[a]\n\n> [b]: /1\n>\n> [b]: /2\n");
     let root = document.root();
@@ -1949,7 +1981,8 @@ fn an_item_emptied_of_a_copy_after_a_paragraph_goes() {
 
 /// Random documents of footnote definitions nested in each other, copies of each other or
 /// not, holding definitions and calls, each normalize soundly, with some of their nodes
-/// detached first.
+/// detached and some of those attached elsewhere first, and so does each loaded from what it
+/// serializes to, to the same document.
 #[test]
 fn normalizing_random_nested_copies() {
     fn blocks(next: &mut dyn FnMut(usize) -> usize, depth: usize, out: &mut String) {
@@ -1985,12 +2018,12 @@ fn normalizing_random_nested_copies() {
                 .unwrap_or_else(|_| panic!("NESTED_COPIES_SEEDS={:?} is not a count", value))
         });
     for seed in 0..seeds {
-        let mut state = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+        let mut random = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
         let mut next = |bound: usize| -> usize {
-            state ^= state << 13;
-            state ^= state >> 7;
-            state ^= state << 17;
-            std::convert::TryFrom::try_from(state % bound as u64).unwrap()
+            random ^= random << 13;
+            random ^= random >> 7;
+            random ^= random << 17;
+            std::convert::TryFrom::try_from(random % bound as u64).unwrap()
         };
         let mut source = String::new();
         blocks(&mut next, 0, &mut source);
@@ -2002,9 +2035,42 @@ fn normalizing_random_nested_copies() {
         for _ in 0..next(3) {
             let _ = document.detach(ids[next(ids.len())]);
         }
+        // Some of what was detached moves under another node, attached or not, unless that
+        // would add a copy or the nesting is not one Markdown has.
+        let roots: Vec<NodeId> = ids
+            .iter()
+            .copied()
+            .filter(|&id| document.node(id).unwrap().parent().is_none())
+            .collect();
+        for _ in 0..next(3).min(roots.len()) {
+            let moved = roots[next(roots.len())];
+            let parent = [document.root(), ids[next(ids.len())]][next(2)];
+            let _ = document.attach(parent, moved, None);
+        }
         lookups_match_a_walk(&document, &context);
+        let mut loaded = reloaded(&document);
+        assert_eq!(state(&loaded), state(&document), "{}", context);
+        lookups_match_a_walk(&loaded, &context);
         normalizes_soundly(&mut document, &context);
+        normalizes_soundly(&mut loaded, &context);
+        assert_eq!(state(&loaded), state(&document), "{}", context);
+        let mut again = reloaded(&document);
+        assert!(again.is_normalized(), "{}", context);
+        again.normalize();
+        assert_eq!(state(&again), state(&document), "{}", context);
     }
+}
+
+/// `document` serialized and deserialized, where serde is enabled, and cloned otherwise.
+#[cfg(feature = "serde")]
+fn reloaded(document: &Document) -> Document {
+    serde_json::from_str(&serde_json::to_string(document).unwrap()).unwrap()
+}
+
+/// `document` serialized and deserialized, where serde is enabled, and cloned otherwise.
+#[cfg(not(feature = "serde"))]
+fn reloaded(document: &Document) -> Document {
+    document.clone()
 }
 
 /// Removing many copies of one label, and detaching its binding again and again, takes time
@@ -2013,7 +2079,7 @@ fn normalizing_random_nested_copies() {
 #[test]
 fn copies_of_one_key_go_in_linear_time() {
     // The quadratic part of removing copies one at a time shows only from thousands of them.
-    let small = 1 << 13;
+    let small = 1 << 12;
     let source = |count: usize, control: bool| {
         let mut source = String::new();
         for index in 0..count {
@@ -2049,6 +2115,109 @@ fn copies_of_one_key_go_in_linear_time() {
             document.detach(id).unwrap();
         }
     });
+}
+
+/// Normalizing many trees that hold copies takes time linear in the document, not in the trees
+/// times the arena: copies of a footnote definition that hold copies of a definition, each a
+/// tree of its own once removed, and detached block quotes that hold copies, against controls
+/// whose trees hold no copy.
+#[test]
+fn many_trees_with_copies_normalize_in_linear_time() {
+    let copies = |count: usize, control: bool| {
+        let second = if control { "b" } else { "a" };
+        let mut source = String::from("[a]: /0\n\n[^x]: y\n\n");
+        for _ in 0..count {
+            source.push_str(&format!("[^x]:\n    [a]: /1\n\n    [{second}]: /2\n\n"));
+        }
+        source.push_str("[a] [^x]\n");
+        parse(&source)
+    };
+    let quotes = |count: usize, control: bool| {
+        let second = if control { "b" } else { "a" };
+        let mut document = parse(&format!("> [a]: /1\n>\n> [{second}]: /2\n\n").repeat(count));
+        let root = document.root();
+        while let Some(id) = document.children(root).next() {
+            document.detach(id).unwrap();
+        }
+        document
+    };
+    // Allocating the arena's size for each tree shows only from hundreds of them.
+    for (label, make) in [
+        (
+            "normalize copies holding copies",
+            &copies as &dyn Fn(usize, bool) -> Document,
+        ),
+        ("normalize detached quotes", &quotes),
+    ] {
+        growth_against_control_from(1 << 9, label, make, |document| {
+            document.clone().normalize();
+        });
+    }
+}
+
+/// A copy removed from a tree is a tree of its own, normalized in the same pass whatever its
+/// index: the copies it holds go and the references in it that it does not bind become text,
+/// as they were bound in the tree it left, so the document then is normalized.
+#[test]
+fn copies_removed_from_a_tree_are_normalized() {
+    fn footnote_definitions(document: &Document) -> Vec<NodeId> {
+        document
+            .children(document.root())
+            .filter(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Start(Tag::FootnoteDefinition { .. })
+                )
+            })
+            .collect()
+    }
+    fn kinds(document: &Document, root: NodeId, kind: fn(&EventKind<'_>) -> bool) -> usize {
+        document
+            .descendants(root)
+            .filter(|&id| kind(&document.node(id).unwrap().kind))
+            .count()
+    }
+    let definitions = |kind: &EventKind<'_>| matches!(kind, EventKind::Definition { .. });
+    let links = |kind: &EventKind<'_>| matches!(kind, EventKind::Start(Tag::Link(_)));
+    // The first footnote definition, attached under the second, ends first, so it binds, but
+    // the root of a tree never is a copy, so it is the copy, and becomes a root before the one
+    // whose tree it leaves, with a copy of `l` in it, or a reference to `q` that only that tree
+    // binds.
+    for (source, kind, left) in [
+        (
+            "[^x]: a\n\n    [l]: /1\n\n    [l]: /2\n\n[^x]: b\n\n    [l]: /0\n",
+            definitions as fn(&EventKind<'_>) -> bool,
+            1,
+        ),
+        ("[^x]: a [q]\n\n[^x]: b\n\n    [q]: /u\n", links, 0),
+    ] {
+        let mut document = parse(source);
+        let found = footnote_definitions(&document);
+        for &id in &found {
+            document.detach(id).unwrap();
+        }
+        document.attach(found[1], found[0], None).unwrap();
+        document.normalize();
+        assert!(document.is_normalized(), "{:?}", source);
+        assert_eq!(
+            document.node(found[0]).unwrap().parent(),
+            None,
+            "{:?}",
+            source
+        );
+        assert_eq!(kinds(&document, found[0], kind), left, "{:?}", source);
+        let mut again = document.clone();
+        again.normalize();
+        assert_eq!(state(&again), state(&document), "{:?}", source);
+    }
+    // A parsed document is settled, but a copy it loses held a reference that only the
+    // document binds, which is text once the copy is a tree of its own.
+    let mut document = parse("[a]: /0\n\n[^x]: y\n\n[^x]: [a]\n\n[a]\n");
+    let copy = footnote_definitions(&document)[1];
+    document.normalize();
+    assert!(document.is_normalized());
+    assert_eq!(kinds(&document, copy, links), 0);
+    assert_eq!(document.text_content(copy), "[a]");
 }
 
 /// Moving the definitions out of a copy of a footnote definition takes time linear in them:

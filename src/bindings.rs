@@ -1019,6 +1019,52 @@ mod tests {
         }
     }
 
+    // Making more groups places every key again, so one that overflowed and now fits in a slot
+    // leaves the overflow: removed, it is not found there once its group overflows again.
+    #[test]
+    fn keys_placed_again_leave_the_overflow() {
+        // Every key of four groups is in the first, and of eight in the first or second, by
+        // whether its number is odd.
+        let hash = |key: &str| {
+            let index: u64 = key[1..].parse().unwrap();
+            ((index & 1) << 61) | index
+        };
+        let mut map = file_and_find(16, hash);
+        assert_eq!(map.overflowed.len(), 4);
+        assert_eq!(map.overflow.len(), 16 - GROUP);
+        map.reserve(32);
+        assert_eq!(map.overflowed.len(), 8);
+        assert!(map.overflow.is_empty());
+        map.remove_hashed(hash("k8"), "k8");
+        for index in [16, 18] {
+            let key = format!("k{index}");
+            assert!(map
+                .get_or_file_hashed(hash(&key), &key, NodeId::new(index))
+                .is_none());
+        }
+        assert!(map.overflowed[0]);
+        assert!(map.find(hash("k8"), "k8").is_none());
+        assert!(map.find(hash("k18"), "k18").is_some());
+    }
+
+    // The names of removed keys are dropped once they are most of the names, so filing and
+    // removing keys again and again keeps the names as long as a few times the keys left.
+    #[test]
+    fn removed_names_are_compacted() {
+        let mut map = KeyMap::default();
+        assert!(map.get_or_file("kept", NodeId::new(0)).is_none());
+        for index in 0..10_000 {
+            let key = format!("k{index}");
+            assert!(map.get_or_file(&key, NodeId::new(index)).is_none());
+            map.remove(&key);
+            assert!(map.names.len() <= 2 * map.live + 64 + key.len());
+        }
+        assert_eq!(
+            map.get("kept").map(|entry| entry.first),
+            Some(NodeId::new(0))
+        );
+    }
+
     // Keys of one hash take time logarithmic in them each to file and find, as the overflow is
     // ordered: 8 times as many grow the time at most a few times as much more than keys that
     // spread over the groups do.
