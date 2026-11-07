@@ -1150,20 +1150,26 @@ impl<S: AsRef<str>> Document<S> {
             return value.as_ref().map(NodeSyntax::borrowed);
         }
         if matches!(node.kind, EventKind::Start(Tag::Item { .. })) {
-            let mut previous: Option<NodeId> = None;
-            for child in self.flow_children(id) {
-                if let Some(previous) = previous {
-                    let end = self.nodes[previous.index()].span.end;
-                    let start = self.nodes[child.index()].span.start;
-                    if self.blank_line_between(end, start) || self.ends_with_blank_line(previous) {
-                        return Some(NodeSyntax::ListItem { spread: true });
-                    }
-                }
-                previous = Some(child);
-            }
-            return Some(NodeSyntax::ListItem { spread: false });
+            return Some(NodeSyntax::ListItem {
+                spread: self.inferred_spread(id),
+            });
         }
         crate::node_syntax::infer(self.source(), node.span.clone(), &node.kind)
+    }
+    // Whether the source has a blank line between two blocks of the item `id`.
+    fn inferred_spread(&self, id: NodeId) -> bool {
+        let mut previous: Option<NodeId> = None;
+        for child in self.flow_children(id) {
+            if let Some(previous) = previous {
+                let end = self.nodes[previous.index()].span.end;
+                let start = self.nodes[child.index()].span.start;
+                if self.blank_line_between(end, start) || self.ends_with_blank_line(previous) {
+                    return true;
+                }
+            }
+            previous = Some(child);
+        }
+        false
     }
     // The children of `id` other than separators.
     fn flow_children(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
@@ -3850,10 +3856,9 @@ impl<S: AsRef<str>> Document<S> {
                 EventKind::Start(Tag::Item { .. })
             ) && !self.syntax.contains_key(&parent)
             {
-                if let Some(NodeSyntax::ListItem { spread }) = self.syntax(parent) {
-                    self.syntax
-                        .insert(parent, Some(NodeSyntax::ListItem { spread }));
-                }
+                let spread = self.inferred_spread(parent);
+                self.syntax
+                    .insert(parent, Some(NodeSyntax::ListItem { spread }));
             }
             let mut current = self.nodes[parent.index()].first_child;
             while let Some(id) = current {
