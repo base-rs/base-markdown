@@ -1733,7 +1733,9 @@ fn ends_in_list_or_footnote_definition<S: AsRef<str>>(
 ///
 /// - Two block quotes in a row would read back as one.
 /// - A paragraph, link reference definition or setext heading cannot interrupt a paragraph: after
-///   one, it would continue it, as text, a title or the heading's content.
+///   one, it would continue it, as text, a title or the heading's content. After a table, each of
+///   its lines would be a row. The parser gives none of these after a table, but normalizing can,
+///   when it hoists a definition out of a footnote definition that is a copy.
 /// - After a nested list or footnote definition that ends in a paragraph or definition, through
 ///   the last blocks of any containers in it, any of those or a table would continue that
 ///   paragraph lazily, as a table's rows cannot interrupt a lazy paragraph. So would one after a
@@ -1755,7 +1757,9 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
             && ends_in_paragraph(document, left)
     };
     match document.node(left).unwrap().kind {
-        EventKind::Start(Tag::Paragraph { .. }) => continues_text(document, right, &setext),
+        EventKind::Start(Tag::Paragraph { .. } | Tag::Table) => {
+            continues_text(document, right, &setext)
+        }
         EventKind::Start(Tag::BlockQuote) => {
             matches!(right_kind, EventKind::Start(Tag::BlockQuote))
                 || ends_in_list_or_footnote_definition(document, left) && lazy()

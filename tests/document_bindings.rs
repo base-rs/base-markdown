@@ -1821,11 +1821,9 @@ fn normalizing_removes_copies() {
     );
     assert!(normalized.contains("id=\"user-content-fnref-b\""));
     assert!(!normalized.contains("fnref-b-2"));
-    // In the document, where any separator may end the output, a copy takes the separator
-    // after it only when one stays just before it, and no other, so its separators render as
-    // they did: after a paragraph and its separator the one after the copy goes, and after a
-    // definition, which renders nothing, it stays. The separator after each copy is moved there
-    // from the end of the document, an order the parser does not give.
+    // A copy goes alone: every separator renders its line ending where it is, whatever is
+    // beside it, so each stays, and the HTML is unchanged. The separator after each copy is
+    // moved there from the end of the document, an order the parser does not give.
     let kinds = |document: &Document| -> Vec<String> {
         document
             .children(document.root())
@@ -1838,7 +1836,7 @@ fn normalizing_removes_copies() {
     for (source, left) in [
         (
             "[a]: /1\n\np\n\n[a]: /2\n\n> q\n",
-            &["Definition", "Start", "Separator", "Start"][..],
+            &["Definition", "Start", "Separator", "Separator", "Start"][..],
         ),
         (
             "p\n\n[a]: /1\n\n[a]: /2\n\n> q\n",
@@ -1851,9 +1849,100 @@ fn normalizing_removes_copies() {
         let (last, quote) = (children[children.len() - 1], children[children.len() - 2]);
         document.detach(last).unwrap();
         document.attach(root, last, Some(quote)).unwrap();
+        let rendered = html(&document);
         document.normalize();
         assert_eq!(kinds(&document), left, "{:?}", source);
         assert_eq!(document.children(root).last(), Some(quote), "{:?}", source);
+        assert_eq!(html(&document), rendered, "{:?}", source);
+    }
+    // A separator on each side of a copy renders twice, before and after it goes.
+    let source = "[a]: /1\n***\n[a]: /2\n- x\n\np\n";
+    let mut document = parse(source);
+    let list = document.children(document.root()).nth(4).unwrap();
+    assert!(matches!(
+        document.node(list).unwrap().kind,
+        EventKind::Start(Tag::List { .. })
+    ));
+    document.detach(list).unwrap();
+    let rendered = html(&document);
+    assert_eq!(rendered, "<hr />\n\n<p>p</p>\n");
+    document.normalize();
+    assert_eq!(html(&document), rendered);
+    // In a container, the separator before a copy may be the line ending after a heading or code
+    // block in a tight item, which renders, so it stays there too.
+    for source in [
+        "[a]: /1\n- # h\n  [a]: /2\n  [a]\n",
+        "[a]: /1\n- ```\n  c\n  ```\n  [a]: /2\n  [a]\n",
+        "[a]: /1\n> # h\n> [a]: /2\n> [a]\n",
+        "[a]: /1\n\n[^n]: # h\n    [a]: /2\n    [a]\n\n[^n]\n",
+    ] {
+        let mut document = parse(source);
+        let rendered = html(&document);
+        normalizes_soundly(&mut document, source);
+        assert_eq!(html(&document), rendered, "{:?}", source);
+        assert_eq!(to_html(&round_trip(document)), rendered, "{:?}", source);
+    }
+    // An item's spread is read from the source between its blocks, where a removed copy's lines
+    // would count as blank, so an item above a copy keeps the spread it had, and its list reads
+    // back tight.
+    for (source, written) in [
+        (
+            "- [a]: /1\n  [a]: /5\n  [b]: /6\n",
+            "- [a]: /1\n  [b]: /6\n",
+        ),
+        (
+            "- [^x]:\n      [a]: /8\n  [^x]:\n      [^y]: g\n",
+            "- [^x]: [a]: /8\n  [^y]: g\n",
+        ),
+        ("- > - [a]: /1\n  >   [a]: /5\n  >   [b]: /6\n  > - c\n", ""),
+    ] {
+        let mut document = parse(source);
+        let rendered = html(&document);
+        normalizes_soundly(&mut document, source);
+        assert_eq!(html(&document), rendered, "{:?}", source);
+        let output = round_trip(document);
+        if !written.is_empty() {
+            assert_eq!(output, written, "{:?}", source);
+        }
+        assert_eq!(to_html(&output), rendered, "{:?}", source);
+        let mut again = parse(&output);
+        again.normalize();
+        assert_eq!(to_markdown(&again).unwrap(), output, "{:?}", source);
+    }
+    // A loose list whose only item a copy leaves with one block is made tight (exception 1),
+    // and the separator after its paragraph goes, as the parser puts none after a tight one.
+    let source = "[a]: /1\n- x\n\n  [a]: /7\n";
+    let mut document = parse(source);
+    assert_eq!(html(&document), "<ul>\n<li>\n<p>x</p>\n</li>\n</ul>\n");
+    normalizes_soundly(&mut document, source);
+    assert_eq!(html(&document), "<ul>\n<li>x</li>\n</ul>\n");
+    assert_eq!(round_trip(document), "[a]: /1\n\n- x\n");
+    // A definition hoisted out of a copy right after a table in a tight item would be read as
+    // one of its rows, so the two are written apart, which renders the same as no paragraph is
+    // there.
+    let source = "[^n]: x\n\n- | a |\n  | - |\n  [^n]:\n      [a]: /2\n";
+    let mut document = parse(source);
+    let rendered = html(&document);
+    normalizes_soundly(&mut document, source);
+    assert_eq!(html(&document), rendered);
+    assert_eq!(to_html(&round_trip(document)), rendered);
+    // Removing a copy can leave two blocks in a row in a tight item that can be written apart
+    // only with a blank line (exception 4): two paragraphs are joined, and otherwise the list is
+    // made loose.
+    for (source, normalized) in [
+        (
+            "[^n]: x\n\n- p\n  [^n]:\n  q\n",
+            "<ul>\n<li>p\nq</li>\n</ul>\n",
+        ),
+        (
+            "[^n]: x\n\n- p\n  [^n]:\n      [a]: /1\n",
+            "<ul>\n<li>\n<p>p</p>\n</li>\n</ul>\n",
+        ),
+    ] {
+        let mut document = parse(source);
+        normalizes_soundly(&mut document, source);
+        assert_eq!(html(&document), normalized, "{:?}", source);
+        assert_eq!(to_html(&round_trip(document)), normalized, "{:?}", source);
     }
     // Removing copies changes no item's ending, as one never ends an item.
     for source in [
