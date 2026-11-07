@@ -716,6 +716,121 @@ fn per_section_work_is_linear() {
     }
 }
 
+/// A per-node call on a node of the attached document takes time linear in the node's subtree,
+/// not in its depth: on each reference, or each text, of `count` emphases nested in each
+/// other, each holding one, against a control of as many emphases, each in a paragraph of its
+/// own. Parsed inline nesting is as deep as the input is long.
+#[test]
+fn per_node_work_on_deep_nesting_is_linear() {
+    let nested = |references: bool| {
+        move |count: usize, control: bool| {
+            let item = if references { "*a [x] " } else { "*a " };
+            let mut source = String::new();
+            if control {
+                for _ in 0..count {
+                    source.push_str(item);
+                    source.push_str("b*\n\n");
+                }
+            } else {
+                source.push_str(&item.repeat(count));
+                source.push('b');
+                source.push_str(&"*".repeat(count));
+            }
+            source.push_str("\n\n[x]: /u\n");
+            parse(&source)
+        }
+    };
+    let each = |document: &Document, kind: fn(&EventKind<'_>) -> bool, run: &dyn Fn(NodeId)| {
+        let ids: Vec<NodeId> = document
+            .descendants(document.root())
+            .filter(|&id| kind(&document.node(id).unwrap().kind))
+            .collect();
+        for id in ids {
+            run(id);
+        }
+    };
+    let link = |kind: &EventKind<'_>| matches!(kind, EventKind::Start(Tag::Link(_)));
+    let text = |kind: &EventKind<'_>| matches!(kind, EventKind::Text(_));
+    // An edit leaves the document unsettled, so its calls take the path that looks names up.
+    let edited = |count: usize, control: bool| {
+        let mut document = nested(true)(count, control);
+        let paragraph = document.children(document.root()).next().unwrap();
+        document
+            .append_child(paragraph, EventKind::Text(Text::from(String::from("c"))))
+            .unwrap();
+        document
+    };
+    for (label, make) in [
+        ("parsed", &nested(true) as &dyn Fn(usize, bool) -> Document),
+        ("edited", &edited),
+    ] {
+        let make = |count, control| make(count, control);
+        growth_against_control(&format!("{label} text_content"), make, |document| {
+            each(document, link, &|id| drop(document.text_content(id)));
+        });
+        growth_against_control(&format!("{label} render_node"), make, |document| {
+            each(document, link, &|id| {
+                document
+                    .render_node(id, &Default::default(), &mut String::new())
+                    .unwrap();
+            });
+        });
+        growth_against_control(&format!("{label} to_markdown_node"), make, |document| {
+            each(document, link, &|id| {
+                to_markdown_node(document, id, &Default::default()).unwrap();
+            });
+        });
+        // The cheapest of the calls on a link shows a walk to the root, were there one, at
+        // these sizes; the others take enough more per call to hide it.
+        growth_against_control_from(
+            1 << 9,
+            &format!("{label} subtree_events"),
+            make,
+            |document| {
+                each(document, link, &|id| {
+                    document.subtree_events(id).for_each(drop)
+                });
+            },
+        );
+        growth_against_control(&format!("{label} destination"), make, |document| {
+            each(document, link, &|id| {
+                assert!(document.destination(id).is_some())
+            });
+        });
+    }
+    let plain = nested(false);
+    growth_against_control("text_content of text", plain, |document| {
+        each(document, text, &|id| drop(document.text_content(id)));
+    });
+    growth_against_control("detach each text", plain, |document| {
+        let mut document = document.clone();
+        let ids: Vec<NodeId> = document
+            .descendants(document.root())
+            .filter(|&id| text(&document.node(id).unwrap().kind))
+            .collect();
+        for id in ids {
+            document.detach(id).unwrap();
+        }
+    });
+    // Detaching each emphasis from the outside in moves each out of the attached document
+    // once.
+    growth_against_control("detach outside in", plain, |document| {
+        let mut document = document.clone();
+        let ids: Vec<NodeId> = document
+            .descendants(document.root())
+            .filter(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Start(Tag::Emphasis)
+                )
+            })
+            .collect();
+        for id in ids {
+            document.detach(id).unwrap();
+        }
+    });
+}
+
 /// A label defined twice, with the copies far apart from the first definitions, costs a
 /// lookup no more than one defined once, in every pass over the whole document: `count`
 /// references, then a definition of each, then a copy of each, against a control whose second

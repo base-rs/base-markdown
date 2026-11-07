@@ -231,6 +231,7 @@ impl AstBuilder {
             append_hint: None,
             index: crate::bindings::Index::default(),
             settled: false,
+            attached: Vec::new(),
         };
         // Public producers can supply arbitrary offsets. Validate their contract once before
         // exposing the document, node by node, as the events of the document would be.
@@ -259,6 +260,7 @@ impl AstBuilder {
             }
         }
         document.index = crate::bindings::Index::new(source, &document.nodes, &self.definitions);
+        document.attached = attached_nodes(&document.nodes, document.root());
         document.store_resolved(&resolved);
         // The parser gives a name only when a definition binds it.
         document.settled = parsed || document.bound(&names);
@@ -294,6 +296,12 @@ pub struct Document<S = String> {
     // cleared by any edit of the tree, so that normalizing an unedited document looks up none.
     #[cfg_attr(feature = "serde", serde(skip))]
     settled: bool,
+    // Whether each node of the arena is in the attached document, so that finding which tree a
+    // node is in takes constant time for an attached node. Kept by each edit that moves a
+    // subtree into or out of the attached document, for the nodes it moves, and made again by
+    // normalizing.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    attached: Vec<bool>,
 }
 
 impl<S: AsRef<str>> Document<S> {
@@ -520,14 +528,14 @@ impl<S: AsRef<str>> Document<S> {
     /// for a reference those of the definition it is bound to, in the tree that holds it, which
     /// is the document when it is attached and the detached subtree otherwise, as it renders.
     /// `None` for an unbound reference or a node that is not a link or image. This takes time
-    /// like [`Document::definition`], with the depth of `id`, in the attached document, and
+    /// like [`Document::definition`], whatever the depth of `id`, in the attached document, and
     /// time linear in the size of a detached tree, as its table is built for each call, so
     /// calling this on each node of a large detached tree takes quadratic time (#226).
     pub fn destination(&self, id: NodeId) -> Option<(&str, Option<&str>)> {
         let kind = &self.node(id)?.kind;
         let cx = self.context();
         crate::bindings::destination(self.source(), &self.nodes, kind, |label| {
-            crate::bindings::Lookup::new(cx, tree_root(&self.nodes, id)).definition(
+            crate::bindings::Lookup::new(cx, self.tree_of(id)).definition(
                 cx,
                 label,
                 &mut crate::bindings::Scratch::default(),
@@ -545,9 +553,40 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    // Whether `id` is in the attached document, in time linear in its depth.
+    // Whether `id` is in the attached document.
     fn attached(&self, id: NodeId) -> bool {
-        tree_root(&self.nodes, id) == self.root()
+        self.attached[id.index()]
+    }
+
+    // The root of the tree that holds `id`: the document's root, at once, when it is attached,
+    // and otherwise the root of its detached subtree, in time linear in its depth there.
+    fn tree_of(&self, id: NodeId) -> NodeId {
+        if self.attached(id) {
+            self.root()
+        } else {
+            tree_root(&self.nodes, id)
+        }
+    }
+
+    // Mark each node of the subtree under `id` attached, or not.
+    fn mark_attached(&mut self, id: NodeId, attached: bool) {
+        let nodes = &self.nodes;
+        let mut current = Some(id);
+        while let Some(node) = current {
+            self.attached[node.index()] = attached;
+            current = next_descendant(nodes, id, node);
+        }
+    }
+
+    // Mark each node added to the arena since the last mark attached when its parent is, in
+    // arena order, as a node is added after its parent.
+    fn mark_added(&mut self) {
+        for index in self.attached.len()..self.nodes.len() {
+            let attached = self.nodes[index]
+                .parent
+                .is_some_and(|parent| self.attached[parent.index()]);
+            self.attached.push(attached);
+        }
     }
 
     // Whether each reference by name and footnote call at `names` in the arena, all attached, is bound.
@@ -642,6 +681,17 @@ fn storable(kind: &EventKind<'_>) -> Result<(), StreamError> {
         }
         _ => Ok(()),
     }
+}
+
+// Whether each node of `nodes` is in the tree under `root`.
+fn attached_nodes(nodes: &[Node], root: NodeId) -> Vec<bool> {
+    let mut attached = vec![false; nodes.len()];
+    let mut current = Some(root);
+    while let Some(id) = current {
+        attached[id.index()] = true;
+        current = next_descendant(nodes, root, id);
+    }
+    attached
 }
 
 // The root of the tree that holds `id`: the document's root when it is attached, or the root of
@@ -772,9 +822,9 @@ impl<'a, S: AsRef<str>> DocumentEvents<'a, S> {
         let (document, root) = (self.document, self.root);
         let cx = document.context();
         let names = &mut self.names;
-        let lookup = names.lookup.get_or_insert_with(|| {
-            crate::bindings::Lookup::new(cx, tree_root(&document.nodes, root))
-        });
+        let lookup = names
+            .lookup
+            .get_or_insert_with(|| crate::bindings::Lookup::new(cx, document.tree_of(root)));
         match kind {
             EventKind::FootnoteReference { identifier, .. } => {
                 lookup.footnote_definition(cx, text(identifier, cx.source), &mut names.scratch)
@@ -1042,7 +1092,7 @@ impl<S: AsRef<str>> Document<S> {
         let mut text = String::new();
         // In a settled document every reference is bound, so its text is that of its nodes, as
         // it would be given as an event, and no lookup is needed.
-        if self.settled && self.node(id).is_some() && tree_root(&self.nodes, id) == self.root() {
+        if self.settled && self.node(id).is_some() && self.attached(id) {
             for child in self.descendants(id) {
                 crate::headings::append_text::<HEADING>(
                     &self.nodes[child.index()].kind,
@@ -1304,11 +1354,11 @@ impl<S: AsRef<str>> Document<S> {
             set_block_end(&mut self.nodes[parent.index()].kind, block_end);
         }
     }
-    // Edits can change the context of existing paragraphs and item endings. Refresh those rendering hints without adding caches or links to every arena node.
+    // Edits can change the context of existing paragraphs and item endings. Refresh those rendering hints without adding caches or links to every arena node. Paragraphs and items are only in containers of blocks, so phrasing is not walked, and moving a run of phrasing takes constant time however much it holds.
     fn refresh_context(&mut self, root: NodeId) {
         let mut current = Some(root);
         while let Some(id) = current {
-            current = next_descendant(&self.nodes, root, id);
+            current = crate::bindings::next_block(&self.nodes, root, id);
             self.refresh_paragraph(id);
             self.refresh_item(Some(id));
         }
@@ -1428,11 +1478,12 @@ impl<S: AsRef<str>> Document<S> {
             next_sibling: None,
         });
         self.link_child(parent, id, previous, next);
+        self.mark_added();
         id
     }
     /// Detach a subtree without moving its arena slots or invalidating IDs. This takes time
-    /// linear in the containers of blocks of the subtree, besides its parent's children before
-    /// it, to remove its definitions from the document's index of them.
+    /// linear in the subtree when it was attached, to mark its nodes detached and remove its
+    /// definitions from the document's index of them, besides its parent's children before it.
     ///
     /// # Errors
     /// Rejects invalid IDs and detaching the document root.
@@ -1451,6 +1502,9 @@ impl<S: AsRef<str>> Document<S> {
                 .remove_tree(self.source.as_ref(), &self.nodes, id);
         }
         self.unlink_child(id, parent);
+        if self.attached(id) {
+            self.mark_attached(id, false);
+        }
         self.refresh_context(id);
         self.refresh_item(Some(parent));
         Ok(())
@@ -1469,7 +1523,7 @@ impl<S: AsRef<str>> Document<S> {
         self.nodes[id.index()].parent = None;
         self.nodes[id.index()].next_sibling = None;
     }
-    /// Move an existing subtree into a container, optionally before one of its children. No node or text allocation is required. Moving a subtree into or out of the attached document takes time linear in its containers of blocks too, to add its definitions to the document's index of them or remove them.
+    /// Move an existing subtree into a container, optionally before one of its children. No node or text allocation is required. Moving a subtree into or out of the attached document takes time linear in the subtree too, to mark its nodes and to add its definitions to the document's index of them or remove them.
     ///
     /// # Errors
     /// Rejects cycles, a leaf parent and root moves with [`StreamError::Unbalanced`], invalid IDs
@@ -1561,6 +1615,9 @@ impl<S: AsRef<str>> Document<S> {
             .take_while(|child| Some(*child) != before)
             .last();
         self.link_child(parent, id, previous, before);
+        if attached != was_attached {
+            self.mark_attached(id, attached);
+        }
         if attached && !was_attached {
             self.index
                 .insert_tree(self.source.as_ref(), &self.nodes, id);
@@ -1573,8 +1630,8 @@ impl<S: AsRef<str>> Document<S> {
         Ok(())
     }
     /// Detach all direct children, returning their stable IDs in order, in time linear in their
-    /// containers of blocks when `parent` is attached, to remove their definitions from the
-    /// document's index of them.
+    /// subtrees when `parent` is attached, to mark their nodes detached and remove their
+    /// definitions from the document's index of them.
     ///
     /// # Errors
     /// Rejects invalid node IDs.
@@ -1587,6 +1644,7 @@ impl<S: AsRef<str>> Document<S> {
             for &id in &children {
                 self.index
                     .remove_tree(self.source.as_ref(), &self.nodes, id);
+                self.mark_attached(id, false);
             }
         }
         self.nodes[parent.index()].first_child = None;
@@ -1702,6 +1760,7 @@ impl<S: AsRef<str>> Document<S> {
                 if attached {
                     self.index
                         .remove_tree(self.source.as_ref(), &self.nodes, id);
+                    self.mark_attached(id, false);
                 }
                 self.nodes[id.index()].parent = None;
                 self.nodes[id.index()].next_sibling = None;
@@ -1792,6 +1851,7 @@ impl<S: AsRef<str>> Document<S> {
         for id in unbound {
             self.unbind_node(id);
         }
+        self.mark_added();
         self.refresh_context(copied_root);
         self.refresh_item(self.nodes[copied_root.index()].parent);
         copied_root
@@ -2926,6 +2986,7 @@ impl<S: AsRef<str>> Document<S> {
             }
         }
         self.space_line_endings();
+        self.attached = attached_nodes(&self.nodes, self.root());
         let source = self.source.as_ref();
         write_frontmatter_value(&mut self.nodes[0].kind, source);
         // What normalizing leaves of a tree binds its references, and what it removes holds none.
@@ -3989,10 +4050,12 @@ impl<'de> serde::Deserialize<'de> for Document<String> {
             append_hint: None,
             index: crate::bindings::Index::default(),
             settled: false,
+            attached: Vec::new(),
         };
         document
             .validate_storage()
             .map_err(serde::de::Error::custom)?;
+        document.attached = attached_nodes(&document.nodes, document.root());
         document.index =
             crate::bindings::Index::of_tree(&document.source, &document.nodes, document.root());
         Ok(document)
