@@ -382,7 +382,7 @@ impl<S: AsRef<str>> Document<S> {
             let new = crate::bindings::kind_key(&kind, source);
             if crate::bindings::kind_key(&node.kind, source) == new {
                 false
-            } else if self.index.admits(source, &self.nodes, &[new], |_| false) {
+            } else if self.index.admits(&[new], |_| false) {
                 true
             } else {
                 return Err(StreamError::InvalidValue);
@@ -493,8 +493,8 @@ impl<S: AsRef<str>> Document<S> {
     /// The link reference definition that a reference labelled `label` leads to in the attached
     /// document: the first in document order whose label matches, as the parser matches labels.
     /// A document keeps an index of its definitions by label as it is edited, with the binding
-    /// of each label first, so this takes constant expected time, whatever copies of a binding
-    /// there are.
+    /// of each label first, so this takes time logarithmic in the number of labels, whatever
+    /// they are and whatever copies of a binding there are.
     pub fn definition(&self, label: &str) -> Option<NodeId> {
         crate::bindings::Lookup::new(self.context(), self.root()).definition(
             self.context(),
@@ -1375,8 +1375,6 @@ impl<S: AsRef<str>> Document<S> {
         let indexed = defines(&kind) && self.attached(parent);
         if indexed
             && !self.index.admits(
-                self.source.as_ref(),
-                &self.nodes,
                 &[crate::bindings::kind_key(&kind, self.source.as_ref())],
                 |_| false,
             )
@@ -1543,7 +1541,7 @@ impl<S: AsRef<str>> Document<S> {
                 self.index.movable(source, &self.nodes, id)
             } else {
                 crate::bindings::tree_keys(source, &self.nodes, id)
-                    .is_some_and(|keys| self.index.admits(source, &self.nodes, &keys, |_| false))
+                    .is_some_and(|keys| self.index.admits(&keys, |_| false))
             };
             if !admitted {
                 return Err(StreamError::InvalidValue);
@@ -1663,7 +1661,6 @@ impl<S: AsRef<str>> Document<S> {
         // binding: a copied definition's key may be one that only the section had.
         let attached = self.attached(parent);
         if attached {
-            let source = self.source.as_ref();
             let keys = crate::bindings::tree_keys(
                 replacement.source.as_ref(),
                 &replacement.nodes,
@@ -1678,9 +1675,10 @@ impl<S: AsRef<str>> Document<S> {
                 at = self.nodes[id.index()].next_sibling;
             }
             leaving.sort_unstable();
-            if !self.index.admits(source, &self.nodes, &keys, |id| {
-                leaving.binary_search(&id).is_ok()
-            }) {
+            if !self
+                .index
+                .admits(&keys, |id| leaving.binary_search(&id).is_ok())
+            {
                 return Err(StreamError::InvalidValue);
             }
         }
@@ -2903,7 +2901,7 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code or attention on either side is joined or merged too. A separator sits between blocks, where it stays and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. Inline HTML without a value writes nothing, so it is removed, before anything above, and what was on either side meets: text joins, attention merges, and attention or a paragraph it leaves empty is removed, so a link reference after it starts its paragraph and is escaped as such, `[r]\: /u` rather than `[r]: /u`, which reads back as a definition. Inline HTML of whitespace alone stays, as it can be written between text. An HTML block whose value is empty or holds only spaces, tabs and line endings is written as blank lines, as no HTML block starts with whitespace alone, and a list without items, not counting separators, is written as nothing, or as a lone `-` where it is the only block of an item, so each is removed with one separator beside it, like an empty paragraph, and also before anything above, so the rules below see the items they leave empty: an item of `p` and a list whose only item holds a list without items is written `- p`, where `- p\n  -` read back as a heading. The parser produces none of these. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. An empty item cannot interrupt a paragraph, and a `-` alone under one is a setext underline, so in an item of a tight list, where no blank line can come between them, a list directly after a paragraph, not counting separators, cannot start with an empty item, one with no blocks once its empty paragraphs are removed: such a list's leading empty items are removed, as each next one becomes the first, so items of `p` and a list of an empty item and `a` are written `- p\n  - a`, where `- p\n  -` read back as a heading. Later empty items stay. A list left with no item is removed with one separator beside it, the one after it if there is one, and a list after it then follows the paragraph in turn. Only an ordered list that starts at 1 can interrupt a paragraph, so in an item of a tight list, an ordered list directly after a paragraph, not counting separators, that starts at another number, including one whose leading empty items were removed, is made to start at 1: `- p\n  3. a` reads back as text, so it is written `- p\n  1. a`. Its items and text stay; only its numbering changes. In an item of a tight list, two paragraphs in a row, not counting separators, cannot be written either, as the blank line between them would make the list loose, so once the rules above have run, each run of them is joined into its first paragraph, with a soft break between each, and the separators between them are removed: a tight list has no `<p>`, so this renders almost the same, and items of `a` and `b` are written `- a\n  b`. Some blocks in a row in an item of a tight list can be written apart only with a blank line between them, which makes the list loose, and the serializer decides which with the same rule: two block quotes, which would otherwise read back as one; a link reference definition or a heading that only a setext heading can write, as it holds a soft or hard break, after a paragraph, which neither can interrupt; and a paragraph, table, link reference definition or such a heading after a list or footnote definition that ends in a paragraph or link reference definition, through the last blocks of any containers in it, which would otherwise continue it lazily, or after a block quote whose last block is such a list or definition, where the line of `>` that would end the quote's paragraph is a blank line in that list or definition. Such a list is made loose, with the paragraphs of all its items, and its paragraphs in a row are then left apart. Any other heading there is written as an ATX heading, which interrupts a paragraph and ends the containers around it, with a line ending in its text written as `&#xA;`, so it leaves the list tight, as a parsed heading there always does; the serializer's options are not known here, so a heading with a soft break makes the list loose even when unwrapping would write it as a space. A block after a list that does not end in a paragraph or definition, such as one whose last item is empty or a heading, is written on the next line, a table after a paragraph interrupts it, and a block after a block quote that ends in a paragraph in any other way is written after a line of `>`, so these stay in a tight list. A task item's checkbox is written before its first block other than definitions and separators, and the parser keeps the space or tab that separates the checkbox from its text at the start of that text. Markdown cannot write a checkbox with nothing after its separator, so when that paragraph is only breaks and at most one text that is a single space or tab, the item stops being a task item, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a checkbox alone, or of a checkbox and a hard break, is left empty, and removed if it starts a list after a paragraph as above, and one of a checkbox and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the checkbox keeps it, including whitespace after the separator, which the serializer encodes, so a checkbox and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. Once the rules above have run, a task item whose first block other than definitions and separators is not a paragraph, or whose paragraph would write nothing after the checkbox, stops being a task item, and the paragraph of any other gets a space at its start when it does not start with a space, a tab or a soft break, as the serializer writes the checkbox's separator there and the parser reads it back as text. The parser reads each line ending in inline code as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. This holds in image text too, which is written as phrasing, like link text. The parser stores each line ending in a code block as LF, and the last line of a closed fence with its line ending, so in the value of such a block each CRLF and lone CR becomes LF, and a value that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty value stays, as `` ```\n``` `` reads back as one. The last node of the document, attached, keeps a value without a final line ending, as the parser stores one for an unclosed fence or indented code that ends the source without a line ending, such as `` ```\na ``, so normalizing a parsed document leaves it as it is. The parser stores each line of frontmatter with its line ending, as LF, too, so in the root's frontmatter each CRLF and lone CR becomes LF, and a body that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty body stays, as `---\n---` reads back as one. A label of a link, image, definition or footnote call is written as it is, so it is given the shape that reads back wherever it is written with the default parse options: a line of it after the first that would start a block there, such as `# b`, `> b`, a fence, a list item or an HTML block, which a parser with that construct turned off reads as part of the label, or whose leading tabs would start one at some columns and not at others, or that could be a table's delimiter row under whatever line is written before it, has its leading whitespace written as four spaces, which starts none; a label longer than the parser reads at some column, counting each tab as four, has its other tabs written as one space each. An ATX heading or table cell cannot hold a line ending, so in a label there each run of whitespace that holds one becomes one space. A link or image whose label is still longer than a full reference's can be at some column cannot be written as a reference, so it becomes a resource, with the destination and title of the definition it is bound to, which renders the same, and such a footnote call loses its label and is written as its identifier when that fits. Other lines are left as they are, so a parsed label changes only where one of these holds, such as a line `|-|` under a head of another number of cells, which a head of the right number, written before the label, would make a table. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
     ///
-    /// A reference is a name, and leads where the first definition of its label in document order does, so being normalized is a property of the whole document, not of each node: removing or relabelling a definition anywhere can leave references elsewhere unbound. A reference that no link reference definition in its tree binds, the document for an attached node and its own detached subtree for a detached one, reads back as text, so before anything above it becomes that text: the reference keeps its ID, as text of its opening bracket, `[`, or `![` for an image, followed by its children and then new text of `]`, `][]` or `][` with its label and `]` after, for a shortcut, collapsed or full reference, with the label's character escapes and references decoded and each run of whitespace in it that holds a line ending written as one space, as the text around it is then normalized with it. A footnote call that no footnote definition in its tree binds becomes text of `[^`, its label, or its identifier without one, decoded the same way, and `]`, with its ID. The root of a detached subtree stays, like any other node there. So `[b][x]` without a definition of `x` becomes text `[b][x]`, which the serializer writes `\[b]\[x]`. A tree may hold copies of a binding, later definitions or footnote definitions of a label or identifier, which a parsed, built or loaded document may have and no edit adds; they bind nothing and render nothing, so each is removed with one separator beside it, the one after it if there is one, before anything above, and each tree then defines each label once. A footnote definition binds its identifier when it is the first to end, so of one nested in another of its identifier, the nested one binds and the other is the copy. A definition or footnote definition in a footnote definition that is a copy, which is not a copy itself, binds its own label, so it takes the place of the copy, where it stays in document order, and no separator is removed. The HTML stays the same, with two exceptions: where a copy was one of the two blocks of the only item of a loose list, which the rule above then makes tight, and where a footnote definition that is a copy holds footnote calls, which the renderer counts, though it shows nothing of the copy, so their footnotes lose the back references to calls that are not in the output, and a footnote called only there loses its entry.
+    /// A reference is a name, and leads where the first definition of its label in document order does, so being normalized is a property of the whole document, not of each node: removing or relabelling a definition anywhere can leave references elsewhere unbound. A reference that no link reference definition in its tree binds, the document for an attached node and its own detached subtree for a detached one, reads back as text, so before anything above it becomes that text: the reference keeps its ID, as text of its opening bracket, `[`, or `![` for an image, followed by its children and then new text of `]`, `][]` or `][` with its label and `]` after, for a shortcut, collapsed or full reference, with the label's character escapes and references decoded and each run of whitespace in it that holds a line ending written as one space, as the text around it is then normalized with it. A footnote call that no footnote definition in its tree binds becomes text of `[^`, its label, or its identifier without one, decoded the same way, and `]`, with its ID. The root of a detached subtree stays, like any other node there. So `[b][x]` without a definition of `x` becomes text `[b][x]`, which the serializer writes `\[b]\[x]`. A tree may hold copies of a binding, later definitions or footnote definitions of a label or identifier, which a parsed, built or loaded document may have and no edit adds; they bind nothing and render nothing, so each is removed with one separator beside it, the one after it if there is one, before anything above, and each tree then defines each label once. A footnote definition binds its identifier when it is the first to end, so of one nested in another of its identifier, the nested one binds and the other is the copy. A definition or footnote definition in a footnote definition that is a copy, which is not a copy itself, binds its own label, so it takes the place of the copy, where it stays in document order, with what it holds, the copies in which go in turn, and no separator is removed. This is one pass from the root in document order, so the result depends on the tree alone, and it takes time linear in the copies, the containers above them and their children, and what the copies hold. The root of a detached subtree is never a copy, as it comes first in its tree, so a footnote definition left a detached root when a copy around it goes, or one detached from a copy of itself, stays and loses the copy it holds. The HTML stays the same, with three exceptions: where a copy was one of the two blocks of the only item of a loose list, which the rule above then makes tight; where a footnote definition that is a copy holds footnote calls, which the renderer counts, though it shows nothing of the copy, so their footnotes lose the back references to calls that are not in the output, and a footnote called only there loses its entry; and where a copy was the only block of an item that starts a list directly after a paragraph in an item of a tight list, which is then empty and removed by the rule below, as `- p\n  -` reads back as a heading.
     ///
     /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, adjacent attention of the same kind, such as `*a*_b_`, stays separate, and strikethrough inside strikethrough, such as `~a~~b~~c~`, stays nested. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
     ///
@@ -3600,19 +3598,22 @@ impl<S: AsRef<str>> Document<S> {
     }
 
     // Remove each definition and footnote definition of the tree under `root` that is a copy, one
-    // after the first of its label or identifier in document order there, which binds nothing and
-    // renders nothing, with one separator beside it, the one after it if there is one, and
-    // otherwise the one before it unless the copy is the last child of a document, where that
-    // separator ends the output, as an empty paragraph is removed. A
-    // definition in a footnote definition that is a copy, which is the first of its own label or
-    // identifier, binds, so it takes the place of the copy, keeping where it is in document order.
-    // This takes time linear in the keys of the document's index for the attached document, and
-    // in the containers of blocks of a detached tree, besides the siblings of the parent of each
-    // copy and of each definition moved out of one.
+    // after the first of its label or identifier there, which binds nothing and renders nothing,
+    // with one separator beside it, the one after it if there is one, and otherwise the one
+    // before it unless the copy is the last child of a document, where that separator ends the
+    // output, as an empty paragraph is removed. A definition or footnote definition in a
+    // footnote definition that is a copy, which is not a copy itself, binds, so it takes the
+    // place of the copy, in document order, with what it holds, and no separator goes.
+    //
+    // One pass from the root, in document order, rebuilds the child list of each container that
+    // holds a copy, once, and of each container of a copy that a definition leaves, so the result
+    // depends on the tree alone, and this takes time linear in the copies, the containers above
+    // them and their children, and what the copies hold.
     fn drop_copies(&mut self, root: NodeId) {
         let attached = root == self.root();
+        // Every copy is removed below, so the index can lose them all at once.
         let copies = if attached {
-            self.index.copies()
+            self.index.take_copies()
         } else {
             crate::bindings::Table::copies(self.source.as_ref(), &self.nodes, root)
         };
@@ -3620,19 +3621,23 @@ impl<S: AsRef<str>> Document<S> {
             return;
         }
         let mut copy = vec![false; self.nodes.len()];
-        let mut listed = vec![false; self.nodes.len()];
-        let mut parents = Vec::new();
+        // The containers that hold a copy at some depth.
+        let mut above = vec![false; self.nodes.len()];
         for &id in &copies {
             copy[id.index()] = true;
-            let parent = self.nodes[id.index()]
-                .parent
-                .expect("a copy follows the first of its key, so it is not the root");
-            if !core::mem::replace(&mut listed[parent.index()], true) {
-                parents.push(parent);
+            let mut at = self.nodes[id.index()].parent;
+            while let Some(parent) = at {
+                if core::mem::replace(&mut above[parent.index()], true) {
+                    break;
+                }
+                at = self.nodes[parent.index()].parent;
             }
         }
+        debug_assert!(!copy[root.index()], "a tree's root is the first of its key");
         let mut kept = Vec::new();
-        for parent in parents {
+        let mut moved = Vec::new();
+        let mut pending = vec![root];
+        while let Some(parent) = pending.pop() {
             kept.clear();
             let mut changed = false;
             // The last separator of a document ends its output, so the last child of one takes
@@ -3644,30 +3649,19 @@ impl<S: AsRef<str>> Document<S> {
             let mut current = self.nodes[parent.index()].first_child;
             while let Some(id) = current {
                 current = self.nodes[id.index()].next_sibling.take();
-                if !core::mem::take(&mut copy[id.index()]) {
+                if !copy[id.index()] {
                     kept.push(id);
                     continue;
                 }
                 changed = true;
                 self.nodes[id.index()].parent = None;
                 // What a copy holds that binds stays, and the copies in it go with it.
-                let mut bound = Vec::new();
-                for inner in crate::bindings::definitions(&self.nodes, id) {
-                    if inner != id && !core::mem::take(&mut copy[inner.index()]) {
-                        bound.push(inner);
-                    } else if attached {
-                        self.index.remove(self.source.as_ref(), &self.nodes, inner);
+                self.bound_in_copy(id, &copy, &mut moved);
+                if !moved.is_empty() {
+                    for &inner in &moved {
+                        self.nodes[inner.index()].parent = Some(parent);
                     }
-                }
-                for &inner in &bound {
-                    let holder = self.nodes[inner.index()]
-                        .parent
-                        .expect("a definition in a copy has a parent in it");
-                    self.unlink_child(inner, holder);
-                    self.nodes[inner.index()].parent = Some(parent);
-                    kept.push(inner);
-                }
-                if !bound.is_empty() {
+                    kept.append(&mut moved);
                     continue;
                 }
                 let removed = if separator(&self.nodes, current) {
@@ -3686,19 +3680,72 @@ impl<S: AsRef<str>> Document<S> {
                     self.nodes[removed.index()].next_sibling = None;
                 }
             }
-            let mut next = None;
-            for &id in kept.iter().rev() {
-                self.nodes[id.index()].next_sibling = next;
-                next = Some(id);
-            }
-            self.nodes[parent.index()].first_child = next;
+            self.set_children(parent, &kept);
             // A paragraph's context is its parent and theirs, which stay for each node kept,
             // while a definition or footnote definition moved out of a copy has none, so only
             // the parent's ending changes.
             if changed {
                 self.refresh_item(Some(parent));
             }
+            pending.extend(kept.iter().rev().filter(|id| above[id.index()]));
         }
+    }
+
+    // Take out of the copy `copy` each definition and footnote definition in it that binds, the
+    // outermost of each nesting, into `moved`, in document order: each that is not a copy, as
+    // the copies in it go with it. The child list of each container it leaves is rebuilt once.
+    fn bound_in_copy(&mut self, copy: NodeId, copies: &[bool], moved: &mut Vec<NodeId>) {
+        let nodes = &self.nodes;
+        if !crate::bindings::holds_blocks(&nodes[copy.index()].kind) {
+            return;
+        }
+        let mut current = nodes[copy.index()].first_child;
+        let mut holders = Vec::new();
+        while let Some(id) = current {
+            let kind = &nodes[id.index()].kind;
+            let definition = matches!(
+                kind,
+                EventKind::Definition { .. } | EventKind::Start(Tag::FootnoteDefinition { .. })
+            );
+            if definition && !copies[id.index()] {
+                let holder = nodes[id.index()]
+                    .parent
+                    .expect("a definition in a copy has a parent in it");
+                if holders.last() != Some(&holder) {
+                    holders.push(holder);
+                }
+                moved.push(id);
+                current = crate::bindings::next_after(nodes, copy, id);
+            } else {
+                current = crate::bindings::next_block(nodes, copy, id);
+            }
+        }
+        // A node that leaves is marked by having no parent until it is given its new one.
+        for &id in moved.iter() {
+            self.nodes[id.index()].parent = None;
+        }
+        holders.sort_unstable();
+        holders.dedup();
+        let mut children = Vec::new();
+        for holder in holders {
+            children.clear();
+            let nodes = &self.nodes;
+            children.extend(
+                self.children(holder)
+                    .filter(|id| nodes[id.index()].parent.is_some()),
+            );
+            self.set_children(holder, &children);
+        }
+    }
+
+    // Make `children`, in order, the child list of `parent`.
+    fn set_children(&mut self, parent: NodeId, children: &[NodeId]) {
+        let mut next = None;
+        for &id in children.iter().rev() {
+            self.nodes[id.index()].next_sibling = next;
+            next = Some(id);
+        }
+        self.nodes[parent.index()].first_child = next;
     }
 
     // Replace the reference or footnote call `id`, which has a parent, with the text it reads

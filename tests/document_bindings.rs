@@ -563,7 +563,8 @@ fn growth_against_control_from(
 }
 
 /// Resolving, rendering, writing and normalizing references takes time linear in the document,
-/// as a lookup takes constant expected time, however many references and definitions it has: each is
+/// up to the logarithm of the labels a lookup takes, however many references and definitions it
+/// has: each is
 /// timed against a control of as many resources, whose growth the references' would exceed
 /// `SCALE` times if a lookup scanned the document.
 #[test]
@@ -1507,6 +1508,23 @@ fn edits_add_no_copy_of_a_binding() {
         .replace_heading_section(root, index, &replacement, true, false)
         .unwrap());
     assert!(html(&document).contains("<a href=\"/5\">b</a>"));
+    // A section that holds a binding whose copy is outside it cannot define the label again,
+    // as the copy stays.
+    for source in [
+        "[x]\n\n# s\n\n[x]: /1\n\n# t\n\n[x]: /2\n",
+        "[x]\n\n[x]: /0\n\n# s\n\n[x]: /1\n",
+    ] {
+        let mut document = parse(source);
+        let root = document.root();
+        let index = document
+            .children(root)
+            .position(|id| document.text_content(id) == "s")
+            .unwrap();
+        let replacement = parse("# s\n\n[x]: /3\n");
+        adds_a_copy(&mut document, |document| {
+            document.replace_heading_section(root, index, &replacement, true, false)
+        });
+    }
 }
 
 /// Removing the binding of a label makes its next copy in document order the binding, and
@@ -1566,23 +1584,10 @@ fn removing_a_binding_binds_its_next_copy() {
     assert_eq!(destination(&document).as_deref(), Some("/2"));
 }
 
-/// Detaching a definition leaves the others bound, wherever the index placed them: here two
-/// labels whose hashes share the last slot of the index's first table, so that the second
-/// wraps to its start and moves back when the first goes.
+/// Detaching a definition leaves the others bound.
 #[test]
 fn detaching_a_definition_keeps_the_others_bound() {
-    // The FNV-1a hash the index files a label by, in the last of its first 8 slots.
-    let last = |label: &String| {
-        label.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-        }) & 7
-            == 7
-    };
-    let labels: Vec<String> = (0..)
-        .map(|index| format!("k{}", index))
-        .filter(last)
-        .take(2)
-        .collect();
+    let labels = ["k0", "k1"];
     let source = format!(
         "[{0}] [{1}]\n\n[{0}]: /0\n\n[{1}]: /1\n",
         labels[0], labels[1]
@@ -1670,4 +1675,331 @@ fn normalizing_removes_copies() {
     assert!(document.is_normalized());
     document.attach(root, quote, None).unwrap();
     assert_eq!(document.descendants(quote).count(), 2);
+}
+
+/// Whether each lookup of `document`, through its index, finds what a walk of it from scratch
+/// does, for each label and identifier it has.
+fn lookups_match_a_walk(document: &Document, context: &str) {
+    let bindings = document.bindings();
+    let mut labels = Vec::new();
+    let mut identifiers = Vec::new();
+    for node in document.nodes() {
+        match &node.kind {
+            EventKind::Definition { label, .. } => {
+                labels.push(label.resolve(document.source()).unwrap().to_owned());
+            }
+            EventKind::Start(Tag::FootnoteDefinition { identifier, .. })
+            | EventKind::FootnoteReference { identifier, .. } => {
+                identifiers.push(identifier.resolve(document.source()).unwrap().to_owned());
+            }
+            EventKind::Start(Tag::Link(Target::Reference(reference))) => {
+                labels.push(
+                    reference
+                        .label
+                        .resolve(document.source())
+                        .unwrap()
+                        .to_owned(),
+                );
+            }
+            _ => {}
+        }
+    }
+    for label in &labels {
+        assert_eq!(
+            document.definition(label),
+            bindings.definition(label),
+            "{}: {:?}",
+            context,
+            label
+        );
+    }
+    for identifier in &identifiers {
+        assert_eq!(
+            document.footnote_definition(identifier),
+            bindings.footnote_definition(identifier),
+            "{}: {:?}",
+            context,
+            identifier
+        );
+    }
+}
+
+/// Normalize `document`, and check that it then is normalized, that normalizing again changes
+/// nothing, that its lookups find what a walk does, and that detaching any of its definitions
+/// and normalizing again keeps all of that.
+fn normalizes_soundly(document: &mut Document, context: &str) {
+    document.normalize();
+    assert!(document.is_normalized(), "{}", context);
+    let once = state(document);
+    let mut again = document.clone();
+    again.normalize();
+    assert_eq!(state(&again), once, "{}", context);
+    lookups_match_a_walk(document, context);
+    let definitions: Vec<NodeId> = document
+        .descendants(document.root())
+        .filter(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Definition { .. } | EventKind::Start(Tag::FootnoteDefinition { .. })
+            )
+        })
+        .collect();
+    for id in definitions {
+        let mut detached = document.clone();
+        detached.detach(id).unwrap();
+        lookups_match_a_walk(&detached, context);
+        detached.normalize();
+        assert!(detached.is_normalized(), "{}: {:?}", context, id);
+        lookups_match_a_walk(&detached, context);
+    }
+}
+
+/// Footnote definitions that are copies, nested in each other and holding definitions that
+/// bind, are removed in one pass whose result depends on the tree alone: what binds in a copy
+/// takes its place, the copies in that go too, and a detached footnote definition is the first
+/// of its identifier in its own tree, so a copy in it goes and it stays.
+#[test]
+fn normalizing_removes_nested_copies() {
+    for (source, written) in [
+        (
+            "[^x]:\n    [^x]: inner\n[^x]:\n    [^x]: inner\n",
+            "[^x]: inner\n",
+        ),
+        (
+            "[l]: /1\n[l]: /3\n\n[^x]: a\n\n[^x]: b\n\n    [^y]: c\n\n        [l]: /2\n",
+            "[l]: /1\n\n[^x]: a\n\n[^y]: c\n",
+        ),
+        (
+            "[^b]: z1\n\n[^a]: x1\n\n[^a]: x2\n\n    [^y]: y1\n\n        [^b]: z2\n\n[^a] [^y] [^b]\n",
+            "[^b]: z1\n\n[^a]: x1\n\n[^y]: y1\n\n[^a] [^y] [^b]\n",
+        ),
+        (
+            "[a]: /q\n[c]: /qb\n[c]: /5\n[d]: /qb\n[d]: /5\n\n[^z]:\n    [^z]:\n        [a]: /n\n",
+            "[a]: /q\n\n[c]: /qb\n\n[d]: /qb\n\n[^z]:\n",
+        ),
+    ] {
+        let mut document = parse(source);
+        let rendered = html(&document);
+        normalizes_soundly(&mut document, source);
+        assert_eq!(html(&document), rendered, "{:?}", source);
+        assert_eq!(to_markdown(&document).unwrap(), written, "{:?}", source);
+    }
+    // With the copy of `b` gone, detaching its binding unbinds the call, which reads back as
+    // text, and a new definition of `b` can be added.
+    let mut document = parse(
+        "[^b]: z1\n\n[^a]: x1\n\n[^a]: x2\n\n    [^y]: y1\n\n        [^b]: z2\n\n[^a] [^y] [^b]\n",
+    );
+    document.normalize();
+    let root = document.root();
+    let first = document.children(root).next().unwrap();
+    document.detach(first).unwrap();
+    assert_eq!(document.footnote_definition("B"), None);
+    assert!(html(&document).contains("[^b]"));
+    let reparsed = parse(&to_markdown(&document).unwrap());
+    assert_eq!(reparsed.footnote_definition("B"), None);
+    document
+        .append_child(root, footnote_definition("B"))
+        .unwrap();
+    assert!(document.footnote_definition("B").is_some());
+    lookups_match_a_walk(&document, "b");
+    // Detaching any node of a footnote definition that holds a copy of itself leaves a tree
+    // that normalizes, the outer one as a root that stays.
+    let source = "[^x]:\n    [^x]: inner\n";
+    let parsed = parse(source);
+    for id in parsed.descendants(parsed.root()).skip(1) {
+        let mut document = parsed.clone();
+        document.detach(id).unwrap();
+        normalizes_soundly(&mut document, source);
+        assert!(document.node(id).is_some());
+    }
+}
+
+/// An item whose only block is a copy is empty once the copy goes, and an empty item cannot
+/// start a list directly after a paragraph in an item of a tight list, as `- p\n  -` reads
+/// back as a heading, so it goes as well, as `normalize` removes such an item whatever left it
+/// empty.
+#[test]
+fn an_item_emptied_of_a_copy_after_a_paragraph_goes() {
+    let mut document = parse("[b]: /0\n\n- x\n  - [b]: /l\n  - item\n");
+    assert!(html(&document).contains("<li></li>"));
+    normalizes_soundly(&mut document, "item");
+    assert_eq!(
+        html(&document),
+        "<ul>\n<li>x\n<ul>\n<li>item</li>\n</ul>\n</li>\n</ul>\n"
+    );
+    assert_eq!(round_trip(document), "[b]: /0\n\n- x\n  - item\n");
+    // Elsewhere an item emptied of a copy stays, empty.
+    let mut document = parse("[b]: /0\n\n- [b]: /l\n- item\n");
+    normalizes_soundly(&mut document, "list");
+    assert_eq!(html(&document), "<ul>\n<li></li>\n<li>item</li>\n</ul>\n");
+}
+
+/// Random documents of footnote definitions nested in each other, copies of each other or
+/// not, holding definitions and calls, each normalize soundly, with some of their nodes
+/// detached first.
+#[test]
+fn normalizing_random_nested_copies() {
+    fn blocks(next: &mut dyn FnMut(usize) -> usize, depth: usize, out: &mut String) {
+        let indent = "    ".repeat(depth);
+        for _ in 0..1 + next(3) {
+            match next(if depth < 3 { 6 } else { 4 }) {
+                0 => out.push_str(&format!(
+                    "{indent}[{}]: /{}\n\n",
+                    ["a", "b"][next(2)],
+                    next(9)
+                )),
+                1 => out.push_str(&format!(
+                    "{indent}[{}] [^{}]\n\n",
+                    ["a", "b"][next(2)],
+                    ["x", "y"][next(2)]
+                )),
+                2 => out.push_str(&format!("{indent}> [{}]: /q\n\n", ["a", "b"][next(2)])),
+                3 => out.push_str(&format!("{indent}- [{}]: /i\n\n", ["a", "b"][next(2)])),
+                _ => {
+                    out.push_str(&format!("{indent}[^{}]: t\n\n", ["x", "y", "z"][next(3)]));
+                    blocks(next, depth + 1, out);
+                }
+            }
+        }
+    }
+    for seed in 0..400_u64 {
+        let mut state = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+        let mut next = |bound: usize| -> usize {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            std::convert::TryFrom::try_from(state % bound as u64).unwrap()
+        };
+        let mut source = String::new();
+        blocks(&mut next, 0, &mut source);
+        blocks(&mut next, 0, &mut source);
+        let mut document = parse(&source);
+        let context = format!("seed {}: {:?}", seed, source);
+        lookups_match_a_walk(&document, &context);
+        let ids: Vec<NodeId> = document.descendants(document.root()).skip(1).collect();
+        for _ in 0..next(3) {
+            let _ = document.detach(ids[next(ids.len())]);
+        }
+        lookups_match_a_walk(&document, &context);
+        normalizes_soundly(&mut document, &context);
+    }
+}
+
+/// Parsing indexes definitions by their keys in time linear in them, whatever the keys are:
+/// keys whose FNV-1a hashes agree in their low 16 bits, which pick a slot in a table of up to
+/// 2^16 slots, built from blocks of three letters that collide in turn, against keys as long
+/// that are random.
+#[test]
+fn indexing_colliding_keys_is_linear() {
+    let large = (1 << 8) * support::linear::SCALE;
+    let stages = large.trailing_zeros();
+    let step = |hash: u64, block: &[u8]| {
+        block.iter().fold(hash, |hash, &byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        })
+    };
+    // Two blocks of each stage that leave the low 16 bits of the hash alike, from what the
+    // stages before leave, which those bits alone decide.
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    let mut pairs = Vec::new();
+    for _ in 0..stages {
+        let mut seen = std::collections::HashMap::new();
+        let pair = (0..26 * 26 * 26)
+            .find_map(|index: u32| {
+                let block = [
+                    b'a' + (index / 676) as u8,
+                    b'a' + (index / 26 % 26) as u8,
+                    b'a' + (index % 26) as u8,
+                ];
+                let low = step(hash, &block) & 0xffff;
+                seen.insert(low, block)
+                    .filter(|other| *other != block)
+                    .map(|other| [other, block])
+            })
+            .unwrap();
+        hash = step(hash, &pair[0]);
+        pairs.push(pair);
+    }
+    let make = |count: usize, control: bool| {
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let mut source = String::new();
+        for index in 0..count {
+            source.push('[');
+            for (stage, pair) in pairs.iter().enumerate() {
+                let block = if control {
+                    state ^= state << 13;
+                    state ^= state >> 7;
+                    state ^= state << 17;
+                    let letters = state.to_le_bytes();
+                    [
+                        b'a' + letters[0] % 26,
+                        b'a' + letters[1] % 26,
+                        b'a' + letters[2] % 26,
+                    ]
+                } else {
+                    pair[index >> stage & 1]
+                };
+                source.push_str(std::str::from_utf8(&block).unwrap());
+            }
+            source.push_str("]: /u\n");
+        }
+        parse(&source)
+    };
+    growth_against_control("parse colliding keys", make, |document| {
+        drop(parse(document.source()));
+    });
+}
+
+/// Removing many copies of one label or identifier, and detaching its binding again and
+/// again, takes time linear in them: against a control of as many distinct labels.
+#[test]
+fn copies_of_one_key_go_in_linear_time() {
+    for footnote in [false, true] {
+        let make = move |count: usize, control: bool| {
+            let mut source = String::new();
+            for index in 0..count {
+                let label = if control {
+                    format!("a{index}")
+                } else {
+                    String::from("a")
+                };
+                if footnote {
+                    source.push_str(&format!("[^{label}]: u\n\n"));
+                } else {
+                    source.push_str(&format!("[{label}]: /u\n"));
+                }
+            }
+            parse(&source)
+        };
+        growth_against_control_from(1 << 13, "normalize copies", make, |document| {
+            document.clone().normalize();
+        });
+        growth_against_control_from(1 << 12, "detach bindings", make, |document| {
+            let mut document = document.clone();
+            let root = document.root();
+            while let Some(id) = document.children(root).next() {
+                document.detach(id).unwrap();
+            }
+        });
+    }
+}
+
+/// Moving the definitions out of a copy of a footnote definition takes time linear in them:
+/// against a control whose footnote definition is not a copy.
+#[test]
+fn definitions_move_out_of_a_copy_in_linear_time() {
+    let make = |count: usize, control: bool| {
+        let mut source = String::from(if control {
+            "[^x]: a\n\n[^y]: b\n"
+        } else {
+            "[^x]: a\n\n[^x]: b\n"
+        });
+        for index in 0..count {
+            source.push_str(&format!("\n    [l{index}]: /u\n\n    p\n"));
+        }
+        parse(&source)
+    };
+    growth_against_control_from(1 << 9, "normalize", make, |document| {
+        document.clone().normalize();
+    });
 }

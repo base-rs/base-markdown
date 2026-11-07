@@ -240,43 +240,15 @@ pub(crate) fn reference_key(value: &str) -> Cow<'_, str> {
     }
 }
 
-const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-
-// One step of FNV-1a, which is quick for the short keys that labels are.
-fn fnv(hash: u64, byte: u8) -> u64 {
-    (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-}
-
-// The FNV-1a hash of `value`.
-pub(crate) fn hash_key(value: &str) -> u64 {
-    value.bytes().fold(FNV_OFFSET, fnv)
-}
-
-// The reference key of `value` with its hash, checked and hashed in one pass: the value itself
-// when it is its own key, and otherwise the key, normalized into `scratch`.
-pub(crate) fn hashed_reference_key<'v>(value: &'v str, scratch: &'v mut String) -> (u64, &'v str) {
-    let mut hash = FNV_OFFSET;
-    let mut previous = b' ';
-    for byte in value.bytes() {
-        if !byte.is_ascii()
-            || byte.is_ascii_uppercase()
-            || matches!(byte, b'\t' | b'\r' | b'\n')
-            || byte == b' ' && previous == b' '
-        {
-            return normalized_key(value, scratch);
-        }
-        hash = fnv(hash, byte);
-        previous = byte;
+// The reference key of `value`: the value itself when it is its own key, and otherwise the key,
+// normalized into `scratch`.
+pub(crate) fn scratch_reference_key<'v>(value: &'v str, scratch: &'v mut String) -> &'v str {
+    if is_canonical_reference_key(value) {
+        value
+    } else {
+        normalize_reference_identifier_into(value, scratch);
+        scratch
     }
-    if !value.is_empty() && previous == b' ' {
-        return normalized_key(value, scratch);
-    }
-    (hash, value)
-}
-
-fn normalized_key<'v>(value: &str, scratch: &'v mut String) -> (u64, &'v str) {
-    normalize_reference_identifier_into(value, scratch);
-    (hash_key(scratch), scratch)
 }
 
 fn is_canonical_reference_key(value: &str) -> bool {
