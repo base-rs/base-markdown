@@ -463,8 +463,10 @@ impl<'s> Target<'s> {
 /// reference's label is also at most 999 characters, counting a tab as the columns it spans, but
 /// not line endings and the spaces and tabs after them; the parser reads a shortcut or collapsed
 /// one at any size. A label that is not is rejected with [`StreamError::InvalidValue`] wherever
-/// an event enters a document or renderer. A shortcut or collapsed reference with a longer label,
-/// or whose text no longer matches it, is written as a resource.
+/// an event enters a document or renderer. A shortcut or collapsed reference whose text no
+/// longer matches its label is written as a full reference, `[text][label]`, normalized or not,
+/// which reads back as a full reference rather than the kind it was, or as a resource when its
+/// label is longer than a full reference's can be.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Reference<'a> {

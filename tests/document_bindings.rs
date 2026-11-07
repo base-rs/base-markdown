@@ -1748,8 +1748,14 @@ fn normalizing_removes_copies() {
         // The separator before a copy that ends a document without a line ending ends the
         // output, so it stays, while in a container, the container's end ends it.
         "[a]: /1\n[a]\n\n[a]: /2",
-        // So does the one before copies that are the last children of a document kept.
+        // So does the one before copies that are the last children of a document kept, or that
+        // only definitions follow, which render nothing, whether parsed after the copy or
+        // hoisted out of a footnote definition that is one.
         "[b]: /1\n\na\n\n[b]: /2\n\n[b]: /3\n",
+        "[a]: /1\n\np\n\n[a]: /2\n[b]: /3\n",
+        "[^x]: c\n\n[a]: /1\n\np\n\n[a]: /2\n[^x]:\n    [l]: /3",
+        // The separator after a copy ends the output when none comes before it.
+        "- [b]: /7\n\n[B]: /4\n\n",
         "> [a]: /1\n> [a]\n>\n> [a]: /2\n",
         // A definition in a copy of a footnote definition can be the binding of its own label,
         // which stays where it is in document order.
@@ -1778,24 +1784,77 @@ fn normalizing_removes_copies() {
     assert!(!html(&document).contains("id=\"user-content-fnref-a\""));
     document.normalize();
     assert_eq!(html(&document), "");
-    // A copy takes the separator after it, not the one before, which stays, as does the
-    // definition between them.
-    let mut document = parse("p\n\n[a]: /1\n\n[a]: /2\n\n> q\n");
-    let root = document.root();
-    let children: Vec<NodeId> = document.children(root).collect();
-    let last = *children.last().unwrap();
-    document.detach(last).unwrap();
-    document.attach(root, last, Some(children[4])).unwrap();
+    // The renderer numbers footnotes by their first call in document order, counting the calls
+    // in a copy, so once it goes, numbering, anchors and entries follow only the visible calls
+    // (#225): `[^c] [^b]` reads 2 1, with `b`'s entry first, and then 1 2, with `c`'s first.
+    let mut document =
+        parse("[^a]: first\n\n[^a]: copy [^b]\n\n[^c] [^b]\n\n[^b]: bee\n[^c]: cee\n");
+    let calls = |html: &str| -> Vec<String> {
+        html.split("data-footnote-ref=\"\" aria-describedby=\"footnote-label\">")
+            .skip(1)
+            .map(|rest| rest[..rest.find('<').unwrap()].to_owned())
+            .collect()
+    };
+    let entries = |html: &str| -> Vec<String> {
+        html.split("<li id=\"user-content-fn-")
+            .skip(1)
+            .map(|rest| rest[..rest.find('"').unwrap()].to_owned())
+            .collect()
+    };
+    let parsed = html(&document);
+    assert_eq!(
+        (calls(&parsed), entries(&parsed)),
+        (
+            vec!["2".to_owned(), "1".to_owned()],
+            vec!["b".to_owned(), "c".to_owned()]
+        )
+    );
+    assert!(parsed.contains("id=\"user-content-fnref-b-2\""));
     document.normalize();
-    let kinds: Vec<String> = document
-        .children(root)
-        .map(|id| {
-            let kind = format!("{:?}", document.node(id).unwrap().kind);
-            kind[..kind.find(|c: char| !c.is_alphanumeric()).unwrap()].to_owned()
-        })
-        .collect();
-    assert_eq!(kinds, ["Start", "Separator", "Definition", "Start"]);
-    assert_eq!(document.children(root).nth(3), Some(children[4]));
+    let normalized = html(&document);
+    assert_eq!(
+        (calls(&normalized), entries(&normalized)),
+        (
+            vec!["1".to_owned(), "2".to_owned()],
+            vec!["c".to_owned(), "b".to_owned()]
+        )
+    );
+    assert!(normalized.contains("id=\"user-content-fnref-b\""));
+    assert!(!normalized.contains("fnref-b-2"));
+    // In the document, where any separator may end the output, a copy takes the separator
+    // after it only when one stays just before it, and no other, so its separators render as
+    // they did: after a paragraph and its separator the one after the copy goes, and after a
+    // definition, which renders nothing, it stays. The separator after each copy is moved there
+    // from the end of the document, an order the parser does not give.
+    let kinds = |document: &Document| -> Vec<String> {
+        document
+            .children(document.root())
+            .map(|id| {
+                let kind = format!("{:?}", document.node(id).unwrap().kind);
+                kind[..kind.find(|c: char| !c.is_alphanumeric()).unwrap()].to_owned()
+            })
+            .collect()
+    };
+    for (source, left) in [
+        (
+            "[a]: /1\n\np\n\n[a]: /2\n\n> q\n",
+            &["Definition", "Start", "Separator", "Start"][..],
+        ),
+        (
+            "p\n\n[a]: /1\n\n[a]: /2\n\n> q\n",
+            &["Start", "Separator", "Definition", "Separator", "Start"][..],
+        ),
+    ] {
+        let mut document = parse(source);
+        let root = document.root();
+        let children: Vec<NodeId> = document.children(root).collect();
+        let (last, quote) = (children[children.len() - 1], children[children.len() - 2]);
+        document.detach(last).unwrap();
+        document.attach(root, last, Some(quote)).unwrap();
+        document.normalize();
+        assert_eq!(kinds(&document), left, "{:?}", source);
+        assert_eq!(document.children(root).last(), Some(quote), "{:?}", source);
+    }
     // Removing copies changes no item's ending, as one never ends an item.
     for source in [
         "- a\n\n  [x]: /1\n  [x]: /2\n- b\n",
