@@ -1,6 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
+use base_markdown::stream::Target;
 use base_markdown::{
     stream::{EventKind, StreamError, Tag, Text},
     to_markdown, to_markdown_node, Document, ParseOptions,
@@ -35,11 +36,14 @@ fn parsed_reference_labels_preserve_authored_spelling() {
 }
 
 #[test]
-fn reference_semantics_survive_definition_edits_and_removal() {
+fn references_follow_definition_edits_and_removal() {
     let source = "[label][Ref] ![alt][ref]\n\n[REF]: /old \"Old\"\n\n[ref]: /ignored\n";
-    for operation in 0..3 {
+    for (operation, destination) in [
+        (0, "/new\" title=\"Old"),
+        (1, "/old\" title=\"New"),
+        (2, "/ignored"),
+    ] {
         let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
-        let original_html = html(&document);
         let definition = document
             .descendants(document.root())
             .find(|&id| {
@@ -72,14 +76,22 @@ fn reference_semantics_survive_definition_edits_and_removal() {
                 .unwrap(),
             _ => document.detach(definition).unwrap(),
         }
+        // A reference is a name, so it leads where the first definition of its label now does,
+        // and is written as itself.
+        let rendered = html(&document);
+        assert!(
+            rendered.contains(&format!("<a href=\"{}\">label</a>", destination)),
+            "{}",
+            rendered
+        );
         let serialized = to_markdown(&document).unwrap();
         assert!(
-            serialized.starts_with("[label](/old \"Old\") ![alt](/old \"Old\")\n"),
+            serialized.starts_with("[label][Ref] ![alt][ref]\n"),
             "{}",
             serialized
         );
         let reparsed = Document::parse(serialized.as_str(), &ParseOptions::default()).unwrap();
-        assert_eq!(html(&reparsed), original_html);
+        assert_eq!(html(&reparsed), rendered);
     }
 }
 
@@ -113,8 +125,9 @@ fn empty() -> Document<&'static str> {
     Document::parse("", &ParseOptions::default()).unwrap()
 }
 
+/// A built reference is a name too, bound by whatever definition of its label the document has.
 #[test]
-fn synthetic_references_cannot_override_a_present_definition() {
+fn built_references_are_bound_by_the_definitions_of_the_document() {
     use base_markdown::{stream::Reference, ReferenceKind};
     for target in ["/original", "/changed"] {
         let mut document = empty();
@@ -125,19 +138,17 @@ fn synthetic_references_cannot_override_a_present_definition() {
         let link = document
             .append_child(
                 paragraph,
-                EventKind::Start(Tag::Link {
-                    destination: Text::Literal("/original"),
-                    title: None,
-                    reference: Some(Box::new(Reference {
-                        kind: ReferenceKind::Full,
-                        label: Text::Literal("ref"),
-                    })),
-                }),
+                EventKind::Start(Tag::Link(Target::Reference(Box::new(Reference {
+                    kind: ReferenceKind::Full,
+                    label: Text::Literal("ref"),
+                })))),
             )
             .unwrap();
         document
             .append_child(link, EventKind::Text(Text::Literal("label")))
             .unwrap();
+        assert_eq!(document.destination(link), None);
+        assert!(!document.is_normalized());
         document
             .append_child(
                 root,
@@ -148,16 +159,10 @@ fn synthetic_references_cannot_override_a_present_definition() {
                 },
             )
             .unwrap();
+        assert_eq!(document.destination(link), Some((target, None)));
+        assert!(document.is_normalized());
         let serialized = to_markdown(&document).unwrap();
-        if target == "/original" {
-            assert!(serialized.starts_with("[label][ref]"), "{}", serialized);
-        } else {
-            assert!(
-                serialized.starts_with("[label](/original)"),
-                "{}",
-                serialized
-            );
-        }
+        assert_eq!(serialized, format!("[label][ref]\n\n[ref]: {}\n", target));
     }
 }
 
@@ -192,11 +197,10 @@ fn labels_the_parser_cannot_read_are_rejected() {
     let link = document
         .append_child(
             paragraph,
-            EventKind::Start(Tag::Link {
+            EventKind::Start(Tag::Link(Target::Resource {
                 destination: Text::Literal("/u"),
                 title: None,
-                reference: None,
-            }),
+            })),
         )
         .unwrap();
     let footnote = document
@@ -228,14 +232,10 @@ fn labels_the_parser_cannot_read_are_rejected() {
         )
         .unwrap();
     let reference = |kind: ReferenceKind, label: &str| {
-        EventKind::Start(Tag::Link {
-            destination: Text::Literal("/u"),
-            title: None,
-            reference: Some(Box::new(Reference {
-                kind,
-                label: Text::from(label.to_string()),
-            })),
-        })
+        EventKind::Start(Tag::Link(Target::Reference(Box::new(Reference {
+            kind,
+            label: Text::from(label.to_string()),
+        }))))
     };
     let check = |result: Result<(), StreamError>, valid: bool, name: &str| {
         if valid {

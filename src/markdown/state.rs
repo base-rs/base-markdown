@@ -18,15 +18,13 @@ use crate::markdown::{
     LineWrapping, Options,
 };
 use crate::{
+    bindings::{Lookup, Scratch},
     message::Message,
-    stream::{EventKind, Tag},
-    util::{
-        line_ending::{line_endings, trim_terminal_ending},
-        normalize_identifier::{normalize_identifier, normalize_identifier_into},
-    },
-    AlignKind, Document, NodeId, NodeSyntax,
+    stream::{EventKind, Tag, Target},
+    util::line_ending::{line_endings, trim_terminal_ending},
+    AlignKind, Document, NodeId, NodeSyntax, ReferenceKind,
 };
-use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
+use alloc::{borrow::Cow, string::String, vec::Vec};
 
 pub struct Info<'a> {
     pub after: &'a str,
@@ -39,6 +37,15 @@ enum Before<'a> {
     Literal(&'a str),
     /// Output, after the text that the construct the output belongs to was written after.
     Output(&'a str, core::ops::Range<usize>),
+}
+
+/// The bindings of the tree that holds what is being written, the document when it is
+/// attached, and of the subtree being written when it is not that whole tree: a reference is
+/// written as one only when the definition it is bound to is the one it would read back bound to.
+#[derive(Debug)]
+struct WrittenBindings {
+    tree: Lookup,
+    written: Option<Lookup>,
 }
 
 pub struct State<'a> {
@@ -70,8 +77,10 @@ pub struct State<'a> {
     pub options: &'a Options,
     pub stack: Vec<ConstructName>,
     pub serialization_root: Option<NodeId>,
-    definitions: Option<BTreeMap<String, NodeId>>,
-    reference_key: String,
+    /// The bindings of what is being written, built at the first reference written.
+    bindings: Option<WrittenBindings>,
+    /// Room for a reference key that is not the label itself.
+    key: Scratch,
     /// Where the phrasing of the paragraph, heading or table cell being written starts. A prefix
     /// added later, such as a list item's indent, puts it at the start of a line.
     pub(super) line_start: usize,
@@ -861,35 +870,33 @@ impl<'a> State<'a> {
                     self.depth += 1;
                     Ok(())
                 }
-                Tag::Link {
-                    destination,
-                    title,
-                    reference,
-                }
-                | Tag::Image {
-                    destination,
-                    title,
-                    reference,
-                } => {
-                    let image = matches!(tag, Tag::Image { .. });
-                    let destination = destination.resolve(source).unwrap();
-                    let title = title.as_ref().map(|value| value.resolve(source).unwrap());
-                    if let Some(reference) = reference {
-                        let label = reference.label.resolve(source).unwrap();
-                        if self.reference_matches(document, id, label, destination, title)
-                            && self.reference(
+                Tag::Link(target) | Tag::Image(target) => {
+                    let image = matches!(tag, Tag::Image(_));
+                    let (destination, title) = match self.written_target(document, id, target) {
+                        Ok(written) => written,
+                        Err(definition) => {
+                            let reference = target
+                                .reference()
+                                .expect("only a reference has no destination");
+                            let label = reference.label.resolve(source).unwrap();
+                            // An unbound reference reads back as text however it is written, so
+                            // one whose label does not fit its form is written as a full one.
+                            let kind =
+                                if definition.is_none() && !crate::node_syntax::label_fits(label) {
+                                    ReferenceKind::Full
+                                } else {
+                                    reference.kind
+                                };
+                            if self.reference(document, id, kind, label, image, info.after)? {
+                                self.depth -= 1;
+                                return Ok(());
+                            }
+                            Self::definition_target(
                                 document,
-                                id,
-                                reference.kind,
-                                label,
-                                image,
-                                info.after,
-                            )?
-                        {
-                            self.depth -= 1;
-                            return Ok(());
+                                definition.expect("an unbound reference is written"),
+                            )
                         }
-                    }
+                    };
                     self.resource(document, id, destination, title, image)
                 }
                 Tag::Table => self.render_table(document, id),
@@ -1214,8 +1221,8 @@ impl<'a> State<'a> {
             options,
             stack: Vec::new(),
             serialization_root: None,
-            definitions: None,
-            reference_key: String::new(),
+            bindings: None,
+            key: Scratch::default(),
             line_start: 0,
             label_end: None,
             definition_colon: None,
@@ -1227,48 +1234,73 @@ impl<'a> State<'a> {
         }
     }
 
-    /// A parsed reference is safe only while its first definition still resolves to
-    /// the stored semantic destination and title. Explicit synthetic references may
-    /// intentionally stand alone. Index only the serialized subtree, once on demand.
-    fn reference_matches<S: AsRef<str>>(
+    /// The definition the reference `id` is bound to, and whether it is the one the reference
+    /// reads back bound to once written: the first of its label in the subtree being written. A
+    /// reference bound elsewhere is written as a resource to where it leads, and an unbound one,
+    /// which reads back as text, as a reference.
+    fn binding<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         id: NodeId,
-        label: &str,
-        destination: &str,
-        title: Option<&str>,
-    ) -> bool {
-        let standalone = document.node(id).unwrap().span.is_empty();
-        let source = document.source();
-        let root = self.serialization_root.unwrap_or(document.root());
-        let definitions = self.definitions.get_or_insert_with(|| {
-            let mut definitions = BTreeMap::new();
-            for id in document.descendants(root) {
-                if let EventKind::Definition { label, .. } = &document.node(id).unwrap().kind {
-                    definitions
-                        .entry(normalize_identifier(label.resolve(source).unwrap()))
-                        .or_insert(id);
-                }
+    ) -> Option<(NodeId, bool)> {
+        let cx = document.context();
+        let root = self.serialization_root.unwrap_or(cx.root);
+        let bindings = self.bindings.get_or_insert_with(|| {
+            let tree = crate::document::tree_root(cx.nodes, root);
+            WrittenBindings {
+                // Writing all of a tree looks up every reference in it.
+                tree: Lookup::new(cx, tree),
+                written: (root != tree).then(|| Lookup::new(cx, root)),
             }
-            definitions
         });
-        normalize_identifier_into(label, &mut self.reference_key);
-        let Some(definition) = definitions.get(&self.reference_key) else {
-            return standalone;
+        let kind = &cx.nodes[id.index()].kind;
+        let definition = bindings.tree.definition_of(cx, kind, &mut self.key)?;
+        let Some(written) = &mut bindings.written else {
+            return Some((definition, true));
         };
+        let first = written.definition_of(cx, kind, &mut self.key);
+        Some((definition, first == Some(definition)))
+    }
+
+    /// The destination and title of definition `id`.
+    fn definition_target<S: AsRef<str>>(
+        document: &Document<S>,
+        id: NodeId,
+    ) -> (&str, Option<&str>) {
+        let source = document.source();
         let EventKind::Definition {
-            destination: target,
-            title: target_title,
-            ..
-        } = &document.node(*definition).unwrap().kind
+            destination, title, ..
+        } = &document.node(id).unwrap().kind
         else {
-            unreachable!("definition index stores only definition nodes")
+            unreachable!("a binding is a definition")
         };
-        target.resolve(source).unwrap() == destination
-            && target_title
-                .as_ref()
-                .map(|value| value.resolve(source).unwrap())
-                == title
+        (
+            destination.resolve(source).unwrap(),
+            title.as_ref().map(|value| value.resolve(source).unwrap()),
+        )
+    }
+
+    /// The destination and title link or image `id`, of `target`, is written with as a resource:
+    /// its own, or those of the definition it is bound to, or `None` for a reference written as
+    /// one.
+    fn written_target<'d, S: AsRef<str>>(
+        &mut self,
+        document: &'d Document<S>,
+        id: NodeId,
+        target: &'d Target<'static>,
+    ) -> Result<(&'d str, Option<&'d str>), Option<NodeId>> {
+        let source = document.source();
+        if let Some((destination, title)) = target.destination() {
+            return Ok((
+                destination.resolve(source).unwrap(),
+                title.map(|value| value.resolve(source).unwrap()),
+            ));
+        }
+        match self.binding(document, id) {
+            Some((definition, false)) => Ok(Self::definition_target(document, definition)),
+            Some((definition, true)) => Err(Some(definition)),
+            None => Err(None),
+        }
     }
 
     /// The first character `id` writes, when it is known without writing it. `previous` is the node
@@ -1288,22 +1320,12 @@ impl<'a> State<'a> {
             EventKind::Start(Tag::Strong) => Some(self.options.strong),
             EventKind::Start(Tag::Delete) => Some('~'),
             EventKind::Start(Tag::Image { .. }) => Some('!'),
-            EventKind::Start(Tag::Link {
-                destination,
-                title,
-                reference,
-            }) => Some(
-                if matches!(reference, Some(reference)
-                    if self.reference_matches(document, id, reference.label.resolve(document.source()).unwrap(),
-                        destination.resolve(document.source()).unwrap(),
-                        title.as_ref().map(|value| value.resolve(document.source()).unwrap())))
-                {
-                    '['
-                } else {
+            EventKind::Start(Tag::Link(target)) => Some(
+                if let Ok((destination, title)) = self.written_target(document, id, target) {
                     match written_link(
                         document,
                         id,
-                        destination.resolve(document.source()).unwrap(),
+                        destination,
                         title.is_some(),
                         ends_at_boundary(document, previous),
                         self,
@@ -1312,6 +1334,8 @@ impl<'a> State<'a> {
                         WrittenLink::Angle(_) => '<',
                         WrittenLink::Explicit => '[',
                     }
+                } else {
+                    '['
                 },
             ),
             EventKind::Html { .. } => Some('<'),
@@ -1709,7 +1733,9 @@ fn ends_in_list_or_footnote_definition<S: AsRef<str>>(
 ///
 /// - Two block quotes in a row would read back as one.
 /// - A paragraph, link reference definition or setext heading cannot interrupt a paragraph: after
-///   one, it would continue it, as text, a title or the heading's content.
+///   one, it would continue it, as text, a title or the heading's content. After a table, each of
+///   its lines would be a row. The parser gives none of these after a table, but normalizing can,
+///   when it hoists a definition out of a footnote definition that is a copy.
 /// - After a nested list or footnote definition that ends in a paragraph or definition, through
 ///   the last blocks of any containers in it, any of those or a table would continue that
 ///   paragraph lazily, as a table's rows cannot interrupt a lazy paragraph. So would one after a
@@ -1731,7 +1757,9 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
             && ends_in_paragraph(document, left)
     };
     match document.node(left).unwrap().kind {
-        EventKind::Start(Tag::Paragraph { .. }) => continues_text(document, right, &setext),
+        EventKind::Start(Tag::Paragraph { .. } | Tag::Table) => {
+            continues_text(document, right, &setext)
+        }
         EventKind::Start(Tag::BlockQuote) => {
             matches!(right_kind, EventKind::Start(Tag::BlockQuote))
                 || ends_in_list_or_footnote_definition(document, left) && lazy()

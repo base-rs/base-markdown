@@ -132,9 +132,8 @@ fn structured_details_keep_their_own_source_ranges() {
         .iter()
         .find(|event| matches!(event.kind, EventKind::Start(Tag::Link { .. })))
         .unwrap();
-    let EventKind::Start(Tag::Link {
-        destination, title, ..
-    }) = &link.kind
+    let EventKind::Start(Tag::Link(base_markdown::stream::Target::Resource { destination, title })) =
+        &link.kind
     else {
         unreachable!()
     };

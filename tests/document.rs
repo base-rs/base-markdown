@@ -2,7 +2,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 use base_markdown::{
-    stream::{EventKind, Reference, Tag, Text},
+    stream::{EventKind, Reference, Tag, Target, Text},
     CompileOptions, Document, HeadingOptions, LinkForm, NodeSyntax, Options, ParseOptions,
     ReferenceKind,
 };
@@ -176,23 +176,18 @@ fn reference<S: AsRef<str>>(
     id: base_markdown::NodeId,
 ) -> Option<(ReferenceKind, String)> {
     match &document.node(id)?.kind {
-        EventKind::Start(
-            Tag::Link {
-                reference: Some(reference),
-                ..
-            }
-            | Tag::Image {
-                reference: Some(reference),
-                ..
-            },
-        ) => Some((
-            reference.kind,
-            reference
-                .label
-                .resolve(document.source())
-                .unwrap()
-                .to_string(),
-        )),
+        EventKind::Start(Tag::Link(target) | Tag::Image(target)) => {
+            target.reference().map(|reference| {
+                (
+                    reference.kind,
+                    reference
+                        .label
+                        .resolve(document.source())
+                        .unwrap()
+                        .to_string(),
+                )
+            })
+        }
         _ => None,
     }
 }
@@ -620,11 +615,10 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
     ] {
         let document = custom(
             raw,
-            EventKind::Start(Tag::Link {
+            EventKind::Start(Tag::Link(Target::Resource {
                 destination,
                 title: None,
-                reference: None,
-            }),
+            })),
         );
         let id = document.children(document.root()).next().unwrap();
         assert!(document.syntax(id).is_none(), "{:?}", raw);
@@ -749,7 +743,7 @@ fn escaped_footnote_labels_and_nul_code_info_roundtrip() {
 }
 
 #[test]
-fn copied_references_preserve_targets_with_conflicting_or_missing_definitions() {
+fn copied_references_keep_bound_targets_and_unbound_text() {
     for missing in [false, true] {
         let mut document = Document::parse(
             "# Keep\n\n[ref]: /old\n\n# Replace\n\nold\n",
@@ -780,12 +774,44 @@ fn copied_references_preserve_targets_with_conflicting_or_missing_definitions() 
             .children(root)
             .position(|id| document.text_content(id) == "Replace")
             .unwrap();
+        if !missing {
+            // The copied definition would be a copy of this document's, which no edit adds.
+            let before = base_markdown::to_markdown(&document).unwrap();
+            assert!(matches!(
+                document.replace_heading_section(root, index, &replacement, true, true),
+                Err(base_markdown::stream::StreamError::InvalidValue)
+            ));
+            assert_eq!(base_markdown::to_markdown(&document).unwrap(), before);
+            let old = document
+                .children(root)
+                .find(|id| {
+                    matches!(
+                        document.node(*id).unwrap().kind,
+                        EventKind::Definition { .. }
+                    )
+                })
+                .unwrap();
+            document.detach(old).unwrap();
+        }
+        let index = document
+            .children(root)
+            .position(|id| document.text_content(id) == "Replace")
+            .unwrap();
         document
             .replace_heading_section(root, index, &replacement, true, true)
             .unwrap();
         drop(replacement);
         let markdown = base_markdown::to_markdown(&document).unwrap();
-        assert!(markdown.contains("[x](/new \"title\") ![y](/new \"title\")"));
+        // A bound reference leads where it did, whatever this document defines; an unbound one
+        // is copied as the text it rendered as, which this document's definition does not bind.
+        if missing {
+            assert!(!markdown.contains("[x][ref]"), "{:?}", markdown);
+            assert!(html(&document).contains("<p>[x][ref] ![y][ref] <a"));
+            assert!(!html(&document).contains("/old\">x"));
+        } else {
+            assert!(markdown.contains("[x](/new \"title\") ![y](/new \"title\")"));
+            assert!(html(&document).contains("<a href=\"/new\" title=\"title\">x</a>"));
+        }
         // A link's form is its own, so it is copied.
         assert!(markdown.contains("<https://a.b>"));
         assert_eq!(
@@ -1163,14 +1189,7 @@ fn reference_syntax_preserves_backslash_runs_and_authored_offsets() {
                 })
                 .unwrap();
             let EventKind::Start(
-                Tag::Link {
-                    reference: Some(reference),
-                    ..
-                }
-                | Tag::Image {
-                    reference: Some(reference),
-                    ..
-                },
+                Tag::Link(Target::Reference(reference)) | Tag::Image(Target::Reference(reference)),
             ) = document.node(id).unwrap().kind.clone()
             else {
                 panic!("missing reference for {:?}", authored);
