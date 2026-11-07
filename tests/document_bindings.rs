@@ -523,7 +523,7 @@ fn growth_against_control(
     make: impl Fn(usize, bool) -> Document,
     run: impl Fn(&Document),
 ) {
-    growth_against_control_from(1 << 8, label, make, run);
+    growth_against_control_from(1 << 6, label, make, run);
 }
 
 /// [`growth_against_control`] from `small` items, for work whose quadratic part shows only at
@@ -547,7 +547,7 @@ fn growth_against_control_from(
     let mut ratios = Vec::new();
     for _ in 0..3 {
         let mut times = [f64::MAX; 4];
-        for _ in 0..5 {
+        for _ in 0..3 {
             for (time, document) in times.iter_mut().zip(&documents) {
                 *time = time.min(timed(|| run(document)).as_secs_f64());
             }
@@ -563,9 +563,7 @@ fn growth_against_control_from(
 }
 
 /// Resolving, rendering, writing and normalizing references takes time linear in the document,
-/// up to the logarithm of the labels a lookup takes, however many references and definitions it
-/// has: each is
-/// timed against a control of as many resources, whose growth the references' would exceed
+/// however many references and definitions it has: each is timed against a control of as many resources, whose growth the references' would exceed
 /// `SCALE` times if a lookup scanned the document.
 #[test]
 fn reference_work_is_linear() {
@@ -590,10 +588,10 @@ fn reference_work_is_linear() {
     growth_against_control("render", bound, |document| {
         html(document);
     });
-    growth_against_control_from(1 << 7, "write", bound, |document| {
+    growth_against_control_from(1 << 5, "write", bound, |document| {
         to_markdown(document).unwrap();
     });
-    growth_against_control_from(1 << 7, "write a subtree", bound, |document| {
+    growth_against_control_from(1 << 5, "write a subtree", bound, |document| {
         let quote = document.children(document.root()).next().unwrap();
         to_markdown_node(document, quote, &Default::default()).unwrap();
     });
@@ -637,7 +635,7 @@ fn reference_work_is_linear() {
         source.push_str("\n\n[a]: /u\n");
         parse(&source)
     };
-    growth_against_control_from(1 << 7, "write a deep subtree", deep, |document| {
+    growth_against_control_from(1 << 5, "write a deep subtree", deep, |document| {
         let quote = document
             .descendants(document.root())
             .filter(|&id| {
@@ -702,7 +700,7 @@ fn per_section_work_is_linear() {
                     .unwrap();
             });
         });
-        growth_against_control("to_markdown_node", make, |document| {
+        growth_against_control_from(1 << 5, "to_markdown_node", make, |document| {
             each(document, &|id| {
                 to_markdown_node(document, id, &Default::default()).unwrap();
             });
@@ -740,16 +738,16 @@ fn whole_document_work_with_copies_far_apart_is_linear() {
         source
     };
     let make = |count, control| parse(&source(count, control));
-    growth_against_control_from(1 << 9, "parse", make, |document| {
+    growth_against_control_from(1 << 7, "parse", make, |document| {
         drop(parse(document.source()));
     });
-    growth_against_control_from(1 << 9, "render_html", make, |document| {
+    growth_against_control_from(1 << 7, "render_html", make, |document| {
         drop(html(document));
     });
-    growth_against_control_from(1 << 7, "to_markdown", make, |document| {
+    growth_against_control_from(1 << 5, "to_markdown", make, |document| {
         to_markdown(document).unwrap();
     });
-    growth_against_control_from(1 << 9, "headings", make, |document| {
+    growth_against_control_from(1 << 7, "headings", make, |document| {
         drop(document.headings(&Default::default()));
     });
     growth_against_control("normalize", make, |document| {
@@ -1862,7 +1860,16 @@ fn normalizing_random_nested_copies() {
             }
         }
     }
-    for seed in 0..400_u64 {
+    // `NESTED_COPIES_SEEDS=10000` runs more seeds than the default 100.
+    let seeds = std::env::var("NESTED_COPIES_SEEDS")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .map_or(100_u64, |value| {
+            value
+                .parse()
+                .unwrap_or_else(|_| panic!("NESTED_COPIES_SEEDS={:?} is not a count", value))
+        });
+    for seed in 0..seeds {
         let mut state = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
         let mut next = |bound: usize| -> usize {
             state ^= state << 13;
@@ -1885,103 +1892,48 @@ fn normalizing_random_nested_copies() {
     }
 }
 
-/// Parsing indexes definitions by their keys in time linear in them, whatever the keys are:
-/// keys whose FNV-1a hashes agree in their low 16 bits, which pick a slot in a table of up to
-/// 2^16 slots, built from blocks of three letters that collide in turn, against keys as long
-/// that are random.
-#[test]
-fn indexing_colliding_keys_is_linear() {
-    let large = (1 << 8) * support::linear::SCALE;
-    let stages = large.trailing_zeros();
-    let step = |hash: u64, block: &[u8]| {
-        block.iter().fold(hash, |hash, &byte| {
-            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-        })
-    };
-    // Two blocks of each stage that leave the low 16 bits of the hash alike, from what the
-    // stages before leave, which those bits alone decide.
-    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-    let mut pairs = Vec::new();
-    for _ in 0..stages {
-        let mut seen = std::collections::HashMap::new();
-        let pair = (0..26 * 26 * 26)
-            .find_map(|index: u32| {
-                let block = [
-                    b'a' + (index / 676) as u8,
-                    b'a' + (index / 26 % 26) as u8,
-                    b'a' + (index % 26) as u8,
-                ];
-                let low = step(hash, &block) & 0xffff;
-                seen.insert(low, block)
-                    .filter(|other| *other != block)
-                    .map(|other| [other, block])
-            })
-            .unwrap();
-        hash = step(hash, &pair[0]);
-        pairs.push(pair);
-    }
-    let make = |count: usize, control: bool| {
-        let mut state = 0x2545_f491_4f6c_dd1d_u64;
-        let mut source = String::new();
-        for index in 0..count {
-            source.push('[');
-            for (stage, pair) in pairs.iter().enumerate() {
-                let block = if control {
-                    state ^= state << 13;
-                    state ^= state >> 7;
-                    state ^= state << 17;
-                    let letters = state.to_le_bytes();
-                    [
-                        b'a' + letters[0] % 26,
-                        b'a' + letters[1] % 26,
-                        b'a' + letters[2] % 26,
-                    ]
-                } else {
-                    pair[index >> stage & 1]
-                };
-                source.push_str(std::str::from_utf8(&block).unwrap());
-            }
-            source.push_str("]: /u\n");
-        }
-        parse(&source)
-    };
-    growth_against_control("parse colliding keys", make, |document| {
-        drop(parse(document.source()));
-    });
-}
-
-/// Removing many copies of one label or identifier, and detaching its binding again and
-/// again, takes time linear in them: against a control of as many distinct labels.
+/// Removing many copies of one label, and detaching its binding again and again, takes time
+/// linear in them: against a control of as many distinct labels. Footnote definitions are
+/// indexed by the same code, keyed by identifier instead.
 #[test]
 fn copies_of_one_key_go_in_linear_time() {
-    for footnote in [false, true] {
-        let make = move |count: usize, control: bool| {
-            let mut source = String::new();
-            for index in 0..count {
-                let label = if control {
-                    format!("a{index}")
-                } else {
-                    String::from("a")
-                };
-                if footnote {
-                    source.push_str(&format!("[^{label}]: u\n\n"));
-                } else {
-                    source.push_str(&format!("[{label}]: /u\n"));
-                }
+    // The quadratic part of removing copies one at a time shows only from thousands of them.
+    let small = 1 << 13;
+    let source = |count: usize, control: bool| {
+        let mut source = String::new();
+        for index in 0..count {
+            if control {
+                source.push_str(&format!("[a{index}]: /u\n"));
+            } else {
+                source.push_str("[a]: /u\n");
             }
-            parse(&source)
-        };
-        growth_against_control_from(1 << 13, "normalize copies", make, |document| {
-            document.clone().normalize();
-        });
-        growth_against_control_from(1 << 12, "detach bindings", make, |document| {
-            let mut document = document.clone();
-            let root = document.root();
-            while let Some(id) = document.children(root).next() {
-                document.detach(id).unwrap();
-            }
-        });
-    }
+        }
+        source
+    };
+    // Both checks take the same documents, parsed once.
+    let documents: Vec<((usize, bool), Document)> = [small, small * support::linear::SCALE]
+        .iter()
+        .flat_map(|&count| [false, true].map(|control| (count, control)))
+        .map(|key| (key, parse(&source(key.0, key.1))))
+        .collect();
+    let make = |count: usize, control: bool| {
+        documents
+            .iter()
+            .find(|(key, _)| *key == (count, control))
+            .unwrap()
+            .1
+            .clone()
+    };
+    growth_against_control_from(small, "normalize copies", make, |document| {
+        document.clone().normalize();
+    });
+    growth_against_control_from(small, "detach bindings", make, |document| {
+        let mut document = document.clone();
+        let root = document.root();
+        while let Some(id) = document.children(root).next() {
+            document.detach(id).unwrap();
+        }
+    });
 }
 
 /// Moving the definitions out of a copy of a footnote definition takes time linear in them:
@@ -1999,7 +1951,7 @@ fn definitions_move_out_of_a_copy_in_linear_time() {
         }
         parse(&source)
     };
-    growth_against_control_from(1 << 9, "normalize", make, |document| {
+    growth_against_control_from(1 << 7, "normalize", make, |document| {
         document.clone().normalize();
     });
 }

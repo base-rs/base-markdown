@@ -7,6 +7,7 @@ use crate::document::{next_descendant, Node, NodeId};
 use crate::stream::{Content, EventKind, Tag, Target, Text};
 use crate::ReferenceKind;
 use alloc::{
+    boxed::Box,
     collections::{BTreeMap, VecDeque},
     string::String,
     vec,
@@ -23,10 +24,10 @@ use alloc::{
 /// definitions. A `Bindings` borrows the document, so it cannot outlive an edit.
 ///
 /// [`Document::bindings`][crate::Document::bindings] builds the table of the attached document,
-/// in one pass over it, filing each definition by its key in time logarithmic in the number of
-/// keys, whatever they are, as no hash of a key decides where it goes; each lookup in it then
-/// takes time logarithmic in that number too. It covers
-/// the attached document only: a detached subtree is a tree of its own, whose references its own
+/// in one pass over it, filing each definition by a hash of its key, with an overflow ordered
+/// by key for keys whose hashes collide, so that filing one and each lookup in it take constant
+/// time usually and at most time logarithmic in the number of keys, whatever they are. It
+/// covers the attached document only: a detached subtree is a tree of its own, whose references its own
 /// definitions bind, so [`Bindings::destination`] gives `None` for a node in one, and
 /// [`Document::destination`][crate::Document::destination] looks it up in its own tree.
 #[derive(Clone, Debug)]
@@ -62,9 +63,262 @@ impl Entry {
     }
 }
 
-// The entries of one kind of key, ordered by key, so that no set of labels makes a lookup or an
-// insertion take more than time logarithmic in the keys.
-type KeyMap = BTreeMap<String, Entry>;
+// The entries of one kind of key, filed by a hash of the key in groups of a few slots, so that a
+// lookup usually compares one key. A key whose group is full goes to an overflow ordered by key,
+// so that no set of keys, such as one whose hashes collide, makes a lookup or an insertion take
+// more than time logarithmic in the keys: the hash has no seed, which this crate has no source
+// of, so the bound rests on the overflow alone. The keys are kept in one string, so filing one
+// allocates nothing, but now and then to grow.
+#[derive(Clone, Debug, Default)]
+struct KeyMap {
+    // `GROUP` slots a group, a power of two of groups, or none, each slot the index of an entry
+    // in `entries` or `EMPTY`, with the low bits of its key's hash, so that a lookup reads only
+    // the entries whose bits match.
+    slots: Vec<(u32, u32)>,
+    // Whether each group has had a key go to the overflow since the slots were last made, so
+    // that a lookup in any other reads the overflow only when the group is full.
+    overflowed: Vec<bool>,
+    entries: Vec<Filed>,
+    // The entries of keys whose group was full when they were filed, by key.
+    overflow: BTreeMap<String, u32>,
+    // The keys of `entries`, one after another, with those of removed entries until compacted.
+    names: String,
+    // How many bytes of `names` are keys of `entries`.
+    live: usize,
+}
+
+// An entry with its key's hash and where its key is in the names.
+#[derive(Clone, Debug)]
+struct Filed {
+    hash: u64,
+    name: core::ops::Range<usize>,
+    entry: Entry,
+}
+
+// How many slots a group has.
+const GROUP: usize = 8;
+const EMPTY: u32 = u32::MAX;
+
+// A hash of `key`, a word at a time, whose high bits pick its group.
+fn hash_key(key: &str) -> u64 {
+    const K: u64 = 0x517c_c1b7_2722_0a95;
+    let mix = |hash: u64, word: u64| (hash.rotate_left(5) ^ word).wrapping_mul(K);
+    let bytes = key.as_bytes();
+    let mut chunks = bytes.chunks_exact(8);
+    let mut hash = (bytes.len() as u64).wrapping_mul(K);
+    for chunk in &mut chunks {
+        let mut word = [0; 8];
+        word.copy_from_slice(chunk);
+        hash = mix(hash, u64::from_le_bytes(word));
+    }
+    let rest = chunks.remainder();
+    if !rest.is_empty() {
+        let mut word = [0; 8];
+        word[..rest.len()].copy_from_slice(rest);
+        hash = mix(hash, u64::from_le_bytes(word));
+    }
+    hash
+}
+
+// The low bits of `hash`, which a slot keeps.
+fn low_bits(hash: u64) -> u32 {
+    // Truncating keeps the low bits.
+    #[allow(clippy::cast_possible_truncation)]
+    let low = hash as u32;
+    low
+}
+
+// Where a key is filed: its slot in a group, or the overflow.
+enum Place {
+    Slot(usize),
+    Overflow,
+}
+
+impl KeyMap {
+    // The index of the group of `hash`, picked by its high bits, which every bit of the key
+    // reaches.
+    fn group_index(&self, hash: u64) -> usize {
+        let bits = self.overflowed.len().trailing_zeros();
+        if bits == 0 {
+            return 0;
+        }
+        // At most as many bits as a group index has are kept.
+        #[allow(clippy::cast_possible_truncation)]
+        let group = (hash >> (64 - bits)) as usize;
+        group
+    }
+
+    // The slots of the group of `hash`. Those that are filled come first.
+    fn group(&self, hash: u64) -> core::ops::Range<usize> {
+        let group = self.group_index(hash);
+        group * GROUP..(group + 1) * GROUP
+    }
+
+    fn name(&self, filed: &Filed) -> &str {
+        &self.names[filed.name.clone()]
+    }
+
+    // Where `key`, of hash `hash`, is filed, and its entry's index.
+    fn find(&self, hash: u64, key: &str) -> Option<(Place, usize)> {
+        if self.slots.is_empty() {
+            return None;
+        }
+        for slot in self.group(hash) {
+            let (at, low) = self.slots[slot];
+            if at == EMPTY {
+                break;
+            }
+            if low == low_bits(hash) {
+                let filed = &self.entries[at as usize];
+                if filed.hash == hash && self.name(filed) == key {
+                    return Some((Place::Slot(slot), at as usize));
+                }
+            }
+        }
+        if !self.overflowed[self.group_index(hash)] {
+            return None;
+        }
+        self.overflow
+            .get(key)
+            .map(|&at| (Place::Overflow, at as usize))
+    }
+
+    fn get(&self, key: &str) -> Option<&Entry> {
+        let (_, at) = self.find(hash_key(key), key)?;
+        Some(&self.entries[at].entry)
+    }
+
+    // The entry of `key`, which is filed.
+    fn entry_mut(&mut self, key: &str) -> &mut Entry {
+        let (_, at) = self
+            .find(hash_key(key), key)
+            .expect("an indexed node is in the entry of its key");
+        &mut self.entries[at].entry
+    }
+
+    // The entry of `key`, or `None` once a new entry of `id` alone is filed under it.
+    fn get_or_file(&mut self, key: &str, id: NodeId) -> Option<&mut Entry> {
+        self.get_or_file_hashed(hash_key(key), key, id)
+    }
+
+    // [`KeyMap::get_or_file`] of a key whose hash is `hash`.
+    fn get_or_file_hashed(&mut self, hash: u64, key: &str, id: NodeId) -> Option<&mut Entry> {
+        if let Some((_, at)) = self.find(hash, key) {
+            return Some(&mut self.entries[at].entry);
+        }
+        if (self.entries.len() + 1) * 2 > self.slots.len() {
+            self.reserve(self.entries.len() + 1);
+        }
+        let start = self.names.len();
+        self.names.push_str(key);
+        self.live += key.len();
+        let at = self.entries.len();
+        self.entries.push(Filed {
+            hash,
+            name: start..self.names.len(),
+            entry: Entry {
+                first: id,
+                more: VecDeque::new(),
+            },
+        });
+        self.place(at);
+        None
+    }
+
+    // Put entry `at` in an empty slot of its group, or in the overflow when there is none.
+    fn place(&mut self, at: usize) {
+        let index: u32 = core::convert::TryFrom::try_from(at).expect("fewer keys than u32::MAX");
+        let hash = self.entries[at].hash;
+        if let Some(slot) = self.group(hash).find(|&slot| self.slots[slot].0 == EMPTY) {
+            self.slots[slot] = (index, low_bits(hash));
+        } else {
+            let key = String::from(self.name(&self.entries[at]));
+            self.overflow.insert(key, index);
+            let group = self.group_index(hash);
+            self.overflowed[group] = true;
+        }
+    }
+
+    // Room for `count` keys, each group at most half full on average, with every key placed
+    // again. Only ever called for more groups than there are.
+    fn reserve(&mut self, count: usize) {
+        let mut groups = (self.slots.len() / GROUP).max(1);
+        while groups * GROUP < count * 2 {
+            groups *= 2;
+        }
+        self.slots = vec![(EMPTY, 0); groups * GROUP];
+        self.overflowed = vec![false; groups];
+        self.overflow.clear();
+        self.compact();
+        for at in 0..self.entries.len() {
+            self.place(at);
+        }
+    }
+
+    // Keep only the names of the entries.
+    fn compact(&mut self) {
+        let mut names = String::with_capacity(self.live);
+        for filed in &mut self.entries {
+            let start = names.len();
+            names.push_str(&self.names[filed.name.clone()]);
+            filed.name = start..names.len();
+        }
+        self.names = names;
+    }
+
+    fn remove(&mut self, key: &str) {
+        self.remove_hashed(hash_key(key), key);
+    }
+
+    // [`KeyMap::remove`] of a key whose hash is `hash`.
+    fn remove_hashed(&mut self, hash: u64, key: &str) {
+        let (place, at) = self.find(hash, key).expect("only a filed key is removed");
+        match place {
+            Place::Slot(slot) => {
+                // The last filled slot of the group takes the place of the removed one, so the
+                // filled slots stay first.
+                let group = self.group(hash);
+                let last = group
+                    .clone()
+                    .rev()
+                    .find(|&other| self.slots[other].0 != EMPTY)
+                    .expect("the removed slot is filled");
+                self.slots[slot] = self.slots[last];
+                self.slots[last].0 = EMPTY;
+            }
+            Place::Overflow => {
+                self.overflow.remove(key);
+            }
+        }
+        self.live -= key.len();
+        let last = self.entries.len() - 1;
+        if at != last {
+            // The last entry takes the place of the removed one.
+            let moved = &self.entries[last];
+            let index: u32 =
+                core::convert::TryFrom::try_from(at).expect("fewer keys than u32::MAX");
+            match self.find(moved.hash, self.name(moved)) {
+                Some((Place::Slot(slot), _)) => self.slots[slot].0 = index,
+                Some((Place::Overflow, _)) => {
+                    let name = &self.names[moved.name.clone()];
+                    *self
+                        .overflow
+                        .get_mut(name)
+                        .expect("an overflowing key is in the overflow") = index;
+                }
+                None => unreachable!("a filed key is found"),
+            }
+        }
+        self.entries.swap_remove(at);
+        if self.names.len() > 2 * self.live + 64 {
+            self.compact();
+        }
+    }
+
+    fn values_mut(&mut self) -> impl Iterator<Item = &mut Entry> {
+        self.entries.iter_mut().map(|filed| &mut filed.entry)
+    }
+}
 
 // The key of definition or footnote definition `id`, and whether it is a footnote definition.
 fn indexed_key<'v>(
@@ -191,21 +445,15 @@ impl Keys {
         scratch: &mut Scratch,
     ) -> bool {
         let (footnote, key) = indexed_key(source, nodes, id, &mut scratch.key);
-        let map = self.map_mut(footnote);
-        if let Some(entry) = map.get_mut(key) {
-            if all {
-                entry.more.push_back(id);
+        match self.map_mut(footnote).get_or_file(key, id) {
+            Some(entry) => {
+                if all {
+                    entry.more.push_back(id);
+                }
+                false
             }
-            return false;
+            None => true,
         }
-        map.insert(
-            String::from(key),
-            Entry {
-                first: id,
-                more: VecDeque::new(),
-            },
-        );
-        true
     }
 
     fn map(&self, footnote: bool) -> &KeyMap {
@@ -233,9 +481,7 @@ impl Keys {
     // `id` was, and removing the entry once it is empty. Whether `id` was or left a copy.
     fn remove(&mut self, footnote: bool, key: &str, id: NodeId) -> bool {
         let map = self.map_mut(footnote);
-        let entry = map
-            .get_mut(key)
-            .expect("an indexed node is in the entry of its key");
+        let entry = map.entry_mut(key);
         if entry.first == id {
             if let Some(next) = entry.more.pop_front() {
                 entry.first = next;
@@ -320,10 +566,21 @@ pub(crate) type DefinedKeys = Vec<(bool, String)>;
 
 impl Index {
     // The index of definitions and footnote definitions `ids`, each attached, in document order.
-    pub(crate) fn new(source: &str, nodes: &[Node], ids: impl IntoIterator<Item = NodeId>) -> Self {
+    pub(crate) fn new(source: &str, nodes: &[Node], ids: &[NodeId]) -> Self {
         let mut index = Self::default();
+        let footnotes = ids
+            .iter()
+            .filter(|id| {
+                matches!(
+                    nodes[id.index()].kind,
+                    EventKind::Start(Tag::FootnoteDefinition { .. })
+                )
+            })
+            .count();
+        index.keys.footnotes.reserve(footnotes);
+        index.keys.definitions.reserve(ids.len() - footnotes);
         let mut scratch = Scratch::default();
-        for id in ids {
+        for &id in ids {
             if !index.keys.insert(source, nodes, id, true, &mut scratch) {
                 index.copies += 1;
             }
@@ -334,7 +591,7 @@ impl Index {
     // The index of the attached document, whose root is `root`.
     #[cfg(feature = "serde")]
     pub(crate) fn of_tree(source: &str, nodes: &[Node], root: NodeId) -> Self {
-        Self::new(source, nodes, definitions(nodes, root))
+        Self::new(source, nodes, &definitions(nodes, root))
     }
 
     // Whether any key has a copy.
@@ -477,7 +734,7 @@ pub(crate) enum Lookup {
     // The attached document, through its index.
     Attached,
     // A detached tree, or a subtree, through a table of it.
-    Tree(Table),
+    Tree(Box<Table>),
 }
 
 impl Lookup {
@@ -486,7 +743,7 @@ impl Lookup {
         if tree == cx.root {
             Self::Attached
         } else {
-            Self::Tree(Table::new(cx.source, cx.nodes, tree))
+            Self::Tree(Box::new(Table::new(cx.source, cx.nodes, tree)))
         }
     }
 
@@ -714,4 +971,67 @@ fn push_label(output: &mut String, label: &str) {
         output.push(character);
     }
     output.push_str(if broken { " " } else { &pending });
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+    use super::{hash_key, KeyMap, NodeId, GROUP};
+    use alloc::{format, string::String, vec::Vec};
+
+    // Filing `count` keys, each with the hash `hash` gives it, and finding each.
+    fn file_and_find(count: usize, hash: impl Fn(&str) -> u64) -> KeyMap {
+        let mut map = KeyMap::default();
+        let keys: Vec<String> = (0..count).map(|index| format!("k{index}")).collect();
+        for (index, key) in keys.iter().enumerate() {
+            assert!(map
+                .get_or_file_hashed(hash(key), key, NodeId::new(index))
+                .is_none());
+        }
+        for (index, key) in keys.iter().enumerate() {
+            let entry = map.get_or_file_hashed(hash(key), key, NodeId::new(0));
+            assert_eq!(entry.map(|entry| entry.first), Some(NodeId::new(index)));
+        }
+        map
+    }
+
+    // Keys of one hash fill their group and go to the overflow, ordered by key, where each is
+    // found, and removing keys in any order keeps the others found.
+    #[test]
+    fn keys_of_one_hash_are_found_in_the_overflow() {
+        let mut map = file_and_find(200, |_| 7);
+        assert_eq!(map.overflow.len(), 200 - GROUP);
+        for index in (0..200).filter(|index| index % 3 != 1) {
+            let key = format!("k{index}");
+            map.remove_hashed(7, &key);
+            assert!(map.find(7, &key).is_none());
+        }
+        for index in (0..200).filter(|index| index % 3 == 1) {
+            let (_, at) = map.find(7, &format!("k{index}")).unwrap();
+            assert_eq!(map.entries[at].entry.first, NodeId::new(index));
+        }
+    }
+
+    // Keys of one hash take time logarithmic in them each to file and find, as the overflow is
+    // ordered: 8 times as many grow the time at most a few times as much more than keys that
+    // spread over the groups do.
+    #[test]
+    fn keys_of_one_hash_take_logarithmic_time() {
+        let time = |count: usize, hash: &dyn Fn(&str) -> u64| {
+            (0..5)
+                .map(|_| {
+                    let start = std::time::Instant::now();
+                    drop(file_and_find(count, hash));
+                    start.elapsed().as_secs_f64()
+                })
+                .fold(f64::MAX, f64::min)
+        };
+        let ratio = || {
+            let one = |_: &str| 7;
+            let spread = |key: &str| hash_key(key);
+            (time(1 << 12, &one) / time(1 << 9, &one))
+                / (time(1 << 12, &spread) / time(1 << 9, &spread))
+        };
+        assert!((0..3).any(|_| ratio() < 2.5));
+    }
 }

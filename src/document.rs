@@ -18,7 +18,7 @@ use core::{num::NonZeroUsize, ops::Range};
 pub struct NodeId(NonZeroUsize);
 
 impl NodeId {
-    fn new(index: usize) -> Self {
+    pub(crate) fn new(index: usize) -> Self {
         Self(NonZeroUsize::new(index + 1).expect("an arena index cannot reach usize::MAX"))
     }
     pub(crate) fn index(self) -> usize {
@@ -258,7 +258,7 @@ impl AstBuilder {
                 names.push(index);
             }
         }
-        document.index = crate::bindings::Index::new(source, &document.nodes, self.definitions);
+        document.index = crate::bindings::Index::new(source, &document.nodes, &self.definitions);
         document.store_resolved(&resolved);
         // The parser gives a name only when a definition binds it.
         document.settled = parsed || document.bound(&names);
@@ -493,8 +493,9 @@ impl<S: AsRef<str>> Document<S> {
     /// The link reference definition that a reference labelled `label` leads to in the attached
     /// document: the first in document order whose label matches, as the parser matches labels.
     /// A document keeps an index of its definitions by label as it is edited, with the binding
-    /// of each label first, so this takes time logarithmic in the number of labels, whatever
-    /// they are and whatever copies of a binding there are.
+    /// of each label first, filed by a hash of the label with an overflow ordered by label, so
+    /// this takes constant time usually and at most time logarithmic in the number of labels,
+    /// whatever they are and whatever copies of a binding there are.
     pub fn definition(&self, label: &str) -> Option<NodeId> {
         crate::bindings::Lookup::new(self.context(), self.root()).definition(
             self.context(),
@@ -520,7 +521,8 @@ impl<S: AsRef<str>> Document<S> {
     /// is the document when it is attached and the detached subtree otherwise, as it renders.
     /// `None` for an unbound reference or a node that is not a link or image. This takes time
     /// like [`Document::definition`], with the depth of `id`, in the attached document, and
-    /// time linear in the size of a detached tree.
+    /// time linear in the size of a detached tree, as its table is built for each call, so
+    /// calling this on each node of a large detached tree takes quadratic time (#226).
     pub fn destination(&self, id: NodeId) -> Option<(&str, Option<&str>)> {
         let kind = &self.node(id)?.kind;
         let cx = self.context();
