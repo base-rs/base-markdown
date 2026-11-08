@@ -785,7 +785,7 @@ fn clause_3_3_unwrap_writes_soft_breaks_and_line_endings_in_text_as_spaces() {
         );
         let again = to_markdown_with_options(&read, &options).unwrap();
         if again.replace("\\~", "~") == output && again != output {
-            // A `~` after an unwrapped soft break is escaped when written again; see gap_unwrap_tilde.
+            // A `~` after an unwrapped soft break is escaped when written again; #237, see gap_issue_237.
             continue;
         }
         assert_eq!(again, output, "{:?}", source);
@@ -1982,8 +1982,8 @@ fn gap_issue_236() {
 }
 
 #[test]
-#[ignore = "not filed yet: with Unwrap, a ~ after a soft break is written bare, then escaped"]
-fn gap_unwrap_tilde() {
+#[ignore = "#237: with Unwrap, a ~ after a soft break is written bare, then escaped"]
+fn gap_issue_237() {
     let options = MarkdownOptions {
         line_wrapping: LineWrapping::Unwrap,
         ..MarkdownOptions::default()
