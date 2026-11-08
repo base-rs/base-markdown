@@ -87,8 +87,8 @@ pub use bindings::Bindings;
 pub use code_fence::CodeFence;
 pub use configuration::{CompileOptions, Constructs, Options, ParseOptions};
 pub use document::{
-    AstBuilder, BuildProgress, Children, Descendants, Document, DocumentEvents,
-    Node as DocumentNode, NodeId,
+    AstBuilder, BuildProgress, Children, Descendants, Document, DocumentEvents, FootnotePolicy,
+    InsertOptions, Inserted, Node as DocumentNode, NodeId,
 };
 pub use event_html_renderer::{render_events, EventHtmlRenderer};
 pub use event_parser::EventParser;

@@ -774,29 +774,6 @@ fn copied_references_keep_bound_targets_and_unbound_text() {
             .children(root)
             .position(|id| document.text_content(id) == "Replace")
             .unwrap();
-        if !missing {
-            // The copied definition would be a copy of this document's, which no edit adds.
-            let before = base_markdown::to_markdown(&document).unwrap();
-            assert!(matches!(
-                document.replace_heading_section(root, index, &replacement, true, true),
-                Err(base_markdown::stream::StreamError::InvalidValue)
-            ));
-            assert_eq!(base_markdown::to_markdown(&document).unwrap(), before);
-            let old = document
-                .children(root)
-                .find(|id| {
-                    matches!(
-                        document.node(*id).unwrap().kind,
-                        EventKind::Definition { .. }
-                    )
-                })
-                .unwrap();
-            document.detach(old).unwrap();
-        }
-        let index = document
-            .children(root)
-            .position(|id| document.text_content(id) == "Replace")
-            .unwrap();
         document
             .replace_heading_section(root, index, &replacement, true, true)
             .unwrap();
@@ -812,6 +789,10 @@ fn copied_references_keep_bound_targets_and_unbound_text() {
             assert!(markdown.contains("[x](/new \"title\") ![y](/new \"title\")"));
             assert!(html(&document).contains("<a href=\"/new\" title=\"title\">x</a>"));
         }
+        // The replacement's definition is not copied, as nothing copied names it, so this
+        // document's stays the only one.
+        assert!(markdown.contains("[ref]: /old\n"), "{:?}", markdown);
+        assert!(!markdown.contains("[ref]: /new"), "{:?}", markdown);
         // A link's form is its own, so it is copied.
         assert!(markdown.contains("<https://a.b>"));
         assert_eq!(
@@ -1079,7 +1060,20 @@ fn section_copy_preserves_nested_siblings_empty_containers_and_insertion_boundar
             .descendants(root)
             .filter(|id| !existing.contains(id))
             .collect();
-        assert_eq!(copied.len(), replacement.nodes().len() - 1);
+        // The appended blocks, which have no separator between them, get the one the parser
+        // writes there.
+        let separators = |document: &Document, ids: &[base_markdown::NodeId]| {
+            ids.iter()
+                .filter(|&&id| {
+                    matches!(document.node(id).unwrap().kind, EventKind::Separator { .. })
+                })
+                .count()
+        };
+        let originals: Vec<_> = replacement.descendants(replacement.root()).collect();
+        assert_eq!(
+            copied.len() - separators(&document, &copied),
+            originals.len() - 1 - separators(&replacement, &originals)
+        );
         assert!(copied
             .iter()
             .all(|id| document.node(*id).unwrap().span.is_empty()));

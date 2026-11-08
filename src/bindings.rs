@@ -934,26 +934,6 @@ impl<'d> Bindings<'d> {
             |label| self.definition(label),
         )
     }
-
-    // The definition the reference `target` names.
-    pub(crate) fn definition_of(&self, target: &Target<'_>) -> Option<NodeId> {
-        self.definition(text(&target.reference()?.label, self.source))
-    }
-
-    // Whether the reference or footnote call `kind` names nothing in the attached document.
-    pub(crate) fn unbound(&self, kind: &EventKind<'_>) -> bool {
-        match kind {
-            EventKind::Start(
-                Tag::Link(Target::Reference(reference)) | Tag::Image(Target::Reference(reference)),
-            ) => self
-                .definition(text(&reference.label, self.source))
-                .is_none(),
-            EventKind::FootnoteReference { identifier, .. } => self
-                .footnote_definition(text(identifier, self.source))
-                .is_none(),
-            _ => false,
-        }
-    }
 }
 
 // What an unbound reference reads back as around its text, as text: its opening bracket, and
