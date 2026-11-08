@@ -410,7 +410,8 @@ impl Builder<'_> {
     fn block(&mut self, start: usize) -> usize {
         let bytes = self.source.as_bytes();
         let mut line = LineStart::new(&bytes[start..]);
-        let content_context = self.definition_context;
+        // Whether this line can continue the content of a definition on the line before. A container opened on this line closes that content, so its first line is read afresh.
+        let mut content_context = self.definition_context;
         if let Some(recorder) = &mut self.recorder {
             recorder.line = start;
             // A line that interrupted a paragraph was classified before the following line, which can still make it a table header.
@@ -459,6 +460,7 @@ impl Builder<'_> {
                             .push_footnote(self.source, at, &Text::Source(label));
                     self.append(at, content, Body::Footnote(index));
                     self.push();
+                    content_context = false;
                     if let Some(length) = scan_blank_line(&bytes[content..]) {
                         return content + length;
                     }
@@ -478,6 +480,7 @@ impl Builder<'_> {
                 self.list(definition_start, marker, number, start);
                 self.append(definition_start, content, Body::Item(width));
                 self.push();
+                content_context = false;
                 if let Some(length) = scan_blank_line(&bytes[content..]) {
                     self.empty_item = Some(content + length);
                     return content + length;
@@ -486,6 +489,7 @@ impl Builder<'_> {
                 self.finish_list(start);
                 self.append(at, at, Body::Quote);
                 self.push();
+                content_context = false;
             } else {
                 // Failed marker scans leave the cursor after indentation. Keep that work for the block classifiers below.
                 break (definition_start, indent);
