@@ -97,6 +97,10 @@ pub struct State<'a> {
     /// Whether the flow child being written is a heading written ATX whatever the options, as
     /// `setext_heading` decides. Set before each flow child is written.
     pub(super) atx_heading: bool,
+    /// Whether the flow child being written is a rule on the line after a paragraph or
+    /// definition, which a `---` rule would underline as a setext heading, so `thematic_break`
+    /// writes it with `*` (#236). Set before each flow child is written.
+    pub(super) rule_after_text: bool,
     /// Where the definition that the paragraph or setext heading being written follows across a
     /// single line ending starts, if it does, and whether it has no title. Without a title, a
     /// `"`, `'` or `(` starting the block could read back as the definition's title, and with or
@@ -248,6 +252,14 @@ impl<'a> State<'a> {
                 document.node(child).unwrap().kind,
                 EventKind::Start(Tag::Heading(_))
             ) && !self.setext_heading(document, parent, before, child);
+            self.rule_after_text = matches!(document.node(child).unwrap().kind, EventKind::Rule)
+                && before.is_some_and(|before| {
+                    matches!(
+                        document.node(before).unwrap().kind,
+                        EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. }
+                    )
+                })
+                && !self.output.ends_with("\n\n");
             let start = self.output.len();
             self.write_node(document, child, &Info::new("\n", "\n"))?;
             self.joined_definition = None;
@@ -852,7 +864,20 @@ impl<'a> State<'a> {
                     {
                         self.container_phrasing(document, id, info)
                     } else {
-                        self.container_flow(document, id)
+                        let start = self.output.len();
+                        self.container_flow(document, id)?;
+                        // A `---` rule starting the document opens frontmatter if a later line,
+                        // such as another rule or a line of code, closes it, so it is written
+                        // with `*` then (#236).
+                        let first = flow_children(document, id).next().unwrap();
+                        if frontmatter.is_none()
+                            && matches!(document.node(first).unwrap().kind, EventKind::Rule)
+                            && crate::block_parser::frontmatter::scan(self.output.as_bytes(), start)
+                                .is_some()
+                        {
+                            self.output.replace_range(start..start + 3, "***");
+                        }
+                        Ok(())
                     }
                 }
                 Tag::Paragraph { .. } => self.paragraph(document, id, info),
@@ -1228,6 +1253,7 @@ impl<'a> State<'a> {
             definition_colon: None,
             fence_code: false,
             atx_heading: false,
+            rule_after_text: false,
             joined_definition: None,
             task_item: None,
             depth: 0,
