@@ -783,3 +783,157 @@ fn random_inserts_render_as_their_sources() {
         }
     }
 }
+
+#[test]
+fn invalid_targets_and_sources_are_rejected() {
+    let large = parse("# a\n\nb\n\nc\n\nd\n");
+    let far = large.descendants(large.root()).last().unwrap();
+    let mut document = parse("x\n");
+    let source = parse("y\n");
+    let before = to_markdown(&document).unwrap();
+    assert_eq!(
+        failed(document.insert_from(
+            far,
+            None,
+            &source,
+            source.children(source.root()),
+            &InsertOptions::default(),
+        )),
+        "InvalidRange"
+    );
+    assert_eq!(to_markdown(&document).unwrap(), before);
+    // Only a heading has a section.
+    assert_eq!(document.heading_section_last(far, true), None);
+    let paragraph = document.children(document.root()).next().unwrap();
+    assert_eq!(document.heading_section_last(paragraph, true), None);
+}
+
+#[test]
+fn inserting_into_an_empty_document() {
+    let mut document = parse("");
+    let source = parse("# a\n\nb[^1]\n\n[^1]: c\n");
+    let root = document.root();
+    document
+        .insert_from(
+            root,
+            None,
+            &source,
+            source.children(source.root()),
+            &InsertOptions::default(),
+        )
+        .unwrap();
+    assert_eq!(to_markdown(&document).unwrap(), "# a\n\nb[^1]\n\n[^1]: c\n");
+    check(&document, "empty");
+}
+
+#[test]
+fn a_fresh_identifier_too_long_to_be_one_is_rejected() {
+    let long = "x".repeat(998);
+    let text = format!("a[^{long}]\n\n[^{long}]: b\n");
+    let mut document = parse(&text);
+    let source = parse(&text);
+    let before = to_markdown(&document).unwrap();
+    let root = document.root();
+    assert_eq!(
+        failed(document.insert_from(
+            root,
+            None,
+            &source,
+            source.children(source.root()),
+            &InsertOptions::default(),
+        )),
+        "InvalidValue"
+    );
+    assert_eq!(to_markdown(&document).unwrap(), before);
+}
+
+#[test]
+fn an_unbound_call_is_copied_as_written() {
+    // A call that binds nothing in its own document renders as its text there, and so here.
+    let mut source = parse("a\n");
+    let paragraph = source.children(source.root()).next().unwrap();
+    source
+        .append_child(
+            paragraph,
+            EventKind::FootnoteReference {
+                identifier: Text::Literal("NONE"),
+                label: None,
+            },
+        )
+        .unwrap();
+    let mut document = parse("b\n");
+    let root = document.root();
+    document
+        .insert_from(
+            root,
+            None,
+            &source,
+            source.children(source.root()),
+            &InsertOptions::default(),
+        )
+        .unwrap();
+    assert_eq!(html(&document), "<p>a[^NONE]</p>\n<p>b</p>\n");
+}
+
+#[test]
+fn a_call_cannot_be_copied_where_its_definition_cannot_go() {
+    // An inline document, whose root holds phrasing, holds no footnote definition.
+    let mut document = parse("");
+    let root = document.root();
+    document
+        .append_child(root, EventKind::Text(Text::Literal("c")))
+        .unwrap();
+    let source = parse("a[^1]\n\n[^1]: b\n");
+    let paragraph = source.children(source.root()).next().unwrap();
+    assert_eq!(
+        failed(document.insert_from(
+            root,
+            None,
+            &source,
+            source.children(paragraph),
+            &InsertOptions::default(),
+        )),
+        "InvalidNesting"
+    );
+    assert_eq!(html(&document), "c");
+}
+
+#[test]
+fn a_separator_before_a_block_stays_apart_in_a_tight_item() {
+    let mut document = parse("- # h\n  # i\n- b\n");
+    let list = document.children(document.root()).next().unwrap();
+    let item = document.children(list).next().unwrap();
+    let heading = document.children(item).next().unwrap();
+    let source = parse("x\n\ny\n");
+    let selected: Vec<NodeId> = source.children(source.root()).take(2).collect();
+    document
+        .insert_from(
+            item,
+            Some(heading),
+            &source,
+            selected,
+            &InsertOptions::default(),
+        )
+        .unwrap();
+    check(&document, "tight");
+    assert_eq!(to_markdown(&document).unwrap(), "- # h\n  x\n  # i\n- b\n");
+}
+
+#[test]
+fn adjacent_blocks_keep_an_item_tight_in_a_loose_list() {
+    let mut document = parse("- a\n\n- b\n");
+    let list = document.children(document.root()).next().unwrap();
+    let item = document.children(list).next().unwrap();
+    let paragraph = document.children(item).next().unwrap();
+    let source = parse("# h\ntext\n");
+    document
+        .insert_from(
+            item,
+            Some(paragraph),
+            &source,
+            source.children(source.root()),
+            &InsertOptions::default(),
+        )
+        .unwrap();
+    check(&document, "loose");
+}

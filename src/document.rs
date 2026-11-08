@@ -1787,17 +1787,6 @@ impl<S: AsRef<str>> Document<S> {
         let EventKind::Start(Tag::Heading(level)) = self.nodes[heading.index()].kind else {
             return Ok(false);
         };
-        // A parent that holds a heading holds blocks and separators, so only an inline
-        // replacement cannot be copied into it.
-        if replacement
-            .children(replacement.root())
-            .next()
-            .is_some_and(|first| {
-                replacement.nodes[first.index()].kind.class() == crate::stream::Class::Phrasing
-            })
-        {
-            return Err(StreamError::InvalidNesting);
-        }
         let first = if replace_heading {
             Some(heading)
         } else {

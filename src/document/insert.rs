@@ -323,8 +323,8 @@ impl<S: AsRef<str>> Document<S> {
         options: &InsertOptions,
         leaving: &[NodeId],
     ) -> Result<Plan, StreamError> {
-        let EventKind::Start(tag) = &self.node(parent).ok_or(StreamError::InvalidRange)?.kind
-        else {
+        // Callers check that the parent is a node of this document.
+        let EventKind::Start(tag) = &self.nodes[parent.index()].kind else {
             return Err(StreamError::Unbalanced);
         };
         let mut selected = Vec::new();
@@ -492,6 +492,8 @@ impl<S: AsRef<str>> Document<S> {
                 used.insert(String::from(key));
             }
         }
+        // A fresh identifier, label or call can be too long to be one.
+        let mut valid = true;
         for index in clashes {
             let key = identifier(definitions[index].0);
             let suffix = fresh_suffix(key, |candidate| {
@@ -501,13 +503,16 @@ impl<S: AsRef<str>> Document<S> {
             fresh.push_str(&suffix);
             used.insert(fresh);
             let copy = Self::relabelled(source, definitions[index].0, &suffix);
-            copy.validate(None)?;
+            valid &= copy.validate(None).is_ok();
             definitions[index].1 = Some(suffix);
         }
         for call in calls {
             if let Some(kind) = Self::relabelled_call(source, &definitions, &by_source, call) {
-                kind.validate(None)?;
+                valid &= kind.validate(None).is_ok();
             }
+        }
+        if !valid {
+            return Err(StreamError::InvalidValue);
         }
         // An item's spread is read from the source between its blocks, which the copies are not
         // in, so it is kept, and is the copied blocks', unless it is in a tight list.
@@ -607,14 +612,16 @@ impl<S: AsRef<str>> Document<S> {
     ) -> Option<EventKind<'static>> {
         let EventKind::FootnoteReference { identifier, label } = &source.nodes[id.index()].kind
         else {
-            return None;
+            unreachable!("only a footnote call is relabelled")
         };
-        let definition = source.footnote_definition(
-            identifier
-                .resolve(source.source())
-                .expect("document text is validated"),
-        )?;
-        let suffix = definitions[*by_source.get(&definition)?].1.as_deref()?;
+        let definition = source
+            .footnote_definition(
+                identifier
+                    .resolve(source.source())
+                    .expect("document text is validated"),
+            )
+            .expect("only a bound call is relabelled");
+        let suffix = definitions[by_source[&definition]].1.as_deref()?;
         Some(EventKind::FootnoteReference {
             identifier: suffixed(identifier, source.source(), suffix),
             label: label
