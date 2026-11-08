@@ -1,6 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
+use base_markdown::stream::Target;
 use base_markdown::stream::{EventKind, Tag, Text};
 use base_markdown::{Document, LinkForm, NodeId, NodeSyntax, ParseOptions};
 use pretty_assertions::assert_eq;
@@ -176,11 +177,10 @@ fn constructed_links_are_explicit() {
         let link = document
             .append_child(
                 paragraph,
-                EventKind::Start(Tag::Link {
+                EventKind::Start(Tag::Link(Target::Resource {
                     destination: Text::from(destination.to_owned()),
                     title: None,
-                    reference: None,
-                }),
+                })),
             )
             .unwrap();
         if let Some(text) = text {
@@ -202,11 +202,10 @@ fn bare_and_angle_forms_fall_back_when_they_cannot_hold_the_link() {
     document
         .set_kind(
             link,
-            EventKind::Start(Tag::Link {
+            EventKind::Start(Tag::Link(Target::Resource {
                 destination: Text::from("http://www.a.b".to_owned()),
                 title: Some(Text::from("t".to_owned())),
-                reference: None,
-            }),
+            })),
         )
         .unwrap();
     for form in [LinkForm::Bare, LinkForm::Angle] {
@@ -219,11 +218,10 @@ fn bare_and_angle_forms_fall_back_when_they_cannot_hold_the_link() {
     document
         .set_kind(
             link,
-            EventKind::Start(Tag::Link {
+            EventKind::Start(Tag::Link(Target::Resource {
                 destination: Text::from("http://www.a.b".to_owned()),
                 title: None,
-                reference: None,
-            }),
+            })),
         )
         .unwrap();
     for form in [LinkForm::Bare, LinkForm::Angle] {
@@ -292,11 +290,10 @@ fn constructed(
             let link = document
                 .append_child(
                     parent,
-                    EventKind::Start(Tag::Link {
+                    EventKind::Start(Tag::Link(Target::Resource {
                         destination: Text::from(destination.to_owned()),
                         title: None,
-                        reference: None,
-                    }),
+                    })),
                 )
                 .unwrap();
             document

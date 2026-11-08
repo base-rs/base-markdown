@@ -2,13 +2,14 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! A source-backed arena document and its incremental pull consumer.
-use crate::stream::{Event, EventKind, StreamError, Text};
+use crate::stream::{Event, EventKind, Resolved, StreamError, Target, Text};
 use crate::{
+    bindings::Bindings,
     markdown::{angle_reads_back, heading_as_setext, needs_blank_line},
     stream::{Tag, TagKind},
     NodeSyntax,
 };
-use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec::Vec};
+use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec, vec::Vec};
 use core::{num::NonZeroUsize, ops::Range};
 
 /// A stable index into a document's contiguous node arena.
@@ -17,10 +18,10 @@ use core::{num::NonZeroUsize, ops::Range};
 pub struct NodeId(NonZeroUsize);
 
 impl NodeId {
-    fn new(index: usize) -> Self {
+    pub(crate) fn new(index: usize) -> Self {
         Self(NonZeroUsize::new(index + 1).expect("an arena index cannot reach usize::MAX"))
     }
-    fn index(self) -> usize {
+    pub(crate) fn index(self) -> usize {
         self.0.get() - 1
     }
 }
@@ -71,6 +72,9 @@ pub struct AstBuilder {
     links: usize,
     // Only the active container needs a tail. Opening a child resets it; closing that child makes the child the parent's new tail.
     last_child: Option<NodeId>,
+    // The definitions and footnote definitions built, in the order they end, which the document
+    // indexes.
+    definitions: Vec<NodeId>,
     complete: bool,
     failed: bool,
 }
@@ -149,6 +153,11 @@ impl AstBuilder {
                 return Err(StreamError::InvalidRange);
             }
             node.span.end = event.span.end;
+            // A footnote definition is in the order definitions end, as the renderer shows the
+            // first to end of an identifier's, which is one nested in another before it.
+            if matches!(node.kind, EventKind::Start(Tag::FootnoteDefinition { .. })) {
+                self.definitions.push(id);
+            }
             self.last_child = Some(id);
             return Ok(());
         }
@@ -189,6 +198,9 @@ impl AstBuilder {
             }
         }
         self.last_child = if start { None } else { Some(id) };
+        if matches!(self.nodes[id.index()].kind, EventKind::Definition { .. }) {
+            self.definitions.push(id);
+        }
         if let EventKind::Start(tag) = &self.nodes[id.index()].kind {
             if tag.kind() == TagKind::Link {
                 self.links += 1;
@@ -203,21 +215,55 @@ impl AstBuilder {
     /// # Errors
     /// Returns [`StreamError::Unbalanced`] if consumption failed or has not reached EOF, or [`StreamError::InvalidRange`] for invalid source-backed values.
     pub fn finish<S: AsRef<str>>(self, source: S) -> Result<Document<S>, StreamError> {
+        self.build(source, false)
+    }
+
+    // Finish a document from the stream of the built-in parser when `parsed` is set, which binds
+    // every name it gives.
+    fn build<S: AsRef<str>>(self, source: S, parsed: bool) -> Result<Document<S>, StreamError> {
         if self.failed || !self.complete {
             return Err(StreamError::Unbalanced);
         }
-        let document = Document {
+        let mut document = Document {
             source,
             nodes: self.nodes,
             syntax: BTreeMap::new(),
             append_hint: None,
+            index: crate::bindings::Index::default(),
+            settled: false,
+            attached: Vec::new(),
         };
-        // Public producers can supply arbitrary offsets. Validate their contract once before exposing the document.
-        for event in document.events() {
-            event
-                .expect("arena traversal cannot fail")
-                .validate(Some(document.source()))?;
+        // Public producers can supply arbitrary offsets. Validate their contract once before
+        // exposing the document, node by node, as the events of the document would be.
+        let source = document.source.as_ref();
+        let mut resolved = Vec::new();
+        // The references by name and footnote calls, which may be unbound.
+        let mut names = Vec::new();
+        for (index, node) in document.nodes.iter().enumerate() {
+            if node.span.start > node.span.end || source.get(node.span.clone()).is_none() {
+                return Err(StreamError::InvalidRange);
+            }
+            node.kind.validate(Some(source))?;
+            if matches!(
+                node.kind,
+                EventKind::Start(Tag::Link(Target::Resolved(_)) | Tag::Image(Target::Resolved(_)))
+            ) {
+                resolved.push(index);
+            }
+            if matches!(
+                node.kind,
+                EventKind::Start(
+                    Tag::Link(Target::Reference(_)) | Tag::Image(Target::Reference(_))
+                ) | EventKind::FootnoteReference { .. }
+            ) {
+                names.push(index);
+            }
         }
+        document.index = crate::bindings::Index::new(source, &document.nodes, &self.definitions);
+        document.attached = attached_nodes(&document.nodes, document.root());
+        document.store_resolved(&resolved);
+        // The parser gives a name only when a definition binds it.
+        document.settled = parsed || document.bound(&names);
         Ok(document)
     }
 
@@ -241,6 +287,21 @@ pub struct Document<S = String> {
     // The child that `append_child` last appended. It is still its parent's last child while it has that parent and no next sibling, so a run of appends to one parent does not scan the parent's children each time.
     #[cfg_attr(feature = "serde", serde(skip))]
     append_hint: Option<NodeId>,
+    // Every definition and footnote definition of the attached document, by key, kept as the
+    // document is edited, so that a lookup does not walk the document.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    index: crate::bindings::Index,
+    // Whether every reference and footnote call, in every tree, is known to be bound: set for a
+    // built document whose references all came resolved and bound, and by normalizing, and
+    // cleared by any edit of the tree, so that normalizing an unedited document looks up none.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    settled: bool,
+    // Whether each node of the arena is in the attached document, so that finding which tree a
+    // node is in takes constant time for an attached node. Kept by each edit that moves a
+    // subtree into or out of the attached document, for the nodes it moves, and made again by
+    // normalizing.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    attached: Vec<bool>,
 }
 
 impl<S: AsRef<str>> Document<S> {
@@ -250,11 +311,11 @@ impl<S: AsRef<str>> Document<S> {
     /// Returns stream validation errors; built-in Markdown parsing has no syntax errors.
     pub fn parse(source: S, options: &crate::ParseOptions) -> Result<Self, StreamError> {
         let mut builder = AstBuilder::new();
-        let mut events = crate::EventParser::new(source.as_ref(), options);
+        let mut events = crate::EventParser::new(source.as_ref(), options).names();
         if builder.consume(&mut events, usize::MAX).is_err() {
             unreachable!("the built-in Markdown producer yields a balanced semantic stream");
         }
-        builder.finish(source)
+        builder.build(source, true)
     }
 
     /// The immutable source buffer.
@@ -292,8 +353,21 @@ impl<S: AsRef<str>> Document<S> {
     /// # Errors
     /// Rejects invalid IDs and source ranges with [`StreamError::InvalidRange`], invalid values
     /// with [`StreamError::InvalidValue`], and any other change of kind with
-    /// [`StreamError::InvalidNesting`].
+    /// [`StreamError::InvalidNesting`]. Giving an attached definition or footnote definition a
+    /// label or identifier that another definition of its kind in the document already has is
+    /// rejected with [`StreamError::InvalidValue`] too, as an edit adds no copy of a binding.
+    /// Nothing is changed when an error is returned.
     pub fn set_kind(&mut self, id: NodeId, kind: EventKind<'static>) -> Result<(), StreamError> {
+        self.edit(|document| document.set_kind_unsettled(id, kind))
+    }
+
+    // [`Document::set_kind`], which `edit` marks unsettled.
+    fn set_kind_unsettled(
+        &mut self,
+        id: NodeId,
+        kind: EventKind<'static>,
+    ) -> Result<(), StreamError> {
+        let kind = stored(kind);
         kind.validate(Some(self.source()))?;
         let node = self
             .nodes
@@ -316,7 +390,26 @@ impl<S: AsRef<str>> Document<S> {
             ) => old != new,
             _ => false,
         };
+        // A definition's key is indexed while it is attached, and an edit adds no copy of a
+        // key. A definition stays one, as only interchangeable kinds replace each other.
+        let rekeyed = defines(&kind) && self.attached(id) && {
+            let source = self.source.as_ref();
+            let new = crate::bindings::kind_key(&kind, source);
+            if crate::bindings::kind_key(&node.kind, source) == new {
+                false
+            } else if self.index.admits(&[new], |_| false) {
+                true
+            } else {
+                return Err(StreamError::InvalidValue);
+            }
+        };
+        if rekeyed {
+            self.index.remove(self.source.as_ref(), &self.nodes, id);
+        }
         self.nodes[id.index()].kind = kind;
+        if rekeyed {
+            self.index.insert(self.source.as_ref(), &self.nodes, id);
+        }
         if id != self.root() {
             self.syntax.insert(id, None);
         }
@@ -402,21 +495,246 @@ impl<S: AsRef<str>> Document<S> {
 
     /// Traverse without a heap-allocated traversal stack or cloned owned strings.
     pub fn events(&self) -> DocumentEvents<'_, S> {
-        DocumentEvents {
-            document: self,
-            current: Some(self.root()),
+        DocumentEvents::new(self, Some(self.root()), None)
+    }
+
+    /// The bindings of the attached document's references: which definition each label names.
+    /// This takes time linear in the size of the document; see [`Bindings`], which covers the
+    /// attached document only.
+    pub fn bindings(&self) -> Bindings<'_> {
+        Bindings::new(self.source(), &self.nodes, self.root())
+    }
+
+    /// The link reference definition that a reference labelled `label` leads to in the attached
+    /// document: the first in document order whose label matches, as the parser matches labels.
+    /// A document keeps an index of its definitions by label as it is edited, with the binding
+    /// of each label first, filed by a hash of the label with an overflow ordered by label, so
+    /// this takes constant time usually and at most time logarithmic in the number of labels,
+    /// whatever they are and whatever copies of a binding there are.
+    pub fn definition(&self, label: &str) -> Option<NodeId> {
+        crate::bindings::Lookup::new(self.context(), self.root()).definition(
+            self.context(),
+            label,
+            &mut crate::bindings::Scratch::default(),
+        )
+    }
+
+    /// The footnote definition that a footnote call with the normalized identifier `identifier`
+    /// calls in the attached document: the first with that identifier to end, which is the
+    /// first in document order unless one is nested in another of its identifier, as that one
+    /// is the one rendered. This takes time like [`Document::definition`].
+    pub fn footnote_definition(&self, identifier: &str) -> Option<NodeId> {
+        crate::bindings::Lookup::new(self.context(), self.root()).footnote_definition(
+            self.context(),
+            identifier,
+            &mut crate::bindings::Scratch::default(),
+        )
+    }
+
+    /// The destination and title that link or image `id` leads to: its own for a resource, and
+    /// for a reference those of the definition it is bound to, in the tree that holds it, which
+    /// is the document when it is attached and the detached subtree otherwise, as it renders.
+    /// `None` for an unbound reference or a node that is not a link or image. This takes time
+    /// like [`Document::definition`], whatever the depth of `id`, in the attached document, and
+    /// time linear in the size of a detached tree, as its table is built for each call, so
+    /// calling this on each node of a large detached tree takes quadratic time (#226).
+    pub fn destination(&self, id: NodeId) -> Option<(&str, Option<&str>)> {
+        let kind = &self.node(id)?.kind;
+        let cx = self.context();
+        crate::bindings::destination(self.source(), &self.nodes, kind, |label| {
+            crate::bindings::Lookup::new(cx, self.tree_of(id)).definition(
+                cx,
+                label,
+                &mut crate::bindings::Scratch::default(),
+            )
+        })
+    }
+
+    // What a lookup of this document reads.
+    pub(crate) fn context(&self) -> crate::bindings::Context<'_> {
+        crate::bindings::Context {
+            source: self.source(),
+            nodes: &self.nodes,
+            index: &self.index,
             root: self.root(),
-            closing: false,
+        }
+    }
+
+    // Whether `id` is in the attached document.
+    fn attached(&self, id: NodeId) -> bool {
+        self.attached[id.index()]
+    }
+
+    // The root of the tree that holds `id`: the document's root, at once, when it is attached,
+    // and otherwise the root of its detached subtree, in time linear in its depth there.
+    pub(crate) fn tree_of(&self, id: NodeId) -> NodeId {
+        if self.attached(id) {
+            self.root()
+        } else {
+            tree_root(&self.nodes, id)
+        }
+    }
+
+    // Mark each node of the subtree under `id` attached, or not.
+    fn mark_attached(&mut self, id: NodeId, attached: bool) {
+        let nodes = &self.nodes;
+        let mut current = Some(id);
+        while let Some(node) = current {
+            self.attached[node.index()] = attached;
+            current = next_descendant(nodes, id, node);
+        }
+    }
+
+    // Mark each node added to the arena since the last mark attached when its parent is, in
+    // arena order, as a node is added after its parent.
+    fn mark_added(&mut self) {
+        for index in self.attached.len()..self.nodes.len() {
+            let attached = self.nodes[index]
+                .parent
+                .is_some_and(|parent| self.attached[parent.index()]);
+            self.attached.push(attached);
+        }
+    }
+
+    // Whether each reference by name and footnote call at `names` in the arena, all attached, is bound.
+    fn bound(&self, names: &[usize]) -> bool {
+        let cx = self.context();
+        let mut lookup = crate::bindings::Lookup::new(cx, cx.root);
+        let mut scratch = crate::bindings::Scratch::default();
+        names
+            .iter()
+            .all(|&index| !lookup.unbound(cx, &self.nodes[index].kind, &mut scratch))
+    }
+
+    // Store each resolved reference that a builder was given, at `resolved` in the arena, by its
+    // name when its label binds to a definition in this document with the destination and title
+    // it was resolved to, and otherwise as a resource to them, so that it keeps its meaning
+    // whatever the definitions it was built with.
+    fn store_resolved(&mut self, resolved: &[usize]) {
+        if resolved.is_empty() {
+            return;
+        }
+        let source = self.source.as_ref();
+        let names: Vec<bool> = {
+            let nodes = &self.nodes;
+            let cx = self.context();
+            let mut lookup = crate::bindings::Lookup::new(cx, self.root());
+            let mut scratch = crate::bindings::Scratch::default();
+            resolved
+                .iter()
+                .map(|&index| {
+                    let EventKind::Start(
+                        Tag::Link(Target::Resolved(target)) | Tag::Image(Target::Resolved(target)),
+                    ) = &nodes[index].kind
+                    else {
+                        unreachable!("only resolved references are stored")
+                    };
+                    lookup
+                        .definition(cx, text(&target.reference.label, source), &mut scratch)
+                        .is_some_and(|definition| {
+                            let (destination, title) =
+                                crate::bindings::definition_target(nodes, definition);
+                            text(destination, source) == text(&target.destination, source)
+                                && title.map(|title| text(title, source))
+                                    == target.title.as_ref().map(|title| text(title, source))
+                        })
+                })
+                .collect()
+        };
+        for (&index, name) in resolved.iter().zip(names) {
+            let EventKind::Start(Tag::Link(target) | Tag::Image(target)) =
+                &mut self.nodes[index].kind
+            else {
+                unreachable!("only resolved references are stored")
+            };
+            let placeholder = Target::Resource {
+                destination: Text::Literal(""),
+                title: None,
+            };
+            *target = match core::mem::replace(target, placeholder) {
+                Target::Resolved(resolved) if name => {
+                    Target::Reference(alloc::boxed::Box::new(resolved.reference))
+                }
+                target => target.resource(),
+            };
         }
     }
 }
 
-/// A zero-allocation pull traversal over the arena's parent/child/sibling links.
+// Whether `kind` is a definition or footnote definition, which the index of a document holds.
+fn defines(kind: &EventKind<'_>) -> bool {
+    matches!(
+        kind,
+        EventKind::Definition { .. } | EventKind::Start(Tag::FootnoteDefinition { .. })
+    )
+}
+
+// `kind` as a document stores it: a resolved reference as a resource to where it leads, as the
+// definitions of the document it is put in may lead elsewhere, and anything else as it is.
+fn stored(kind: EventKind<'static>) -> EventKind<'static> {
+    match kind {
+        EventKind::Start(Tag::Link(target)) => EventKind::Start(Tag::Link(target.resource())),
+        EventKind::Start(Tag::Image(target)) => EventKind::Start(Tag::Image(target.resource())),
+        kind => kind,
+    }
+}
+
+// Whether a document can store `kind` as it is: not a resolved reference.
+#[cfg(feature = "serde")]
+fn storable(kind: &EventKind<'_>) -> Result<(), StreamError> {
+    match kind {
+        EventKind::Start(Tag::Link(Target::Resolved(_)) | Tag::Image(Target::Resolved(_))) => {
+            Err(StreamError::InvalidValue)
+        }
+        _ => Ok(()),
+    }
+}
+
+// Whether each node of `nodes` is in the tree under `root`.
+fn attached_nodes(nodes: &[Node], root: NodeId) -> Vec<bool> {
+    let mut attached = vec![false; nodes.len()];
+    let mut current = Some(root);
+    while let Some(id) = current {
+        attached[id.index()] = true;
+        current = next_descendant(nodes, root, id);
+    }
+    attached
+}
+
+// The root of the tree that holds `id`: the document's root when it is attached, or the root of
+// its detached subtree.
+pub(crate) fn tree_root(nodes: &[Node], mut id: NodeId) -> NodeId {
+    while let Some(parent) = nodes[id.index()].parent {
+        id = parent;
+    }
+    id
+}
+
+/// A pull traversal over the arena's parent/child/sibling links. It allocates nothing, except
+/// that at the first reference or footnote call it meets it builds the bindings of the tree that
+/// holds what it traverses, in one pass, to give each bound reference as
+/// [`crate::stream::Target::Resolved`], with the destination and title of its definition, as the
+/// parser's events do. A reference or footnote call that nothing binds is given as the text it
+/// renders and reads back as, which [`Document::normalize`] makes it: an unbound reference as
+/// text of its opening bracket, its children's events and text of what follows them, with its
+/// label for a full reference, and an unbound footnote call as text of its call.
 pub struct DocumentEvents<'a, S> {
     document: &'a Document<S>,
     current: Option<NodeId>,
     root: NodeId,
     closing: bool,
+    names: Names,
+}
+
+// What a traversal knows of the references and footnote calls it meets.
+#[derive(Default)]
+struct Names {
+    // Where the tree that holds the traversal looks bindings up, from the first reference or
+    // footnote call.
+    lookup: Option<crate::bindings::Lookup>,
+    scratch: crate::bindings::Scratch,
+    // Whether each reference open in the traversal is unbound, innermost last.
+    open: Vec<bool>,
 }
 
 // Borrow values rather than cloning Cow::Owned strings. Structural metadata has no owned storage.
@@ -424,28 +742,8 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
     match kind {
         EventKind::Start(tag) => {
             let tag = match tag {
-                crate::stream::Tag::Link {
-                    destination,
-                    title,
-                    reference,
-                } => crate::stream::Tag::Link {
-                    destination: destination.borrowed(),
-                    title: title.as_ref().map(Text::borrowed),
-                    reference: reference
-                        .as_deref()
-                        .map(|reference| alloc::boxed::Box::new(borrow_reference(reference))),
-                },
-                crate::stream::Tag::Image {
-                    destination,
-                    title,
-                    reference,
-                } => crate::stream::Tag::Image {
-                    destination: destination.borrowed(),
-                    title: title.as_ref().map(Text::borrowed),
-                    reference: reference
-                        .as_deref()
-                        .map(|reference| alloc::boxed::Box::new(borrow_reference(reference))),
-                },
+                crate::stream::Tag::Link(target) => crate::stream::Tag::Link(target.borrowed()),
+                crate::stream::Tag::Image(target) => crate::stream::Tag::Image(target.borrowed()),
                 crate::stream::Tag::FootnoteDefinition { identifier, label } => {
                     crate::stream::Tag::FootnoteDefinition {
                         identifier: identifier.borrowed(),
@@ -505,34 +803,139 @@ fn borrow_kind<'a>(kind: &'a EventKind<'_>) -> EventKind<'a> {
     }
 }
 
-fn borrow_reference<'a>(
-    reference: &'a crate::stream::Reference<'_>,
-) -> crate::stream::Reference<'a> {
-    crate::stream::Reference {
-        kind: reference.kind,
-        label: reference.label.borrowed(),
+impl<'a, S: AsRef<str>> DocumentEvents<'a, S> {
+    // The events of the subtree under `current`, if any, looking references up with `lookup`,
+    // that of the tree that holds it, once made.
+    fn new(
+        document: &'a Document<S>,
+        current: Option<NodeId>,
+        lookup: Option<crate::bindings::Lookup>,
+    ) -> Self {
+        Self {
+            document,
+            current,
+            root: current.unwrap_or(document.root()),
+            closing: false,
+            names: Names {
+                lookup,
+                ..Names::default()
+            },
+        }
     }
-}
 
-impl<'a, S: AsRef<str>> Iterator for DocumentEvents<'a, S> {
-    type Item = Result<Event<'a>, StreamError>;
-    fn next(&mut self) -> Option<Self::Item> {
-        let id = self.current?;
+    // The binding of the label or identifier of the reference or footnote call `kind` in the
+    // tree that holds `root`.
+    fn binding(&mut self, kind: &EventKind<'_>) -> Option<NodeId> {
+        let (document, root) = (self.document, self.root);
+        let cx = document.context();
+        let names = &mut self.names;
+        let lookup = names
+            .lookup
+            .get_or_insert_with(|| crate::bindings::Lookup::new(cx, document.tree_of(root)));
+        match kind {
+            EventKind::FootnoteReference { identifier, .. } => {
+                lookup.footnote_definition(cx, text(identifier, cx.source), &mut names.scratch)
+            }
+            kind => lookup.definition_of(cx, kind, &mut names.scratch),
+        }
+    }
+
+    // The event that starts the reference or footnote call `node`: a bound reference resolved,
+    // and an unbound reference or footnote call as the text it reads back as up to its
+    // children, which starts where it does.
+    fn named(&mut self, node: &'a Node) -> Event<'a> {
+        let source = self.document.source();
+        let definition = self.binding(&node.kind);
+        let kind = match &node.kind {
+            EventKind::FootnoteReference { .. } if definition.is_some() => borrow_kind(&node.kind),
+            EventKind::FootnoteReference { identifier, label } => {
+                EventKind::Text(Text::from(crate::bindings::unbound_footnote_text(text(
+                    label.as_ref().unwrap_or(identifier),
+                    source,
+                ))))
+            }
+            EventKind::Start(
+                tag @ (Tag::Link(Target::Reference(reference))
+                | Tag::Image(Target::Reference(reference))),
+            ) => {
+                self.names.open.push(definition.is_none());
+                let Some(definition) = definition else {
+                    return Event {
+                        kind: EventKind::Text(Text::Literal(unbound_open(&node.kind))),
+                        span: node.span.start..node.span.start,
+                    };
+                };
+                let (destination, title) =
+                    crate::bindings::definition_target(&self.document.nodes, definition);
+                let target = Target::Resolved(alloc::boxed::Box::new(Resolved {
+                    reference: reference.borrowed(),
+                    destination: destination.borrowed(),
+                    title: title.map(Text::borrowed),
+                }));
+                EventKind::Start(if matches!(tag, Tag::Link(_)) {
+                    Tag::Link(target)
+                } else {
+                    Tag::Image(target)
+                })
+            }
+            _ => unreachable!("only a reference or footnote call is named"),
+        };
+        Event {
+            kind,
+            span: node.span.clone(),
+        }
+    }
+
+    // The event that closes the reference `node`: its end, or for an unbound reference the text
+    // of what follows its children.
+    fn closed(&mut self, node: &'a Node) -> Event<'a> {
+        let span = node.span.end..node.span.end;
+        let EventKind::Start(
+            tag @ (Tag::Link(Target::Reference(reference))
+            | Tag::Image(Target::Reference(reference))),
+        ) = &node.kind
+        else {
+            unreachable!("only a reference is closed by name")
+        };
+        if !self
+            .names
+            .open
+            .pop()
+            .expect("a reference is closed after it is started")
+        {
+            return Event {
+                kind: EventKind::End(tag.kind()),
+                span,
+            };
+        }
+        let label = text(&reference.label, self.document.source());
+        let (_, close) =
+            crate::bindings::unbound_text(reference.kind, label, matches!(tag, Tag::Image(_)));
+        Event {
+            kind: EventKind::Text(Text::from(close)),
+            span,
+        }
+    }
+
+    // The event of a reference or footnote call, opened or closed, after which the traversal
+    // advances. Kept out of line, so that other nodes take the path they take without names.
+    #[cold]
+    #[inline(never)]
+    fn next_named(&mut self, id: NodeId) -> Event<'a> {
         let node = &self.document.nodes[id.index()];
         let event = if self.closing {
-            match &node.kind {
-                EventKind::Start(tag) => Event {
-                    kind: EventKind::End(tag.kind()),
-                    span: node.span.end..node.span.end,
-                },
-                _ => unreachable!("only container nodes are closed"),
-            }
+            self.closed(node)
         } else {
-            Event {
-                kind: borrow_kind(&node.kind),
-                span: node.span.clone(),
-            }
+            self.named(node)
         };
+        self.advance(id, node);
+        event
+    }
+
+    // Move past node `id` to the next event, inline in each path of `next`, which is hot.
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
+    fn advance(&mut self, id: NodeId, node: &Node) {
         if !self.closing && matches!(node.kind, EventKind::Start(_)) {
             if let Some(child) = node.first_child {
                 self.current = Some(child);
@@ -548,6 +951,63 @@ impl<'a, S: AsRef<str>> Iterator for DocumentEvents<'a, S> {
             self.current = node.parent;
             self.closing = true;
         }
+    }
+
+    // Where this traversal looked bindings up, to look up the next with.
+    fn into_lookup(self) -> Option<crate::bindings::Lookup> {
+        self.names.lookup
+    }
+}
+
+fn text<'v>(value: &'v Text<'_>, source: &'v str) -> &'v str {
+    value.resolve(source).expect("document text is validated")
+}
+
+// Whether `kind` is a reference or footnote call, which a definition may bind.
+fn names(kind: &EventKind<'_>) -> bool {
+    matches!(
+        kind,
+        EventKind::Start(Tag::Link(Target::Reference(_)) | Tag::Image(Target::Reference(_)))
+            | EventKind::FootnoteReference { .. }
+    )
+}
+
+// The opening bracket of the reference `kind`, a link or image, as text.
+fn unbound_open(kind: &EventKind<'_>) -> &'static str {
+    if matches!(kind, EventKind::Start(Tag::Image(_))) {
+        "!["
+    } else {
+        "["
+    }
+}
+
+impl<'a, S: AsRef<str>> Iterator for DocumentEvents<'a, S> {
+    type Item = Result<Event<'a>, StreamError>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let id = self.current?;
+        let node = &self.document.nodes[id.index()];
+        if matches!(
+            node.kind,
+            EventKind::Start(Tag::Link(Target::Reference(_)) | Tag::Image(Target::Reference(_)))
+        ) || (!self.closing && matches!(node.kind, EventKind::FootnoteReference { .. }))
+        {
+            return Some(Ok(self.next_named(id)));
+        }
+        let event = if self.closing {
+            match &node.kind {
+                EventKind::Start(tag) => Event {
+                    kind: EventKind::End(tag.kind()),
+                    span: node.span.end..node.span.end,
+                },
+                _ => unreachable!("only container nodes are closed"),
+            }
+        } else {
+            Event {
+                kind: borrow_kind(&node.kind),
+                span: node.span.clone(),
+            }
+        };
+        self.advance(id, node);
         Some(Ok(event))
     }
 }
@@ -584,7 +1044,7 @@ impl Iterator for Descendants<'_> {
 }
 
 // Find the next preorder node using the existing links, bounded by the requested subtree.
-fn next_descendant(nodes: &[Node], root: NodeId, id: NodeId) -> Option<NodeId> {
+pub(crate) fn next_descendant(nodes: &[Node], root: NodeId, id: NodeId) -> Option<NodeId> {
     if let Some(child) = nodes[id.index()].first_child {
         return Some(child);
     }
@@ -621,35 +1081,54 @@ impl<S: AsRef<str>> Document<S> {
     }
     /// A subtree's events, without surrounding document events unless `id` is the root.
     pub fn subtree_events(&self, id: NodeId) -> DocumentEvents<'_, S> {
-        DocumentEvents {
-            document: self,
-            current: self.node(id).map(|_| id),
-            root: id,
-            closing: false,
-        }
+        DocumentEvents::new(self, self.node(id).map(|_| id), None)
     }
-    /// Plain semantic text, including image alternative text, code and raw HTML.
+    /// Plain semantic text, including image alternative text, code and raw HTML, with each
+    /// reference or footnote call that nothing binds as the text it renders as, as
+    /// [`Document::subtree_events`] gives it.
     pub fn text_content(&self, id: NodeId) -> String {
-        self.collect_text::<false>(id)
+        self.collect_text::<false>(id, &mut None)
     }
-    fn collect_text<const HEADING: bool>(&self, id: NodeId) -> String {
+    // The text of the subtree under `id`, looking references up with `lookup`, that of the tree
+    // that holds it, once made.
+    fn collect_text<const HEADING: bool>(
+        &self,
+        id: NodeId,
+        lookup: &mut Option<crate::bindings::Lookup>,
+    ) -> String {
         let mut text = String::new();
-        for child in self.descendants(id) {
+        // In a settled document every reference is bound, so its text is that of its nodes, as
+        // it would be given as an event, and no lookup is needed.
+        if self.settled && self.node(id).is_some() && self.attached(id) {
+            for child in self.descendants(id) {
+                crate::headings::append_text::<HEADING>(
+                    &self.nodes[child.index()].kind,
+                    self.source(),
+                    &mut text,
+                );
+            }
+            return text;
+        }
+        let mut events = DocumentEvents::new(self, self.node(id).map(|_| id), lookup.take());
+        for event in events.by_ref() {
             crate::headings::append_text::<HEADING>(
-                &self.nodes[child.index()].kind,
+                &event.expect("document traversal cannot fail").kind,
                 self.source(),
                 &mut text,
             );
         }
+        *lookup = events.into_lookup();
         text
     }
     /// Extract headings and anchors using the HTML writer's rules. Filtered headings still reserve their anchors.
     pub fn headings(&self, options: &crate::HeadingOptions) -> Vec<crate::HeadingEntry> {
         let mut anchors = crate::headings::AnchorGenerator::default();
         let mut entries = Vec::new();
+        // Every heading is in the attached document, so they share its lookup.
+        let mut lookup = None;
         for id in self.descendants(self.root()) {
             if let EventKind::Start(Tag::Heading(level)) = self.nodes[id.index()].kind {
-                let mut text = self.collect_text::<true>(id);
+                let mut text = self.collect_text::<true>(id, &mut lookup);
                 text.truncate(crate::util::line_ending::trim_terminal_ending(&text).len());
                 let anchor = anchors.anchor_for(&text);
                 if (options.min_level..=options.max_level).contains(&level) {
@@ -671,20 +1150,26 @@ impl<S: AsRef<str>> Document<S> {
             return value.as_ref().map(NodeSyntax::borrowed);
         }
         if matches!(node.kind, EventKind::Start(Tag::Item { .. })) {
-            let mut previous: Option<NodeId> = None;
-            for child in self.flow_children(id) {
-                if let Some(previous) = previous {
-                    let end = self.nodes[previous.index()].span.end;
-                    let start = self.nodes[child.index()].span.start;
-                    if self.blank_line_between(end, start) || self.ends_with_blank_line(previous) {
-                        return Some(NodeSyntax::ListItem { spread: true });
-                    }
-                }
-                previous = Some(child);
-            }
-            return Some(NodeSyntax::ListItem { spread: false });
+            return Some(NodeSyntax::ListItem {
+                spread: self.inferred_spread(id),
+            });
         }
         crate::node_syntax::infer(self.source(), node.span.clone(), &node.kind)
+    }
+    // Whether the source has a blank line between two blocks of the item `id`.
+    fn inferred_spread(&self, id: NodeId) -> bool {
+        let mut previous: Option<NodeId> = None;
+        for child in self.flow_children(id) {
+            if let Some(previous) = previous {
+                let end = self.nodes[previous.index()].span.end;
+                let start = self.nodes[child.index()].span.start;
+                if self.blank_line_between(end, start) || self.ends_with_blank_line(previous) {
+                    return true;
+                }
+            }
+            previous = Some(child);
+        }
+        false
     }
     // The children of `id` other than separators.
     fn flow_children(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
@@ -805,6 +1290,20 @@ impl<S: AsRef<str>> Document<S> {
             output,
         )
     }
+    // Run the edit `edit`, after which an edit may have unbound a reference, or added one that
+    // nothing binds, so the document is no longer settled, unless it is rejected, which changes
+    // nothing at all.
+    fn edit<T>(
+        &mut self,
+        edit: impl FnOnce(&mut Self) -> Result<T, StreamError>,
+    ) -> Result<T, StreamError> {
+        let settled = core::mem::replace(&mut self.settled, false);
+        let result = edit(self);
+        if result.is_err() {
+            self.settled = settled;
+        }
+        result
+    }
     fn tight_paragraph(&self, id: NodeId) -> bool {
         if !matches!(
             self.nodes[id.index()].kind,
@@ -882,11 +1381,11 @@ impl<S: AsRef<str>> Document<S> {
             set_block_end(&mut self.nodes[parent.index()].kind, block_end);
         }
     }
-    // Edits can change the context of existing paragraphs and item endings. Refresh those rendering hints without adding caches or links to every arena node.
+    // Edits can change the context of existing paragraphs and item endings. Refresh those rendering hints without adding caches or links to every arena node. Paragraphs and items are only in containers of blocks, so phrasing is not walked, and moving a run of phrasing takes constant time however much it holds.
     fn refresh_context(&mut self, root: NodeId) {
         let mut current = Some(root);
         while let Some(id) = current {
-            current = next_descendant(&self.nodes, root, id);
+            current = crate::bindings::next_block(&self.nodes, root, id);
             self.refresh_paragraph(id);
             self.refresh_item(Some(id));
         }
@@ -926,12 +1425,26 @@ impl<S: AsRef<str>> Document<S> {
     /// invalid source ranges with [`StreamError::InvalidRange`], invalid values with
     /// [`StreamError::InvalidValue`], and a node that the parent cannot hold, such as a document
     /// root, a block in a paragraph, an item outside a list, phrasing in a root that holds blocks
-    /// or a footnote reference inside a link, with [`StreamError::InvalidNesting`].
+    /// or a footnote reference inside a link, with [`StreamError::InvalidNesting`]. Appending a
+    /// definition or footnote definition to the attached document whose label or identifier
+    /// another definition of its kind there already has is rejected with
+    /// [`StreamError::InvalidValue`], as an edit adds no copy of a binding. Nothing is changed
+    /// when an error is returned.
     pub fn append_child(
         &mut self,
         parent: NodeId,
         kind: EventKind<'static>,
     ) -> Result<NodeId, StreamError> {
+        self.edit(|document| document.append_child_unsettled(parent, kind))
+    }
+
+    // [`Document::append_child`], which `edit` marks unsettled.
+    fn append_child_unsettled(
+        &mut self,
+        parent: NodeId,
+        kind: EventKind<'static>,
+    ) -> Result<NodeId, StreamError> {
+        let kind = stored(kind);
         kind.validate(Some(self.source()))?;
         if !matches!(
             self.node(parent).map(|node| &node.kind),
@@ -944,11 +1457,24 @@ impl<S: AsRef<str>> Document<S> {
         if matches!(kind, EventKind::FootnoteReference { .. }) && self.in_link(parent) {
             return Err(StreamError::InvalidNesting);
         }
+        // An edit adds no copy of a binding.
+        let indexed = defines(&kind) && self.attached(parent);
+        if indexed
+            && !self.index.admits(
+                &[crate::bindings::kind_key(&kind, self.source.as_ref())],
+                |_| false,
+            )
+        {
+            return Err(StreamError::InvalidValue);
+        }
         let previous = match self.appended_last_child(parent) {
             Some(previous) => previous,
             None => self.children(parent).last(),
         };
         let id = self.insert_child(parent, kind, previous, None);
+        if indexed {
+            self.index.insert(self.source.as_ref(), &self.nodes, id);
+        }
         self.append_hint = Some(id);
         self.refresh_context(id);
         self.refresh_item_after_append(parent, id);
@@ -986,13 +1512,21 @@ impl<S: AsRef<str>> Document<S> {
             next_sibling: None,
         });
         self.link_child(parent, id, previous, next);
+        self.mark_added();
         id
     }
-    /// Detach a subtree without moving its arena slots or invalidating IDs.
+    /// Detach a subtree without moving its arena slots or invalidating IDs. This takes time
+    /// linear in the subtree when it was attached, to mark its nodes detached and remove its
+    /// definitions from the document's index of them, besides its parent's children before it.
     ///
     /// # Errors
     /// Rejects invalid IDs and detaching the document root.
     pub fn detach(&mut self, id: NodeId) -> Result<(), StreamError> {
+        self.edit(|document| document.detach_unsettled(id))
+    }
+
+    // [`Document::detach`], which `edit` marks unsettled.
+    fn detach_unsettled(&mut self, id: NodeId) -> Result<(), StreamError> {
         if id == self.root() {
             return Err(StreamError::Unbalanced);
         }
@@ -1000,7 +1534,14 @@ impl<S: AsRef<str>> Document<S> {
         let Some(parent) = node.parent else {
             return Ok(());
         };
+        if self.attached(parent) {
+            self.index
+                .remove_tree(self.source.as_ref(), &self.nodes, id);
+        }
         self.unlink_child(id, parent);
+        if self.attached(id) {
+            self.mark_attached(id, false);
+        }
         self.refresh_context(id);
         self.refresh_item(Some(parent));
         Ok(())
@@ -1019,15 +1560,33 @@ impl<S: AsRef<str>> Document<S> {
         self.nodes[id.index()].parent = None;
         self.nodes[id.index()].next_sibling = None;
     }
-    /// Move an existing subtree into a container, optionally before one of its children. No node or text allocation is required.
+    /// Move an existing subtree into a container, optionally before one of its children. No node or text allocation is required. Moving a subtree into or out of the attached document takes time linear in the subtree too, to mark its nodes and to add its definitions to the document's index of them or remove them.
     ///
     /// # Errors
     /// Rejects cycles, a leaf parent and root moves with [`StreamError::Unbalanced`], invalid IDs
     /// and positions with [`StreamError::InvalidRange`], and a subtree that the parent cannot
     /// hold, as for [`Document::append_child`], or that holds a footnote reference when the parent
-    /// is in a link, with [`StreamError::InvalidNesting`], before modifying the tree. Moving a
+    /// is in a link, with [`StreamError::InvalidNesting`], before modifying the tree. As an edit
+    /// adds no copy of a binding, it rejects with [`StreamError::InvalidValue`], before modifying
+    /// the tree, attaching a detached subtree to the attached document when the subtree holds two
+    /// definitions, or footnote definitions, of one label or identifier, or one whose label or
+    /// identifier a definition of its kind in the document already has, and moving a subtree
+    /// within the document when it holds a definition or footnote definition of a label or
+    /// identifier that the document defines more than once, which [`Document::normalize`] makes
+    /// once. Detaching a definition first unbinds it, so the only definition of its label can be
+    /// detached and attached again, but one that has a copy elsewhere cannot. Moving a
     /// subtree out of its parent always leaves that parent valid, if not normalized.
     pub fn attach(
+        &mut self,
+        parent: NodeId,
+        id: NodeId,
+        before: Option<NodeId>,
+    ) -> Result<(), StreamError> {
+        self.edit(|document| document.attach_unsettled(parent, id, before))
+    }
+
+    // [`Document::attach`], which `edit` marks unsettled.
+    fn attach_unsettled(
         &mut self,
         parent: NodeId,
         id: NodeId,
@@ -1074,6 +1633,25 @@ impl<S: AsRef<str>> Document<S> {
             return Ok(());
         }
         let former_parent = self.nodes[id.index()].parent;
+        // Its definitions are indexed while it is attached, wherever in the document it is, and
+        // an edit adds no copy of a binding, nor moves one, which would reorder it.
+        let (was_attached, attached) = (self.attached(id), self.attached(parent));
+        if attached {
+            let source = self.source.as_ref();
+            let admitted = if was_attached {
+                self.index.movable(source, &self.nodes, id)
+            } else {
+                crate::bindings::tree_keys(source, &self.nodes, id)
+                    .is_some_and(|keys| self.index.admits(&keys, |_| false))
+            };
+            if !admitted {
+                return Err(StreamError::InvalidValue);
+            }
+        }
+        if was_attached && !attached {
+            self.index
+                .remove_tree(self.source.as_ref(), &self.nodes, id);
+        }
         if let Some(parent) = former_parent {
             self.unlink_child(id, parent);
         }
@@ -1082,6 +1660,13 @@ impl<S: AsRef<str>> Document<S> {
             .take_while(|child| Some(*child) != before)
             .last();
         self.link_child(parent, id, previous, before);
+        if attached != was_attached {
+            self.mark_attached(id, attached);
+        }
+        if attached && !was_attached {
+            self.index
+                .insert_tree(self.source.as_ref(), &self.nodes, id);
+        }
         self.refresh_context(id);
         if former_parent != Some(parent) {
             self.refresh_item(former_parent);
@@ -1089,13 +1674,27 @@ impl<S: AsRef<str>> Document<S> {
         self.refresh_item(Some(parent));
         Ok(())
     }
-    /// Detach all direct children, returning their stable IDs in order.
+    /// Detach all direct children, returning their stable IDs in order, in time linear in their
+    /// subtrees when `parent` is attached, to mark their nodes detached and remove their
+    /// definitions from the document's index of them.
     ///
     /// # Errors
     /// Rejects invalid node IDs.
     pub fn extract_children(&mut self, parent: NodeId) -> Result<Vec<NodeId>, StreamError> {
+        self.edit(|document| document.extract_children_unsettled(parent))
+    }
+
+    // [`Document::extract_children`], which `edit` marks unsettled.
+    fn extract_children_unsettled(&mut self, parent: NodeId) -> Result<Vec<NodeId>, StreamError> {
         self.node(parent).ok_or(StreamError::InvalidRange)?;
         let children: Vec<_> = self.children(parent).collect();
+        if self.attached(parent) {
+            for &id in &children {
+                self.index
+                    .remove_tree(self.source.as_ref(), &self.nodes, id);
+                self.mark_attached(id, false);
+            }
+        }
         self.nodes[parent.index()].first_child = None;
         for &id in &children {
             self.nodes[id.index()].parent = None;
@@ -1109,12 +1708,41 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// `heading_index` counts direct children, including separator nodes. With `remove_subsections`, the section extends through headings deeper than the selected heading. Detached original nodes retain their IDs and can still be inspected or reattached.
     ///
+    /// The copies render as the replacement's children render in it: a reference bound there
+    /// becomes a resource to where it leads, as this document may define its label otherwise,
+    /// and a reference or footnote call that nothing binds there becomes the text it renders as,
+    /// as [`Document::normalize`] makes it.
+    ///
     /// # Errors
     /// Rejects invalid parent IDs with [`StreamError::InvalidRange`], and an inline replacement
     /// document, whose root holds phrasing, with [`StreamError::InvalidNesting`], before modifying
-    /// the tree. Returns `false` when the selected child is not a heading. Frontmatter is not
+    /// the tree. As an edit adds no copy of a binding, it rejects with
+    /// [`StreamError::InvalidValue`], before modifying the tree, a replacement into the attached
+    /// document that holds two definitions, or footnote definitions, of one label or identifier,
+    /// which [`Document::normalize`] makes one, or one whose label or identifier a definition of
+    /// its kind in the document outside the replaced section already has. Returns `false` when the selected child is not a heading. Frontmatter is not
     /// copied.
     pub fn replace_heading_section<T: AsRef<str>>(
+        &mut self,
+        parent: NodeId,
+        heading_index: usize,
+        replacement: &Document<T>,
+        replace_heading: bool,
+        remove_subsections: bool,
+    ) -> Result<bool, StreamError> {
+        self.edit(|document| {
+            document.replace_heading_section_unsettled(
+                parent,
+                heading_index,
+                replacement,
+                replace_heading,
+                remove_subsections,
+            )
+        })
+    }
+
+    // [`Document::replace_heading_section`], which `edit` marks unsettled.
+    fn replace_heading_section_unsettled<T: AsRef<str>>(
         &mut self,
         parent: NodeId,
         heading_index: usize,
@@ -1155,6 +1783,31 @@ impl<S: AsRef<str>> Document<S> {
             }
             end = self.nodes[id.index()].next_sibling;
         }
+        // The definitions of the attached document are indexed, and an edit adds no copy of a
+        // binding: a copied definition's key may be one that only the section had.
+        let attached = self.attached(parent);
+        if attached {
+            let keys = crate::bindings::tree_keys(
+                replacement.source.as_ref(),
+                &replacement.nodes,
+                replacement.root(),
+            )
+            .ok_or(StreamError::InvalidValue)?;
+            let mut leaving = Vec::new();
+            let mut at = first;
+            while at != end {
+                let id = at.expect("the section ends in the selected sibling chain");
+                leaving.extend(crate::bindings::definitions(&self.nodes, id));
+                at = self.nodes[id.index()].next_sibling;
+            }
+            leaving.sort_unstable();
+            if !self
+                .index
+                .admits(&keys, |id| leaving.binary_search(&id).is_ok())
+            {
+                return Err(StreamError::InvalidValue);
+            }
+        }
         // Every copied subtree is already validated in its source document.
         if !replace_heading {
             previous = Some(heading);
@@ -1170,20 +1823,32 @@ impl<S: AsRef<str>> Document<S> {
             while at != end {
                 let id = at.expect("the section ends in the selected sibling chain");
                 at = self.nodes[id.index()].next_sibling;
+                if attached {
+                    self.index
+                        .remove_tree(self.source.as_ref(), &self.nodes, id);
+                    self.mark_attached(id, false);
+                }
                 self.nodes[id.index()].parent = None;
                 self.nodes[id.index()].next_sibling = None;
                 self.refresh_context(id);
             }
             self.refresh_item(Some(parent));
         }
+        let bindings = replacement.bindings();
         for child in replacement.children(replacement.root()) {
-            previous = Some(self.copy_subtree(replacement, child, parent, previous, end));
+            let copy = self.copy_subtree(replacement, &bindings, child, parent, previous, end);
+            if attached {
+                self.index
+                    .insert_tree(self.source.as_ref(), &self.nodes, copy);
+            }
+            previous = Some(copy);
         }
         Ok(true)
     }
     fn copy_subtree<T: AsRef<str>>(
         &mut self,
         source: &Document<T>,
+        bindings: &Bindings<'_>,
         root: NodeId,
         mut parent: NodeId,
         mut previous: Option<NodeId>,
@@ -1191,6 +1856,9 @@ impl<S: AsRef<str>> Document<S> {
     ) -> NodeId {
         let copied_root = NodeId::new(self.nodes.len());
         let mut original_parent = source.nodes[root.index()].parent;
+        // The copies of the references and footnote calls that nothing binds where they come
+        // from, which become the text they read back as there.
+        let mut unbound = Vec::new();
         for original in source.descendants(root) {
             let node = &source.nodes[original.index()];
             // Source and destination parent links describe the same copied path; ascending them together needs no mapping stack.
@@ -1206,15 +1874,26 @@ impl<S: AsRef<str>> Document<S> {
             }
             let mut kind =
                 borrow_kind(&node.kind).map_text(|value| value.materialized(source.source()));
-            // References cross documents as resolved resources: the destination buffer may have a
-            // conflicting or missing definition with the same label.
-            if let EventKind::Start(Tag::Link { reference, .. } | Tag::Image { reference, .. }) =
-                &mut kind
-            {
-                *reference = None;
+            // A bound reference crosses documents as a resource to where it leads, as this
+            // document may have a conflicting or missing definition of its label. An unbound one,
+            // or an unbound footnote call, becomes the text it renders as there, as
+            // `Document::normalize` would make it, once it is copied.
+            let unbound_here = bindings.unbound(&node.kind);
+            if let EventKind::Start(Tag::Link(target) | Tag::Image(target)) = &mut kind {
+                if let Some(definition) = bindings.definition_of(target) {
+                    let (destination, title) =
+                        crate::bindings::definition_target(&source.nodes, definition);
+                    *target = Target::Resource {
+                        destination: destination.clone().materialized(source.source()),
+                        title: title.map(|title| title.clone().materialized(source.source())),
+                    };
+                }
             }
             let next = if original == root { before } else { None };
             let id = self.insert_child(parent, kind, previous, next);
+            if unbound_here {
+                unbound.push(id);
+            }
             // An item's spread and a link's form describe only the copied node, so they survive.
             // Frontmatter is on the root, which is never copied.
             let syntax = match source.syntax(original) {
@@ -1234,6 +1913,11 @@ impl<S: AsRef<str>> Document<S> {
                 previous = Some(id);
             }
         }
+        // The copied root is a block, so it is never one of them.
+        for id in unbound {
+            self.unbind_node(id);
+        }
+        self.mark_added();
         self.refresh_context(copied_root);
         self.refresh_item(self.nodes[copied_root.index()].parent);
         copied_root
@@ -1615,11 +2299,10 @@ fn autolink(
     cell: bool,
 ) -> bool {
     let node = &nodes[id.index()];
-    let EventKind::Start(Tag::Link {
+    let EventKind::Start(Tag::Link(Target::Resource {
         destination,
         title: None,
-        reference: None,
-    }) = &node.kind
+    })) = &node.kind
     else {
         return false;
     };
@@ -1857,6 +2540,13 @@ fn join_text(left: &mut Text<'static>, right: &Text<'_>, source: &str) {
     }
 }
 
+// Marks of the children kept when copies are removed: a copy went, or a node moved in, just
+// before the child; the child is a separator that came just after a copy; and the child moved
+// in from a copy.
+const CHANGED: u8 = 1;
+const AFTER_COPY: u8 = 2;
+const MOVED: u8 = 4;
+
 // Add a constructed node to the arena as a child of `parent`, with an empty span, for the caller to link.
 fn push_node(nodes: &mut Vec<Node>, kind: EventKind<'static>, parent: NodeId) -> NodeId {
     let id = NodeId::new(nodes.len());
@@ -1936,16 +2626,8 @@ fn label_change(kind: &EventKind<'_>, source: &str, one_line: bool) -> Option<La
     }
     let resolve = |value| resolved(value, source);
     match kind {
-        EventKind::Start(
-            Tag::Link {
-                reference: Some(reference),
-                ..
-            }
-            | Tag::Image {
-                reference: Some(reference),
-                ..
-            },
-        ) => {
+        EventKind::Start(Tag::Link(target) | Tag::Image(target)) => {
+            let reference = target.reference()?;
             let label = resolve(&reference.label);
             let full = reference.kind == crate::ReferenceKind::Full;
             let normalized = normalized_label(label, one_line, full, false);
@@ -1976,29 +2658,56 @@ fn label_change(kind: &EventKind<'_>, source: &str, one_line: bool) -> Option<La
     }
 }
 
-// Apply `label_change` to `kind`.
-fn normalize_label(kind: &mut EventKind<'static>, source: &str, one_line: bool) {
-    let Some(change) = label_change(kind, source, one_line) else {
+// Apply `label_change` to node `id`. A reference that becomes a resource takes the destination
+// and title of the definition it is bound to in the tree under `root`, looked up with `lookup`
+// once the first such reference makes it, and `index`, that of the attached document.
+fn normalize_label(
+    nodes: &mut [Node],
+    index: &crate::bindings::Index,
+    root: NodeId,
+    id: NodeId,
+    lookup: &mut Option<crate::bindings::Lookup>,
+    source: &str,
+    one_line: bool,
+) {
+    let Some(change) = label_change(&nodes[id.index()].kind, source, one_line) else {
         return;
     };
-    match (kind, change) {
-        (
-            EventKind::Start(Tag::Link { reference, .. } | Tag::Image { reference, .. }),
-            LabelChange::Drop,
-        ) => *reference = None,
-        (
-            EventKind::Start(
-                Tag::Link {
-                    reference: Some(reference),
-                    ..
-                }
-                | Tag::Image {
-                    reference: Some(reference),
-                    ..
-                },
-            ),
-            LabelChange::Set(label),
-        ) => reference.label = Text::from(label),
+    // A reference whose label is dropped becomes a resource to where it leads.
+    let resource = match (&nodes[id.index()].kind, &change) {
+        (kind @ EventKind::Start(Tag::Link(_) | Tag::Image(_)), LabelChange::Drop) => {
+            let cx = crate::bindings::Context {
+                source,
+                nodes: &*nodes,
+                index,
+                root: NodeId::new(0),
+            };
+            let definition = lookup
+                .get_or_insert_with(|| crate::bindings::Lookup::new(cx, root))
+                .definition_of(cx, kind, &mut crate::bindings::Scratch::default())
+                .expect("normalizing leaves no unbound reference");
+            match &nodes[definition.index()].kind {
+                EventKind::Definition {
+                    destination, title, ..
+                } => Some(Target::Resource {
+                    destination: destination.clone(),
+                    title: title.clone(),
+                }),
+                _ => unreachable!("a binding is a definition"),
+            }
+        }
+        _ => None,
+    };
+    match (&mut nodes[id.index()].kind, change) {
+        (EventKind::Start(Tag::Link(target) | Tag::Image(target)), LabelChange::Drop) => {
+            *target = resource.expect("a dropped label leaves a resource");
+        }
+        (EventKind::Start(Tag::Link(target) | Tag::Image(target)), LabelChange::Set(label)) => {
+            match target {
+                Target::Reference(reference) => reference.label = Text::from(label),
+                _ => unreachable!("a document stores a reference by name"),
+            }
+        }
         (EventKind::Definition { label, .. }, LabelChange::Set(value)) => {
             *label = Text::from(value);
         }
@@ -2033,6 +2742,48 @@ fn space_line_endings(kind: &mut EventKind<'static>, source: &str) {
 fn break_to_space(node: &mut Node, cell: bool) {
     if cell && matches!(node.kind, EventKind::HardBreak) {
         node.kind = EventKind::Text(Text::Literal(" "));
+    }
+}
+
+// Scratch storage for normalizing, reused across trees so that normalizing allocates it once.
+#[derive(Default)]
+struct Scratch {
+    trailing: Trailing,
+    blocks: Vec<NodeId>,
+    copies: Copies,
+    // The lists made tight or loose.
+    lists: Vec<NodeId>,
+}
+
+// Scratch storage for removing copies: which nodes are copies and which containers hold one at
+// some depth, by index, and the indices set, which alone are cleared once a tree is done, so
+// that each tree costs what it touches, not the size of the arena.
+#[derive(Default)]
+struct Copies {
+    copy: Vec<bool>,
+    above: Vec<bool>,
+    // The containers a table at the end of a list or footnote definition was looked for through.
+    passed: Vec<bool>,
+    touched: Vec<usize>,
+    // The nodes of a copy still to be dismantled.
+    dismantled: Vec<NodeId>,
+}
+
+impl Copies {
+    fn reserve(&mut self, len: usize) {
+        if self.copy.len() < len {
+            self.copy.resize(len, false);
+            self.above.resize(len, false);
+            self.passed.resize(len, false);
+        }
+    }
+
+    fn clear(&mut self) {
+        for index in self.touched.drain(..) {
+            self.copy[index] = false;
+            self.above[index] = false;
+            self.passed[index] = false;
+        }
     }
 }
 
@@ -2325,43 +3076,76 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// Markdown cannot write whitespace at the edges of emphasis, strong or strikethrough, so it moves out: Unicode whitespace in text and soft breaks at either edge, and hard breaks at the end, move out through any attention nested at that edge to just before or after the outermost attention whose edge they are. Attention left empty is removed, and what moved out takes its place. A hard break at the start of attention stays, and links and images keep whitespace at their edges. The parser reads no break at the edges of a paragraph, heading or table cell, so soft breaks at either edge of its phrasing are removed, and so are hard breaks at the end of a paragraph or heading, including those that moved out of attention; a hard break at the start stays. Markdown cannot write a hard break in a table cell, so one there, at any depth and at its end too, becomes a space, which the serializer encodes where it is at the edge of the cell, so `| a&#x20; |` is written for a cell of `a` and a hard break.
     ///
-    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code or attention on either side is joined or merged too. A separator sits between blocks, where it stays and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. Inline HTML without a value writes nothing, so it is removed, before anything above, and what was on either side meets: text joins, attention merges, and attention or a paragraph it leaves empty is removed, so a link reference after it starts its paragraph and is escaped as such, `[r]\: /u` rather than `[r]: /u`, which reads back as a definition. Inline HTML of whitespace alone stays, as it can be written between text. An HTML block whose value is empty or holds only spaces, tabs and line endings is written as blank lines, as no HTML block starts with whitespace alone, and a list without items, not counting separators, is written as nothing, or as a lone `-` where it is the only block of an item, so each is removed with one separator beside it, like an empty paragraph, and also before anything above, so the rules below see the items they leave empty: an item of `p` and a list whose only item holds a list without items is written `- p`, where `- p\n  -` read back as a heading. The parser produces none of these. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. An empty item cannot interrupt a paragraph, and a `-` alone under one is a setext underline, so in an item of a tight list, where no blank line can come between them, a list directly after a paragraph, not counting separators, cannot start with an empty item, one with no blocks once its empty paragraphs are removed: such a list's leading empty items are removed, as each next one becomes the first, so items of `p` and a list of an empty item and `a` are written `- p\n  - a`, where `- p\n  -` read back as a heading. Later empty items stay. A list left with no item is removed with one separator beside it, the one after it if there is one, and a list after it then follows the paragraph in turn. Only an ordered list that starts at 1 can interrupt a paragraph, so in an item of a tight list, an ordered list directly after a paragraph, not counting separators, that starts at another number, including one whose leading empty items were removed, is made to start at 1: `- p\n  3. a` reads back as text, so it is written `- p\n  1. a`. Its items and text stay; only its numbering changes. In an item of a tight list, two paragraphs in a row, not counting separators, cannot be written either, as the blank line between them would make the list loose, so once the rules above have run, each run of them is joined into its first paragraph, with a soft break between each, and the separators between them are removed: a tight list has no `<p>`, so this renders almost the same, and items of `a` and `b` are written `- a\n  b`. Some blocks in a row in an item of a tight list can be written apart only with a blank line between them, which makes the list loose, and the serializer decides which with the same rule: two block quotes, which would otherwise read back as one; a link reference definition or a heading that only a setext heading can write, as it holds a soft or hard break, after a paragraph, which neither can interrupt; and a paragraph, table, link reference definition or such a heading after a list or footnote definition that ends in a paragraph or link reference definition, through the last blocks of any containers in it, which would otherwise continue it lazily, or after a block quote whose last block is such a list or definition, where the line of `>` that would end the quote's paragraph is a blank line in that list or definition. Such a list is made loose, with the paragraphs of all its items, and its paragraphs in a row are then left apart. Any other heading there is written as an ATX heading, which interrupts a paragraph and ends the containers around it, with a line ending in its text written as `&#xA;`, so it leaves the list tight, as a parsed heading there always does; the serializer's options are not known here, so a heading with a soft break makes the list loose even when unwrapping would write it as a space. A block after a list that does not end in a paragraph or definition, such as one whose last item is empty or a heading, is written on the next line, a table after a paragraph interrupts it, and a block after a block quote that ends in a paragraph in any other way is written after a line of `>`, so these stay in a tight list. A task item's checkbox is written before its first block other than definitions and separators, and the parser keeps the space or tab that separates the checkbox from its text at the start of that text. Markdown cannot write a checkbox with nothing after its separator, so when that paragraph is only breaks and at most one text that is a single space or tab, the item stops being a task item, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a checkbox alone, or of a checkbox and a hard break, is left empty, and removed if it starts a list after a paragraph as above, and one of a checkbox and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the checkbox keeps it, including whitespace after the separator, which the serializer encodes, so a checkbox and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. Once the rules above have run, a task item whose first block other than definitions and separators is not a paragraph, or whose paragraph would write nothing after the checkbox, stops being a task item, and the paragraph of any other gets a space at its start when it does not start with a space, a tab or a soft break, as the serializer writes the checkbox's separator there and the parser reads it back as text. The parser reads each line ending in inline code as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. This holds in image text too, which is written as phrasing, like link text. The parser stores each line ending in a code block as LF, and the last line of a closed fence with its line ending, so in the value of such a block each CRLF and lone CR becomes LF, and a value that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty value stays, as `` ```\n``` `` reads back as one. The last node of the document, attached, keeps a value without a final line ending, as the parser stores one for an unclosed fence or indented code that ends the source without a line ending, such as `` ```\na ``, so normalizing a parsed document leaves it as it is. The parser stores each line of frontmatter with its line ending, as LF, too, so in the root's frontmatter each CRLF and lone CR becomes LF, and a body that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty body stays, as `---\n---` reads back as one. A label of a link, image, definition or footnote call is written as it is, so it is given the shape that reads back wherever it is written with the default parse options: a line of it after the first that would start a block there, such as `# b`, `> b`, a fence, a list item or an HTML block, which a parser with that construct turned off reads as part of the label, or whose leading tabs would start one at some columns and not at others, or that could be a table's delimiter row under whatever line is written before it, has its leading whitespace written as four spaces, which starts none; a label longer than the parser reads at some column, counting each tab as four, has its other tabs written as one space each. An ATX heading or table cell cannot hold a line ending, so in a label there each run of whitespace that holds one becomes one space. A link or image whose label is still longer than a full reference's can be at some column cannot be written as a reference, so it becomes a resource, with its destination and title, which renders the same, and such a footnote call loses its label and is written as its identifier when that fits. Other lines are left as they are, so a parsed label changes only where one of these holds, such as a line `|-|` under a head of another number of cells, which a head of the right number, written before the label, would make a table. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
+    /// Children that meet where a node was removed, moved, unwrapped or merged are normalized in turn, so text, code or attention on either side is joined or merged too. A separator sits between blocks, where it stays and is skipped when looking for an adjacent child. A paragraph with no children left, such as one of breaks alone, cannot be written, so it is removed with one separator beside it, the one after it if there is one, as the blocks around it render the same without it. Inline HTML without a value writes nothing, so it is removed, before anything above, and what was on either side meets: text joins, attention merges, and attention or a paragraph it leaves empty is removed, so a link reference after it starts its paragraph and is escaped as such, `[r]\: /u` rather than `[r]: /u`, which reads back as a definition. Inline HTML of whitespace alone stays, as it can be written between text. An HTML block whose value is empty or holds only spaces, tabs and line endings is written as blank lines, as no HTML block starts with whitespace alone, and a list without items, not counting separators, is written as nothing, or as a lone `-` where it is the only block of an item, so each is removed with one separator beside it, like an empty paragraph, and also before anything above, so the rules below see the items they leave empty: an item of `p` and a list whose only item holds a list without items is written `- p`, where `- p\n  -` read back as a heading. The parser produces none of these. A loose list whose only item is left with fewer than two blocks, not counting separators, cannot be written loose, as no blank line can be written between its items or its item's blocks, so it is made tight, which changes only how that item's paragraph renders; a lone item with two blocks or more is written with a blank line between them instead, and a list with other items is written with blank lines between them. An empty item cannot interrupt a paragraph, and a `-` alone under one is a setext underline, so in an item of a tight list, where no blank line can come between them, a list directly after a paragraph, not counting separators, cannot start with an empty item, one with no blocks once its empty paragraphs are removed: such a list's leading empty items are removed, as each next one becomes the first, so items of `p` and a list of an empty item and `a` are written `- p\n  - a`, where `- p\n  -` read back as a heading. Later empty items stay. A list left with no item is removed with one separator beside it, the one after it if there is one, and a list after it then follows the paragraph in turn. Only an ordered list that starts at 1 can interrupt a paragraph, so in an item of a tight list, an ordered list directly after a paragraph, not counting separators, that starts at another number, including one whose leading empty items were removed, is made to start at 1: `- p\n  3. a` reads back as text, so it is written `- p\n  1. a`. Its items and text stay; only its numbering changes. In an item of a tight list, two paragraphs in a row, not counting separators, cannot be written either, as the blank line between them would make the list loose, so once the rules above have run, each run of them is joined into its first paragraph, with a soft break between each, and the separators between them are removed: a tight list has no `<p>`, so this renders almost the same, and items of `a` and `b` are written `- a\n  b`. Some blocks in a row in an item of a tight list can be written apart only with a blank line between them, which makes the list loose, and the serializer decides which with the same rule: two block quotes, which would otherwise read back as one; a link reference definition or a heading that only a setext heading can write, as it holds a soft or hard break, after a paragraph, which neither can interrupt, and a paragraph, link reference definition or such a heading after a table, whose rows it would be read as, which the parser never gives but a definition hoisted out of a copy can be; and a paragraph, table, link reference definition or such a heading after a list or footnote definition that ends in a paragraph or link reference definition, through the last blocks of any containers in it, which would otherwise continue it lazily, or after a block quote whose last block is such a list or definition, where the line of `>` that would end the quote's paragraph is a blank line in that list or definition. Such a list is made loose, with the paragraphs of all its items, and its paragraphs in a row are then left apart. Any other heading there is written as an ATX heading, which interrupts a paragraph and ends the containers around it, with a line ending in its text written as `&#xA;`, so it leaves the list tight, as a parsed heading there always does; the serializer's options are not known here, so a heading with a soft break makes the list loose even when unwrapping would write it as a space. A block after a list that does not end in a paragraph or definition, such as one whose last item is empty or a heading, is written on the next line, a table after a paragraph interrupts it, and a block after a block quote that ends in a paragraph in any other way is written after a line of `>`, so these stay in a tight list. A task item's checkbox is written before its first block other than definitions and separators, and the parser keeps the space or tab that separates the checkbox from its text at the start of that text. Markdown cannot write a checkbox with nothing after its separator, so when that paragraph is only breaks and at most one text that is a single space or tab, the item stops being a task item, and the rules above apply to what is left: its breaks are removed, the separator stays as text, and a paragraph left empty is removed. So an item of a checkbox alone, or of a checkbox and a hard break, is left empty, and removed if it starts a list after a paragraph as above, and one of a checkbox and text ` ` keeps the space, which is written `- &#x20;`. Attention holding only whitespace and breaks has none left by then, as they move out of it. Anything else after the checkbox keeps it, including whitespace after the separator, which the serializer encodes, so a checkbox and text `  ` is written `- [ ] &#x20;`, and only trailing breaks are removed. Once the rules above have run, a task item whose first block other than definitions and separators is not a paragraph, or whose paragraph would write nothing after the checkbox, stops being a task item, and the paragraph of any other gets a space at its start when it does not start with a space, a tab or a soft break, as the serializer writes the checkbox's separator there and the parser reads it back as text. The parser reads each line ending in inline code as a space, so a value that holds one cannot be written: each CRLF, lone CR and LF in it becomes one space, as the parser would read it. This holds in image text too, which is written as phrasing, like link text. The parser stores each line ending in a code block as LF, and the last line of a closed fence with its line ending, so in the value of such a block each CRLF and lone CR becomes LF, and a value that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty value stays, as `` ```\n``` `` reads back as one. The last node of the document, attached, keeps a value without a final line ending, as the parser stores one for an unclosed fence or indented code that ends the source without a line ending, such as `` ```\na ``, so normalizing a parsed document leaves it as it is. The parser stores each line of frontmatter with its line ending, as LF, too, so in the root's frontmatter each CRLF and lone CR becomes LF, and a body that is not empty and has no final line ending gets LF added: `a` becomes `a\n`. An empty body stays, as `---\n---` reads back as one. A label of a link, image, definition or footnote call is written as it is, so it is given the shape that reads back wherever it is written with the default parse options: a line of it after the first that would start a block there, such as `# b`, `> b`, a fence, a list item or an HTML block, which a parser with that construct turned off reads as part of the label, or whose leading tabs would start one at some columns and not at others, or that could be a table's delimiter row under whatever line is written before it, has its leading whitespace written as four spaces, which starts none; a label longer than the parser reads at some column, counting each tab as four, has its other tabs written as one space each. An ATX heading or table cell cannot hold a line ending, so in a label there each run of whitespace that holds one becomes one space. A link or image whose label is still longer than a full reference's can be at some column cannot be written as a reference, so it becomes a resource, with the destination and title of the definition it is bound to, which renders the same, and such a footnote call loses its label and is written as its identifier when that fits. Other lines are left as they are, so a parsed label changes only where one of these holds, such as a line `|-|` under a head of another number of cells, which a head of the right number, written before the label, would make a table. Nothing else changes: text keeps its value, as whitespace that moves out of attention is split off whole and keeps its characters, and the serializer encodes whitespace at the edges of a block, which the parser would otherwise trim. Detached subtrees are normalized too, though the root of a detached subtree is never removed or unwrapped, and a detached root that is attention keeps whitespace at its own edges.
+    ///
+    /// A reference is a name, and leads where the first definition of its label in document order does, so being normalized is a property of the whole document, not of each node: removing or relabelling a definition anywhere can leave references elsewhere unbound. A reference that no link reference definition in its tree binds, the document for an attached node and its own detached subtree for a detached one, reads back as text, so before anything above it becomes that text: the reference keeps its ID, as text of its opening bracket, `[`, or `![` for an image, followed by its children and then new text of `]`, `][]` or `][` with its label and `]` after, for a shortcut, collapsed or full reference, with the label's character escapes and references decoded and each run of whitespace in it that holds a line ending written as one space, as the text around it is then normalized with it. A footnote call that no footnote definition in its tree binds becomes text of `[^`, its label, or its identifier without one, decoded the same way, and `]`, with its ID. The root of a detached subtree stays, like any other node there. So `[b][x]` without a definition of `x` becomes text `[b][x]`, which the serializer writes `\[b]\[x]`. A tree may hold copies of a binding, later definitions or footnote definitions of a label or identifier, which a parsed, built or loaded document may have and no edit adds; they bind nothing and render nothing, so each is removed, before anything above, and each tree then defines each label once. Each place a copy leaves, or a definition hoisted out of one fills, is given the separators the parser puts there between the blocks then beside it, or at the end of the document, so that the output reads back as the tree, unless those already there could not be the parser's, as an edit leaves them; and an item above it keeps the spread it had, which is otherwise read from the source between its blocks, where the copy's lines would count as blank. A footnote definition binds its identifier when it is the first to end, so of one nested in another of its identifier, the nested one binds and the other is the copy. A definition or footnote definition in a footnote definition that is a copy, which is not a copy itself, binds its own label, so it takes the place of the copy, where it stays in document order, with what it holds, the copies in which go in turn. Everything else a copy holds goes with it, as removed nodes do. This is one pass from the root in document order, so the result depends on the tree alone, and it takes time linear in the copies, the containers above them and their children, and what the copies hold, however deeply copies nest in copies. The root of a detached subtree is never a copy, as it comes first in its tree, so a footnote definition detached from a copy of itself stays and loses the copy it holds. The HTML stays the same, with five exceptions: where copies leave the only item of a loose list with fewer than two blocks, which the rule above then makes tight; where a footnote definition that is a copy holds footnote calls, which the renderer counts, numbering footnotes by their first call in document order, though it shows nothing of the copy, so footnote numbering, anchors and entries then follow only the visible calls (#225): a call's number and the id of its anchor can change, as `fnref-x-3` becomes `fnref-x-2`, the entries can change order, their back references to calls that are not in the output go, and a footnote called only there loses its entry; and where a copy was the only block of an item that starts a list directly after a paragraph in an item of a tight list, which is then empty and removed by the rule below, as `- p\n  -` reads back as a heading; and where removing a copy, or hoisting a definition out of one, leaves blocks in an item of a tight list that cannot be written as they are, which get the same treatment as after any edit, as the rules below decide: two paragraphs in a row are joined with a soft break, an ordered list directly after a paragraph is made to start at 1, as `- p\n  [^a]: y\n  2. q\n` with an earlier `[^a]` normalizes to `- p\n  1. q\n`, and otherwise, such as for a definition after a paragraph, the list is made loose; and a line ending where a copy after a list, or at the end of the document, goes or a definition hoisted out of one lands, which the parser puts, or does not put, between the list and what is then written after it, or at the end of the output, as `- [c]: /6\n\n[c]: /6\n` renders `<ul>\n<li></li>\n</ul>` but normalizes to `- [c]: /6\n`, which renders a line ending after the list.
     ///
     /// Call this before serializing a parsed or edited tree to Markdown: the serializer assumes normalized input, and writes other trees without panicking, but possibly incorrectly or unstably. [`Document::parse`] does not normalize, because joining text across a backslash escape or character reference would copy it out of the source: parsed text is split there, adjacent attention of the same kind, such as `*a*_b_`, stays separate, and strikethrough inside strikethrough, such as `~a~~b~~c~`, stays nested. Serializing a parsed document without normalizing it usually gives the same output; [`crate::normalize_markdown`] normalizes before serializing.
     ///
-    /// The IDs of removed text, HTML, breaks, attention, links, paragraphs, items, lists, tables, table heads and bodies, and separators, joined text, code and paragraphs, merged attention and unwrapped strikethrough and links no longer refer to nodes in the tree. Their arena slots remain, detached, but their contents are unspecified. Whitespace split off the edge of a text node is a new node with an empty span, and the text node keeps its ID and span with the rest of its value. The soft break between joined paragraphs is a new node with an empty span too, and the first paragraph keeps its ID, and so are the cells, heads, bodies and separators added to a table, and the space added before a task item's text. A table's rows and cells keep their IDs. Whitespace and breaks that move whole, and a hard break that becomes a space, keep their IDs, code whose line endings become spaces keeps its ID and span, and so does a code block whose value is rewritten. Other IDs stay valid.
+    /// The IDs of removed text, HTML, breaks, attention, links, paragraphs, items, lists, tables, table heads and bodies, separators, and copies, with everything a copy holds other than the definitions and footnote definitions taken out of it, joined text, code and paragraphs, merged attention and unwrapped strikethrough and links no longer refer to nodes in the tree. Their arena slots remain, detached, but their contents are unspecified. Whitespace split off the edge of a text node is a new node with an empty span, and the text node keeps its ID and span with the rest of its value. The soft break between joined paragraphs is a new node with an empty span too, and the first paragraph keeps its ID, and so are the cells, heads, bodies and separators added to a table, and the space added before a task item's text. A table's rows and cells keep their IDs. An unbound reference keeps its ID and span as the text of its opening bracket, and an unbound footnote call as its text, unless joined into text before them, and the text after a reference's children is a new node with an empty span. Whitespace and breaks that move whole, and a hard break that becomes a space, keep their IDs, code whose line endings become spaces keeps its ID and span, and so does a code block whose value is rewritten. Other IDs stay valid.
     pub fn normalize(&mut self) {
-        let mut scratch = Trailing::default();
-        let mut blocks = Vec::new();
+        let mut scratch = Scratch::default();
         for index in 0..self.nodes.len() {
-            if self.nodes[index].parent.is_none() {
-                self.unwrap_links(NodeId::new(index));
-                self.remove_subtree(NodeId::new(index), &mut blocks);
-                self.normalize_subtree(NodeId::new(index), &mut scratch);
-                self.remove_empty_paragraphs(NodeId::new(index), &mut blocks);
-                self.join_tight_items(NodeId::new(index));
-                self.settle_tasks(NodeId::new(index));
+            if self.nodes[index].parent.is_some() {
+                continue;
             }
+            self.normalize_tree(NodeId::new(index), !self.settled, &mut scratch);
         }
         self.space_line_endings();
+        self.attached = attached_nodes(&self.nodes, self.root());
         let source = self.source.as_ref();
         write_frontmatter_value(&mut self.nodes[0].kind, source);
+        // What normalizing leaves of a tree binds its references, and what it removes holds none.
+        self.settled = true;
+    }
+
+    // Normalize the tree under `root`, making each reference in it that its tree does not bind
+    // text when `unbind` holds.
+    fn normalize_tree(&mut self, root: NodeId, unbind: bool, scratch: &mut Scratch) {
+        let end = self.drop_copies(root, &mut scratch.copies);
+        // What a tree binds is what it keeps of its definitions, the first of each key, so its
+        // references are looked up once its copies are gone, and only in what it keeps.
+        if unbind {
+            self.unbind(root);
+        }
+        self.unwrap_links(root);
+        self.remove_subtree(root, &mut scratch.blocks);
+        self.normalize_subtree(root, &mut scratch.trailing);
+        self.remove_empty_paragraphs(root, &mut scratch.blocks, &mut scratch.lists);
+        self.join_tight_items(root, &mut scratch.lists);
+        self.settle_list_tables(root, &mut scratch.lists);
+        self.settle_tasks(root);
+        // The last leaf is only known once the rules above have run.
+        if let Some(parsed) = end {
+            self.settle_final_separator(parsed);
+        }
     }
 
     // Replace each line ending in inline code with a space, give code block values the line endings the parser stores, and give labels the shape that reads back wherever they are written, in every subtree, attached or detached, once its child lists are normalized.
     fn space_line_endings(&mut self) {
         let source = self.source.as_ref();
-        let nodes = &mut self.nodes;
+        let (nodes, definitions) = (&mut self.nodes, &self.index);
         for index in 0..nodes.len() {
             if nodes[index].parent.is_some() {
                 continue;
             }
             let root = NodeId::new(index);
+            // Only a reference whose label is dropped looks up its binding, so the tree's
+            // lookup is made at the first one.
+            let mut lookup = None;
             let mut enclosing = Enclosing::default();
             let mut current = Some(root);
             while let Some(id) = current {
                 space_line_endings(&mut nodes[id.index()].kind, source);
-                normalize_label(&mut nodes[id.index()].kind, source, enclosing.one_line());
+                normalize_label(
+                    nodes,
+                    definitions,
+                    root,
+                    id,
+                    &mut lookup,
+                    source,
+                    enclosing.one_line(),
+                );
                 current = next_enclosed(nodes, root, id, &mut enclosing);
                 let last = current.is_none() && index == 0;
                 write_block_value(&mut nodes[id.index()].kind, source, last);
@@ -2369,8 +3153,9 @@ impl<S: AsRef<str>> Document<S> {
         }
     }
 
-    /// Whether [`Document::normalize`] would change nothing: no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent attention of the same kind, HTML without a value in phrasing, or, outside phrasing, an HTML block that is empty or holds only spaces, tabs and line endings, a list without items, not counting separators, or a table without a cell; no strikethrough is inside other strikethrough; no link is inside another link's text unless it is written as an autolink; no table with a cell has another shape than the one the parser gives a table; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, or ends with a hard break; no task item's checkbox is written before anything but a paragraph that starts with its separator and writes something after it; no inline code has a line ending in its value; no label of a link, image, definition or footnote call has a line whose leading tabs start a block at some columns only, a tab where it is longer than the parser reads at some column, or a line ending in an ATX heading or table cell, and no shortcut or collapsed reference has a label longer than a full reference's can be at some column; neither the root's frontmatter nor any code block has a carriage return in its value, the frontmatter has no value that is not empty and has no final line ending, nor has any code block unless it is the last node of the document; no attached paragraph is empty; no loose list has only one item with fewer than two blocks; no item of a tight list holds a list that starts with an empty item, or an ordered list that starts at a number other than 1, directly after a paragraph; and no item of a tight list holds two blocks in a row, not counting separators, that can be written apart only with a blank line between them, as [`Document::normalize`] lists, or two paragraphs in a row. This takes time linear in the size of the arena.
+    /// Whether [`Document::normalize`] would change nothing: no reference or footnote call, other than the root of a detached subtree, is unbound in its tree, which depends on the definitions anywhere in that tree; no tree holds two definitions, or two footnote definitions, of one label or identifier; no child list, attached or detached, has empty text, attention without children, adjacent text, adjacent inline code where the second has no language, adjacent attention of the same kind, HTML without a value in phrasing, or, outside phrasing, an HTML block that is empty or holds only spaces, tabs and line endings, a list without items, not counting separators, or a table without a cell; no strikethrough is inside other strikethrough; no link is inside another link's text unless it is written as an autolink; no table with a cell has another shape than the one the parser gives a table; no hard break is inside a table cell; no attached emphasis, strong or strikethrough starts or ends with whitespace or a soft break, or ends with a hard break; no paragraph, heading or table cell starts or ends with a soft break, or ends with a hard break; no task item's checkbox is written before anything but a paragraph that starts with its separator and writes something after it; no inline code has a line ending in its value; no label of a link, image, definition or footnote call has a line whose leading tabs start a block at some columns only, a tab where it is longer than the parser reads at some column, or a line ending in an ATX heading or table cell, and no shortcut or collapsed reference has a label longer than a full reference's can be at some column; neither the root's frontmatter nor any code block has a carriage return in its value, the frontmatter has no value that is not empty and has no final line ending, nor has any code block unless it is the last node of the document; no attached paragraph is empty; no loose list has only one item with fewer than two blocks; no item of a tight list holds a list that starts with an empty item, or an ordered list that starts at a number other than 1, directly after a paragraph; and no item of a tight list holds two blocks in a row, not counting separators, that can be written apart only with a blank line between them, as [`Document::normalize`] lists, or two paragraphs in a row. This takes time linear in the size of the arena.
     pub fn is_normalized(&self) -> bool {
+        let cx = self.context();
         let source = self.source.as_ref();
         let nodes = &self.nodes;
         if self
@@ -2383,6 +3168,17 @@ impl<S: AsRef<str>> Document<S> {
             .filter(|&index| nodes[index].parent.is_none())
             .all(|index| {
                 let root = NodeId::new(index);
+                // Each label is defined once.
+                if root == self.root() {
+                    if self.index.has_copies() {
+                        return false;
+                    }
+                } else if !crate::bindings::Table::copies(source, nodes, root).is_empty() {
+                    return false;
+                }
+                // Made at the first reference or footnote call, as a tree may have none.
+                let mut lookup = None;
+                let mut scratch = crate::bindings::Scratch::default();
                 let mut enclosing = Enclosing::default();
                 let mut current = Some(root);
                 // The paragraph of the task item last met, as in `normalize_subtree`.
@@ -2403,7 +3199,13 @@ impl<S: AsRef<str>> Document<S> {
                             _ => return false,
                         }
                     }
-                    if unwrapped(&self.syntax, source, nodes, id, enclosing)
+                    if (!self.settled
+                        && id != root
+                        && names(&node.kind)
+                        && lookup
+                            .get_or_insert_with(|| crate::bindings::Lookup::new(cx, root))
+                            .unbound(cx, &node.kind, &mut scratch))
+                        || unwrapped(&self.syntax, source, nodes, id, enclosing)
                         || (enclosing.cells > 0 && matches!(node.kind, EventKind::HardBreak))
                         || line_ending_in_code(&node.kind, source)
                         || !label_normalized(&node.kind, source, enclosing.one_line())
@@ -2598,11 +3400,16 @@ impl<S: AsRef<str>> Document<S> {
     }
 
     // Remove each paragraph without children, which is left once its phrasing is removed or its breaks are, from the top down, as removing one empties nothing else. A loose list that reads back tight once they are gone is made tight first. `kept` is scratch storage for the children kept so far in a list.
-    fn remove_empty_paragraphs(&mut self, root: NodeId, kept: &mut Vec<NodeId>) {
+    fn remove_empty_paragraphs(
+        &mut self,
+        root: NodeId,
+        kept: &mut Vec<NodeId>,
+        lists: &mut Vec<NodeId>,
+    ) {
         let mut current = Some(root);
         while let Some(id) = current {
             if reads_back_tight(&self.nodes, &self.nodes[id.index()]) {
-                self.set_tight(id, true);
+                self.set_tight(id, true, lists);
             }
             if self.nodes[id.index()].first_child.is_some() {
                 self.remove_empty_children(id, kept, |_, node, _| empty_paragraph(node));
@@ -2658,7 +3465,7 @@ impl<S: AsRef<str>> Document<S> {
     }
 
     // Once the rules above have run, make each tight list loose that has an item with two blocks in a row, not counting separators, that can be written apart only in a loose list, and in each other tight list join each run of paragraphs in a row in an item, not counting separators, into its first paragraph, with a soft break between each. Removing empty paragraphs and lists can leave paragraphs in a row, and a block quote that ends in a list in a paragraph only once those rules have run in it, so this is a pass of its own. Making a list loose and joining paragraphs change no block before or after them, so a list visited later is decided the same.
-    fn join_tight_items(&mut self, root: NodeId) {
+    fn join_tight_items(&mut self, root: NodeId, lists: &mut Vec<NodeId>) {
         let mut current = Some(root);
         while let Some(id) = current {
             if matches!(
@@ -2671,7 +3478,7 @@ impl<S: AsRef<str>> Document<S> {
                     })
                 };
                 if items().any(|item| loosens(self, item)) {
-                    self.set_tight(id, false);
+                    self.set_tight(id, false, lists);
                 } else {
                     let mut item = self.nodes[id.index()].first_child;
                     while let Some(item_id) = item {
@@ -2816,26 +3623,41 @@ impl<S: AsRef<str>> Document<S> {
         nodes[list.index()].first_child = current;
     }
 
-    // Make `list` tight or loose, with the paragraphs of its items, which are its only paragraphs that render differently.
-    fn set_tight(&mut self, list: NodeId, tight: bool) {
+    // Make `list` tight or loose, with the paragraphs of its items, which are its only paragraphs that render differently, and push it to `lists`. A separator after a paragraph made tight is removed, as the parser puts none there, and one is added after a paragraph made loose that a block follows, as the parser puts one there.
+    fn set_tight(&mut self, list: NodeId, tight: bool, lists: &mut Vec<NodeId>) {
         let EventKind::Start(Tag::List { start, .. }) = self.nodes[list.index()].kind else {
             unreachable!("only a list is made tight or loose");
         };
         self.nodes[list.index()].kind = EventKind::Start(Tag::List { start, tight });
+        lists.push(list);
         let mut item = self.nodes[list.index()].first_child;
-        while let Some(id) = item {
-            let mut child = self.nodes[id.index()].first_child;
+        while let Some(item_id) = item {
+            let mut child = self.nodes[item_id.index()].first_child;
             while let Some(id) = child {
                 if matches!(
                     self.nodes[id.index()].kind,
                     EventKind::Start(Tag::Paragraph { .. })
                 ) {
                     self.nodes[id.index()].kind = EventKind::Start(Tag::Paragraph { tight });
+                    // The parser puts no separator after a tight paragraph, so one after a
+                    // paragraph made tight goes, as it would render a line ending of its own, and
+                    // one after a loose paragraph that a block follows.
+                    let next = self.nodes[id.index()].next_sibling;
+                    if tight && separator(&self.nodes, next) {
+                        let gone = next.expect("a separator follows");
+                        self.nodes[id.index()].next_sibling =
+                            self.nodes[gone.index()].next_sibling.take();
+                        self.nodes[gone.index()].parent = None;
+                    } else if !tight && next.is_some() && !separator(&self.nodes, next) {
+                        let added = self.new_separator(item_id, "\n", false);
+                        self.nodes[added.index()].next_sibling = next;
+                        self.nodes[id.index()].next_sibling = Some(added);
+                    }
                 }
                 child = self.nodes[id.index()].next_sibling;
             }
-            self.refresh_item(Some(id));
-            item = self.nodes[id.index()].next_sibling;
+            self.refresh_item(Some(item_id));
+            item = self.nodes[item_id.index()].next_sibling;
         }
     }
 
@@ -2954,6 +3776,684 @@ impl<S: AsRef<str>> Document<S> {
                 }
             }
             current = next_enclosed(&self.nodes, root, id, &mut enclosing);
+        }
+    }
+
+    // Replace each reference and footnote call in the tree under `root`, other than `root` itself,
+    // that no definition in that tree binds with the text it reads back as: a reference keeps its
+    // ID, as text of its opening bracket, followed by its children and then new text of what
+    // follows them, and a footnote call becomes text, with its ID too. One pass finds them and
+    // another replaces, so this takes time linear in the size of the tree.
+    fn unbind(&mut self, root: NodeId) {
+        let cx = self.context();
+        let nodes = &self.nodes;
+        // Made at the first reference or footnote call, as a tree may have none.
+        let mut lookup = None;
+        let mut scratch = crate::bindings::Scratch::default();
+        let mut unbound = Vec::new();
+        let mut current = next_descendant(nodes, root, root);
+        while let Some(id) = current {
+            let kind = &nodes[id.index()].kind;
+            if names(kind)
+                && lookup
+                    .get_or_insert_with(|| crate::bindings::Lookup::new(cx, root))
+                    .unbound(cx, kind, &mut scratch)
+            {
+                unbound.push(id);
+            }
+            current = next_descendant(nodes, root, id);
+        }
+        for id in unbound {
+            self.unbind_node(id);
+        }
+    }
+
+    // Remove each definition and footnote definition of the tree under `root` that is a copy, one
+    // after the first of its label or identifier there, which binds nothing and renders nothing.
+    // Each place a copy goes from, or a definition moves into, is given the separators the
+    // parser puts there, so that the output reads back as the tree, and the end of the document
+    // once normalizing is done, which can add or remove a line ending in the HTML (exception 5
+    // of `normalize`). A definition or footnote definition in a footnote definition that is a copy,
+    // which is not a copy itself, binds, so it takes the place of the copy, in document order,
+    // with what it holds. An item above a copy keeps the spread it has, which is inferred from
+    // the source between its blocks, where a removed copy's lines would read as blank.
+    //
+    // One pass from the root, in document order, rebuilds the child list of each container that
+    // holds a copy, once, and of each container of a copy that a definition leaves, so the result
+    // depends on the tree alone. The copies are found in the index or one walk of the tree, and
+    // what binds in each copy in a walk of the copy, which then dismantles what is left of it, so
+    // this takes time linear in the copies, the containers above them and their children, and
+    // what the copies hold.
+    fn drop_copies(&mut self, root: NodeId, scratch: &mut Copies) -> Option<bool> {
+        let attached = root == self.root();
+        // Every copy is removed below, so the index can lose them all at once.
+        let copies = if attached {
+            self.index.take_copies()
+        } else {
+            crate::bindings::Table::copies(self.source.as_ref(), &self.nodes, root)
+        };
+        if copies.is_empty() {
+            return None;
+        }
+        scratch.reserve(self.nodes.len());
+        let Copies {
+            copy,
+            // The containers that hold a copy at some depth.
+            above,
+            passed,
+            touched,
+            dismantled,
+        } = &mut *scratch;
+        for &id in &copies {
+            copy[id.index()] = true;
+            touched.push(id.index());
+            let mut at = self.nodes[id.index()].parent;
+            while let Some(parent) = at {
+                if core::mem::replace(&mut above[parent.index()], true) {
+                    break;
+                }
+                touched.push(parent.index());
+                at = self.nodes[parent.index()].parent;
+            }
+        }
+        debug_assert!(!copy[root.index()], "a tree's root is the first of its key");
+        let mut kept = Vec::new();
+        let mut moved = Vec::new();
+        let mut marks = Vec::new();
+        let mut settled = Vec::new();
+        let mut tails = Vec::new();
+        let mut pending = vec![root];
+        // The container whose last block ends the document, through block quotes, lists and
+        // items, as the parser picks the separator that ends it, and whether a copy went from
+        // the end of one of them.
+        let mut end_chain = attached.then_some(root);
+        let mut ends_changed = false;
+        // Whether the separators at the end of the document could be the parser's.
+        let mut end_parsed = true;
+        while let Some(parent) = pending.pop() {
+            kept.clear();
+            // The item's blocks change below, so its spread is pinned first, as its descendants
+            // are only changed after it.
+            if matches!(
+                self.nodes[parent.index()].kind,
+                EventKind::Start(Tag::Item { .. })
+            ) && !self.syntax.contains_key(&parent)
+            {
+                let spread = self.inferred_spread(parent);
+                self.syntax
+                    .insert(parent, Some(NodeSyntax::ListItem { spread }));
+            }
+            // Whether a copy went or a node moved in just before each node kept, and after the
+            // last.
+            marks.clear();
+            let mut changed = false;
+            // Whether the last node was a copy.
+            let mut after = false;
+            let mut current = self.nodes[parent.index()].first_child;
+            while let Some(id) = current {
+                current = self.nodes[id.index()].next_sibling.take();
+                if !copy[id.index()] {
+                    let after_copy = after && separator(&self.nodes, Some(id));
+                    kept.push(id);
+                    marks.push(
+                        if core::mem::take(&mut changed) {
+                            CHANGED
+                        } else {
+                            0
+                        } | if after_copy { AFTER_COPY } else { 0 },
+                    );
+                    after = false;
+                    continue;
+                }
+                changed = true;
+                after = true;
+                self.nodes[id.index()].parent = None;
+                // What a copy holds that binds stays, and the rest of it goes.
+                self.bound_in_copy(id, copy, &mut moved);
+                self.dismantle(id, dismantled);
+                for &inner in &moved {
+                    self.nodes[inner.index()].parent = Some(parent);
+                    kept.push(inner);
+                    marks.push(CHANGED | MOVED);
+                }
+                after &= moved.is_empty();
+                moved.clear();
+            }
+            // The arena grows only below, so the marks cover every node kept.
+            pending.extend(kept.iter().rev().filter(|id| above[id.index()]));
+            let document_end = Some(parent) == end_chain;
+            let (end, parsed) =
+                self.settle_separators(parent, &mut kept, &marks, changed, &mut settled);
+            core::mem::swap(&mut kept, &mut settled);
+            if parent == root && attached {
+                end_parsed = parsed;
+            }
+            if document_end {
+                ends_changed |= end;
+                end_chain = kept
+                    .iter()
+                    .rev()
+                    .find(|&&id| !separator(&self.nodes, Some(id)))
+                    .copied()
+                    .filter(|&id| {
+                        matches!(
+                            self.nodes[id.index()].kind,
+                            EventKind::Start(Tag::BlockQuote | Tag::List { .. } | Tag::Item { .. })
+                        )
+                    });
+            }
+            // No rendering hint changes: a paragraph's context is its parent and theirs, which
+            // stay for each node kept, and an item's ending is its last child other than a
+            // definition, a footnote definition or a separator, which are all that go or move.
+            self.set_children(parent, &kept);
+            tails.extend_from_slice(&kept);
+        }
+        // What follows a list or footnote definition kept above may have changed, so the
+        // separator after a table that ends it, in an item, is settled again, once the arena
+        // the marks cover is no longer read.
+        if passed.len() < self.nodes.len() {
+            passed.resize(self.nodes.len(), false);
+        }
+        for &id in &tails {
+            self.settle_table_tail(id, passed, touched);
+        }
+        scratch.clear();
+        ends_changed.then_some(end_parsed)
+    }
+
+    // Give each place in `kept`, the children of `parent`, where a copy went or a node moved in
+    // the separators the parser puts there, into `settled`, so that the written blocks read
+    // back as they are. `marks` marks each node kept with `CHANGED` when such a place is just
+    // before it, `AFTER_COPY` when it is a separator that came just after a copy and `MOVED`
+    // when it moved in from a copy, and `tail` says whether a place is after the last. Between
+    // two blocks, the parser puts one separator unless `parted` says otherwise; at the end of a
+    // container, one only where `table_line_after` says. The separators there are left as they
+    // are when the parser could not have given them, as only an edit leaves: two in one place,
+    // or, except at the end of the document, one after a copy. The end of the document is
+    // settled once normalizing is done, as it depends on its last leaf; this returns whether
+    // what is after its last block changed or the block moved in, and whether the separators
+    // after it could be the parser's.
+    fn settle_separators(
+        &mut self,
+        parent: NodeId,
+        kept: &mut Vec<NodeId>,
+        marks: &[u8],
+        tail: bool,
+        settled: &mut Vec<NodeId>,
+    ) -> (bool, bool) {
+        settled.clear();
+        let mut last = None;
+        let mut last_moved = false;
+        let mut from = 0;
+        let mut touched = false;
+        // Separators in the current place, and whether those since the last block could be
+        // the parser's, but for one after a copy.
+        let mut place = 0;
+        let mut parsed = true;
+        let mut after_copy = false;
+        for (&id, &change) in kept.iter().zip(marks) {
+            let changed = change & CHANGED != 0;
+            touched |= changed;
+            if separator(&self.nodes, Some(id)) {
+                if changed {
+                    place = 0;
+                }
+                place += 1;
+                parsed &= place == 1;
+                after_copy |= change & AFTER_COPY != 0;
+                settled.push(id);
+                continue;
+            }
+            if let Some(last) = last.filter(|_| touched && parsed && !after_copy) {
+                let wanted = self.parted(last, id);
+                self.settle(parent, settled, from, wanted);
+            }
+            last_moved = change & MOVED != 0;
+            touched = false;
+            place = 0;
+            parsed = true;
+            after_copy = false;
+            settled.push(id);
+            last = Some(id);
+            from = settled.len();
+        }
+        let end = touched || tail;
+        if parent != self.root() {
+            if let Some(last) = last.filter(|_| end && parsed && !after_copy) {
+                let wanted = self.table_line_after(parent, last);
+                self.settle(parent, settled, from, wanted);
+            }
+        }
+        kept.clear();
+        (end || last_moved, parsed)
+    }
+
+    // Whether the parser puts a separator after `last`, the last block of `parent`: only after
+    // a table in an item or footnote definition that a blank line follows in it, as the line is
+    // after the table's span. The writer puts one there before the next item of a loose list,
+    // and before a block after the footnote definition or the list, but in an item that
+    // records no spread, or after an item or footnote definition that either ends, but not
+    // after a block quote, as the line is outside it.
+    fn table_line_after(&self, parent: NodeId, last: NodeId) -> bool {
+        if !matches!(self.nodes[last.index()].kind, EventKind::Start(Tag::Table))
+            || !matches!(
+                self.nodes[parent.index()].kind,
+                EventKind::Start(Tag::Item { .. } | Tag::FootnoteDefinition { .. })
+            )
+        {
+            return false;
+        }
+        let mut at = parent;
+        loop {
+            let next = core::iter::successors(self.nodes[at.index()].next_sibling, |id| {
+                self.nodes[id.index()].next_sibling
+            })
+            .find(|&id| !separator(&self.nodes, Some(id)));
+            let container = self.nodes[at.index()].parent;
+            if next.is_some() {
+                return if matches!(
+                    self.nodes[at.index()].kind,
+                    EventKind::Start(Tag::Item { .. })
+                ) {
+                    container.is_some_and(|list| {
+                        matches!(
+                            self.nodes[list.index()].kind,
+                            EventKind::Start(Tag::List { tight: false, .. })
+                        )
+                    })
+                } else {
+                    !container.is_some_and(|container| self.unspread_item(container))
+                };
+            }
+            at = match container {
+                Some(container)
+                    if matches!(
+                        self.nodes[container.index()].kind,
+                        EventKind::Start(
+                            Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition { .. }
+                        )
+                    ) =>
+                {
+                    container
+                }
+                _ => return false,
+            };
+        }
+    }
+
+    // Whether `id` is an item that records no spread, whose blocks are written without a blank
+    // line between them.
+    fn unspread_item(&self, id: NodeId) -> bool {
+        matches!(
+            self.syntax(id),
+            Some(NodeSyntax::ListItem { spread: false })
+        )
+    }
+
+    // Give the table that ends `block`, a list or footnote definition, through the last items
+    // and footnote definitions in it, the separator after it that `table_line_after` says the
+    // parser puts there, unless what is after it could not be the parser's, two or more. Each
+    // container gone through is marked in `passed`, its index pushed to `touched`, and the
+    // search stops at one already passed, whose table is settled, so that the blocks of a
+    // tree's containers are each searched once, however deeply they nest.
+    fn settle_table_tail(&mut self, block: NodeId, passed: &mut [bool], touched: &mut Vec<usize>) {
+        let mut at = block;
+        loop {
+            let kind = &self.nodes[at.index()].kind;
+            if !matches!(
+                kind,
+                EventKind::Start(
+                    Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition { .. }
+                )
+            ) || (at == block && matches!(kind, EventKind::Start(Tag::Item { .. })))
+            {
+                return;
+            }
+            if core::mem::replace(&mut passed[at.index()], true) {
+                return;
+            }
+            touched.push(at.index());
+            let Some(last) = self.flow_children(at).last() else {
+                return;
+            };
+            if !matches!(self.nodes[last.index()].kind, EventKind::Start(Tag::Table)) {
+                at = last;
+                continue;
+            }
+            self.settle_table_end(at, last);
+            return;
+        }
+    }
+
+    // Give `last`, the last block of `parent`, if it is a table, the separator after it that
+    // `table_line_after` says the parser puts there, unless what is after it could not be the
+    // parser's, two or more.
+    fn settle_table_end(&mut self, parent: NodeId, last: NodeId) {
+        let tail = self.nodes[last.index()].next_sibling;
+        let wanted = self.table_line_after(parent, last);
+        match tail {
+            Some(one) if !wanted && self.nodes[one.index()].next_sibling.is_none() => {
+                self.nodes[last.index()].next_sibling = None;
+                self.nodes[one.index()].parent = None;
+            }
+            None if wanted => {
+                let separator = self.new_separator(parent, "\n", false);
+                self.nodes[last.index()].next_sibling = Some(separator);
+            }
+            _ => {}
+        }
+    }
+
+    // Give each table under `root` that ends an item or footnote definition the separator after
+    // it that `table_line_after` says the parser puts there, where one of `lists`, the lists made
+    // tight or loose, decides whether a blank line follows it, and clear `lists`. Only the lists
+    // that the table ends a block of, through last blocks, or that hold the item it then ends,
+    // decide, so each container is passed once, from the one table below it that it ends with.
+    fn settle_list_tables(&mut self, root: NodeId, lists: &mut Vec<NodeId>) {
+        if lists.is_empty() {
+            return;
+        }
+        lists.sort_unstable();
+        let mut current = Some(root);
+        while let Some(id) = current {
+            current = next_descendant(&self.nodes, root, id);
+            if !matches!(self.nodes[id.index()].kind, EventKind::Start(Tag::Table)) {
+                continue;
+            }
+            let parent = self.nodes[id.index()].parent.filter(|parent| {
+                matches!(
+                    self.nodes[parent.index()].kind,
+                    EventKind::Start(Tag::Item { .. } | Tag::FootnoteDefinition { .. })
+                )
+            });
+            if let Some(parent) = parent {
+                if !self.block_after(id) && self.ends_in_lists(parent, lists) {
+                    self.settle_table_end(parent, id);
+                }
+            }
+        }
+        lists.clear();
+    }
+
+    // Whether a sibling other than a separator follows `id`.
+    fn block_after(&self, id: NodeId) -> bool {
+        core::iter::successors(self.nodes[id.index()].next_sibling, |id| {
+            self.nodes[id.index()].next_sibling
+        })
+        .any(|id| !separator(&self.nodes, Some(id)))
+    }
+
+    // Whether one of `lists`, sorted, holds `block` or a block that `block` ends, through last
+    // blocks of lists, items and footnote definitions, up to the first with a block after it.
+    fn ends_in_lists(&self, block: NodeId, lists: &[NodeId]) -> bool {
+        let mut at = block;
+        while let Some(container) = self.nodes[at.index()].parent {
+            if lists.binary_search(&container).is_ok() {
+                return true;
+            }
+            if self.block_after(at)
+                || !matches!(
+                    self.nodes[container.index()].kind,
+                    EventKind::Start(
+                        Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition { .. }
+                    )
+                )
+            {
+                break;
+            }
+            at = container;
+        }
+        false
+    }
+
+    // Leave one separator at the end of `settled`, after its index `from`, if `wanted`, and
+    // none otherwise.
+    fn settle(&mut self, parent: NodeId, settled: &mut Vec<NodeId>, from: usize, wanted: bool) {
+        let keep = from + usize::from(wanted);
+        if settled.len() < keep {
+            let separator = self.new_separator(parent, "\n", false);
+            settled.push(separator);
+        }
+        for gone in settled.drain(keep..) {
+            self.nodes[gone.index()].parent = None;
+            self.nodes[gone.index()].next_sibling = None;
+        }
+    }
+
+    // Whether the parser puts a separator between the blocks `previous` and `next`: after every
+    // block but a definition, a footnote definition, an item and a tight paragraph, and after a
+    // list unless a definition follows.
+    fn parted(&self, previous: NodeId, next: NodeId) -> bool {
+        match self.nodes[previous.index()].kind {
+            EventKind::Definition { .. }
+            | EventKind::Start(
+                Tag::FootnoteDefinition { .. } | Tag::Item { .. } | Tag::Paragraph { tight: true },
+            ) => false,
+            EventKind::Start(Tag::List { .. }) => {
+                !matches!(self.nodes[next.index()].kind, EventKind::Definition { .. })
+            }
+            _ => true,
+        }
+    }
+
+    // Give the document the separator the parser puts after its last block as it is written:
+    // none after a definition, a line ending after a block whose last leaf, through block
+    // quotes, lists and items, holds content, and otherwise one that only ends the output.
+    // `parsed` says whether the separators there could be the parser's; if not, which only an
+    // edit leaves, they stay.
+    fn settle_final_separator(&mut self, parsed: bool) {
+        let root = self.root();
+        let mut last = None;
+        let mut separators = Vec::new();
+        for id in self.children(root) {
+            if separator(&self.nodes, Some(id)) {
+                separators.push(id);
+            } else {
+                last = Some(id);
+                separators.clear();
+            }
+        }
+        let last = last.expect("the binding of a copy removed stays");
+        if !parsed {
+            return;
+        }
+        let wanted = self.final_separator(last);
+        let keep = usize::from(wanted.is_some()).min(separators.len());
+        for &gone in &separators[keep..] {
+            self.nodes[gone.index()].parent = None;
+            self.nodes[gone.index()].next_sibling = None;
+        }
+        match (separators.first(), wanted) {
+            (None, Some((value, conditional))) => {
+                let separator = self.new_separator(root, value, conditional);
+                self.nodes[last.index()].next_sibling = Some(separator);
+            }
+            (Some(_), None) => self.nodes[last.index()].next_sibling = None,
+            (Some(&one), Some((value, conditional))) => {
+                self.nodes[one.index()].next_sibling = None;
+                let EventKind::Separator {
+                    value: old,
+                    conditional: was,
+                } = &self.nodes[one.index()].kind
+                else {
+                    unreachable!("a separator was found");
+                };
+                let same = *was == conditional
+                    && old
+                        .resolve(self.source.as_ref())
+                        .expect("document text is validated")
+                        == value;
+                if !same {
+                    self.nodes[one.index()].kind = EventKind::Separator {
+                        value: Text::Literal(value),
+                        conditional,
+                    };
+                }
+            }
+            (None, None) => {}
+        }
+    }
+
+    // The separator the parser puts after `last`, the last block of a document, as it is
+    // written; see `settle_final_separator`.
+    fn final_separator(&self, last: NodeId) -> Option<(&'static str, bool)> {
+        if matches!(self.nodes[last.index()].kind, EventKind::Definition { .. }) {
+            return None;
+        }
+        let mut leaf = last;
+        while matches!(
+            self.nodes[leaf.index()].kind,
+            EventKind::Start(Tag::BlockQuote | Tag::List { .. } | Tag::Item { .. })
+        ) {
+            let Some(child) = self.flow_children(leaf).last() else {
+                break;
+            };
+            leaf = child;
+        }
+        let populated = matches!(
+            self.nodes[leaf.index()].kind,
+            EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_) | Tag::Table)
+                | EventKind::Rule
+                | EventKind::CodeBlock { .. }
+                | EventKind::Html { block: true, .. }
+        );
+        Some(if populated { ("\n", false) } else { ("", true) })
+    }
+
+    // A new separator of `value` in `parent`, to be linked by the caller.
+    fn new_separator(&mut self, parent: NodeId, value: &'static str, conditional: bool) -> NodeId {
+        push_node(
+            &mut self.nodes,
+            EventKind::Separator {
+                value: Text::Literal(value),
+                conditional,
+            },
+            parent,
+        )
+    }
+
+    // Take out of the copy `copy` each definition and footnote definition in it that binds, the
+    // outermost of each nesting, into `moved`, in document order: each that is not a copy, as
+    // the copies in it go with it. The child list of each container it leaves is rebuilt once.
+    fn bound_in_copy(&mut self, copy: NodeId, copies: &[bool], moved: &mut Vec<NodeId>) {
+        let nodes = &self.nodes;
+        if !crate::bindings::holds_blocks(&nodes[copy.index()].kind) {
+            return;
+        }
+        let mut current = nodes[copy.index()].first_child;
+        let mut holders = Vec::new();
+        while let Some(id) = current {
+            let kind = &nodes[id.index()].kind;
+            let definition = matches!(
+                kind,
+                EventKind::Definition { .. } | EventKind::Start(Tag::FootnoteDefinition { .. })
+            );
+            if definition && !copies[id.index()] {
+                let holder = nodes[id.index()]
+                    .parent
+                    .expect("a definition in a copy has a parent in it");
+                if holders.last() != Some(&holder) {
+                    holders.push(holder);
+                }
+                moved.push(id);
+                current = crate::bindings::next_after(nodes, copy, id);
+            } else {
+                current = crate::bindings::next_block(nodes, copy, id);
+            }
+        }
+        self.take_out_of(moved, holders);
+    }
+
+    // Take each of `moved` out of its parent, one of `holders`.
+    fn take_out_of(&mut self, moved: &[NodeId], mut holders: Vec<NodeId>) {
+        // A node that leaves is marked by having no parent until it is given its new one.
+        for &id in moved {
+            self.nodes[id.index()].parent = None;
+        }
+        holders.sort_unstable();
+        holders.dedup();
+        let mut children = Vec::new();
+        for holder in holders {
+            children.clear();
+            let nodes = &self.nodes;
+            children.extend(
+                self.children(holder)
+                    .filter(|id| nodes[id.index()].parent.is_some()),
+            );
+            self.set_children(holder, &children);
+        }
+    }
+
+    // Dismantle `copy`, a copy removed from its tree, once what binds in it is taken out: each
+    // node left in it becomes a detached root of empty text, which binds and refers to nothing,
+    // is normalized and is in no index, as the copies in it already left the index. `stack` is
+    // scratch storage, left empty.
+    fn dismantle(&mut self, copy: NodeId, stack: &mut Vec<NodeId>) {
+        stack.push(copy);
+        while let Some(id) = stack.pop() {
+            let node = &mut self.nodes[id.index()];
+            let mut child = node.first_child.take();
+            node.parent = None;
+            node.next_sibling = None;
+            node.kind = EventKind::Text(Text::Literal(""));
+            while let Some(inner) = child {
+                child = self.nodes[inner.index()].next_sibling;
+                stack.push(inner);
+            }
+            self.syntax.remove(&id);
+        }
+    }
+
+    // Make `children`, in order, the child list of `parent`.
+    fn set_children(&mut self, parent: NodeId, children: &[NodeId]) {
+        let mut next = None;
+        for &id in children.iter().rev() {
+            self.nodes[id.index()].next_sibling = next;
+            next = Some(id);
+        }
+        self.nodes[parent.index()].first_child = next;
+    }
+
+    // Replace the reference or footnote call `id`, which has a parent, with the text it reads
+    // back as, as `unbind` does.
+    fn unbind_node(&mut self, id: NodeId) {
+        let source = self.source.as_ref();
+        let nodes = &mut self.nodes;
+        let resolve = |value: &Text<'_>| -> String {
+            String::from(value.resolve(source).expect("document text is validated"))
+        };
+        match &nodes[id.index()].kind {
+            EventKind::FootnoteReference { identifier, label } => {
+                let label = resolve(label.as_ref().unwrap_or(identifier));
+                nodes[id.index()].kind =
+                    EventKind::Text(Text::from(crate::bindings::unbound_footnote_text(&label)));
+            }
+            EventKind::Start(tag @ (Tag::Link(target) | Tag::Image(target))) => {
+                let reference = target.reference().expect("only a reference is unbound");
+                let (open, close) = crate::bindings::unbound_text(
+                    reference.kind,
+                    &resolve(&reference.label),
+                    matches!(tag, Tag::Image(_)),
+                );
+                let parent = nodes[id.index()]
+                    .parent
+                    .expect("only the root has no parent");
+                let close = push_node(nodes, EventKind::Text(Text::from(close)), parent);
+                nodes[close.index()].next_sibling = nodes[id.index()].next_sibling;
+                // Its children follow its opening bracket, and what follows them, them.
+                let mut last = id;
+                let mut child = nodes[id.index()].first_child.take();
+                nodes[id.index()].next_sibling = child;
+                while let Some(node) = child {
+                    nodes[node.index()].parent = Some(parent);
+                    last = node;
+                    child = nodes[node.index()].next_sibling;
+                }
+                nodes[last.index()].next_sibling = Some(close);
+                nodes[id.index()].kind = EventKind::Text(Text::Literal(open));
+                self.syntax.remove(&id);
+            }
+            _ => unreachable!("only a reference or footnote call is unbound"),
         }
     }
 
@@ -3146,15 +4646,21 @@ impl<'de> serde::Deserialize<'de> for Document<String> {
             syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
         }
         let stored = Stored::deserialize(deserializer)?;
-        let document = Self {
+        let mut document = Self {
             source: stored.source,
             nodes: stored.nodes,
             syntax: stored.syntax,
             append_hint: None,
+            index: crate::bindings::Index::default(),
+            settled: false,
+            attached: Vec::new(),
         };
         document
             .validate_storage()
             .map_err(serde::de::Error::custom)?;
+        document.attached = attached_nodes(&document.nodes, document.root());
+        document.index =
+            crate::bindings::Index::of_tree(&document.source, &document.nodes, document.root());
         Ok(document)
     }
 }
@@ -3189,6 +4695,7 @@ impl<S: AsRef<str>> Document<S> {
                 return Err(StreamError::Unbalanced);
             }
             seen[id.index()] = true;
+            storable(&node.kind)?;
             Event {
                 kind: borrow_kind(&node.kind),
                 span: node.span.clone(),
@@ -3230,5 +4737,51 @@ impl<S: AsRef<str>> Document<S> {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Document, NodeId};
+    use crate::stream::{EventKind, StreamError, Tag, Text};
+    use crate::ParseOptions;
+    use alloc::borrow::ToOwned;
+
+    // A rejected edit changes nothing at all, so a settled document stays settled, while an edit
+    // that succeeds makes it unsettled.
+    #[test]
+    fn rejected_edits_keep_the_document_settled() {
+        let mut document =
+            Document::parse("[a]\n\n[a]: /1\n\n> q\n".to_owned(), &ParseOptions::gfm()).unwrap();
+        let root = document.root();
+        let paragraph = document.children(root).next().unwrap();
+        let missing = NodeId::new(document.nodes.len());
+        let definition = || EventKind::Definition {
+            label: Text::Literal("a"),
+            destination: Text::Literal("/2"),
+            title: None,
+        };
+        assert!(document.settled);
+        let rejected: [&dyn Fn(&mut Document) -> StreamError; 6] = [
+            &|document| document.set_kind(paragraph, EventKind::Rule).unwrap_err(),
+            &|document| document.append_child(root, definition()).unwrap_err(),
+            &|document| document.detach(root).unwrap_err(),
+            &|document| document.attach(root, root, None).unwrap_err(),
+            &|document| document.extract_children(missing).unwrap_err(),
+            &|document| {
+                let replacement = document.clone();
+                document
+                    .replace_heading_section(missing, 0, &replacement, true, true)
+                    .unwrap_err()
+            },
+        ];
+        for edit in rejected {
+            edit(&mut document);
+            assert!(document.settled);
+        }
+        document
+            .append_child(root, EventKind::Start(Tag::Paragraph { tight: false }))
+            .unwrap();
+        assert!(!document.settled);
     }
 }

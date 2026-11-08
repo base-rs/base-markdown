@@ -303,20 +303,10 @@ pub enum Tag<'a> {
     Strong,
     /// Deleted inline content.
     Delete,
-    /// Resolved link destination and optional title, and the reference it was written as, if
-    /// any.
-    Link {
-        destination: Text<'a>,
-        title: Option<Text<'a>>,
-        reference: Option<Box<Reference<'a>>>,
-    },
-    /// Resolved image destination and optional title, and the reference it was written as, if
-    /// any.
-    Image {
-        destination: Text<'a>,
-        title: Option<Text<'a>>,
-        reference: Option<Box<Reference<'a>>>,
-    },
+    /// A link, and where it leads.
+    Link(Target<'a>),
+    /// An image, and where its source is.
+    Image(Target<'a>),
     /// A table.
     Table,
     /// A table head.
@@ -338,15 +328,131 @@ pub enum Tag<'a> {
     },
 }
 
+/// Where a link or image leads: a destination of its own, or the definition it names.
+///
+/// A reference is a name, and a definition a binding of it: a reference leads where the first
+/// definition of its label in document order does. A [`Document`][crate::Document] stores a
+/// reference only as [`Target::Reference`], its name, and finds the binding when asked, with
+/// [`Document::destination`][crate::Document::destination], so the reference follows edits to the
+/// definitions. An event stream carries resolved targets only: a parser's, and a document's
+/// events, give a bound reference as [`Target::Resolved`], the name with the destination and
+/// title it is bound to, and an unbound one as the text it reads back as.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Target<'a> {
+    /// A destination and optional title of its own, written as an inline resource, such as
+    /// `[a](/u "t")`, or an autolink.
+    Resource {
+        destination: Text<'a>,
+        title: Option<Text<'a>>,
+    },
+    /// A reference to a definition by its label, with no destination of its own. This is how a
+    /// document stores a reference. One whose label no definition in the document has is
+    /// unbound: it is valid, but not normalized, as it reads back as text, which
+    /// [`Document::normalize`][crate::Document::normalize] makes it. A document's events give a
+    /// bound one as [`Target::Resolved`] and an unbound one as the text it reads back as, so no
+    /// stream carries this form, and [`crate::render_events`] rejects it with
+    /// [`StreamError::InvalidValue`], as it leads nowhere without the definitions of a document.
+    Reference(Box<Reference<'a>>),
+    /// A reference with the destination and title of the definition it is bound to, as an event
+    /// stream carries it. A document does not store this form, as the destination would not
+    /// follow its definitions: [`AstBuilder`][crate::AstBuilder] stores the reference by name
+    /// when the document's definitions bind its label to that destination and title, and
+    /// otherwise a [`Target::Resource`] to them, and
+    /// [`Document::set_kind`][crate::Document::set_kind] and
+    /// [`Document::append_child`][crate::Document::append_child] store it as a resource to them.
+    Resolved(Box<Resolved<'a>>),
+}
+
+/// A reference and the destination and title of the definition it is bound to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Resolved<'a> {
+    /// The reference as written.
+    pub reference: Reference<'a>,
+    /// The destination of its definition.
+    pub destination: Text<'a>,
+    /// The title of its definition, if any.
+    pub title: Option<Text<'a>>,
+}
+
+impl<'s> Target<'s> {
+    /// The reference this target was written as, if any.
+    pub fn reference(&self) -> Option<&Reference<'s>> {
+        match self {
+            Self::Resource { .. } => None,
+            Self::Reference(reference) => Some(reference),
+            Self::Resolved(resolved) => Some(&resolved.reference),
+        }
+    }
+
+    /// The destination and title this target carries: its own for a resource, its definition's
+    /// once resolved, and none for a reference by name.
+    pub fn destination(&self) -> Option<(&Text<'s>, Option<&Text<'s>>)> {
+        match self {
+            Self::Resource { destination, title } => Some((destination, title.as_ref())),
+            Self::Reference(_) => None,
+            Self::Resolved(resolved) => Some((&resolved.destination, resolved.title.as_ref())),
+        }
+    }
+
+    /// This target with a resolved reference as a resource to where it leads, which keeps its
+    /// meaning whatever the definitions of the document it is put in.
+    pub(crate) fn resource(self) -> Self {
+        match self {
+            Self::Resolved(resolved) => Self::Resource {
+                destination: resolved.destination,
+                title: resolved.title,
+            },
+            target => target,
+        }
+    }
+
+    /// Borrow the values of this target, which a document stores.
+    pub(crate) fn borrowed(&self) -> Target<'_> {
+        if let Self::Resource { destination, title } = self {
+            return Target::Resource {
+                destination: destination.borrowed(),
+                title: title.as_ref().map(Text::borrowed),
+            };
+        }
+        let Self::Reference(reference) = self else {
+            unreachable!("a document stores no resolved reference")
+        };
+        Target::Reference(Box::new(reference.borrowed()))
+    }
+
+    pub(crate) fn map_text<'a>(self, mut map: impl FnMut(Text<'s>) -> Text<'a>) -> Target<'a> {
+        match self {
+            Self::Resource { destination, title } => Target::Resource {
+                destination: map(destination),
+                title: title.map(&mut map),
+            },
+            Self::Reference(reference) => Target::Reference(Box::new(reference.map_text(map))),
+            Self::Resolved(resolved) => {
+                let Resolved {
+                    reference,
+                    destination,
+                    title,
+                } = *resolved;
+                Target::Resolved(Box::new(Resolved {
+                    reference: reference.map_text(&mut map),
+                    destination: map(destination),
+                    title: title.map(&mut map),
+                }))
+            }
+        }
+    }
+}
+
 /// How a link or image was written as a reference to a definition: its form and the label the
 /// parser read.
 ///
 /// The label is the raw text between its brackets, as authored, with escapes, but without the
 /// prefixes of the lines it continues on, such as a block quote's `>`, which the parser does not
 /// read as part of it, and with LF line endings like every value. For a shortcut or collapsed
-/// reference it is the text of the link. The Markdown serializer writes a link or image whose
-/// reference matches a definition with the same destination and title as that reference, and any
-/// other as a resource.
+/// reference it is the text of the link. The Markdown serializer writes a reference as a
+/// reference.
 ///
 /// The serializer writes a label as it is, so it must be one the parser can read with some
 /// options: it holds something other than whitespace, no carriage return, no blank line, no
@@ -357,8 +463,10 @@ pub enum Tag<'a> {
 /// reference's label is also at most 999 characters, counting a tab as the columns it spans, but
 /// not line endings and the spaces and tabs after them; the parser reads a shortcut or collapsed
 /// one at any size. A label that is not is rejected with [`StreamError::InvalidValue`] wherever
-/// an event enters a document or renderer. A shortcut or collapsed reference with a longer label,
-/// or whose text no longer matches it, is written as a resource.
+/// an event enters a document or renderer. A shortcut or collapsed reference whose text no
+/// longer matches its label is written as a full reference, `[text][label]`, normalized or not,
+/// which reads back as a full reference rather than the kind it was, or as a resource when its
+/// label is longer than a full reference's can be.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Reference<'a> {
@@ -373,6 +481,13 @@ impl<'s> Reference<'s> {
         Reference {
             kind: self.kind,
             label: map(self.label),
+        }
+    }
+
+    pub(crate) fn borrowed(&self) -> Reference<'_> {
+        Reference {
+            kind: self.kind,
+            label: self.label.borrowed(),
         }
     }
 }
@@ -430,24 +545,8 @@ impl<'s> Tag<'s> {
             Self::Emphasis => Tag::Emphasis,
             Self::Strong => Tag::Strong,
             Self::Delete => Tag::Delete,
-            Self::Link {
-                destination,
-                title,
-                reference,
-            } => Tag::Link {
-                destination: map(destination),
-                title: title.map(&mut map),
-                reference: reference.map(|reference| Box::new(reference.map_text(&mut map))),
-            },
-            Self::Image {
-                destination,
-                title,
-                reference,
-            } => Tag::Image {
-                destination: map(destination),
-                title: title.map(&mut map),
-                reference: reference.map(|reference| Box::new(reference.map_text(&mut map))),
-            },
+            Self::Link(target) => Tag::Link(target.map_text(map)),
+            Self::Image(target) => Tag::Image(target.map_text(map)),
             Self::Table => Tag::Table,
             Self::TableHead => Tag::TableHead,
             Self::TableBody => Tag::TableBody,
@@ -587,21 +686,14 @@ impl<'s> EventKind<'s> {
             Self::Start(Tag::Heading(level)) if !(1..=6).contains(level) => {
                 Err(StreamError::InvalidValue)
             }
-            Self::Start(
-                Tag::Link {
-                    destination,
-                    title,
-                    reference,
+            Self::Start(Tag::Link(target) | Tag::Image(target)) => {
+                if let Some((destination, title)) = target.destination() {
+                    text(destination)?;
+                    if let Some(title) = title {
+                        text(title)?;
+                    }
                 }
-                | Tag::Image {
-                    destination,
-                    title,
-                    reference,
-                },
-            ) => {
-                text(destination)?;
-                optional(title)?;
-                match reference {
+                match target.reference() {
                     Some(reference) => check(&reference.label, &|label| {
                         crate::node_syntax::valid_label(
                             label,

@@ -5,6 +5,7 @@
 
 mod support;
 use base_markdown::markdown::to_markdown;
+use base_markdown::stream::Target;
 use base_markdown::stream::{EventKind, Reference, Tag, Text as EventText};
 use base_markdown::{Document, ParseOptions};
 use pretty_assertions::assert_eq;
@@ -19,14 +20,10 @@ use support::fixture::{
 fn link_reference() {
     // An empty label does not read back as one, so it is rejected (#192).
     assert!(rejected(
-        EventKind::Start(Tag::Link {
-            destination: EventText::Literal(""),
-            title: None,
-            reference: Some(Box::new(Reference {
-                kind: base_markdown::ReferenceKind::Full,
-                label: EventText::Literal(""),
-            })),
-        }),
+        EventKind::Start(Tag::Link(Target::Reference(Box::new(Reference {
+            kind: base_markdown::ReferenceKind::Full,
+            label: EventText::Literal(""),
+        })))),
         true
     ));
     assert_eq!(
@@ -579,10 +576,8 @@ fn set_label_back(document: &mut Document<String>) -> String {
             )
         })
         .expect("the reference is read");
-    let EventKind::Start(Tag::Link {
-        reference: Some(reference),
-        ..
-    }) = document.node(link).unwrap().kind.clone()
+    let EventKind::Start(Tag::Link(Target::Reference(reference))) =
+        document.node(link).unwrap().kind.clone()
     else {
         panic!("a reference has its reference");
     };
