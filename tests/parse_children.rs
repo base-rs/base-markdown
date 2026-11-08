@@ -720,6 +720,104 @@ fn parsing_into_every_paragraph_of_a_document_is_linear() {
     panic!("the document grew {:?} times the control's growth", ratios);
 }
 
+/// Parsing into each of many sections, each a block quote that defines a label of its own, which
+/// the fragment defines again and refers to, takes time linear in the sections: each parse asks
+/// the index about the labels its fragment uses and passes over the replaced children's own
+/// definitions, without searching the document. Timed against the same sections, one in each of as
+/// many small documents.
+#[test]
+fn parsing_into_every_section_of_a_document_is_linear() {
+    let section = |index: usize| format!("> [d{index}]: /old\n>\n> [d{index}] [r]\n\n");
+    let build = |sections: usize, first: usize| {
+        let mut source = String::from("[r]: /u\n\n");
+        for index in first..first + sections {
+            source.push_str(&section(index));
+        }
+        parse(&source)
+    };
+    let time = |mut documents: Vec<Document>| {
+        let quotes: Vec<Vec<(NodeId, usize)>> = documents
+            .iter()
+            .map(|document| {
+                document
+                    .children(document.root())
+                    .filter(|id| quote(&document.node(*id).unwrap().kind))
+                    .map(|id| {
+                        let definition = document.children(id).next().unwrap();
+                        let label = match &document.node(definition).unwrap().kind {
+                            EventKind::Definition { label, .. } => label
+                                .resolve(document.source())
+                                .unwrap()
+                                .trim_start_matches('d')
+                                .parse()
+                                .unwrap(),
+                            _ => unreachable!(),
+                        };
+                        (id, label)
+                    })
+                    .collect()
+            })
+            .collect();
+        let fragments: Vec<Vec<String>> = quotes
+            .iter()
+            .map(|quotes| {
+                quotes
+                    .iter()
+                    .map(|(_, label)| format!("[d{label}] [r] [^n]\n\n[d{label}]: /new\n"))
+                    .collect()
+            })
+            .collect();
+        timed(|| {
+            for ((document, quotes), fragments) in documents.iter_mut().zip(&quotes).zip(&fragments)
+            {
+                for ((quote, _), fragment) in quotes.iter().zip(fragments) {
+                    document.parse_children(*quote, fragment, &gfm()).unwrap();
+                }
+            }
+        })
+    };
+    support::linear::assert_against_control(
+        "parse_children into each section",
+        1 << 9,
+        |size| time(vec![build(size, 0)]),
+        |size| time((0..size).map(|index| build(1, index)).collect()),
+    );
+}
+
+/// Parsing into the innermost paragraph and block quote of a deep nest of block quotes, again and
+/// again, takes time linear in the parses whatever the depth: nothing walks up through the nest.
+/// Timed against the same parses into a nest of one.
+#[test]
+fn parsing_deep_into_a_nest_is_linear() {
+    let time = |depth: usize, parses: usize| {
+        let mut source = String::from("[r]: /u\n\n");
+        source.push_str(&">".repeat(depth));
+        source.push_str(" p\n");
+        let mut document = parse(&source);
+        let paragraph = find(&document, |kind| {
+            matches!(kind, EventKind::Start(Tag::Paragraph { .. }))
+        });
+        let quote = document.node(paragraph).unwrap().parent().unwrap();
+        timed(|| {
+            for _ in 0..parses {
+                document
+                    .parse_children(quote, "q [r] [d]\n\n[d]: /d\n", &gfm())
+                    .unwrap();
+                let paragraph = document.children(quote).next().unwrap();
+                document
+                    .parse_children(paragraph, "s [r] [d]", &gfm())
+                    .unwrap();
+            }
+        })
+    };
+    support::linear::assert_against_control(
+        "parse_children deep in a nest",
+        1 << 8,
+        |size| time(size, size),
+        |size| time(1, size),
+    );
+}
+
 /// Assert that parsing `fragment` into the first node of `source` that `parent` accepts builds the
 /// tree that `source` with `PLACEHOLDER` replaced by `spliced` reads as, the fragment written there.
 fn assert_splices(
