@@ -55,17 +55,19 @@ impl<'a> EventParser<'a> {
             carriage_returns,
         }
     }
-
-    /// The definitions of the source, once its events are pulled.
-    pub(crate) fn into_definitions(self) -> Definitions<'a> {
-        self.definitions
-    }
 }
 impl EventParser<'_> {
     /// Leave the labels of references and footnote calls out of events, as `None`, for a consumer
     /// that never reads them, such as the HTML renderer.
     pub(crate) fn skip_labels(mut self) -> Self {
-        self.inline.skip_labels = true;
+        self.inline.targets = crate::inline_parser::Targets::Destinations;
+        self
+    }
+
+    /// Give each reference as its name alone, as `Target::Reference`, for a document, which stores
+    /// it so.
+    pub(crate) fn names(mut self) -> Self {
+        self.inline.targets = crate::inline_parser::Targets::Names;
         self
     }
 

@@ -1,6 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
+use base_markdown::stream::Target;
 use base_markdown::stream::{EventKind, Tag};
 use base_markdown::{
     message, to_html_with_options, CompileOptions, Document, Options, ParseOptions,
@@ -152,11 +153,10 @@ fn renders_constructed_nodes_and_subtrees() {
     let image = document
         .append_child(
             images,
-            EventKind::Start(Tag::Image {
+            EventKind::Start(Tag::Image(Target::Resource {
                 destination: "javascript:bad()".to_string().into(),
                 title: None,
-                reference: None,
-            }),
+            })),
         )
         .unwrap();
     document

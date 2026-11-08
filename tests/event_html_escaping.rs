@@ -1,6 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
+use base_markdown::stream::Target;
 use base_markdown::{
     render_events,
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
@@ -174,11 +175,10 @@ fn custom_image_alternative_text_rejects_rules() {
             line_ending: None,
             frontmatter: None,
         })),
-        event(EventKind::Start(Tag::Image {
+        event(EventKind::Start(Tag::Image(Target::Resource {
             destination: Text::Literal("image.png"),
             title: None,
-            reference: None,
-        })),
+        }))),
         event(EventKind::Text(Text::Literal("before"))),
         event(EventKind::Rule),
     ];

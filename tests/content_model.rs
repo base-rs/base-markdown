@@ -3,6 +3,7 @@
 
 // Each path that builds or edits a tree checks the one content model (#194).
 
+use base_markdown::stream::Target;
 use base_markdown::{
     render_events,
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
@@ -23,11 +24,10 @@ fn html<S: AsRef<str>>(document: &Document<S>) -> String {
 }
 
 fn link() -> EventKind<'static> {
-    EventKind::Start(Tag::Link {
+    EventKind::Start(Tag::Link(Target::Resource {
         destination: Text::Literal("u"),
         title: None,
-        reference: None,
-    })
+    }))
 }
 
 fn note() -> EventKind<'static> {
@@ -292,6 +292,31 @@ fn frontmatter_without_recorded_fences_is_written_with_dashes() {
         .unwrap();
     let document = builder.finish(String::new()).unwrap();
     assert_eq!(to_markdown(&document).unwrap(), "---\na: 1\n---\n\nb\n");
+}
+
+/// A built node whose span is not in the source the document is finished with is rejected.
+#[test]
+fn built_spans_outside_the_source_are_rejected() {
+    let events = vec![
+        (document_start(None), 0..0),
+        (EventKind::Start(Tag::Paragraph { tight: false }), 0..4),
+        (EventKind::Text(Text::Literal("b")), 0..4),
+        (EventKind::End(TagKind::Paragraph), 4..4),
+        (EventKind::End(TagKind::Document), 4..4),
+    ];
+    let mut builder = base_markdown::AstBuilder::new();
+    builder
+        .consume(
+            &mut events
+                .into_iter()
+                .map(|(kind, span)| Ok(Event { kind, span })),
+            usize::MAX,
+        )
+        .unwrap();
+    assert!(matches!(
+        builder.finish("ab".to_owned()),
+        Err(StreamError::InvalidRange)
+    ));
 }
 
 #[test]

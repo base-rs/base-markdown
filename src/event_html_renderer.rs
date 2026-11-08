@@ -266,9 +266,16 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     self.write("<del>")?;
                 }
             }
-            Tag::Link {
-                destination, title, ..
-            } => {
+            // A stream carries resolved targets only: a reference by name leads nowhere without
+            // the definitions of a document.
+            Tag::Link(crate::stream::Target::Reference(_))
+            | Tag::Image(crate::stream::Target::Reference(_)) => {
+                return Err(StreamError::InvalidValue);
+            }
+            Tag::Link(target) => {
+                let (destination, title) = target
+                    .destination()
+                    .expect("a reference by name is handled above");
                 if tags {
                     self.write("<a href=\"")?;
                     self.destination(
@@ -289,9 +296,10 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                     self.write("\">")?;
                 }
             }
-            Tag::Image {
-                destination, title, ..
-            } => {
+            Tag::Image(target) => {
+                let (destination, title) = target
+                    .destination()
+                    .expect("a reference by name is handled above");
                 frame.flag = tags;
                 if tags {
                     self.write("<img src=\"")?;
@@ -502,7 +510,10 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     /// Consume one event without retaining it.
     ///
     /// # Errors
-    /// Propagates invalid source ranges, malformed streams, and writer errors.
+    /// Propagates invalid source ranges, malformed streams, and writer errors. Rejects invalid
+    /// values with [`StreamError::InvalidValue`], including a reference by name,
+    /// [`Target::Reference`][crate::stream::Target::Reference], as a stream carries resolved
+    /// targets only.
     // Consume the public event while borrowing it through internal helpers to avoid copies.
     #[allow(clippy::needless_pass_by_value)]
     pub fn event(&mut self, event: Event<'_>) -> Result<(), StreamError> {
@@ -866,8 +877,16 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
 
 /// Render events with the shared HTML writer.
 ///
+/// A stream carries resolved targets only, as a parser's and a document's events do: a link or
+/// image whose target is a [`Target::Reference`][crate::stream::Target::Reference] by name is
+/// rejected. A footnote call is rendered from the stream alone, so one that no footnote
+/// definition in the stream calls fails the render with [`StreamError::Unbalanced`], while a
+/// document built from such a stream, with [`AstBuilder`][crate::AstBuilder], keeps the call and
+/// renders it as the text it reads back as, as it does any unbound call.
+///
 /// # Errors
-/// Returns parser, malformed-stream, invalid-range, or output errors.
+/// Returns parser, malformed-stream, invalid-range, or output errors, and
+/// [`StreamError::InvalidValue`] for a reference by name.
 pub fn render_events<'a>(
     source: &str,
     events: impl IntoIterator<Item = Result<Event<'a>, StreamError>>,

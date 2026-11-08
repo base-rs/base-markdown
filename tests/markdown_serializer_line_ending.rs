@@ -7,6 +7,7 @@
 //! value comes from a character reference.
 
 mod support;
+use base_markdown::stream::Target;
 use base_markdown::{
     markdown::to_markdown,
     stream::{EventKind, Tag, Text as Value},
@@ -466,16 +467,12 @@ fn values<'a>(kind: &'a EventKind<'a>) -> Vec<&'a Value<'a>> {
         } => IntoIterator::into_iter([Some(value), language.as_ref()])
             .flatten()
             .collect(),
-        EventKind::Start(
-            Tag::Link {
-                destination, title, ..
-            }
-            | Tag::Image {
-                destination, title, ..
-            },
-        ) => IntoIterator::into_iter([Some(destination), title.as_ref()])
-            .flatten()
-            .collect(),
+        EventKind::Start(Tag::Link(target) | Tag::Image(target)) => match target.destination() {
+            Some((destination, title)) => IntoIterator::into_iter([Some(destination), title])
+                .flatten()
+                .collect(),
+            None => Vec::new(),
+        },
         EventKind::Definition {
             label,
             destination,
@@ -640,11 +637,10 @@ fn carriage_returns_in_constructed_labels_are_rejected() {
         let link = document
             .append_child(
                 paragraph,
-                EventKind::Start(Tag::Link {
+                EventKind::Start(Tag::Link(Target::Resource {
                     destination: Value::Literal("/u"),
                     title: None,
-                    reference: None,
-                }),
+                })),
             )
             .unwrap();
         assert!(matches!(

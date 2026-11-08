@@ -53,15 +53,12 @@ pub(crate) struct Authored {
     footnotes: Vec<(usize, String)>,
 }
 
-/// The definitions of a document outside a fragment being parsed into it, which the fragment's
-/// references and footnote calls resolve to where they come before the fragment's own.
+/// The definitions of a document outside a fragment being parsed into it, which bind the
+/// fragment's references and footnote calls that the fragment's own do not.
 pub(crate) trait Outside: core::fmt::Debug {
-    /// The definition outside the fragment that a reference with `key` resolves to, given
-    /// whether the fragment defines `key` itself, with its values owned.
-    fn reference(&self, key: &str, own: bool) -> Option<Definition<'static>>;
-    /// Whether a footnote call with `key` resolves to a definition outside the fragment, given
-    /// whether the fragment defines `key` itself.
-    fn footnote(&self, key: &str, own: bool) -> bool;
+    /// Whether a definition outside the fragment binds `key`, a footnote identifier where
+    /// `footnote`, and a reference key otherwise.
+    fn binds(&self, footnote: bool, key: &str) -> bool;
 }
 
 #[derive(Debug, Default)]
@@ -75,9 +72,12 @@ pub(crate) struct Definitions<'a> {
     footnote_order: Vec<usize>,
     // Lookups ignore definitions starting at or after this offset. Incremental parsing scopes each top-level block to the definitions authored before its end.
     limit: Option<usize>,
-    // The definitions outside the parsed source, and those found there, whose indices follow
-    // the source's own, all of which are complete before anything is looked up.
+    // The definitions outside the parsed source, with the keys asked of them so far, each of a
+    // footnote or not, with the index of the entry or footnote it was given, if they bind it, so
+    // that each key is asked once, those of references first. Those entries follow the source's
+    // own.
     outside: Option<&'a dyn Outside>,
+    asked: [BTreeMap<String, Option<usize>>; 2],
     found: Vec<Definition<'a>>,
     found_footnotes: Vec<String>,
 }
@@ -91,7 +91,7 @@ impl<'a> Definitions<'a> {
         }
     }
 
-    /// Create definitions of the parsed source that `outside` comes before or after.
+    /// Create definitions of a fragment of a document whose other definitions are `outside`.
     pub fn outside(outside: &'a dyn Outside) -> Self {
         Self {
             outside: Some(outside),
@@ -99,22 +99,38 @@ impl<'a> Definitions<'a> {
         }
     }
 
-    // Whether no reference can resolve, so that references need not be looked up.
+    // Whether no reference can be bound, so that none need be looked up.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
             && self.seed.map_or(true, |seed| seed.entries.is_empty())
             && self.outside.is_none()
     }
 
-    /// The key of each definition of the parsed source in authored order, with their indices
-    /// sorted by key, those of one key in authored order, and the same for footnote definitions.
-    pub fn into_keys(self) -> (Vec<Cow<'a, str>>, Vec<usize>, Vec<String>, Vec<usize>) {
-        (
-            self.entries.into_iter().map(|entry| entry.key).collect(),
-            self.ordered,
-            self.footnotes,
-            self.footnote_order,
-        )
+    // The index that a key the source does not define has outside it, if a definition there
+    // binds it, asking `outside` once for each key.
+    fn find_outside(&mut self, footnote: bool, key: &str) -> Option<usize> {
+        let outside = self.outside?;
+        if let Some(&index) = self.asked[usize::from(footnote)].get(key) {
+            return index;
+        }
+        let index = outside.binds(footnote, key).then(|| {
+            if footnote {
+                self.found_footnotes.push(String::from(key));
+                self.seed_footnotes() + self.footnotes.len() + self.found_footnotes.len() - 1
+            } else {
+                // A document stores a reference by its name, so the definition is not read.
+                self.found.push(Definition {
+                    start: 0,
+                    label: Text::Literal(""),
+                    key: Cow::Owned(String::from(key)),
+                    destination: Text::Literal(""),
+                    title: None,
+                });
+                self.seed_entries() + self.entries.len() + self.found.len() - 1
+            }
+        });
+        self.asked[usize::from(footnote)].insert(String::from(key), index);
+        index
     }
 
     fn seed_entries(&self) -> usize {
@@ -126,13 +142,14 @@ impl<'a> Definitions<'a> {
     }
 
     pub fn entry(&self, index: usize) -> &Definition<'a> {
-        let seed = self.seed_entries();
         match self.seed {
             Some(seed) if index < seed.entries.len() => &seed.entries[index],
-            _ => self
-                .entries
-                .get(index - seed)
-                .unwrap_or_else(|| &self.found[index - seed - self.entries.len()]),
+            _ => {
+                let own = index - self.seed_entries();
+                self.entries
+                    .get(own)
+                    .unwrap_or_else(|| &self.found[own - self.entries.len()])
+            }
         }
     }
 
@@ -168,22 +185,20 @@ impl<'a> Definitions<'a> {
         build_index(&mut self.footnote_order, &self.footnotes, String::as_str);
     }
 
-    // The index keeps the first authored definition of each key first, so an invisible match has no visible predecessor. Seeded definitions precede the parsed source, and one outside it comes first if it comes before the source's own.
+    // The index keeps the first authored definition of each key, so an invisible match has no visible predecessor. Seeded definitions precede the parsed source.
+    // A key the source does not define is looked up outside it.
     pub fn find(&mut self, key: &str) -> Option<usize> {
-        if let Some(&index) = self.seed.and_then(|seed| seed.index.get(key)) {
-            return Some(index).filter(|&index| self.visible(self.entry(index).start));
-        }
-        let own = find_index(&self.ordered, &self.entries, key, |entry| {
-            entry.key.as_ref()
-        });
-        if let Some(definition) = self
-            .outside
-            .and_then(|outside| outside.reference(key, own.is_some()))
-        {
-            self.found.push(definition);
-            return Some(self.seed_entries() + self.entries.len() + self.found.len() - 1);
-        }
-        let index = own? + self.seed_entries();
+        let index = match self.seed.and_then(|seed| seed.index.get(key)) {
+            Some(&index) => index,
+            None => {
+                match find_index(&self.ordered, &self.entries, key, |entry| {
+                    entry.key.as_ref()
+                }) {
+                    Some(index) => index + self.seed_entries(),
+                    None => return self.find_outside(false, key),
+                }
+            }
+        };
         Some(index).filter(|&index| self.visible(self.entry(index).start))
     }
 
@@ -234,13 +249,14 @@ impl<'a> Definitions<'a> {
     }
 
     pub fn footnote_key(&self, index: usize) -> &str {
-        let seed = self.seed_footnotes();
         match self.seed {
             Some(seed) if index < seed.footnotes.len() => &seed.footnotes[index],
-            _ => self
-                .footnotes
-                .get(index - seed)
-                .unwrap_or_else(|| &self.found_footnotes[index - seed - self.footnotes.len()]),
+            _ => {
+                let own = index - self.seed_footnotes();
+                self.footnotes
+                    .get(own)
+                    .unwrap_or_else(|| &self.found_footnotes[own - self.footnotes.len()])
+            }
         }
     }
 
@@ -249,42 +265,33 @@ impl<'a> Definitions<'a> {
             return Some(index)
                 .filter(|&index| self.visible(self.seed.unwrap().footnote_starts[index]));
         }
-        let own = find_index(&self.footnote_order, &self.footnotes, key, String::as_str);
-        if self
-            .outside
-            .is_some_and(|outside| outside.footnote(key, own.is_some()))
-        {
-            self.found_footnotes.push(String::from(key));
-            return Some(
-                self.seed_footnotes() + self.footnotes.len() + self.found_footnotes.len() - 1,
-            );
-        }
-        let index = own?;
+        let Some(index) = find_index(&self.footnote_order, &self.footnotes, key, String::as_str)
+        else {
+            return self.find_outside(true, key);
+        };
         self.visible(self.footnote_starts[index])
             .then_some(index + self.seed_footnotes())
     }
 }
 
-// Sort the indices of `values` by key, those of equal keys by authored position, so that a
-// lookup finds the first definition of each.
+// Sort equal keys by authored position so deduplication keeps the first definition.
 pub(crate) fn build_index<T>(order: &mut Vec<usize>, values: &[T], key: impl Fn(&T) -> &str) {
     order.clear();
     order.extend(0..values.len());
     order.sort_unstable_by(|&a, &b| key(&values[a]).cmp(key(&values[b])).then(a.cmp(&b)));
+    order.dedup_by(|a, b| key(&values[*a]) == key(&values[*b]));
 }
 
-// The first index in `order` of a value whose key is `value`.
 pub(crate) fn find_index<T>(
     order: &[usize],
     values: &[T],
     value: &str,
     key: impl Fn(&T) -> &str,
 ) -> Option<usize> {
-    let at = order.partition_point(|&index| key(&values[index]) < value);
     order
-        .get(at)
-        .copied()
-        .filter(|&index| key(&values[index]) == value)
+        .binary_search_by(|&index| key(&values[index]).cmp(value))
+        .ok()
+        .map(|index| order[index])
 }
 
 // Reference keys fold ASCII letters to lowercase after the shared Unicode fold.
@@ -296,11 +303,22 @@ pub(crate) fn owned_reference_key(value: &str) -> String {
     key
 }
 
-fn reference_key(value: &str) -> Cow<'_, str> {
+pub(crate) fn reference_key(value: &str) -> Cow<'_, str> {
     if is_canonical_reference_key(value) {
         Cow::Borrowed(value)
     } else {
         Cow::Owned(owned_reference_key(value))
+    }
+}
+
+// The reference key of `value`: the value itself when it is its own key, and otherwise the key,
+// normalized into `scratch`.
+pub(crate) fn scratch_reference_key<'v>(value: &'v str, scratch: &'v mut String) -> &'v str {
+    if is_canonical_reference_key(value) {
+        value
+    } else {
+        normalize_reference_identifier_into(value, scratch);
+        scratch
     }
 }
 

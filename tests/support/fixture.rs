@@ -7,9 +7,8 @@
 use base_markdown::stream::Text as EventText;
 pub use base_markdown::{AlignKind, CodeFence, ReferenceKind};
 use base_markdown::{Document, NodeId, NodeSyntax, ParseOptions};
-use std::collections::BTreeMap;
 
-use base_markdown::stream::{EventKind, Reference, Tag};
+use base_markdown::stream::{EventKind, Reference, Tag, Target};
 /// Historical source coordinates retained only as fixture descriptions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Position([usize; 6]);
@@ -266,20 +265,6 @@ impl Node {
         }
     }
     pub fn document(&self) -> Document {
-        let mut definitions = BTreeMap::new();
-        fn collect(node: &Node, definitions: &mut BTreeMap<String, (String, Option<String>)>) {
-            if let Node::Definition(n) = node {
-                definitions
-                    .entry(normalize(&n.identifier))
-                    .or_insert((n.url.clone(), n.title.clone()));
-            }
-            if let Some(children) = node.children() {
-                for child in children {
-                    collect(child, definitions);
-                }
-            }
-        }
-        collect(self, &mut definitions);
         let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
         let root = document.root();
         if matches!(self, Self::Root(_) | Self::Fragment(_)) {
@@ -294,15 +279,7 @@ impl Node {
                 } else {
                     root
                 };
-                append(
-                    &mut document,
-                    parent,
-                    child,
-                    &definitions,
-                    false,
-                    false,
-                    &[],
-                );
+                append(&mut document, parent, child, false, false, &[]);
             }
         } else if let Self::ListItem(n) = self {
             // An item is only ever in a list, so a lone item is the only item of one, which is
@@ -316,15 +293,7 @@ impl Node {
                     }),
                 )
                 .unwrap();
-            append(
-                &mut document,
-                list,
-                self,
-                &definitions,
-                !n.spread,
-                false,
-                &[],
-            );
+            append(&mut document, list, self, !n.spread, false, &[]);
         } else if matches!(self, Self::TableRow(_) | Self::TableCell(_)) {
             // A row is only ever in a table, so a lone row is a table's head row, and a lone cell
             // its only cell.
@@ -339,9 +308,9 @@ impl Node {
                     .append_child(parent, EventKind::Start(Tag::TableRow))
                     .unwrap();
             }
-            append(&mut document, parent, self, &definitions, false, true, &[]);
+            append(&mut document, parent, self, false, true, &[]);
         } else {
-            append(&mut document, root, self, &definitions, false, false, &[]);
+            append(&mut document, root, self, false, false, &[]);
         }
         document
     }
@@ -452,7 +421,6 @@ fn append(
     document: &mut Document,
     parent: NodeId,
     node: &Node,
-    definitions: &BTreeMap<String, (String, Option<String>)>,
     tight: bool,
     header: bool,
     align: &[AlignKind],
@@ -518,37 +486,25 @@ fn append(
             language: title(&n.lang),
         },
         Node::Break(_) => EventKind::HardBreak,
-        Node::Link(n) => EventKind::Start(Tag::Link {
+        Node::Link(n) => EventKind::Start(Tag::Link(Target::Resource {
             destination: value(&n.url),
             title: title(&n.title),
-            reference: None,
-        }),
-        Node::Image(n) => EventKind::Start(Tag::Image {
+        })),
+        Node::Image(n) => EventKind::Start(Tag::Image(Target::Resource {
             destination: value(&n.url),
             title: title(&n.title),
-            reference: None,
-        }),
+        })),
         Node::LinkReference(n) => {
-            let resource = definitions.get(&normalize(&n.identifier));
-            EventKind::Start(Tag::Link {
-                destination: value(resource.map_or("", |r| r.0.as_str())),
-                title: resource.and_then(|r| title(&r.1)),
-                reference: Some(Box::new(Reference {
-                    kind: n.reference_kind,
-                    label: association(n.label.as_deref(), &n.identifier),
-                })),
-            })
+            EventKind::Start(Tag::Link(Target::Reference(Box::new(Reference {
+                kind: n.reference_kind,
+                label: association(n.label.as_deref(), &n.identifier),
+            }))))
         }
         Node::ImageReference(n) => {
-            let resource = definitions.get(&normalize(&n.identifier));
-            EventKind::Start(Tag::Image {
-                destination: value(resource.map_or("", |r| r.0.as_str())),
-                title: resource.and_then(|r| title(&r.1)),
-                reference: Some(Box::new(Reference {
-                    kind: n.reference_kind,
-                    label: association(n.label.as_deref(), &n.identifier),
-                })),
-            })
+            EventKind::Start(Tag::Image(Target::Reference(Box::new(Reference {
+                kind: n.reference_kind,
+                label: association(n.label.as_deref(), &n.identifier),
+            }))))
         }
         Node::FootnoteDefinition(n) => EventKind::Start(Tag::FootnoteDefinition {
             identifier: value(&normalize(&n.identifier)),
@@ -622,14 +578,14 @@ fn append(
             .append_child(id, EventKind::Start(Tag::TableHead))
             .unwrap();
         if let Some(row) = n.children.first() {
-            append(document, head, row, definitions, false, true, &n.align);
+            append(document, head, row, false, true, &n.align);
         }
         if n.children.len() > 1 {
             let body = document
                 .append_child(id, EventKind::Start(Tag::TableBody))
                 .unwrap();
             for row in &n.children[1..] {
-                append(document, body, row, definitions, false, false, &n.align);
+                append(document, body, row, false, false, &n.align);
             }
         }
     } else if let Some(children) = node.children() {
@@ -657,7 +613,6 @@ fn append(
                 document,
                 parent,
                 child,
-                definitions,
                 child_tight,
                 header,
                 if matches!(node, Node::TableRow(_)) {
@@ -693,9 +648,19 @@ impl MarkdownFixture for Node {
         &self,
         options: &base_markdown::MarkdownOptions,
     ) -> Result<String, base_markdown::message::Message> {
-        // A constructed tree is normalized before serializing, as the serializer requires.
+        // A constructed tree is normalized before serializing, as the serializer requires, unless
+        // it holds a reference that no definition binds: these fixtures, from mdast, write one as
+        // a reference, which reads back as text, and normalizing would make it that text first.
         let mut document = self.document();
-        document.normalize();
+        let bindings = document.bindings();
+        let unbound = document.descendants(document.root()).any(|id| {
+            matches!(&document.node(id).unwrap().kind,
+                EventKind::Start(Tag::Link(target) | Tag::Image(target))
+                    if target.reference().is_some() && bindings.destination(id).is_none())
+        });
+        if !unbound {
+            document.normalize();
+        }
         base_markdown::to_markdown_with_options(&document, options)
     }
 }
@@ -826,20 +791,16 @@ fn fixture_canonical<S: AsRef<str>>(document: &Document<S>) -> (Vec<String>, Vec
         let node = document.node(id).unwrap();
         match &node.kind {
             EventKind::CodeBlock { fence, .. } => syntax.push(format!("fence:{fence:?}")),
-            EventKind::Start(
-                Tag::Link {
-                    reference: Some(reference),
-                    ..
-                }
-                | Tag::Image {
-                    reference: Some(reference),
-                    ..
-                },
-            ) => syntax.push(format!(
-                "reference:{:?}:{:?}",
-                reference.kind,
-                normalize(reference.label.resolve(document.source()).unwrap())
-            )),
+            EventKind::Start(Tag::Link(target) | Tag::Image(target))
+                if target.reference().is_some() =>
+            {
+                let reference = target.reference().unwrap();
+                syntax.push(format!(
+                    "reference:{:?}:{:?}",
+                    reference.kind,
+                    normalize(reference.label.resolve(document.source()).unwrap())
+                ));
+            }
             EventKind::Start(Tag::FootnoteDefinition {
                 label: Some(label), ..
             })
@@ -943,31 +904,24 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
                 None => "Document".into(),
             },
             // A reference keeps its form and what its label matches, so a reference that reads
-            // back as a resource, or in another form, is caught.
-            EventKind::Start(Tag::Link {
-                destination,
-                title,
-                reference,
-            }) => format!(
-                "Link:{:?}:{:?}:{:?}",
-                text(&destination),
-                title.as_ref().map(text),
-                reference
-                    .as_ref()
-                    .map(|reference| reference_signature(reference, &text))
-            ),
-            EventKind::Start(Tag::Image {
-                destination,
-                title,
-                reference,
-            }) => format!(
-                "Image:{:?}:{:?}:{:?}",
-                text(&destination),
-                title.as_ref().map(text),
-                reference
-                    .as_ref()
-                    .map(|reference| reference_signature(reference, &text))
-            ),
+            // back as a resource, or in another form, is caught. An unbound reference has no
+            // destination.
+            EventKind::Start(ref tag @ (Tag::Link(ref target) | Tag::Image(ref target))) => {
+                let (destination, title) = target.destination().unzip();
+                format!(
+                    "{}:{:?}:{:?}:{:?}",
+                    if matches!(tag, Tag::Link(_)) {
+                        "Link"
+                    } else {
+                        "Image"
+                    },
+                    destination.map(text),
+                    title.flatten().map(text),
+                    target
+                        .reference()
+                        .map(|reference| reference_signature(reference, &text))
+                )
+            }
             EventKind::Start(Tag::FootnoteDefinition { identifier, .. }) => {
                 format!("FootnoteDefinition:{:?}", normalize(&text(&identifier)))
             }
@@ -1036,23 +990,11 @@ pub fn set_reference<S: AsRef<str>>(
     kind: ReferenceKind,
     label: EventText<'static>,
 ) -> Result<(), base_markdown::stream::StreamError> {
-    let reference = Some(Box::new(Reference { kind, label }));
-    let kind = match document.node(id).unwrap().kind.clone() {
-        EventKind::Start(Tag::Link {
-            destination, title, ..
-        }) => Tag::Link {
-            destination,
-            title,
-            reference,
-        },
-        EventKind::Start(Tag::Image {
-            destination, title, ..
-        }) => Tag::Image {
-            destination,
-            title,
-            reference,
-        },
-        kind => panic!("not a link or image: {:?}", kind),
+    let target = Target::Reference(Box::new(Reference { kind, label }));
+    let kind = match document.node(id).unwrap().kind {
+        EventKind::Start(Tag::Link(_)) => Tag::Link(target),
+        EventKind::Start(Tag::Image(_)) => Tag::Image(target),
+        ref kind => panic!("not a link or image: {:?}", kind),
     };
     document.set_kind(id, EventKind::Start(kind))
 }

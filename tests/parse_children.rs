@@ -6,7 +6,7 @@
 mod support;
 
 use base_markdown::{
-    stream::{EventKind, StreamError, Tag, Text},
+    stream::{EventKind, StreamError, Tag, Target, Text},
     to_markdown, CompileOptions, Document, NodeId, NodeSyntax, ParseOptions, ReferenceKind,
 };
 use support::fixture::canonical;
@@ -57,13 +57,18 @@ fn kinds(document: &Document, parent: NodeId) -> Vec<String> {
         .collect()
 }
 
+/// Where each link of the tree, in document order, leads, bound references included, and
+/// `unbound` for a reference that nothing binds.
 fn destinations(document: &Document) -> Vec<String> {
     document
         .descendants(document.root())
         .filter_map(|id| match &document.node(id).unwrap().kind {
-            EventKind::Start(Tag::Link { destination, .. }) => {
-                Some(destination.resolve(document.source()).unwrap().to_owned())
-            }
+            EventKind::Start(Tag::Link(_)) => Some(
+                document
+                    .destination(id)
+                    .map_or("unbound", |(to, _)| to)
+                    .to_owned(),
+            ),
             _ => None,
         })
         .collect()
@@ -285,10 +290,10 @@ fn references_and_footnote_calls_resolve_against_the_documents_definitions() {
     let link = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::Link { .. }))
     });
-    // A reference keeps its label, which reads back to the same definition.
+    // A reference is stored by its name, as in a parsed document.
     assert!(matches!(
         &document.node(link).unwrap().kind,
-        EventKind::Start(Tag::Link { reference: Some(reference), .. })
+        EventKind::Start(Tag::Link(Target::Reference(reference)))
             if reference.kind == ReferenceKind::Full
                 && reference.label.resolve(document.source()).ok() == Some("R")
     ));
@@ -335,41 +340,88 @@ fn a_footnote_call_inside_a_link_stays_text_as_the_parser_leaves_it() {
 }
 
 #[test]
-fn a_block_fragments_definitions_take_their_place_in_document_order() {
-    let source = "[r]: /before\n\n> Old [x][old].\n>\n> [old]: /old\n\n[r]: /after\n\n[s]: /after-s\n\n[t]: /after-t\n\n[^n]: Note.\n";
+fn a_block_fragments_definitions_bind_for_the_rest_of_the_document() {
+    let source =
+        "[r]: /before\n\n[x][old] [y][s]\n\n> Old [x][old].\n>\n> [old]: /old\n\n[^n]: Note.\n";
+    let mut document = parse(source);
+    let quote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::BlockQuote))
+    });
+    // `[y][s]` was text, and stays text: being a name, it does not become a reference by an edit.
+    document
+        .parse_children(
+            quote,
+            "[a][r] [b][s] [c][old] [^n]\n\n[s]: /own-s\n[old]: /new-old\n",
+            &gfm(),
+        )
+        .unwrap();
+    // A definition outside the parent binds, the fragment's own bind, and so do they the
+    // reference before the parent, as a definition among the replaced children no longer does.
+    assert_eq!(
+        destinations(&document),
+        ["/new-old", "/before", "/own-s", "/new-old"]
+    );
+    assert_eq!(footnote_references(&document), 1);
+    reads_back(document);
+}
+
+/// As an edit adds no copy of a binding, a fragment that defines a label or footnote identifier
+/// that the attached document outside the replaced children defines, or that defines one twice,
+/// is rejected, and nothing changes, not even whether the document is known to be settled.
+#[test]
+fn a_fragment_that_would_add_a_copy_of_a_binding_is_rejected_and_changes_nothing() {
+    let source = "[r]: /before\n\n> Old.\n>\n> [old]: /old\n\n[^n]: After.\n";
+    for fragment in [
+        "[r]: /own\n",
+        "[R]: /own\n",
+        "Call.[^n]\n\n[^n]: Own.\n",
+        "[s]: /one\n[s]: /two\n",
+        "[^m]: One.\n\n[^m]: Two.\n",
+        "> [r]: /deep\n",
+    ] {
+        let mut document = parse(source);
+        let quote = find(&document, |kind| {
+            matches!(kind, EventKind::Start(Tag::BlockQuote))
+        });
+        let before = canonical(&document);
+        let children: Vec<_> = document.children(quote).collect();
+        assert!(
+            matches!(
+                document.parse_children(quote, fragment, &gfm()),
+                Err(StreamError::InvalidValue)
+            ),
+            "{:?}",
+            fragment
+        );
+        assert_eq!(canonical(&document), before, "{fragment:?}");
+        assert_eq!(document.children(quote).collect::<Vec<_>>(), children);
+        // The document is still settled, so normalizing it changes nothing and looks nothing up.
+        assert!(document.is_normalized());
+        assert_eq!(document.definition("old"), children.last().copied());
+    }
+    // The replaced children's own labels can be defined again, and a detached tree takes copies.
     let mut document = parse(source);
     let quote = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::BlockQuote))
     });
     document
-        .parse_children(
-            quote,
-            "[a][r] [b][s] [c][t] [d][old] [^n]\n\n[r]: /own-r\n[s]: /own-s\n[s]: /own-s2\n",
-            &gfm(),
-        )
+        .parse_children(quote, "[old]: /again\n", &gfm())
         .unwrap();
-    // A definition before the parent wins over the fragment's own, and the fragment's own over
-    // one after it. A definition among the replaced children no longer counts.
-    assert_eq!(destinations(&document), ["/before", "/own-s", "/after-t"]);
-    assert_eq!(footnote_references(&document), 1);
-    reads_back(document);
+    document.detach(quote).unwrap();
+    document
+        .parse_children(quote, "[old]: /one\n\n[old]: /two\n", &gfm())
+        .unwrap();
 }
 
 #[test]
-fn an_existing_reference_that_a_fragment_definition_shadows_is_written_inline() {
-    let mut document = parse("[x][r]\n\n> Quote.\n\n[r]: /a\n");
+fn an_existing_reference_binds_to_the_definition_that_replaces_its_own() {
+    let mut document = parse("[x][r]\n\n> [r]: /a\n");
     let quote = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::BlockQuote))
     });
     document.parse_children(quote, "[r]: /b", &gfm()).unwrap();
-    assert_eq!(destinations(&document), ["/a"]);
-    // It is written as a resource, so it reads back as one, to the same destination.
-    let markdown = to_markdown(&document).unwrap();
-    assert_eq!(markdown, "[x](/a)\n\n> [r]: /b\n\n[r]: /a\n");
-    let reparsed = Document::parse(markdown.clone(), &gfm()).unwrap();
-    assert_eq!(destinations(&reparsed), ["/a"]);
-    assert_eq!(rendered(&reparsed), rendered(&document));
-    assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
+    assert_eq!(destinations(&document), ["/b"]);
+    assert_eq!(reads_back(document), "[x][r]\n\n> [r]: /b\n");
 }
 
 #[test]
@@ -491,31 +543,115 @@ fn labels_resolve_exactly_as_the_parser_reads_them() {
 }
 
 #[test]
-fn a_fragments_own_footnote_definition_comes_before_one_after_its_parent() {
-    let mut document = parse("> Old.\n\n[^n]: After.\n");
+fn a_fragments_own_footnote_definition_binds_its_calls() {
+    let mut document = parse("> Old.\n\n[^m]: After.\n");
     let quote = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::BlockQuote))
     });
     document
-        .parse_children(quote, "Call.[^n]\n\n[^n]: Own.\n", &gfm())
+        .parse_children(quote, "Call.[^n] [^m]\n\n[^n]: Own.\n", &gfm())
         .unwrap();
-    let own = document.footnote_definition("n").unwrap();
+    let own = document.footnote_definition("N").unwrap();
     assert_eq!(document.text_content(own), "Own.");
-    assert_eq!(footnote_references(&document), 1);
+    assert_eq!(footnote_references(&document), 2);
+    reads_back(document);
+}
+
+/// Parsing into the container of a label's first definition binds the fragment's references to
+/// the next definition of the label, which a parsed document may have, as the first leaves.
+#[test]
+fn parsing_into_the_container_of_the_first_definition_binds_the_next_outside_it() {
+    let options = gfm();
+    let mut document = parse("> [a]: /first\n\nText.\n\n[a]: /second\n");
+    let quote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::BlockQuote))
+    });
+    document.parse_children(quote, "[a]", &options).unwrap();
+    assert_eq!(destinations(&document), ["/second"]);
+    let paragraph = document.children(document.root()).nth(2).unwrap();
+    document.parse_children(paragraph, "[a]", &options).unwrap();
+    assert_eq!(destinations(&document), ["/second", "/second"]);
+    reads_back(document);
+}
+
+/// The definitions a fragment adds are indexed, and those of the replaced children are not, in
+/// the attached document only.
+#[test]
+fn parsing_children_adds_and_removes_definitions() {
+    let options = gfm();
+    let mut document = parse("> [b]: /old\n\n[x][b] [x][c]\n");
+    let quote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::BlockQuote))
+    });
+    let old = document.definition("b").unwrap();
+    document
+        .parse_children(quote, "[c]: /c\n\n[^n]: Note.\n", &options)
+        .unwrap();
+    assert_eq!(document.definition("b"), None);
+    let c = document.definition("c").unwrap();
+    assert_eq!(document.node(c).unwrap().parent(), Some(quote));
+    assert!(document.footnote_definition("N").is_some());
+    // `[x][b]` is a name that nothing binds now, and `[x][c]` was read as text.
+    assert_eq!(destinations(&document), ["unbound"]);
+    // A detached parent's fragment is not indexed.
+    document.detach(quote).unwrap();
+    document
+        .parse_children(quote, "[d]: /d\n", &options)
+        .unwrap();
+    assert_eq!(document.definition("d"), None);
+    assert_eq!(document.definition("c"), None);
+    // The old definition is detached, as `extract_children` leaves it.
+    assert_eq!(document.node(old).unwrap().parent(), None);
+}
+
+/// An item's spread is the fragment's, which the copied blocks have no source to infer it from,
+/// so a loose item whose fragment holds a blank line is written with it.
+#[test]
+fn an_item_takes_the_spread_of_its_fragment() {
+    let mut document = parse("- old\n\n- z\n");
+    let item = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::Item { .. }))
+    });
+    document.parse_children(item, "b\n\n<b>\n", &gfm()).unwrap();
+    assert_eq!(
+        document.syntax(item),
+        Some(NodeSyntax::ListItem { spread: true })
+    );
+    assert_eq!(reads_back(document), "- b\n\n  <b>\n\n- z\n");
+    let mut document = parse("- old\n\n- z\n");
+    let item = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::Item { .. }))
+    });
+    document.parse_children(item, "b\n> q\n", &gfm()).unwrap();
+    assert_eq!(
+        document.syntax(item),
+        Some(NodeSyntax::ListItem { spread: false })
+    );
     reads_back(document);
 }
 
 #[test]
 fn a_detached_parent_resolves_against_the_trees_definitions() {
-    let mut document = parse("Old.\n\n[r]: /u\n");
-    let paragraph = document.children(document.root()).next().unwrap();
-    document.detach(paragraph).unwrap();
-    document.parse_children(paragraph, "[r]", &gfm()).unwrap();
+    let mut document = parse("> Old.\n>\n> [r]: /u\n\n[s]: /s\n");
+    let quote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::BlockQuote))
+    });
+    let paragraph = document.children(quote).next().unwrap();
+    document.detach(quote).unwrap();
+    // A detached tree binds only its own references, so `[s]` stays text.
+    document
+        .parse_children(paragraph, "[r] [s]", &gfm())
+        .unwrap();
+    let link = document.children(paragraph).next().unwrap();
     assert!(matches!(
-        &document.node(document.children(paragraph).next().unwrap()).unwrap().kind,
-        EventKind::Start(Tag::Link { destination, .. })
-            if destination.resolve(document.source()).ok() == Some("/u")
+        &document.node(link).unwrap().kind,
+        EventKind::Start(Tag::Link(Target::Reference(_)))
     ));
+    assert_eq!(document.destination(link), Some(("/u", None)));
+    assert_eq!(document.text_content(paragraph), "r [s]");
+    // Parsing into the quote, its definition no longer binds.
+    document.parse_children(quote, "[r] [s]", &gfm()).unwrap();
+    assert_eq!(document.text_content(quote), "[r] [s]");
 }
 
 /// Parsing into every paragraph of a document takes time linear in the document: each parse

@@ -3,6 +3,7 @@
 
 mod support;
 
+use base_markdown::stream::Target;
 use base_markdown::{
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
     to_markdown, AstBuilder, CompileOptions, Document, NodeId, NodeSyntax, ParseOptions,
@@ -128,9 +129,14 @@ fn describe<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> String {
                 language.resolve(document.source()).unwrap()
             ))
         ),
-        EventKind::Start(Tag::Link { destination, .. }) => format!(
+        EventKind::Start(Tag::Link(target)) => format!(
             "link {:?}({})",
-            destination.resolve(document.source()).unwrap(),
+            match target.destination() {
+                Some((destination, _)) => destination.resolve(document.source()).unwrap(),
+                None => document
+                    .destination(id)
+                    .map_or("", |(destination, _)| destination),
+            },
             children()
         ),
         kind => format!("{kind:?}({})", children()),
@@ -398,11 +404,10 @@ fn unwraps_links_in_links_that_are_not_autolinks() {
     document
         .set_kind(
             inner,
-            EventKind::Start(Tag::Link {
+            EventKind::Start(Tag::Link(Target::Resource {
                 destination: Text::Literal("http://a.b"),
                 title: Some(Text::Literal("t")),
-                reference: None,
-            }),
+            })),
         )
         .unwrap();
     document.normalize();
@@ -1128,11 +1133,10 @@ fn link(
     children: Vec<Result<Event<'static>, StreamError>>,
 ) -> Vec<Result<Event<'static>, StreamError>> {
     attention(
-        Tag::Link {
+        Tag::Link(Target::Resource {
             destination: Text::Literal("http://a.b"),
             title: None,
-            reference: None,
-        },
+        }),
         TagKind::Link,
         children,
     )
@@ -2187,11 +2191,10 @@ fn image(
     children: Vec<Result<Event<'static>, StreamError>>,
 ) -> Vec<Result<Event<'static>, StreamError>> {
     attention(
-        Tag::Image {
+        Tag::Image(Target::Resource {
             destination: Text::Literal("u"),
             title: None,
-            reference: None,
-        },
+        }),
         TagKind::Image,
         children,
     )
@@ -2316,11 +2319,19 @@ fn append_block(document: &mut Document<String>, parent: NodeId, block: &Block) 
             }
         }
         Block::Footnote(blocks) => {
+            // Numbered in order, as an edit adds no second definition of an identifier.
+            let number = 1 + document
+                .nodes()
+                .iter()
+                .filter(|node| {
+                    matches!(node.kind, EventKind::Start(Tag::FootnoteDefinition { .. }))
+                })
+                .count();
             let definition = document
                 .append_child(
                     parent,
                     EventKind::Start(Tag::FootnoteDefinition {
-                        identifier: Text::from("1".to_owned()),
+                        identifier: Text::from(number.to_string()),
                         label: None,
                     }),
                 )
@@ -3234,7 +3245,7 @@ fn a_footnote_definition_in_the_only_item_of_a_loose_list_keeps_the_item_spread(
             ),
             (
                 vec![Footnote(vec![]), Footnote(vec![p("x")]), definition()],
-                "- [^1]:\n\n  [^1]: x\n\n  [r]: /u\n",
+                "- [^1]:\n\n  [^2]: x\n\n  [r]: /u\n",
             ),
         ] {
             assert_eq!(
@@ -3657,8 +3668,8 @@ fn code_that_starts_a_footnote_definition_starts_on_the_next_line_without_fences
             ("- [^1]:\n          x\n- a\n", "- [^1]:\n          x\n- a\n"),
             ("> [^1]:\n>         x\n", "> [^1]:\n>         x\n"),
             (
-                "[^1]: [^1]:\n            x\n",
-                "[^1]: [^1]:\n            x\n",
+                "[^1]: [^2]:\n            x\n",
+                "[^1]: [^2]:\n            x\n",
             ),
             ("[^1]:\n        x\n\n    a\n", "[^1]:\n        x\n\n    a\n"),
             (
@@ -4325,7 +4336,14 @@ fn tables_definitions_and_setext_headings_that_need_a_blank_line_in_a_tight_item
     // A definition or setext heading cannot interrupt a paragraph, and after a nested list or footnote definition that ends in one, through a block quote around it, a table, definition or setext heading would continue it lazily, as a paragraph would (#154). Without a blank line, which makes the item read back spread, each would read back as part of that paragraph, so the serializer writes one, and normalizing makes the list loose, as it does for a paragraph there, whatever the serializer's options (#168). The rule leads each item, so that one of only a footnote definition and a definition renders the same once read back.
     let afters = || {
         vec![
-            (definition_block(), "[d]: u"),
+            (
+                Leaf(EventKind::Definition {
+                    label: Text::from("e".to_owned()),
+                    destination: Text::from("u".to_owned()),
+                    title: None,
+                }),
+                "[e]: u",
+            ),
             (setext_only(), "x\n  y\n  ="),
             (Table, "| x |\n  | --- |"),
         ]

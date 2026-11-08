@@ -6,6 +6,7 @@
 //! the stack. 128 levels fit in a test thread's 2 MiB stack in a debug build, so these run on test
 //! threads.
 
+use base_markdown::stream::Target;
 use base_markdown::{
     message::Message,
     normalize_markdown,
@@ -68,19 +69,17 @@ fn levels(
 }
 
 fn link() -> Tag<'static> {
-    Tag::Link {
+    Tag::Link(Target::Resource {
         destination: Text::Literal("u"),
         title: None,
-        reference: None,
-    }
+    })
 }
 
 fn image() -> Tag<'static> {
-    Tag::Image {
+    Tag::Image(Target::Resource {
         destination: Text::Literal("u"),
         title: None,
-        reference: None,
-    }
+    })
 }
 
 fn list(ordered: bool) -> Tag<'static> {
