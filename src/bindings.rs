@@ -547,6 +547,29 @@ impl Table {
         copies
     }
 
+    // The table of the tree under `root`, but for the definitions and footnote definitions for
+    // which `skip` holds.
+    pub(crate) fn without(
+        source: &str,
+        nodes: &[Node],
+        root: NodeId,
+        skip: impl Fn(NodeId) -> bool,
+    ) -> Self {
+        let mut keys = Keys::default();
+        let mut scratch = Scratch::default();
+        each_definition(nodes, root, |id| {
+            if !skip(id) {
+                keys.insert(source, nodes, id, false, &mut scratch);
+            }
+        });
+        Self { keys }
+    }
+
+    // Whether a definition, or footnote definition, of `key` is in the table.
+    pub(crate) fn binds(&self, footnote: bool, key: &str) -> bool {
+        self.keys.entry(footnote, key).is_some()
+    }
+
     // The definition, or footnote definition, that a label or identifier names.
     fn get(&self, label: &str, footnote: bool, scratch: &mut Scratch) -> Option<NodeId> {
         let key = lookup_key(label, footnote, &mut scratch.key);
@@ -677,11 +700,21 @@ impl Index {
     // defines once, when the definitions for which `leaving` holds leave it: whether no other
     // definition of the document has any of them, as an edit adds no copy.
     pub(crate) fn admits(&self, keys: &[(bool, String)], leaving: impl Fn(NodeId) -> bool) -> bool {
-        keys.iter().all(|(footnote, key)| {
-            self.keys
-                .entry(*footnote, key)
-                .map_or(true, |entry| entry.nodes().all(&leaving))
-        })
+        keys.iter()
+            .all(|(footnote, key)| !self.binds(*footnote, key, &leaving))
+    }
+
+    // Whether the attached document has a definition, or footnote definition, of `key` other
+    // than those for which `leaving` holds, in time linear in those of `key` it passes first.
+    pub(crate) fn binds(
+        &self,
+        footnote: bool,
+        key: &str,
+        leaving: impl Fn(NodeId) -> bool,
+    ) -> bool {
+        self.keys
+            .entry(footnote, key)
+            .is_some_and(|entry| !entry.nodes().all(leaving))
     }
 
     // The binding of a label or identifier: the first of its definitions.
@@ -725,7 +758,7 @@ pub(crate) fn kind_key(kind: &EventKind<'_>, source: &str) -> (bool, String) {
 
 // The document a lookup reads: its source, nodes, the index of its attached definitions and its
 // root.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct Context<'d> {
     pub(crate) source: &'d str,
     pub(crate) nodes: &'d [Node],

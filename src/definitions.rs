@@ -53,6 +53,14 @@ pub(crate) struct Authored {
     footnotes: Vec<(usize, String)>,
 }
 
+/// The definitions of a document outside a fragment being parsed into it, which bind the
+/// fragment's references and footnote calls that the fragment's own do not.
+pub(crate) trait Outside: core::fmt::Debug {
+    /// Whether a definition outside the fragment binds `key`, a footnote identifier where
+    /// `footnote`, and a reference key otherwise.
+    fn binds(&self, footnote: bool, key: &str) -> bool;
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Definitions<'a> {
     // Definitions authored before the parsed source; indices below its lengths refer to it.
@@ -64,6 +72,14 @@ pub(crate) struct Definitions<'a> {
     footnote_order: Vec<usize>,
     // Lookups ignore definitions starting at or after this offset. Incremental parsing scopes each top-level block to the definitions authored before its end.
     limit: Option<usize>,
+    // The definitions outside the parsed source, with the keys asked of them so far, each of a
+    // footnote or not, with the index of the entry or footnote it was given, if they bind it, so
+    // that each key is asked once, those of references first. Those entries follow the source's
+    // own.
+    outside: Option<&'a dyn Outside>,
+    asked: [BTreeMap<String, Option<usize>>; 2],
+    found: Vec<Definition<'a>>,
+    found_footnotes: Vec<String>,
 }
 
 impl<'a> Definitions<'a> {
@@ -75,8 +91,46 @@ impl<'a> Definitions<'a> {
         }
     }
 
+    /// Create definitions of a fragment of a document whose other definitions are `outside`.
+    pub fn outside(outside: &'a dyn Outside) -> Self {
+        Self {
+            outside: Some(outside),
+            ..Self::default()
+        }
+    }
+
+    // Whether no reference can be bound, so that none need be looked up.
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty() && self.seed.map_or(true, |seed| seed.entries.is_empty())
+        self.entries.is_empty()
+            && self.seed.map_or(true, |seed| seed.entries.is_empty())
+            && self.outside.is_none()
+    }
+
+    // The index that a key the source does not define has outside it, if a definition there
+    // binds it, asking `outside` once for each key.
+    fn find_outside(&mut self, footnote: bool, key: &str) -> Option<usize> {
+        let outside = self.outside?;
+        if let Some(&index) = self.asked[usize::from(footnote)].get(key) {
+            return index;
+        }
+        let index = outside.binds(footnote, key).then(|| {
+            if footnote {
+                self.found_footnotes.push(String::from(key));
+                self.seed_footnotes() + self.footnotes.len() + self.found_footnotes.len() - 1
+            } else {
+                // A document stores a reference by its name, so the definition is not read.
+                self.found.push(Definition {
+                    start: 0,
+                    label: Text::Literal(""),
+                    key: Cow::Owned(String::from(key)),
+                    destination: Text::Literal(""),
+                    title: None,
+                });
+                self.seed_entries() + self.entries.len() + self.found.len() - 1
+            }
+        });
+        self.asked[usize::from(footnote)].insert(String::from(key), index);
+        index
     }
 
     fn seed_entries(&self) -> usize {
@@ -90,7 +144,12 @@ impl<'a> Definitions<'a> {
     pub fn entry(&self, index: usize) -> &Definition<'a> {
         match self.seed {
             Some(seed) if index < seed.entries.len() => &seed.entries[index],
-            _ => &self.entries[index - self.seed_entries()],
+            _ => {
+                let own = index - self.seed_entries();
+                self.entries
+                    .get(own)
+                    .unwrap_or_else(|| &self.found[own - self.entries.len()])
+            }
         }
     }
 
@@ -127,13 +186,17 @@ impl<'a> Definitions<'a> {
     }
 
     // The index keeps the first authored definition of each key, so an invisible match has no visible predecessor. Seeded definitions precede the parsed source.
-    pub fn find(&self, key: &str) -> Option<usize> {
+    // A key the source does not define is looked up outside it.
+    pub fn find(&mut self, key: &str) -> Option<usize> {
         let index = match self.seed.and_then(|seed| seed.index.get(key)) {
             Some(&index) => index,
             None => {
-                find_index(&self.ordered, &self.entries, key, |entry| {
+                match find_index(&self.ordered, &self.entries, key, |entry| {
                     entry.key.as_ref()
-                })? + self.seed_entries()
+                }) {
+                    Some(index) => index + self.seed_entries(),
+                    None => return self.find_outside(false, key),
+                }
             }
         };
         Some(index).filter(|&index| self.visible(self.entry(index).start))
@@ -188,16 +251,24 @@ impl<'a> Definitions<'a> {
     pub fn footnote_key(&self, index: usize) -> &str {
         match self.seed {
             Some(seed) if index < seed.footnotes.len() => &seed.footnotes[index],
-            _ => &self.footnotes[index - self.seed_footnotes()],
+            _ => {
+                let own = index - self.seed_footnotes();
+                self.footnotes
+                    .get(own)
+                    .unwrap_or_else(|| &self.found_footnotes[own - self.footnotes.len()])
+            }
         }
     }
 
-    pub fn find_footnote(&self, key: &str) -> Option<usize> {
+    pub fn find_footnote(&mut self, key: &str) -> Option<usize> {
         if let Some(&index) = self.seed.and_then(|seed| seed.footnote_index.get(key)) {
             return Some(index)
                 .filter(|&index| self.visible(self.seed.unwrap().footnote_starts[index]));
         }
-        let index = find_index(&self.footnote_order, &self.footnotes, key, String::as_str)?;
+        let Some(index) = find_index(&self.footnote_order, &self.footnotes, key, String::as_str)
+        else {
+            return self.find_outside(true, key);
+        };
         self.visible(self.footnote_starts[index])
             .then_some(index + self.seed_footnotes())
     }

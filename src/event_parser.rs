@@ -118,7 +118,7 @@ impl EventParser<'_> {
             self.inline.prepare::<false, EXTENSIONS>(
                 self.source,
                 fragments,
-                &self.definitions,
+                &mut self.definitions,
                 self.options,
                 task,
                 table,
@@ -127,7 +127,7 @@ impl EventParser<'_> {
             self.inline.prepare::<true, EXTENSIONS>(
                 self.source,
                 fragments,
-                &self.definitions,
+                &mut self.definitions,
                 self.options,
                 task,
                 table,

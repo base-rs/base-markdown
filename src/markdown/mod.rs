@@ -71,7 +71,7 @@ pub fn normalize_markdown_with_options(
 ///
 /// The output uses LF line endings. The parser stores every source line ending as LF in node values, so a CR in a value is a character: it is written as `&#xD;` where character references are decoded, such as in text and titles, and as it is in code, HTML and frontmatter, where a parsed value never has one.
 ///
-/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text or code spans, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention, soft breaks at the edges of a block, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
+/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text or code spans, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention, soft breaks at the edges of a block, or hard breaks at the end of a block, are written without panicking, but possibly incorrectly or unstably.
 ///
 /// # Errors
 /// Returns invalid formatting options, unsupported syntax metadata, content nested too deeply, or a list item number that is too long. Serializing recurses once per level of nesting, so content nested more than 128 levels below the serialized node is an error rather than a stack overflow. Every block and inline node counts one level, including those in an image's text. CommonMark limits an ordered list marker to 9 digits, so an item whose number would have more, which would read back as text, is an error with the rule id `list-number-too-long`. An item's number is its list's start plus, when [`Options::increment_list_marker`] is on, its position among the list's items, so with it off only the start must fit.
@@ -81,7 +81,7 @@ pub fn to_markdown<S: AsRef<str>>(document: &Document<S>) -> Result<String, Mess
 
 /// Serialize an arena document with formatting options.
 ///
-/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text or code spans, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention, soft breaks at the edges of a block, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
+/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text or code spans, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention, soft breaks at the edges of a block, or hard breaks at the end of a block, are written without panicking, but possibly incorrectly or unstably.
 ///
 /// # Errors
 /// Returns invalid formatting options, unsupported syntax metadata, content nested more than 128 levels deep, or list item numbers of more than 9 digits, as for [`to_markdown`].
@@ -96,7 +96,7 @@ pub fn to_markdown_with_options<S: AsRef<str>>(
 ///
 /// The output always uses LF line endings. Non-empty block subtrees end with a line ending; inline (phrasing) subtrees, such as text, emphasis, or a link, are returned without an added line ending.
 ///
-/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text or code spans, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention, soft breaks at the edges of a block, or hard breaks in table cells or at the end of a block, are written without panicking, but possibly incorrectly or unstably.
+/// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably. Other trees, such as those with empty text, attention or paragraphs, adjacent text or code spans, adjacent attention of the same kind, strikethrough inside strikethrough, whitespace at the edges of attention, soft breaks at the edges of a block, or hard breaks at the end of a block, are written without panicking, but possibly incorrectly or unstably.
 ///
 /// # Errors
 /// Returns an invalid node index, invalid formatting options, unsupported syntax metadata, content nested more than 128 levels below `node`, or list item numbers of more than 9 digits, as for [`to_markdown`]. An item serialized on its own is numbered by its position in its list.

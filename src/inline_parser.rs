@@ -297,7 +297,7 @@ impl InlineParser {
         &mut self,
         source: &str,
         fragments: impl Iterator<Item = (Range<usize>, usize)> + Clone,
-        definitions: &Definitions<'_>,
+        definitions: &mut Definitions<'_>,
         options: &crate::ParseOptions,
         task: bool,
         table: bool,
@@ -366,7 +366,7 @@ impl InlineParser {
         original_source: &str,
         source: &str,
         fragments: impl Iterator<Item = Range<usize>>,
-        definitions: &Definitions<'_>,
+        definitions: &mut Definitions<'_>,
         options: &crate::ParseOptions,
         task: bool,
     ) -> bool {
