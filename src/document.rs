@@ -12,6 +12,9 @@ use crate::{
 use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec, vec::Vec};
 use core::{num::NonZeroUsize, ops::Range};
 
+mod insert;
+pub use insert::{FootnotePolicy, InsertOptions, Inserted};
+
 /// A stable index into a document's contiguous node arena.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1734,20 +1737,19 @@ impl<S: AsRef<str>> Document<S> {
     ///
     /// `heading_index` counts direct children, including separator nodes. With `remove_subsections`, the section extends through headings deeper than the selected heading. Detached original nodes retain their IDs and can still be inspected or reattached.
     ///
-    /// The copies render as the replacement's children render in it: a reference bound there
-    /// becomes a resource to where it leads, as this document may define its label otherwise,
-    /// and a reference or footnote call that nothing binds there becomes the text it renders as,
-    /// as [`Document::normalize`] makes it.
+    /// The replacement's root children are copied as [`Document::insert_from`] copies them with
+    /// the default [`InsertOptions`]: they render as they render in the replacement, so its link
+    /// reference definitions are not copied, as a reference bound there becomes a resource to
+    /// where it leads, and its footnote definitions are copied only when the copies call them,
+    /// after them, with a fresh identifier when one outside the replaced section binds theirs.
+    /// The section's own definitions no longer bind once it is replaced. Frontmatter is not
+    /// copied.
     ///
     /// # Errors
     /// Rejects invalid parent IDs with [`StreamError::InvalidRange`], and an inline replacement
-    /// document, whose root holds phrasing, with [`StreamError::InvalidNesting`], before modifying
-    /// the tree. As an edit adds no copy of a binding, it rejects with
-    /// [`StreamError::InvalidValue`], before modifying the tree, a replacement into the attached
-    /// document that holds two definitions, or footnote definitions, of one label or identifier,
-    /// which [`Document::normalize`] makes one, or one whose label or identifier a definition of
-    /// its kind in the document outside the replaced section already has. Returns `false` when the selected child is not a heading. Frontmatter is not
-    /// copied.
+    /// document, whose root holds phrasing, with [`StreamError::InvalidNesting`], and a fresh
+    /// footnote identifier too long to be one with [`StreamError::InvalidValue`]. Returns `false`
+    /// when the selected child is not a heading. Nothing is changed when an error is returned.
     pub fn replace_heading_section<T: AsRef<str>>(
         &mut self,
         parent: NodeId,
@@ -1809,32 +1811,25 @@ impl<S: AsRef<str>> Document<S> {
             }
             end = self.nodes[id.index()].next_sibling;
         }
-        // The definitions of the attached document are indexed, and an edit adds no copy of a
-        // binding: a copied definition's key may be one that only the section had.
+        // The section's definitions no longer bind once it is replaced, so a copied footnote
+        // definition may take an identifier that only the section had.
         let attached = self.attached(parent);
-        if attached {
-            let keys = crate::bindings::tree_keys(
-                replacement.source.as_ref(),
-                &replacement.nodes,
-                replacement.root(),
-            )
-            .ok_or(StreamError::InvalidValue)?;
-            let mut leaving = Vec::new();
-            let mut at = first;
-            while at != end {
-                let id = at.expect("the section ends in the selected sibling chain");
-                leaving.extend(crate::bindings::definitions(&self.nodes, id));
-                at = self.nodes[id.index()].next_sibling;
-            }
-            leaving.sort_unstable();
-            if !self
-                .index
-                .admits(&keys, |id| leaving.binary_search(&id).is_ok())
-            {
-                return Err(StreamError::InvalidValue);
-            }
+        let mut leaving = Vec::new();
+        let mut at = first;
+        while at != end {
+            let id = at.expect("the section ends in the selected sibling chain");
+            leaving.extend(crate::bindings::definitions(&self.nodes, id));
+            at = self.nodes[id.index()].next_sibling;
         }
-        // Every copied subtree is already validated in its source document.
+        leaving.sort_unstable();
+        let plan = self.plan(
+            parent,
+            end,
+            replacement,
+            replacement.children(replacement.root()),
+            &InsertOptions::default(),
+            &leaving,
+        )?;
         if !replace_heading {
             previous = Some(heading);
         }
@@ -1859,17 +1854,7 @@ impl<S: AsRef<str>> Document<S> {
                 self.refresh_context(id);
             }
         }
-        let bindings = replacement.bindings();
-        for child in replacement.children(replacement.root()) {
-            let copy =
-                self.copy_subtree(replacement, Some(&bindings), child, parent, previous, end);
-            if attached {
-                self.index
-                    .insert_tree(self.source.as_ref(), &self.nodes, copy);
-            }
-            previous = Some(copy);
-        }
-        self.refresh_item(Some(parent));
+        self.apply(&plan, parent, previous, end, replacement);
         Ok(true)
     }
     /// Parse Markdown into a node's children, replacing all of them.
@@ -2090,7 +2075,7 @@ impl<S: AsRef<str>> Document<S> {
                 continue;
             }
             // The fragment's references keep their names, which bind here as they were read.
-            let copy = self.copy_subtree(&fragment, None, child, parent, previous, None);
+            let copy = self.copy_subtree(&fragment, child, parent, previous, None);
             if attached {
                 self.index
                     .insert_tree(self.source.as_ref(), &self.nodes, copy);
@@ -2179,14 +2164,12 @@ impl<S: AsRef<str>> Document<S> {
         Some(Some(content))
     }
     // Copy the subtree at `root` of `source` into `parent`, after `previous` and before `before`,
-    // owning its values and syntax. With `bindings`, those of `source`, its references are made
-    // what they read as there; without, they keep their names, which the caller has read as this
-    // document binds them. The caller refreshes the item `parent` may be once its children are
-    // complete.
+    // owning its values and syntax. Its references keep their names, which the caller has read
+    // as this document binds them. The caller refreshes the item `parent` may be once its
+    // children are complete.
     fn copy_subtree<T: AsRef<str>>(
         &mut self,
         source: &Document<T>,
-        bindings: Option<&Bindings<'_>>,
         root: NodeId,
         mut parent: NodeId,
         mut previous: Option<NodeId>,
@@ -2194,9 +2177,6 @@ impl<S: AsRef<str>> Document<S> {
     ) -> NodeId {
         let copied_root = NodeId::new(self.nodes.len());
         let mut original_parent = source.nodes[root.index()].parent;
-        // The copies of the references and footnote calls that nothing binds where they come
-        // from, which become the text they read back as there.
-        let mut unbound = Vec::new();
         for original in source.descendants(root) {
             let node = &source.nodes[original.index()];
             // Source and destination parent links describe the same copied path; ascending them together needs no mapping stack.
@@ -2210,30 +2190,10 @@ impl<S: AsRef<str>> Document<S> {
                     .index()]
                 .parent;
             }
-            let mut kind =
+            let kind =
                 borrow_kind(&node.kind).map_text(|value| value.materialized(source.source()));
-            // A bound reference crosses documents as a resource to where it leads, as this
-            // document may have a conflicting or missing definition of its label. An unbound one,
-            // or an unbound footnote call, becomes the text it renders as there, as
-            // `Document::normalize` would make it, once it is copied.
-            let unbound_here = bindings.is_some_and(|bindings| bindings.unbound(&node.kind));
-            if let (EventKind::Start(Tag::Link(target) | Tag::Image(target)), Some(bindings)) =
-                (&mut kind, bindings)
-            {
-                if let Some(definition) = bindings.definition_of(target) {
-                    let (destination, title) =
-                        crate::bindings::definition_target(&source.nodes, definition);
-                    *target = Target::Resource {
-                        destination: destination.clone().materialized(source.source()),
-                        title: title.map(|title| title.clone().materialized(source.source())),
-                    };
-                }
-            }
             let next = if original == root { before } else { None };
             let id = self.insert_child(parent, kind, previous, next);
-            if unbound_here {
-                unbound.push(id);
-            }
             // An item's spread and a link's form describe only the copied node, so they survive.
             // Frontmatter is on the root, which is never copied.
             let syntax = match source.syntax(original) {
@@ -2252,10 +2212,6 @@ impl<S: AsRef<str>> Document<S> {
             } else {
                 previous = Some(id);
             }
-        }
-        // The copied root is a block, so it is never one of them.
-        for id in unbound {
-            self.unbind_node(id);
         }
         self.mark_added();
         self.refresh_context(copied_root);

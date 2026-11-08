@@ -1384,19 +1384,17 @@ fn lookups_order_nested_and_detached_definitions() {
     let mut document = parse("> # a\n>\n> [x]: /1\n\n[r][x]\n");
     let quote = document.children(document.root()).next().unwrap();
     document.detach(quote).unwrap();
-    let replacement = parse("[x]: /2\n");
+    let replacement = parse("[^x]\n\n[^x]: 2\n");
     assert!(document
         .replace_heading_section(quote, 0, &replacement, true, true)
         .unwrap());
     assert_eq!(document.definition("x"), None);
-    assert_eq!(document.bindings().definition("x"), None);
+    assert_eq!(document.footnote_definition("X"), None);
+    assert_eq!(document.bindings().footnote_definition("X"), None);
     document.attach(document.root(), quote, None).unwrap();
-    let x = document.definition("x").unwrap();
-    assert_eq!(document.bindings().definition("x"), Some(x));
-    assert!(matches!(
-        &document.node(x).unwrap().kind,
-        EventKind::Definition { destination, .. } if destination.resolve(document.source()).ok() == Some("/2")
-    ));
+    let x = document.footnote_definition("X").unwrap();
+    assert_eq!(document.bindings().footnote_definition("X"), Some(x));
+    assert_eq!(document.text_content(x), "2");
 }
 
 /// Normalizing a normalized document looks nothing up, but any edit after it can unbind a
@@ -1628,8 +1626,9 @@ fn edits_add_no_copy_of_a_binding() {
     document.attach(root, first, None).unwrap();
     assert_eq!(document.definition("a"), Some(first));
 
-    // Replacing a section with one that defines a label bound outside it, or defines one twice;
-    // a label that only the replaced section defines can be defined again.
+    // Replacing a section copies no link reference definition, and a footnote definition only
+    // when the copies call it, so a replacement that defines a label bound outside the section,
+    // or defines one twice, adds no copy.
     let mut document = parse("[a] [b]\n\n[a]: /1\n\n# s\n\n[b]: /2\n\n# t\n");
     let root = document.root();
     let index = document
@@ -1640,22 +1639,30 @@ fn edits_add_no_copy_of_a_binding() {
         "[a]: /3\n",
         "[c]: /3\n\n[C]: /4\n",
         "> [^x]: a\n>\n> [^x]: b\n",
+        "[b]: /5\n",
     ] {
-        let replacement = parse(replacement);
-        adds_a_copy(&mut document, |document| {
-            document.replace_heading_section(root, index, &replacement, true, false)
-        });
+        let replacement = parse(&format!("# s\n\n{}", replacement));
+        assert!(document
+            .replace_heading_section(root, index, &replacement, true, false)
+            .unwrap());
+        let definitions = document
+            .descendants(root)
+            .filter(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Definition { .. } | EventKind::Start(Tag::FootnoteDefinition { .. })
+                )
+            })
+            .count();
+        assert_eq!(definitions, 1);
+        assert!(html(&document).contains("<a href=\"/1\">a</a> [b]"));
     }
-    let replacement = parse("# s\n\n[b]: /5\n");
-    assert!(document
-        .replace_heading_section(root, index, &replacement, true, false)
-        .unwrap());
-    assert!(html(&document).contains("<a href=\"/5\">b</a>"));
-    // A section that holds a binding whose copy is outside it cannot define the label again,
-    // as the copy stays.
-    for source in [
-        "[x]\n\n# s\n\n[x]: /1\n\n# t\n\n[x]: /2\n",
-        "[x]\n\n[x]: /0\n\n# s\n\n[x]: /1\n",
+    // A copied footnote definition whose identifier a definition outside the section binds is
+    // relabelled, and one that only the section binds is not.
+    for (source, identifier) in [
+        ("[^x]\n\n# s\n\n[^x]: 1\n\n# t\n\n[^x]: 2\n", "X-2"),
+        ("[^x]\n\n[^x]: 0\n\n# s\n\n[^x]: 1\n", "X-2"),
+        ("[^x]\n\n# s\n\n[^x]: 1\n", "X"),
     ] {
         let mut document = parse(source);
         let root = document.root();
@@ -1663,10 +1670,24 @@ fn edits_add_no_copy_of_a_binding() {
             .children(root)
             .position(|id| document.text_content(id) == "s")
             .unwrap();
-        let replacement = parse("# s\n\n[x]: /3\n");
-        adds_a_copy(&mut document, |document| {
-            document.replace_heading_section(root, index, &replacement, true, false)
-        });
+        let replacement = parse("# s\n\nSee[^x].\n\n[^x]: 3\n");
+        assert!(document
+            .replace_heading_section(root, index, &replacement, true, false)
+            .unwrap());
+        let copy = document.footnote_definition(identifier).unwrap();
+        assert_eq!(document.text_content(copy), "3");
+        let markdown = to_markdown(&document).unwrap();
+        let label = identifier.to_lowercase();
+        assert!(
+            markdown.contains(&format!("See[^{}].", label)),
+            "{:?}",
+            markdown
+        );
+        assert!(
+            markdown.contains(&format!("[^{}]: 3", label)),
+            "{:?}",
+            markdown
+        );
     }
 }
 
