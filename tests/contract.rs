@@ -1724,6 +1724,20 @@ fn clause_3_3_tight_items_round_trip_every_pair_of_blocks() {
 }
 
 #[test]
+fn clause_3_3_indented_code_in_a_list_after_a_definition_round_trips_without_fences() {
+    // With `fences: false`, a nested item starting with code after a definition is written with indented code on the line after the definition, which the parser read as a paragraph (#246).
+    let options = MarkdownOptions {
+        fences: false,
+        ..MarkdownOptions::default()
+    };
+    for context in TIGHT_LISTS {
+        for definition in ["[@]: /u", "[@]: /u \"t\""] {
+            assert_tight_item_settles(context, &[definition, "-     c"], &options);
+        }
+    }
+}
+
+#[test]
 fn clause_3_3_tight_items_round_trip_random_blocks() {
     let options = [
         MarkdownOptions::default(),
@@ -1748,14 +1762,6 @@ fn clause_3_3_tight_items_round_trip_random_blocks() {
             .collect();
         let context = TIGHT_LISTS[random.below(TIGHT_LISTS.len())];
         let options = &options[random.below(options.len())];
-        // The parser reads indented code that starts an item on the line after a definition as a paragraph, `[a]: /u\n-     c`, a parser gap that only indented code written with `fences: false` reaches.
-        if !options.fences
-            && blocks
-                .windows(2)
-                .any(|pair| pair[0].starts_with("[@]") && pair[1] == "-     c")
-        {
-            continue;
-        }
         assert_tight_item_settles(context, &blocks, options);
     }
 }

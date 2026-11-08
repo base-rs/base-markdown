@@ -4,6 +4,10 @@ Earlier history, from before the package was renamed from `socketry-markdown`, i
 
 ## Unreleased
 
+### Parsing
+
+- Read indented code at the start of a list item or block quote opened on the line after a link reference definition as code, as after a paragraph or a blank line (#246). `[x]: /u\n-     c\n` was read as an item holding the paragraph `c`, and `[x]: /u\n>     c\n` as a quote holding one, as if the line still continued the definition; this held for every list marker, for quotes, for definitions with titles or over several lines, and in containers. A line that opens no container, such as `[x]: /u\n    c\n`, still continues the definition's content and is a paragraph. With `MarkdownOptions { fences: false }`, a definition followed by a list whose item starts with code is written in this shape, and now reads back.
+
 ### Serializing Markdown
 
 - Write inline HTML that would start an HTML block at the start of a line on a line indented by four spaces, which continues the paragraph, as indented code cannot interrupt one (part of #193). After a soft break, such HTML was written after a space instead of the line ending, so `a\n    <div>` was written `a <div>` and lost its soft break; it is now written `a\n    <div>`, as it already was after a hard break. A paragraph or setext heading starting with inline HTML that would start a block on its first line, such as `<div>`, or `<b>` alone on its line, is written on the line after a definition it follows, indented, which leaves the definition's paragraph open to continue: `[b]: n\n\t<b>` was written `[b]: n\n\n<b>`, which read back as an HTML block, and is now written `[b]: n\n    <b>`. Such a paragraph anywhere else has no Markdown spelling and is still written as an HTML block.
