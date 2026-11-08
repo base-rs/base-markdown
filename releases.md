@@ -4,6 +4,12 @@ Earlier history, from before the package was renamed from `socketry-markdown`, i
 
 ## Unreleased
 
+### Breaking changes
+
+This needs a minor version bump, to 0.3.0.
+
+- Reject inline HTML that does not read back as one HTML construct, with `StreamError::InvalidValue`, wherever an event enters a document or renderer: `Document::set_kind`, `Document::append_child`, `AstBuilder`, `render_events`, `EventHtmlRenderer` and deserialization (#193). Inline HTML is written as it is, so a value such as `(x)` after a reference was written `[r](x)` and read back as a link. A value of `EventKind::Html { block: false, .. }` must now be exactly one open tag, closing tag, comment, processing instruction, declaration or CDATA section as the inline parser reads it, with the parser's own recognizer, with nothing before or after it and no blank line, which would end the paragraph: `<b>`, `</b>`, `<a\nhref="x">`, `<!-- c -->`, `<?p?>`, `<!X y>` and `<![CDATA[x]]>` are accepted, and text, `<b>x</b>`, `<b> `, `<b`, `<a\n\nb>` and whitespace alone are rejected. Tag names may hold the namespace prefixes that `ParseOptions::html_tag_namespaces` reads, whatever the options, so every value the parser gives is accepted. The empty value stays valid, and `Document::normalize` still removes it. Code that used inline HTML to write raw output, such as a value of text, must use text, an HTML block, or one construct per node. `Document::text_mut` no longer edits inline HTML, as a `String` cannot be checked, and returns `StreamError::InvalidRange` for it; give it a new value with `Document::set_kind`. HTML blocks are unchanged.
+
 ### Parsing
 
 - Read indented code at the start of a list item or block quote opened on the line after a link reference definition as code, as after a paragraph or a blank line (#246). `[x]: /u\n-     c\n` was read as an item holding the paragraph `c`, and `[x]: /u\n>     c\n` as a quote holding one, as if the line still continued the definition; this held for every list marker, for quotes, for definitions with titles or over several lines, and in containers. A line that opens no container, such as `[x]: /u\n    c\n`, still continues the definition's content and is a paragraph. With `MarkdownOptions { fences: false }`, a definition followed by a list whose item starts with code is written in this shape, and now reads back.

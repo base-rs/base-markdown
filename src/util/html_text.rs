@@ -35,6 +35,36 @@ pub(crate) enum HtmlText {
 }
 
 impl HtmlText {
+    /// The length of the inline HTML construct at the start of `bytes`, which start immediately
+    /// after `<`, or `None` when they do not start with one. A carriage return reads as a line
+    /// feed, so a `\r\n` is a line ending as the compact parser sees it.
+    #[inline]
+    pub fn scan(bytes: &[u8], namespaces: bool) -> Option<usize> {
+        let mut html = Self::default();
+        for (offset, &byte) in bytes.iter().enumerate() {
+            let byte = if byte == b'\r' { b'\n' } else { byte };
+            if html.advance(byte, namespaces)? {
+                return Some(offset + 1);
+            }
+        }
+        None
+    }
+
+    /// Whether `value` is a value of inline HTML that reads back as itself: empty, which writes
+    /// nothing, or exactly one inline HTML construct as the inline parser reads it, an open tag,
+    /// a closing tag, a comment, a processing instruction, a declaration or CDATA, with nothing
+    /// after it and no blank line in it, which would end its paragraph. Namespace prefixes in tag
+    /// names are allowed, as `ParseOptions::html_tag_namespaces` reads them, so that every parsed
+    /// value passes whatever the options.
+    pub fn is_inline(value: &str) -> bool {
+        let bytes = value.as_bytes();
+        match bytes.split_first() {
+            None => true,
+            Some((b'<', rest)) => Self::scan(rest, true) == Some(rest.len()) && !blank_line(bytes),
+            _ => false,
+        }
+    }
+
     /// Consume one byte: `Some(true)` completes HTML, `None` rejects it.
     pub fn advance(&mut self, byte: u8, namespaces: bool) -> Option<bool> {
         use HtmlText::{
@@ -189,4 +219,23 @@ impl HtmlText {
             return Some(false);
         }
     }
+}
+
+// Whether `bytes` hold a line of only spaces and tabs between two line endings.
+fn blank_line(bytes: &[u8]) -> bool {
+    let mut after_line_ending = false;
+    for (index, &byte) in bytes.iter().enumerate() {
+        match byte {
+            b'\n' | b'\r' if after_line_ending => {
+                // The `\n` of a `\r\n` ends the same line.
+                if !(byte == b'\n' && index > 0 && bytes[index - 1] == b'\r') {
+                    return true;
+                }
+            }
+            b'\n' | b'\r' => after_line_ending = true,
+            b' ' | b'\t' => {}
+            _ => after_line_ending = false,
+        }
+    }
+    false
 }

@@ -461,11 +461,16 @@ impl<S: AsRef<str>> Document<S> {
         Ok(())
     }
 
-    /// Edit the text of a text, soft break, code or HTML leaf. Source-backed values detach on
-    /// first mutation.
+    /// Edit the text of a text, soft break, code or HTML block leaf. Source-backed values detach
+    /// on first mutation.
+    ///
+    /// Inline HTML is not edited here, as its value must stay one HTML construct
+    /// ([`EventKind::Html`]), which an edit through a `String` could not check; give it a new
+    /// value with [`Document::set_kind`].
     ///
     /// # Errors
-    /// Returns [`StreamError::InvalidRange`] for an invalid node ID or a non-text node.
+    /// Returns [`StreamError::InvalidRange`] for an invalid node ID, inline HTML or a non-text
+    /// node.
     pub fn text_mut(&mut self, id: NodeId) -> Result<&mut String, StreamError> {
         let node = self
             .nodes
@@ -475,7 +480,10 @@ impl<S: AsRef<str>> Document<S> {
         | EventKind::SoftBreak(text)
         | EventKind::Code { value: text, .. }
         | EventKind::CodeBlock { value: text, .. }
-        | EventKind::Html { value: text, .. }) = &mut node.kind
+        | EventKind::Html {
+            value: text,
+            block: true,
+        }) = &mut node.kind
         else {
             return Err(StreamError::InvalidRange);
         };

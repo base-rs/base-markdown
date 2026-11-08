@@ -241,6 +241,196 @@ fn clause_1_2_content_model_rejects_invalid_trees() {
     });
 }
 
+fn inline_html(value: &'static str) -> EventKind<'static> {
+    EventKind::Html {
+        value: Text::Literal(value),
+        block: false,
+    }
+}
+
+/// A document of one paragraph holding `kind`.
+fn paragraph_of(kind: EventKind<'static>) -> Vec<Event<'static>> {
+    vec![
+        EventKind::Start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        }),
+        EventKind::Start(Tag::Paragraph { tight: false }),
+        kind,
+        EventKind::End(TagKind::Paragraph),
+        EventKind::End(TagKind::Document),
+    ]
+    .into_iter()
+    .map(|kind| Event { kind, span: 0..0 })
+    .collect()
+}
+
+#[test]
+fn clause_1_2_inline_html_is_one_construct() {
+    // One construct, with line endings where the parser reads them, or nothing, which normalizing
+    // removes.
+    let valid = [
+        "",
+        "<b>",
+        "</b>",
+        "</b\n>",
+        "<b\nc=\"d\"\r\ne='f'\n/>",
+        "<!-- c -->",
+        "<?p?>",
+        "<!X y>",
+        "<![CDATA[x]]>",
+        "<a:b>",
+    ];
+    // Text, which is written as it is: `(x)` after a reference would be written `[r](x)`, a link.
+    // Leading or trailing text, two constructs, one unclosed, what the parser does not read, and a
+    // blank line, which ends the paragraph, so it cannot be written in one.
+    let invalid = [
+        "(x)",
+        "x",
+        " ",
+        "\n",
+        " <b>",
+        "<b> ",
+        "<b>\n",
+        "<b>x</b>",
+        "<b><i>",
+        "<b",
+        "<",
+        "<1>",
+        "<!-- c",
+        "<b c=<>",
+        "<a\n\nb>",
+        "<!--\n \t\n-->",
+        "<a\r\n\r\nb>",
+        "<a\r\rb>",
+    ];
+    let mut document = parse("[r] <b>\n\n[r]: /u\n");
+    let root = document.root();
+    let paragraph_id = first(&document, root);
+    let tag = find(&document, |kind| {
+        matches!(kind, EventKind::Html { block: false, .. })
+    });
+    for value in valid {
+        let mut edited = document.clone();
+        edited.set_kind(tag, inline_html(value)).unwrap();
+        edited
+            .append_child(paragraph_id, inline_html(value))
+            .unwrap();
+        let mut builder = base_markdown::AstBuilder::new();
+        builder
+            .consume(
+                &mut paragraph_of(inline_html(value)).into_iter().map(Ok),
+                usize::MAX,
+            )
+            .unwrap();
+        builder.finish("").unwrap();
+        let mut output = String::new();
+        render_events(
+            "",
+            paragraph_of(inline_html(value)).into_iter().map(Ok),
+            &CompileOptions::default(),
+            &mut output,
+        )
+        .unwrap();
+    }
+    for value in invalid {
+        assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+            document.set_kind(tag, inline_html(value))
+        });
+        assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+            document.append_child(paragraph_id, inline_html(value))
+        });
+        let mut builder = base_markdown::AstBuilder::new();
+        assert!(matches!(
+            builder
+                .consume(
+                    &mut paragraph_of(inline_html(value)).into_iter().map(Ok),
+                    usize::MAX
+                )
+                .and_then(|_| builder.finish("").map(|_| ())),
+            Err(StreamError::InvalidValue)
+        ));
+        let mut output = String::new();
+        assert!(matches!(
+            render_events(
+                "",
+                paragraph_of(inline_html(value)).into_iter().map(Ok),
+                &CompileOptions::default(),
+                &mut output,
+            ),
+            Err(StreamError::InvalidValue)
+        ));
+    }
+    // A source-backed value is checked against the source: here `r] ` is not HTML.
+    let mut builder = base_markdown::AstBuilder::new();
+    let source_backed = EventKind::Html {
+        value: Text::Source(1..4),
+        block: false,
+    };
+    builder
+        .consume(
+            &mut paragraph_of(source_backed).into_iter().map(Ok),
+            usize::MAX,
+        )
+        .unwrap();
+    assert!(matches!(
+        builder.finish(document.source()),
+        Err(StreamError::InvalidValue)
+    ));
+    // A `String` cannot be checked, so `text_mut` does not edit inline HTML; HTML blocks have no
+    // such rule.
+    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
+        document.text_mut(tag).map(|_| ())
+    });
+    let mut block = parse("<div>\n");
+    let block_id = first(&block, block.root());
+    block.text_mut(block_id).unwrap().push_str("x\n");
+    // The empty value is valid, not normalized: normalizing removes it.
+    let mut empty = document.clone();
+    empty.set_kind(tag, inline_html("")).unwrap();
+    assert!(!empty.is_normalized());
+    empty.normalize();
+    assert!(all(&empty, |kind| matches!(kind, EventKind::Html { .. })).is_empty());
+}
+
+/// Every inline HTML value the parser gives is valid, under the options that change what it reads as HTML, in any container, so a parsed document always rebuilds.
+#[test]
+fn clause_1_2_parsed_inline_html_is_valid() {
+    let options = [
+        ParseOptions::default(),
+        ParseOptions {
+            html_tag_namespaces: true,
+            ..ParseOptions::default()
+        },
+        Options::gfm().parse,
+        Options::commonmark().parse,
+    ];
+    let samples = std::env::var("FUZZ_INPUTS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(SAMPLES);
+    let generators = IntoIterator::into_iter(CORPORA).chain(IntoIterator::into_iter([(
+        "html",
+        6,
+        corpus::html as Generator,
+    )]));
+    for (name, seed, generate) in generators {
+        let mut random = Random(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+        for _ in 0..samples {
+            let source = generate(&mut random);
+            for options in &options {
+                let document = Document::parse(source.as_str(), options)
+                    .unwrap_or_else(|error| panic!("{} {:?}: {}", name, source, error));
+                let mut builder = base_markdown::AstBuilder::new();
+                builder
+                    .consume(&mut document.events(), usize::MAX)
+                    .and_then(|_| builder.finish(document.source()).map(|_| ()))
+                    .unwrap_or_else(|error| panic!("{} {:?}: {}", name, source, error));
+            }
+        }
+    }
+}
+
 #[test]
 fn clause_1_3_valid_shapes_need_not_be_normalized() {
     let mut document = parse("a\n");

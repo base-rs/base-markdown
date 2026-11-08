@@ -138,6 +138,62 @@ pub const BLOCKY: &[&str] = &[
     "\\",
 ];
 
+/// Pieces of raw HTML, whole and partial, among line endings, container starts, escapes and the characters that end or break a tag, for inline HTML values.
+pub const HTML: &[&str] = &[
+    "<",
+    ">",
+    "/>",
+    "<b",
+    "</b",
+    "<a:b",
+    "</a:b",
+    " ",
+    "\t",
+    "\n",
+    "\r\n",
+    "\r",
+    "\n\n",
+    "  ",
+    "x",
+    " c",
+    "=",
+    "\"",
+    "'",
+    "`",
+    "&amp;",
+    "\\",
+    "\0",
+    "<!--",
+    "-->",
+    "-",
+    "<?",
+    "?>",
+    "<!X",
+    "<![CDATA[",
+    "]]>",
+    "]",
+    "> ",
+    "- ",
+    "1. ",
+    "    ",
+    "# ",
+    "---\n",
+    "| a |\n| - |\n| ",
+    "*",
+    "[",
+    "](",
+    ")",
+    "`",
+    "<div>",
+    "<b c=\"d\">",
+    "<b\nc='d'>",
+];
+
+/// Raw HTML pieces of one to sixteen, so most inputs hold inline HTML.
+pub fn html(random: &mut Random) -> String {
+    random.concatenate(HTML, 16)
+}
+
 /// Prose-like Markdown of one to twelve realistic pieces.
 pub fn realistic(random: &mut Random) -> String {
     random.concatenate(REALISTIC, 12)

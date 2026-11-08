@@ -1322,13 +1322,11 @@ fn angle<const CONFIGURED: bool>(
         }
     }
     if !CONFIGURED || options.constructs.html_text {
-        let mut html = crate::util::html_text::HtmlText::default();
-        for (offset, &byte) in bytes[start + 1..limit].iter().enumerate() {
-            let byte = if byte == b'\r' { b'\n' } else { byte };
-            if html.advance(byte, options.html_tag_namespaces)? {
-                return Some((start + offset + 2, Kind::Html));
-            }
-        }
+        let length = crate::util::html_text::HtmlText::scan(
+            &bytes[start + 1..limit],
+            options.html_tag_namespaces,
+        )?;
+        return Some((start + 1 + length, Kind::Html));
     }
     None
 }

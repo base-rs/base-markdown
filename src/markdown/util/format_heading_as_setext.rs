@@ -162,7 +162,7 @@ mod tests {
         for kind in [
             EventKind::Text(Text::Literal("first\nsecond")),
             EventKind::Html {
-                value: Text::Literal("first\nsecond"),
+                value: Text::Literal("<first\nsecond>"),
                 block: false,
             },
             EventKind::SoftBreak(Text::Literal("\n")),
@@ -202,7 +202,7 @@ mod tests {
             text.clone()
         ]));
         assert!(unwrapped(&[EventKind::Html {
-            value: Text::Literal("first\nsecond"),
+            value: Text::Literal("<first\nsecond>"),
             block: false,
         }]));
     }

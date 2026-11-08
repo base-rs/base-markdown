@@ -24,8 +24,13 @@ fn escaping_preserves_unicode_and_handles_adjacent_markers_at_scan_boundaries() 
     ] {
         for length in [0, 1, 15, 16, 17, 31, 32, 33] {
             let prefix = "a".repeat(length);
-            let source = format!("{prefix}{raw}é😀{raw}");
             for html in [false, true] {
+                // Inline HTML is one construct (#193), so raw HTML is a comment around the text.
+                let source = if html {
+                    format!("<!--{prefix}{raw}é😀{raw}-->")
+                } else {
+                    format!("{prefix}{raw}é😀{raw}")
+                };
                 let mut options = Options::default();
                 options.compile.allow_dangerous_html = html;
                 let text = Text::Source(0..source.len());
