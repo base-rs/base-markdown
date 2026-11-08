@@ -29,6 +29,7 @@ const CORPUS: &[&str] = &[
     "[x]: /path \"title\"\n[y]: /other\n'multi\nline title'\n\n[link][x] and [y] and [x][] and [y]\n",
     "[x]:\n/path\n\"title\"\nparagraph after [x]\n",
     "[x]: /path 'title\n\nnot a title' [x]\n",
+    "[x]: /u\n-     c\n>     d\n\n[x]: /v\n1.     e\n",
     "<https://example.com> <me@example.com>\n",
     "a &amp; &#x1f600; \\*escaped\\*\n",
     "`code` and `` a ` b `` and `a\nb`\n",

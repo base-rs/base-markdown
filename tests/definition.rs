@@ -29,6 +29,116 @@ fn definitions_use_the_same_compact_container_rules_as_other_blocks() {
 }
 
 #[test]
+fn indented_code_starts_a_container_opened_after_a_definition() {
+    use base_markdown::{render_events, Document, EventParser};
+
+    // A container opened on the line after a definition closes the definition, so indented code at its start is code, as it is after a paragraph or a blank line (#246). Lines that open no container still continue the definition's content, and are paragraph text. The expected HTML is comrak's.
+    for (source, expected) in [
+        (
+            "[x]: /u\n-     c\n",
+            "<ul>\n<li>\n<pre><code>c\n</code></pre>\n</li>\n</ul>",
+        ),
+        (
+            "[x]: /u\n*     c\n",
+            "<ul>\n<li>\n<pre><code>c\n</code></pre>\n</li>\n</ul>",
+        ),
+        (
+            "[x]: /u\n1.     c\n",
+            "<ol>\n<li>\n<pre><code>c\n</code></pre>\n</li>\n</ol>",
+        ),
+        (
+            "[x]: /u\n1)     c\n",
+            "<ol>\n<li>\n<pre><code>c\n</code></pre>\n</li>\n</ol>",
+        ),
+        (
+            "[x]: /u\n>     c\n",
+            "<blockquote>\n<pre><code>c\n</code></pre>\n</blockquote>",
+        ),
+        (
+            "[x]: /u \"t\"\n-     c\n",
+            "<ul>\n<li>\n<pre><code>c\n</code></pre>\n</li>\n</ul>",
+        ),
+        (
+            "[x]:\n/u\n\"t\"\n-     c\n",
+            "<ul>\n<li>\n<pre><code>c\n</code></pre>\n</li>\n</ul>",
+        ),
+        (
+            "[x]: /u 't\nu'\n>     c\n",
+            "<blockquote>\n<pre><code>c\n</code></pre>\n</blockquote>",
+        ),
+        (
+            "[x]: /u\n[y]: /v\n-     c\n",
+            "<ul>\n<li>\n<pre><code>c\n</code></pre>\n</li>\n</ul>",
+        ),
+        (
+            "> [x]: /u\n> -     c\n",
+            "<blockquote>\n<ul>\n<li>\n<pre><code>c\n</code></pre>\n</li>\n</ul>\n</blockquote>",
+        ),
+        (
+            "- [x]: /u\n  >     c\n",
+            "<ul>\n<li>\n<blockquote>\n<pre><code>c\n</code></pre>\n</blockquote>\n</li>\n</ul>",
+        ),
+        (
+            "> [x]: /u\n-     c\n",
+            "<blockquote>\n</blockquote>\n<ul>\n<li>\n<pre><code>c\n</code></pre>\n</li>\n</ul>",
+        ),
+        (
+            "[x]: /u\n- >     c\n",
+            "<ul>\n<li>\n<blockquote>\n<pre><code>c\n</code></pre>\n</blockquote>\n</li>\n</ul>",
+        ),
+        (
+            "[x]: /u\n-     c\n      d\n",
+            "<ul>\n<li>\n<pre><code>c\nd\n</code></pre>\n</li>\n</ul>",
+        ),
+        (
+            "[x]: /u\n-     [y]: /v\n",
+            "<ul>\n<li>\n<pre><code>[y]: /v\n</code></pre>\n</li>\n</ul>",
+        ),
+        (
+            "[x]: /u\n-\t    c\n",
+            "<ul>\n<li>\n<pre><code>  c\n</code></pre>\n</li>\n</ul>",
+        ),
+        (
+            "[x]: /u\n1.\t\tc\n",
+            "<ol>\n<li>\n<pre><code> c\n</code></pre>\n</li>\n</ol>",
+        ),
+        (
+            "[x]: /u\n>\t\tc\n",
+            "<blockquote>\n<pre><code>  c\n</code></pre>\n</blockquote>",
+        ),
+        ("[x]: /u\n>\tc\n", "<blockquote>\n<p>c</p>\n</blockquote>"),
+        ("[x]: /u\n    c\n", "<p>c</p>"),
+        ("[x]: /u\n\t c\n", "<p>c</p>"),
+        (
+            "> [x]: /u\n>     c\n",
+            "<blockquote>\n<p>c</p>\n</blockquote>",
+        ),
+        ("- [x]: /u\n      c\n", "<ul>\n<li>c</li>\n</ul>"),
+    ] {
+        assert_eq!(
+            to_html(source).trim_end(),
+            expected,
+            "to_html of {source:?}"
+        );
+        let options = ParseOptions::default();
+        let compile = CompileOptions::default();
+        let mut events = String::new();
+        render_events(
+            source,
+            EventParser::new(source, &options),
+            &compile,
+            &mut events,
+        )
+        .unwrap();
+        assert_eq!(events.trim_end(), expected, "events of {source:?}");
+        let document = Document::parse(source, &options).unwrap();
+        let mut html = String::new();
+        document.render_html(&compile, &mut html).unwrap();
+        assert_eq!(html.trim_end(), expected, "document of {source:?}");
+    }
+}
+
+#[test]
 fn definitions_preserve_values_across_parser_options() {
     use base_markdown::{render_events, stream::EventKind, Document, EventParser};
 

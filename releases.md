@@ -4,6 +4,10 @@ Earlier history, from before the package was renamed from `socketry-markdown`, i
 
 ## Unreleased
 
+### Parsing
+
+- Read indented code at the start of a list item or block quote opened on the line after a link reference definition as code, as after a paragraph or a blank line (#246). `[x]: /u\n-     c\n` was read as an item holding the paragraph `c`, and `[x]: /u\n>     c\n` as a quote holding one, as if the line still continued the definition; this held for every list marker, for quotes, for definitions with titles or over several lines, and in containers. A line that opens no container, such as `[x]: /u\n    c\n`, still continues the definition's content and is a paragraph. With `MarkdownOptions { fences: false }`, a definition followed by a list whose item starts with code is written in this shape, and now reads back.
+
 ### Serializing Markdown
 
 - Write a blank line between two blocks of an item that would otherwise read back as one, and make a tight list loose in `Document::normalize` where an item holds such a pair, for the pairs that were missing (#232, #219, and most of #191). A paragraph followed by an HTML block of kind 7, such as `<b>`, was written on the next line, so the tag read back as inline HTML in the paragraph; any block after an HTML block of kind 6 or 7, such as `<div>` or `<b>`, or of kinds 1–5 whose last line does not close it, was written on the next line and read back as more of the HTML block, so `<b>` and the heading `#` were written `- <b>\n  #\n`; and two tables in a row read back as one. These now make the list loose and are written apart, `- <b>\n\n  #\n\n- q\n`, which changes how that list's paragraphs render. A definition after a paragraph, as `parse_children` of `a\n\n[a]: /x` in an item gives, already made the list loose, as section 3.4 of the contract states. An HTML block of kinds 1–5 that no line closes takes every line after it in its container, so one followed by a block, which only an edit gives, still does not read back (#191).
