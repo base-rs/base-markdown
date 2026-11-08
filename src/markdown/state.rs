@@ -343,7 +343,16 @@ impl<'a> State<'a> {
                 }
             }
             if !self.stack.contains(&ConstructName::HeadingAtx) {
-                if let Some(&first) = children.first() {
+                if joined_definition.is_some()
+                    && starts_with_block_html(
+                        document,
+                        parent,
+                        self.options.line_wrapping == LineWrapping::Unwrap,
+                    )
+                {
+                    // Indented, the line continues the definition's paragraph (#193).
+                    self.output.insert_str(start, "    ");
+                } else if let Some(&first) = children.first() {
                     self.separate_html_start(document, first, start);
                 }
                 self.escape_delimiter_rows(start, joined_definition.is_some());
@@ -621,8 +630,6 @@ impl<'a> State<'a> {
         self.index_stack.push(0);
         let mut index = 0;
         let mut after_hard_break = false;
-        // Whether the output ends with a hard break's line ending, past any skipped soft break.
-        let mut hard_break_line = false;
         let mut pending = Edge {
             encode: edge.encode,
             tilde: edge.tilde,
@@ -678,14 +685,9 @@ impl<'a> State<'a> {
                     value.resolve(document.source()).unwrap().as_bytes()
                 ))
             {
-                if hard_break_line {
-                    // Indent the line so it continues the paragraph and keeps the break.
-                    self.output.push_str("    ");
-                } else {
-                    // Replace the line ending before inline HTML so it cannot start an HTML block.
-                    self.output.pop();
-                    self.output.push(' ');
-                }
+                // Indent the line so it continues the paragraph, keeping the soft or hard break
+                // before it, as indented code cannot interrupt a paragraph (#193).
+                self.output.push_str("    ");
                 Before::Literal(" ")
             } else {
                 // The children written so far follow what the container follows, such as the
@@ -782,9 +784,6 @@ impl<'a> State<'a> {
                 run = run.or(Some(length));
             } else if self.output.len() != length {
                 run = None;
-            }
-            if self.output.len() != length {
-                hard_break_line = after_hard_break;
             }
             index += 1;
         }
@@ -1138,6 +1137,25 @@ impl<'a> State<'a> {
                 || self.indented_code(document, parent, spread, before, left))
         {
             return "\n\n<!---->\n\n";
+        }
+        // A paragraph or setext heading whose first line would start an HTML block has no other
+        // spelling than on the line after a definition, which leaves the parser's paragraph open
+        // to continue with it, indented so it starts no block (#193).
+        if matches!(left_kind, EventKind::Definition { .. })
+            && match right_kind {
+                EventKind::Start(Tag::Paragraph { .. }) => true,
+                EventKind::Start(Tag::Heading(_)) => {
+                    self.setext_heading(document, parent, Some(left), right)
+                }
+                _ => false,
+            }
+            && starts_with_block_html(
+                document,
+                right,
+                self.options.line_wrapping == LineWrapping::Unwrap,
+            )
+        {
+            return "\n";
         }
         if in_list(document, parent) {
             // A block that would otherwise continue the one before it, or a block quote or table
@@ -1683,6 +1701,40 @@ fn in_list<S: AsRef<str>>(document: &Document<S>, parent: NodeId) -> bool {
         document.node(parent).unwrap().kind,
         EventKind::Start(Tag::Item { .. } | Tag::List { .. })
     )
+}
+
+/// Whether paragraph or heading `id` would start an HTML block if written at the start of a line:
+/// its first child is inline HTML of kinds 1–6, or a complete tag with nothing after it on its
+/// line but whitespace, which starts one of kind 7. With `unwrap`, a soft break or a line ending
+/// in text is written as a space, which does not end the line.
+fn starts_with_block_html<S: AsRef<str>>(document: &Document<S>, id: NodeId, unwrap: bool) -> bool {
+    let source = document.source();
+    let mut children = flow_children(document, id);
+    let Some(EventKind::Html { value, .. }) = children
+        .next()
+        .map(|first| &document.node(first).unwrap().kind)
+    else {
+        return false;
+    };
+    let value = value.resolve(source).unwrap().as_bytes();
+    crate::block_parser::html_interrupts_paragraph(value)
+        || crate::block_parser::complete_tag_starts_html_block(value)
+            && match children
+                .next()
+                .map(|next| &document.node(next).unwrap().kind)
+            {
+                None => true,
+                Some(EventKind::SoftBreak(_)) => !unwrap,
+                Some(EventKind::Text(text)) => {
+                    !unwrap
+                        && text
+                            .resolve(source)
+                            .unwrap()
+                            .trim_start_matches([' ', '\t'])
+                            .starts_with('\n')
+                }
+                Some(_) => false,
+            }
 }
 
 /// Whether flow child `id` is a link reference definition.

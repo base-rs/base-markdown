@@ -46,8 +46,8 @@ fn html() {
             position: None
         }))
         .unwrap(),
-        "a <div>\n",
-        "should prevent html (text) from becoming html (flow) (1)"
+        "a\n    <div>\n",
+        "should prevent html (text) from becoming html (flow) (1), indenting the line so it continues the paragraph"
     );
 
     assert_eq!(
@@ -84,7 +84,7 @@ fn html() {
             position: None
         }))
         .unwrap(),
-        "a&#xD; <div>\n",
+        "a&#xD;\n    <div>\n",
         "should prevent html (text) from becoming html (flow) (3)"
     );
 
