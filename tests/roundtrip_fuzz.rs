@@ -19,19 +19,20 @@ mod support;
 
 use base_markdown::{
     stream::{EventKind, Tag, Text as EventText},
-    to_markdown_with_options, CompileOptions, Document, IncrementalParser, MarkdownOptions,
-    ParseOptions,
+    Document, IncrementalParser, MarkdownOptions, ParseOptions,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::PoisonError;
+use support::corpus::{self, Random};
 use support::fixture::{
-    canonical, AlignKind, Break, Delete, Emphasis, Heading, InlineCode, Link, Node, Paragraph,
-    Root, Strong, Table, TableCell, TableRow, Text,
+    AlignKind, Break, Delete, Emphasis, Heading, InlineCode, Link, Node, Paragraph, Root, Strong,
+    Table, TableCell, TableRow, Text,
 };
 use support::linear::{assert_linear, timed, TIMING};
+use support::round_trip::{fail, round_trip, Failure, Outcome};
 
 /// Inputs per corpus when `FUZZ_INPUTS` is not set; the baseline records failures at this size.
 const DEFAULT_INPUTS: usize = 10_000;
@@ -41,125 +42,21 @@ const BASELINE_PATH: &str = concat!(
     "/tests/roundtrip_fuzz_baseline.txt"
 );
 
-/// A xorshift generator: deterministic, portable and dependency free.
-struct Random(u64);
-
-impl Random {
-    fn below(&mut self, bound: usize) -> usize {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        (self.0 % bound as u64) as usize
-    }
-
-    fn pick<'a>(&mut self, items: &[&'a str]) -> &'a str {
-        items[self.below(items.len())]
-    }
-
-    fn concatenate(&mut self, items: &[&str], most: usize) -> String {
-        let mut value = String::new();
-        for _ in 0..1 + self.below(most) {
-            value.push_str(self.pick(items));
-        }
-        value
-    }
-}
-
-/// Prose-like pieces: words, markers, escapes, references, links, code, block starts, tables and literal autolinks.
-const REALISTIC: &[&str] = &[
-    "a",
-    "foo",
-    "bar",
-    " ",
-    " ",
-    " ",
-    "x",
-    "5 min",
-    "~",
-    "~",
-    "~~",
-    "~5",
-    "~/path",
-    "\\~",
-    "\\\\",
-    "*",
-    "_",
-    "**",
-    "`c~d`",
-    "`",
-    "[t](u)",
-    "[t~](u~ \"t~\")",
-    "[",
-    "](u)",
-    "\n",
-    "\n- ",
-    "\n> ",
-    "\n| a | b |\n| - | - |\n| ",
-    " | ",
-    "&#x20;",
-    "&#126;",
-    "&amp;",
-    "# ",
-    "1. ",
-    ".",
-    ",",
-    ":",
-    "(",
-    ")",
-    "!",
-    "$",
-    "~~del~~",
-    "~x~",
-    "\\",
-    "  \n",
-    "<b>",
-    "www.a.b",
-    "x@y.z",
-    "é",
-    "\u{a0}",
-];
-
-/// Characters of attention, strikethrough, escapes, punctuation and line endings, one at a time.
-const SOUP: &[&str] = &["*", "_", "~", "a", ".", " ", "\n", "\\"];
-
-/// Markers next to encoded whitespace, encoded letters and escaped markers.
-const EDGE: &[&str] = &[
-    "*", "**", "_", "__", "~", "~", "~~", "\\~", "&#x20;", "&#xA;", "&#x9;", "&#x61;", "&#x62;",
-    "a", "b", " ", "(", ".", "\\", "\u{a0}", "|", "x ~a ",
-];
-
-/// Block starts for the edge corpus, so edges also meet headings, table cells, items and quotes.
-const EDGE_BLOCK: &[&str] = &["# ", "| ", "- ", "> "];
-
-/// Tilde runs of every length among letters, digits, attention, escapes, code and links.
-const STRIKE: &[&str] = &[
-    "~", "~", "~~", "~~", "~~~", "a", "b", "5", " ", " ", "*", "_", "(", ")", ".", "\\~", "del",
-    "\n", "&#x20;", "[t](u)", "`~`",
-];
-
 /// Text values in hand-built trees, which the serializer must escape or encode.
 const TREE_TEXT: &[&str] = &[
     "~", "~", "~~", "a", " ", ".", "(", "\\", "*", "_", "&", "b", "~~~", "\u{a0}", "\n", "&#x20;",
 ];
 
 fn realistic(random: &mut Random) -> Input {
-    Input::Source(random.concatenate(REALISTIC, 12))
+    Input::Source(corpus::realistic(random))
 }
 
 fn soup(random: &mut Random) -> Input {
-    Input::Source(random.concatenate(SOUP, 12))
+    Input::Source(corpus::soup(random))
 }
 
 fn edge(random: &mut Random) -> Input {
-    let mut source = String::new();
-    if random.below(4) == 0 {
-        source.push_str(random.pick(EDGE_BLOCK));
-    }
-    source.push_str(&random.concatenate(EDGE, 12));
-    if source.starts_with("| ") {
-        source.push_str(" |\n| - |");
-    }
-    Input::Source(source)
+    Input::Source(corpus::edge(random))
 }
 
 /// Opening fences of frontmatter, with and without a format hint.
@@ -199,7 +96,7 @@ fn frontmatter(random: &mut Random) -> Input {
 }
 
 fn strike(random: &mut Random) -> Input {
-    Input::Source(random.concatenate(STRIKE, 10))
+    Input::Source(corpus::strike(random))
 }
 
 fn text(value: String) -> Node {
@@ -389,84 +286,6 @@ const CORPORA: &[Corpus] = &[
 ];
 
 const KINDS: [&str; 5] = ["html", "tree", "unstable", "normalized", "error"];
-
-struct Failure {
-    kind: &'static str,
-    output: String,
-    before: String,
-    after: String,
-}
-
-enum Outcome {
-    Pass,
-    Rejected,
-    Fail(Failure),
-}
-
-/// The HTML of `document`, without what depends only on where line endings were in the source: the line ending at the end of the document, which a hand-built tree has no source for, and, in a parsed document, the one after a hard break, which is part of the break when parsed. A hand-built tree has no line ending there, so a line ending after its hard break is text and stays.
-fn html<S: AsRef<str>>(document: &Document<S>, built: bool) -> String {
-    let mut output = String::new();
-    document
-        .render_html(&CompileOptions::default(), &mut output)
-        .unwrap();
-    let output = output.trim_end();
-    if built {
-        output.into()
-    } else {
-        output.replace("<br />\n", "<br />")
-    }
-}
-
-fn fail(kind: &'static str, output: String, before: String, after: String) -> Outcome {
-    Outcome::Fail(Failure {
-        kind,
-        output,
-        before,
-        after,
-    })
-}
-
-/// Normalize, serialize, parse and normalize `document`, and compare. A hand-built tree, which a serializer error rejects rather than fails, is `built`.
-fn round_trip<S: AsRef<str>>(
-    mut document: Document<S>,
-    options: &MarkdownOptions,
-    built: bool,
-) -> Outcome {
-    document.normalize();
-    let before = html(&document, built);
-    if !document.is_normalized() {
-        return fail("normalized", String::new(), before, String::new());
-    }
-    let output = match to_markdown_with_options(&document, options) {
-        Ok(output) => output,
-        Err(_) if built => return Outcome::Rejected,
-        Err(error) => return fail("error", error.to_string(), before, String::new()),
-    };
-    let mut reparsed = Document::parse(output.as_str(), &ParseOptions::default()).unwrap();
-    reparsed.normalize();
-    let after = html(&reparsed, false);
-    if !reparsed.is_normalized() {
-        return fail("normalized", output, before, after);
-    }
-    if after != before {
-        return fail("html", output, before, after);
-    }
-    // The HTML ignores line endings after hard breaks and at the end; the canonical trees do not, so dropping one is not a fix.
-    let (canonical_before, canonical_after) = (canonical(&document), canonical(&reparsed));
-    if canonical_after != canonical_before {
-        return fail(
-            "tree",
-            output,
-            canonical_before.join("\n"),
-            canonical_after.join("\n"),
-        );
-    }
-    match to_markdown_with_options(&reparsed, options) {
-        Ok(again) if again == output => Outcome::Pass,
-        Ok(again) => fail("unstable", output, before, again),
-        Err(error) => fail("error", output, before, error.to_string()),
-    }
-}
 
 fn check(input: &Input, options: &MarkdownOptions) -> Outcome {
     match input {

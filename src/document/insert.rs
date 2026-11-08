@@ -218,7 +218,11 @@ impl<S: AsRef<str>> Document<S> {
     ///   something follows, but for one after a definition, after a paragraph of an item of a
     ///   tight list before a block other than a paragraph, and, as for
     ///   [`Document::parse_children`], after the last block of a container other than the root.
-    ///   So two paragraphs of an item of a tight list stay two. An item is spread when it was,
+    ///   So two paragraphs of an item of a tight list stay two in the tree, and render as the
+    ///   parser renders them there, `<li>a\nb</li>`; but Markdown cannot write two paragraphs in
+    ///   a tight item, so [`to_markdown`](crate::to_markdown) writes the item loose until
+    ///   [`Document::normalize`] joins them with a soft break, which renders the same, as section
+    ///   3.4 of [the contract](crate::contract) states. An item is spread when it was,
     ///   or, unless it is in a tight list, when the copied blocks had a blank line between two of
     ///   them.
     /// - [`InsertOptions::heading_shift`] is added to each copied heading's level.
