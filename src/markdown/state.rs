@@ -1768,7 +1768,8 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
             continues_text(document, right, &setext)
                 || matches!(right_kind, EventKind::Html { value, block: true }
                 if !crate::block_parser::html_interrupts_paragraph(
-                    value.resolve(document.source()).unwrap().as_bytes()
+                    value.resolve(document.source()).unwrap()
+                        .trim_start_matches([' ', '\t']).as_bytes()
                 ))
         }
         EventKind::Start(Tag::Table) => {

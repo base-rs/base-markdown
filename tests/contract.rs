@@ -1656,6 +1656,16 @@ fn clause_3_4_tight_items_loosen_where_a_block_needs_a_blank_line() {
     let (mut document, _) = tight_item("- p\n- q\n", &["<!-- c -->", "a"]);
     document.normalize();
     assert_eq!(to_markdown(&document).unwrap(), "- <!-- c -->\n  a\n- q\n");
+    // A parsed HTML block that interrupts a paragraph after its leading spaces stays tight.
+    for input in [
+        "- a\n   <div>\n- q\n",
+        "- a\n   <!-- c -->\n- q\n",
+        "- p\n    <div>\n- q\n",
+    ] {
+        let document = parse(input);
+        assert!(document.is_normalized(), "{:?}", input);
+        assert_eq!(to_markdown(&document).unwrap(), input);
+    }
     // Two tables, which would read back as one.
     let (mut document, _) = tight_item("- p\n- q\n", &["| a |\n| - |", "| b |\n| - |"]);
     document.normalize();
