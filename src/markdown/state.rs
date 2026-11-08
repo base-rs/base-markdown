@@ -1726,12 +1726,9 @@ fn starts_with_block_html<S: AsRef<str>>(document: &Document<S>, id: NodeId, unw
                 None => true,
                 Some(EventKind::SoftBreak(_)) => !unwrap,
                 Some(EventKind::Text(text)) => {
-                    !unwrap
-                        && text
-                            .resolve(source)
-                            .unwrap()
-                            .trim_start_matches([' ', '\t'])
-                            .starts_with('\n')
+                    // Spaces or tabs before the line ending are encoded, so they
+                    // stay on the tag's line and it is no longer alone there.
+                    !unwrap && text.resolve(source).unwrap().starts_with('\n')
                 }
                 Some(_) => false,
             }

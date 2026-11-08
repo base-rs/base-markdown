@@ -903,6 +903,39 @@ fn clause_3_3_inline_html_that_could_start_a_block_is_indented() {
 }
 
 #[test]
+fn clause_5_1_a_tag_before_encoded_whitespace_is_not_alone_on_its_line() {
+    for after in ["  \nx", " \nx", "\t\nx"] {
+        let mut document = parse("[b]: n\n\nx\n");
+        let paragraph = find(&document, is_paragraph);
+        document.extract_children(paragraph).unwrap();
+        document
+            .append_child(
+                paragraph,
+                EventKind::Html {
+                    value: Text::Literal("<b>"),
+                    block: false,
+                },
+            )
+            .unwrap();
+        document.append_child(paragraph, text(after)).unwrap();
+        document.normalize();
+        let output = to_markdown(&document).unwrap();
+        assert!(
+            output.starts_with("[b]: n\n\n<b>"),
+            "{:?}: {:?}",
+            after,
+            output
+        );
+        assert_eq!(
+            to_markdown(&normalized(&output)).unwrap(),
+            output,
+            "{:?}",
+            after
+        );
+    }
+}
+
+#[test]
 fn clause_3_3_an_inline_document_is_written_as_a_paragraphs_content() {
     let mut document = parse("x\n");
     let root = document.root();
