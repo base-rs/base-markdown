@@ -94,6 +94,44 @@ fn unwraps_soft_line_breaks_inside_emphasis() {
 }
 
 #[test]
+fn unwrapping_judges_line_starts_as_one_text() {
+    // An unwrapped soft break joins text written as `&#x20;` to what follows it, which reads back
+    // as one text whose first space is a character reference. Neither is at the start of a line,
+    // so both writes leave it unescaped (#237).
+    let options = Options {
+        line_wrapping: LineWrapping::Unwrap,
+        ..Options::default()
+    };
+    for (source, expected) in [
+        ("&#x20;\n\\~\n", "&#x20; ~\n"),
+        ("&#x20;\n\\#\n", "&#x20; #\n"),
+        ("&#x20;\n\\>\n", "&#x20; >\n"),
+        ("&#x20;\n\\- a\n", "&#x20; - a\n"),
+        ("&#x20;\n\\+ a\n", "&#x20; + a\n"),
+        ("&#x20;\n\\=\n", "&#x20; =\n"),
+        ("&#x20;\n1\\. a\n", "&#x20; 1. a\n"),
+        ("&#x20;\n1\\) a\n", "&#x20; 1) a\n"),
+        ("&#x9;\n\\~~~\n", "&#x9; ~~~\n"),
+        // These are escaped anywhere in phrasing.
+        ("&#x20;\n\\`\n", "&#x20; \\`\n"),
+        ("&#x20;\n\\<div>\n", "&#x20; \\<div>\n"),
+    ] {
+        let mut document = Document::parse(source, &Default::default()).unwrap();
+        document.normalize();
+        let output = to_with_options(&document, &options).unwrap();
+        assert_eq!(output, expected, "{:?}", source);
+        let mut reparsed = Document::parse(output.as_str(), &Default::default()).unwrap();
+        reparsed.normalize();
+        assert_eq!(
+            to_with_options(&reparsed, &options).unwrap(),
+            output,
+            "{:?}",
+            source
+        );
+    }
+}
+
+#[test]
 fn intraword_underscores() {
     for (source, expected) in [
         ("io_uring is fast\n", "io_uring is fast\n"),

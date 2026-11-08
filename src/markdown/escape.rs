@@ -227,7 +227,11 @@ impl Rule {
     fn active(&self, scopes: u32) -> bool {
         (self.include == 0 || self.include & scopes != 0) && self.exclude & scopes == 0
     }
-    fn at(&self, value: Context<'_>, position: usize) -> Option<Range<usize>> {
+    /// The match of the candidate at `position`. With `indented`, spaces and tabs may come
+    /// between a line ending and a candidate that must start a line; without it, as in phrasing,
+    /// where the first space or tab after a line ending is written as a character reference, they
+    /// cannot, as that reference keeps what follows it from starting the line (#237).
+    fn at(&self, value: Context<'_>, position: usize, indented: bool) -> Option<Range<usize>> {
         let start = match self.before {
             Before::Any => position,
             Before::Previous(byte) => {
@@ -254,7 +258,7 @@ impl Rule {
                         return None;
                     }
                 }
-                while at > 0 && matches!(value.get(at - 1), Some(b' ' | b'\t')) {
+                while indented && at > 0 && matches!(value.get(at - 1), Some(b' ' | b'\t')) {
                     at -= 1;
                 }
                 if matches!(self.before, Before::EncodedLine | Before::EncodedDigits) {
@@ -330,8 +334,9 @@ impl Rule {
     fn matches<'a>(
         &'a self,
         value: Context<'a>,
+        indented: bool,
     ) -> impl Iterator<Item = (Range<usize>, usize)> + 'a {
-        self.matches_from(value, 0)
+        self.matches_from(value, 0, indented)
     }
     /// Matches as a scan from the start finds them, from `from` on, where `from` is a point that no
     /// candidate before it overlaps.
@@ -339,13 +344,14 @@ impl Rule {
         &'a self,
         value: Context<'a>,
         from: usize,
+        indented: bool,
     ) -> impl Iterator<Item = (Range<usize>, usize)> + 'a {
         let mut search = from;
         let mut minimum = from;
         core::iter::from_fn(move || {
             while let Some(position) = value.find(self.byte, search) {
                 if let Some(range) = self
-                    .at(value, position)
+                    .at(value, position, indented)
                     .filter(|range| range.start >= minimum)
                 {
                     search = range.end;
@@ -361,13 +367,19 @@ impl Rule {
     /// the first candidate's `range` at `position`. Matches only consume their neighbours through
     /// overlapping candidates, so this walks back over the overlapping cluster that reaches it.
     /// A candidate ends at most two bytes after its position, so the walk stays within the cluster.
-    fn restart(&self, value: Context<'_>, range: Range<usize>, position: usize) -> usize {
+    fn restart(
+        &self,
+        value: Context<'_>,
+        range: Range<usize>,
+        position: usize,
+        indented: bool,
+    ) -> usize {
         let mut restart = range.start;
         let mut below = position;
         while let Some(candidate) = value.rfind(self.byte, restart.saturating_sub(1), below) {
             below = candidate;
             if let Some(range) = self
-                .at(value, candidate)
+                .at(value, candidate, indented)
                 .filter(|range| range.end > restart)
             {
                 restart = restart.min(range.start);
@@ -397,6 +409,9 @@ pub(super) fn collect(
     let start = before.saturating_sub(1);
     let end = before + input.len();
     let scopes = scopes(stack);
+    // The rules for spaces and tabs after a line ending apply in phrasing, outside table cells,
+    // where no rule judges the start of a line.
+    let indented = scopes & PHRASING == 0;
     for rule in RULES.iter().filter(|rule| rule.active(scopes)) {
         // Only input escapes and the immediately preceding escape can affect output.
         // Find the first match from there, then walk on from a point where the matches
@@ -410,7 +425,7 @@ pub(super) fn collect(
         let mut at = start;
         let mut first = None;
         while let Some(position) = value.find(rule.byte, at).filter(|position| *position < end) {
-            if let Some(range) = rule.at(value, position) {
+            if let Some(range) = rule.at(value, position, indented) {
                 // An email match consumes `<` and one atext byte, never another `<`, so its
                 // matches cannot overlap and need no restart.
                 if !matches!(rule.after, After::Email) {
@@ -424,8 +439,8 @@ pub(super) fn collect(
         let Some((range, position)) = first else {
             continue;
         };
-        let restart = rule.restart(value, range, position);
-        for (_, position) in rule.matches_from(value, restart) {
+        let restart = rule.restart(value, range, position, indented);
+        for (_, position) in rule.matches_from(value, restart, indented) {
             if position >= start && position < end {
                 output.push((position, flags()));
             }
@@ -553,11 +568,13 @@ mod tests {
                         &value.as_bytes()[end..],
                     ]);
                     for rule in RULES {
-                        let expected: Vec<_> = rule
-                            .matches(Context([b"", b"", value.as_bytes(), b""]))
-                            .collect();
-                        let actual: Vec<_> = rule.matches(context).collect();
-                        assert_eq!(actual, expected, "{value:?}, {start}..{end}");
+                        for indented in [false, true] {
+                            let expected: Vec<_> = rule
+                                .matches(Context([b"", b"", value.as_bytes(), b""]), indented)
+                                .collect();
+                            let actual: Vec<_> = rule.matches(context, indented).collect();
+                            assert_eq!(actual, expected, "{value:?}, {start}..{end}");
+                        }
                     }
                     for scope in [
                         Phrasing,
@@ -575,8 +592,9 @@ mod tests {
                             &mut actual,
                         );
                         let mut expected = Vec::new();
+                        let indented = scope != Phrasing;
                         for rule in RULES.iter().filter(|rule| rule.active(bit(scope))) {
-                            for (_, position) in rule.matches(context) {
+                            for (_, position) in rule.matches(context, indented) {
                                 if position >= start.saturating_sub(1) && position < end {
                                     expected.push((
                                         position,
@@ -608,7 +626,7 @@ mod tests {
         ];
         // A regular expression consumes what follows, so `After::Closing` is checked at each byte.
         let closing = regex::Regex::new("\\A(?:\n|\r\n?)\\z").unwrap();
-        for rule in RULES {
+        for (rule, indented) in RULES.iter().flat_map(|rule| [(rule, true), (rule, false)]) {
             let before = match rule.before {
                 Before::Any => "",
                 Before::Previous(b'\n') => "(\\n)",
@@ -619,6 +637,11 @@ mod tests {
                 Before::EncodedLine => "(&#xA;[\\t ]*)",
                 Before::EncodedDigits => "(&#xA;[\\t ]*[0-9]+)",
                 Before::Start => "\\A",
+            };
+            let before = if indented {
+                before.to_string()
+            } else {
+                before.replace("[\\t ]*", "")
             };
             let after = match rule.after {
                 After::Any => "".to_string(),
@@ -666,7 +689,7 @@ mod tests {
                             char::from(rule.byte)
                         );
                         let actual: Vec<_> = rule
-                            .matches(Context([b"", b"", value.as_bytes(), b""]))
+                            .matches(Context([b"", b"", value.as_bytes(), b""]), indented)
                             .collect();
                         let expected: Vec<_> = if matches!(rule.after, After::Closing) {
                             value

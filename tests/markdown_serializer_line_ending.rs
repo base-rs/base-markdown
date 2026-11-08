@@ -392,8 +392,10 @@ fn line_starts_after_an_encoded_soft_break_are_escaped() {
             ("~x", "\\~x"),
             ("~~~", "\\~\\~\\~"),
             ("<div>", "\\<div>"),
-            ("  # x", "&#x20; \\# x"),
-            ("\t12. x", "&#x9;12\\. x"),
+            // The first space or tab is a character reference, so what follows it does not start
+            // the line (#237).
+            ("  # x", "&#x20; # x"),
+            ("\t12. x", "&#x9;12. x"),
             ("a#", "a#"),
         ] {
             let document = in_block(

@@ -164,7 +164,6 @@ Every open issue, classified: those where the implementation breaks a clause, wi
 | #232 | 3.3 | In a tight item, a block that cannot interrupt a paragraph merges into it when written. |
 | #233 | 7.2 | Edits deep in a phrasing nest walk every ancestor. |
 | #236 | 3.3 | With `rule: '-'`, a rule after a paragraph line is written as a setext underline, `- a\n  ***\n` as `- a\n  ---\n`, and rules at the start of the document as frontmatter, `***\n\na\n\n***\n` as `---\n\na\n\n---\n`. |
-| #237 | 3.3 | With `LineWrapping::Unwrap`, a `~` after a soft break is written bare and then, written again, escaped: `&#x20;\n\~` is written `&#x20; ~\n`, which is written `&#x20; \~\n`. The HTML and tree read back; only stability fails. |
 | #230 | enhancement | A table ending a nested item gains a separator when its list is written loose. The HTML and the output are stable, and 3.3 compares without separators, so this breaks no clause; the tree does not keep its separators. |
 | #180 | enhancement | Round trip under `ParseOptions::inline_code_info`, which the writer does not know (5.2): text ending in `word:` before code reads back as a language. |
 | #185 | enhancement | Round trip under `inline_code_info` with `_` markers next to a language (5.2). |

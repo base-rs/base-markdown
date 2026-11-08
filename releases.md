@@ -2,6 +2,10 @@
 
 Earlier history, from before the package was renamed from `socketry-markdown`, is in [releases/socketry-markdown.md](releases/socketry-markdown.md).
 
+## Unreleased
+
+- In phrasing, the serializer no longer escapes what follows spaces or tabs at the start of a line as if it started the line (#237). The first of those spaces or tabs is written as a character reference, which already keeps what follows from starting the line. Under `LineWrapping::Unwrap`, text after a leading `&#x20;` and a soft break was written unescaped when the space and the text were separate texts, and escaped when written again from the one text they read back as: `&#x20;\n\~` was written `&#x20; ~`, and then `&#x20; \~`. This affected `~`, `#`, `>`, `-`, `+`, `=` and a digit followed by `.` or `)`. Now both writes give `&#x20; ~`. With the default options, such text after a soft break and an encoded space is written without the escape, as in `a\n&#x20;-`, and reads back the same.
+
 ## v0.2.0
 
 0.2.0 makes `Document` an editable tree with one content model and named references, and makes `normalize` and `to_markdown` round trip; the [`contract`](context/normalize-serialize.md) states what they guarantee. Upgrading from 0.1.x needs the changes under *Breaking changes*: most callers need only call `Document::normalize` before `to_markdown`, and update code that matches `EventKind::TaskMarker`, `Tag::Document`, code block `language`, math or reference targets.
