@@ -1246,7 +1246,8 @@ impl<'a> State<'a> {
         let cx = document.context();
         let root = self.serialization_root.unwrap_or(cx.root);
         let bindings = self.bindings.get_or_insert_with(|| {
-            let tree = crate::document::tree_root(cx.nodes, root);
+            // At once for an attached subtree, so writing a deep one stays linear.
+            let tree = document.tree_of(root);
             WrittenBindings {
                 // Writing all of a tree looks up every reference in it.
                 tree: Lookup::new(cx, tree),

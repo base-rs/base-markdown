@@ -716,6 +716,36 @@ fn per_section_work_is_linear() {
     }
 }
 
+/// Writing a node deep in the attached document finds the tree that binds its references at
+/// once, not by walking up to the root: on each of a few references in a paragraph `depth`
+/// lists deep, against a control of as many in a paragraph one list deep, so the time of each
+/// call stays the same however deep the node is.
+#[test]
+fn writing_deep_attached_nodes_is_linear() {
+    let make = |depth: usize, control: bool| {
+        let depth = if control { 1 } else { depth };
+        parse(&format!(
+            "[a]: /0\n\n{}{}\n",
+            "- ".repeat(depth),
+            "[a] ".repeat(64)
+        ))
+    };
+    growth_against_control_from(1 << 9, "to_markdown_node in deep lists", make, |document| {
+        let links: Vec<NodeId> = document
+            .descendants(document.root())
+            .filter(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Start(Tag::Link(_))
+                )
+            })
+            .collect();
+        for id in links {
+            to_markdown_node(document, id, &Default::default()).unwrap();
+        }
+    });
+}
+
 /// A per-node call on a node of the attached document takes time linear in the node's subtree,
 /// not in its depth: on each reference, or each text, of `count` emphases nested in each
 /// other, each holding one, against a control of as many emphases, each in a paragraph of its
@@ -2221,6 +2251,24 @@ fn an_item_emptied_of_a_copy_after_a_paragraph_goes() {
     let mut document = parse("[b]: /0\n\n- [b]: /l\n- item\n");
     normalizes_soundly(&mut document, "list");
     assert_eq!(html(&document), "<ul>\n<li></li>\n<li>item</li>\n</ul>\n");
+}
+
+/// A copy that goes from between a paragraph and an ordered list in an item of a tight list
+/// leaves the list directly after the paragraph, which it can interrupt only starting at 1, so
+/// it is made to start at 1, as after any edit (exception 4).
+#[test]
+fn an_ordered_list_left_after_a_paragraph_by_a_copy_starts_at_one() {
+    let source = "[^a]: x\n\n- p\n  [^a]: y\n  2. q\n";
+    let mut document = parse(source);
+    assert!(html(&document).contains("<ol start=\"2\">"));
+    normalizes_soundly(&mut document, source);
+    let rendered = html(&document);
+    assert!(
+        rendered.contains("<ol>") && !rendered.contains("start="),
+        "{}",
+        rendered
+    );
+    assert_eq!(round_trip(document), "[^a]: x\n\n- p\n  1. q\n");
 }
 
 /// Random documents of footnote definitions nested in each other, copies of each other or
