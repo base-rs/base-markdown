@@ -44,6 +44,18 @@ Prepare a release with `cargo bake cargo:release:patch` (or `minor`, `major`, or
 
 See [releases.md](releases.md) for the full release history.
 
+### v0.2.1
+
+### Parsing
+
+- Read indented code at the start of a list item or block quote opened on the line after a link reference definition as code, as after a paragraph or a blank line (#246). `[x]: /u\n-     c\n` was read as an item holding the paragraph `c`, and `[x]: /u\n>     c\n` as a quote holding one, as if the line still continued the definition; this held for every list marker, for quotes, for definitions with titles or over several lines, and in containers. A line that opens no container, such as `[x]: /u\n    c\n`, still continues the definition's content and is a paragraph. With `MarkdownOptions { fences: false }`, a definition followed by a list whose item starts with code is written in this shape, and now reads back.
+
+### Serializing Markdown
+
+- Write a blank line between two blocks of an item that would otherwise read back as one, and make a tight list loose in `Document::normalize` where an item holds such a pair, for the pairs that were missing (#232, #219, and most of #191). A paragraph followed by an HTML block of kind 7, such as `<b>`, was written on the next line, so the tag read back as inline HTML in the paragraph; any block after an HTML block of kind 6 or 7, such as `<div>` or `<b>`, or of kinds 1–5 whose last line does not close it, was written on the next line and read back as more of the HTML block, so `<b>` and the heading `#` were written `- <b>\n  #\n`; and two tables in a row read back as one. These now make the list loose and are written apart, `- <b>\n\n  #\n\n- q\n`, which changes how that list's paragraphs render. A definition after a paragraph, as `parse_children` of `a\n\n[a]: /x` in an item gives, already made the list loose, as section 3.4 of the contract states. An HTML block of kinds 1–5 that no line closes takes every line after it in its container, so one followed by a block, which only an edit gives, still does not read back (#191).
+- With `MarkdownOptions { rule: '-', .. }`, a rule that `---` would not write is written with `*` (#236). A rule on the line after a paragraph or definition, in an item of a tight list, was written as a setext underline, so `- a\n  ***` read back as a heading, and a rule starting the document was written as a frontmatter fence that a later `---` line, such as another rule or a line of code, closed, so `***\n\na\n\n***` read back as frontmatter.
+- In phrasing, the serializer no longer escapes what follows spaces or tabs at the start of a line as if it started the line (#237). The first of those spaces or tabs is written as a character reference, which already keeps what follows from starting the line. Under `LineWrapping::Unwrap`, text after a leading `&#x20;` and a soft break was written unescaped when the space and the text were separate texts, and escaped when written again from the one text they read back as: `&#x20;\n\~` was written `&#x20; ~`, and then `&#x20; \~`. This affected `~`, `#`, `>`, `-`, `+`, `=` and a digit followed by `.` or `)`. Now both writes give `&#x20; ~`. With the default options, such text after a soft break and an encoded space is written without the escape, as in `a\n&#x20;-`, and reads back the same.
+
 ### v0.2.0
 
 0.2.0 makes `Document` an editable tree with one content model and named references, and makes `normalize` and `to_markdown` round trip; the [`contract`](context/normalize-serialize.md) states what they guarantee. Upgrading from 0.1.x needs the changes under *Breaking changes*: most callers need only call `Document::normalize` before `to_markdown`, and update code that matches `EventKind::TaskMarker`, `Tag::Document`, code block `language`, math or reference targets.
@@ -156,15 +168,6 @@ See [releases.md](releases.md) for the full release history.
 - Add `IncrementalParser`, which accepts Markdown in pieces and emits the events of each document-level block once appended text can no longer change it. Its combined output equals `EventParser` events without the document start and end events, except that references resolve only against definitions before the end of their document-level block.
 - Escape Markdown syntax in GFM table cells as in paragraphs, as `mdast-util-to-markdown` does. Cell text such as `\_a\_` or `\*b\*` was previously written unescaped and re-parsed as emphasis.
 - Escape pipes inside code and math in GFM table cells. GFM splits cells before parsing code, so an unescaped pipe in code split the cell, and usually stopped the table from parsing at all.
-
-### v0.1.3
-
-- Add `normalize_markdown` and `normalize_markdown_with_options`, which parse Markdown with GFM, frontmatter, and math and serialize it with default formatting and soft line breaks unwrapped. This is the normalization `bake-markdown` applies, so tools that generate Markdown can produce output it leaves unchanged.
-- Add `ParseOptions::normalize`, the syntax `normalize_markdown` parses, so tools can inspect a document with the same structure the normalizer sees.
-- Indent the content of GFM task list items to the list marker's content column rather than past the checkbox. Nested lists, paragraphs, and code in a task item were previously re-parsed as paragraph text or indented code, so repeated serialization changed or grew the document.
-- Keep the blank line between a nested list and a following paragraph, table, definition, or setext heading in the same list item. Without it, the next parse continued the nested list's last paragraph, merging the two.
-- Write a heading with soft line breaks as an ATX heading when soft breaks are unwrapped. It was previously written as a setext heading, which the next normalization turned into an ATX heading.
-- Leave underscores between letters or digits unescaped when serializing Markdown, as `mdast-util-to-markdown` does, so `io_uring` and `snake_case` no longer become `io\_uring` and `snake\_case`. Such underscores cannot open or close emphasis, so the rendered output is unchanged.
 
 <!-- bake-readme:releases:end -->
 

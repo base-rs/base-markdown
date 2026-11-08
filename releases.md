@@ -2,7 +2,7 @@
 
 Earlier history, from before the package was renamed from `socketry-markdown`, is in [releases/socketry-markdown.md](releases/socketry-markdown.md).
 
-## Unreleased
+## v0.2.1
 
 ### Parsing
 
