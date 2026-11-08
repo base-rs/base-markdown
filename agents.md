@@ -4,6 +4,7 @@
 
 - [Markdown Parser Architecture](context/markdown-architecture.md) — parser, AST renderer, serializer, and test-corpus structure.
 - [Round-trip Fuzz Harness](context/roundtrip-fuzz.md) — fixed-seed round-trip corpora, the failure baseline, and comparing a branch with main.
+- [Normalize and Serialize Contract](context/normalize-serialize.md) — the numbered clauses `normalize`, `to_markdown` and rendering guarantee, the known gaps, and `tests/contract.rs`.
 
 ## Agent Context
 

@@ -40,6 +40,8 @@
 //!
 //! [`Document::append_child`], [`Document::detach`], and [`Document::attach`] edit structure without rebuilding the tree, and [`Document::replace_heading_section`] copies replacement content from another document. [`Document::render_node`] and [`to_markdown_node`] render individual subtrees. [`NodeSyntax`] carries optional authored formatting, such as reference style and frontmatter fences, so Markdown serialization can preserve it.
 //!
+//! The [`contract`] module states, as numbered clauses, what a document holds and what [`Document::normalize`], [`to_markdown`] and HTML rendering guarantee, with the known gaps.
+//!
 //! ## Parsing options
 //!
 //! `CommonMark` is the core syntax, and each extension is a [`Constructs`] field documented once there. [`Options::default`] enables the GFM extensions (tables, task list items, footnotes, `~~` strikethrough and literal autolinks) and frontmatter, [`Options::gfm`] matches GitHub more closely, and [`Options::commonmark`] enables no extensions; the [`Options`] documentation lists what each preset enables and where it differs from its namesake. HTML output escapes raw HTML by default. MDX, JSX, and JavaScript expression parsing are not supported. Angle-bracket autolinks deliberately accept only a fixed table of link schemes and email addresses (see [`Constructs::autolink`]). Three additional [`ParseOptions`] are disabled in every preset: [`ParseOptions::inline_code_info`] recognizes a language prefix before inline code, [`ParseOptions::html_block_blank_lines`] continues indented HTML blocks across blank lines, and [`ParseOptions::html_tag_namespaces`] accepts namespace-prefixed HTML tags. [`Constructs::frontmatter`] accepts language-agnostic frontmatter, and [`CodeFence`] describes authored code fences.
@@ -61,6 +63,7 @@ mod block_parser;
 mod byte_scan;
 mod code_fence;
 mod configuration;
+pub mod contract;
 mod definitions;
 mod document;
 mod event_html_renderer;

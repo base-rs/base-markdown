@@ -5,7 +5,7 @@
 
 //! State.
 //!
-//! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L195.
+//! JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L195>.
 use crate::markdown::{
     attention::{self, Edge, Parent, Surroundings},
     construct_name::ConstructName,
