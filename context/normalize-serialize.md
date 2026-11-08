@@ -157,13 +157,12 @@ Every open issue, classified: those where the implementation breaks a clause, wi
 | #223 | 3.3 | Inline-root text `[b][c]` writes non-idempotent `**[b][c]**`. |
 | #225 | 3.4 | Exception 2 of 3.4: the renderer counts calls inside copies. |
 | #226 | 7.2 | Lookups in a detached tree are quadratic over its nodes. |
-| #227 | 3.3 | A `*` marker before thematic-break content writes `* ***`, read back as a rule. |
+| #227 | 3.3 | A `*` marker before thematic-break content writes `* ***`, read back as a rule; with `rule: '-'`, `- a\n+ b\n- ***\n` is written `- a\n\n* b\n\n* ---\n`, whose last two lists read back as one. |
 | #228 | parser, 3.3 | A paragraph after a quote ending in an empty item leaves the outer list, unlike comrak and markdown-rs, and the writer's output for it does not read back. |
 | #229 | 3.3 | An HTML block with an indented first line changes container when written. |
 | #231 | 1.2, 3.1 | `attach` puts phrasing directly under an emptied root, and a leading root separator survives normalizing. |
 | #232 | 3.3 | In a tight item, a block that cannot interrupt a paragraph merges into it when written. |
 | #233 | 7.2 | Edits deep in a phrasing nest walk every ancestor. |
-| #237 | 3.3 | With `LineWrapping::Unwrap`, a `~` after a soft break is written bare and then, written again, escaped: `&#x20;\n\~` is written `&#x20; ~\n`, which is written `&#x20; \~\n`. The HTML and tree read back; only stability fails. |
 | #230 | enhancement | A table ending a nested item gains a separator when its list is written loose. The HTML and the output are stable, and 3.3 compares without separators, so this breaks no clause; the tree does not keep its separators. |
 | #180 | enhancement | Round trip under `ParseOptions::inline_code_info`, which the writer does not know (5.2): text ending in `word:` before code reads back as a language. |
 | #185 | enhancement | Round trip under `inline_code_info` with `_` markers next to a language (5.2). |
