@@ -229,7 +229,10 @@ impl State<'_> {
     }
 
     pub(super) fn thematic_break(&mut self) -> Result<(), Message> {
-        let marker = self.options.check_rule()?;
+        let mut marker = self.options.check_rule()?;
+        if core::mem::take(&mut self.rule_after_text) && marker == '-' {
+            marker = '*';
+        }
         for index in 0..self.options.check_rule_repetition()? {
             if index > 0 && self.options.rule_spaces {
                 self.output.push(' ');

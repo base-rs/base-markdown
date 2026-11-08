@@ -76,7 +76,9 @@ pub struct Options {
     /// and resource links (`[text](url)`) otherwise.
     pub resource_link: bool,
     /// Marker to use for thematic breaks (`'*'`, `'-'`, or `'_'`, default:
-    /// `'*'`).
+    /// `'*'`). A `-` rule that would read back as something else is written with `*`: one on the
+    /// line after a paragraph or definition, which it would underline as a setext heading, and
+    /// one starting the document that a later line would close as frontmatter.
     pub rule: char,
     /// Number of markers to use for thematic breaks (`u32`, default: `3`, min:
     /// `3`).

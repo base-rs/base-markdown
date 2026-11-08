@@ -2,6 +2,10 @@
 
 Earlier history, from before the package was renamed from `socketry-markdown`, is in [releases/socketry-markdown.md](releases/socketry-markdown.md).
 
+## Unreleased
+
+- With `MarkdownOptions { rule: '-', .. }`, a rule that `---` would not write is written with `*` (#236). A rule on the line after a paragraph or definition, in an item of a tight list, was written as a setext underline, so `- a\n  ***` read back as a heading, and a rule starting the document was written as a frontmatter fence that a later `---` line, such as another rule or a line of code, closed, so `***\n\na\n\n***` read back as frontmatter.
+
 ## v0.2.0
 
 0.2.0 makes `Document` an editable tree with one content model and named references, and makes `normalize` and `to_markdown` round trip; the [`contract`](context/normalize-serialize.md) states what they guarantee. Upgrading from 0.1.x needs the changes under *Breaking changes*: most callers need only call `Document::normalize` before `to_markdown`, and update code that matches `EventKind::TaskMarker`, `Tag::Document`, code block `language`, math or reference targets.
