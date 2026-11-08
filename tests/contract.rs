@@ -852,6 +852,89 @@ fn clause_3_3_unwrapped_line_starts_are_written_stably() {
     }
 }
 
+/// Inline HTML that would start an HTML block at the start of a line is written on a line indented by four spaces, which continues the paragraph and starts no block, as indented code cannot interrupt one: after a soft or hard break, and at the start of a paragraph or setext heading on the line after a definition, which leaves the parser's paragraph open (#193).
+#[test]
+fn clause_3_3_inline_html_that_could_start_a_block_is_indented() {
+    let unwrap = MarkdownOptions {
+        line_wrapping: LineWrapping::Unwrap,
+        ..MarkdownOptions::default()
+    };
+    for (source, output) in [
+        ("a\n    <div>\n", "a\n    <div>\n"),
+        ("a\n    <!-- x -->\nb\n", "a\n    <!-- x -->\nb\n"),
+        ("a  \n    <div>\n", "a\\\n    <div>\n"),
+        ("- a\n      <div>\n", "- a\n      <div>\n"),
+        ("> a\n>     <?x?>\n", "> a\n>     <?x?>\n"),
+        ("a\n    <div>\n===\n", "a\n    <div>\n=========\n"),
+        ("[b]: n\n    <div>\n", "[b]: n\n    <div>\n"),
+        ("[b]: n\n    <div> x\n", "[b]: n\n    <div> x\n"),
+        ("[b]: n\n\t<b>\n", "[b]: n\n    <b>\n"),
+        ("[b]: n\n    <b>\n    x\n", "[b]: n\n    <b>\nx\n"),
+        ("[b]:n\n\t<a>\rwww.x", "[b]: n\n    <a>\nwww.x\n"),
+        (
+            "a\n===\n[b]: n\n    <!-- x -->\n",
+            "# a\n\n[b]: n\n    <!-- x -->\n",
+        ),
+        ("[b]: n\n    <div>\nx\n===\n", "[b]: n\n    <div>\nx\n=\n"),
+        ("- [b]: n\n      <div>\n", "- [b]: n\n      <div>\n"),
+        ("> [b]: n\n>     <b>\n> x\n", "> [b]: n\n>     <b>\n> x\n"),
+        // A complete tag with more on its line starts no block, so a blank line still shows that the item is spread.
+        ("- [b]: /v\n\n  <b>c\n", "- [b]: /v\n\n  <b>c\n"),
+    ] {
+        assert_round_trips(source);
+        let document = normalized(source);
+        assert_eq!(to_markdown(&document).unwrap(), output, "{:?}", source);
+        let written = to_markdown_with_options(&document, &unwrap).unwrap();
+        let read = normalized(&written);
+        assert_eq!(
+            round_trip::html(&read, false),
+            round_trip::html(&unwrapped(&document), false),
+            "{:?}: {:?}",
+            source,
+            written
+        );
+        assert_eq!(
+            to_markdown_with_options(&read, &unwrap).unwrap(),
+            written,
+            "{:?}",
+            source
+        );
+    }
+}
+
+#[test]
+fn clause_5_1_a_tag_before_encoded_whitespace_is_not_alone_on_its_line() {
+    for after in ["  \nx", " \nx", "\t\nx"] {
+        let mut document = parse("[b]: n\n\nx\n");
+        let paragraph = find(&document, is_paragraph);
+        document.extract_children(paragraph).unwrap();
+        document
+            .append_child(
+                paragraph,
+                EventKind::Html {
+                    value: Text::Literal("<b>"),
+                    block: false,
+                },
+            )
+            .unwrap();
+        document.append_child(paragraph, text(after)).unwrap();
+        document.normalize();
+        let output = to_markdown(&document).unwrap();
+        assert!(
+            output.starts_with("[b]: n\n\n<b>"),
+            "{:?}: {:?}",
+            after,
+            output
+        );
+        assert_eq!(
+            to_markdown(&normalized(&output)).unwrap(),
+            output,
+            "{:?}",
+            after
+        );
+    }
+}
+
 #[test]
 fn clause_3_3_an_inline_document_is_written_as_a_paragraphs_content() {
     let mut document = parse("x\n");
@@ -996,11 +1079,8 @@ fn known_gap(
     if html && indented_html && (whitespace || involves(&["&lt;"])) {
         return Some("#229 an HTML block with an indented first line");
     }
-    if html && before.replace("\n&lt;", " &lt;") == after.replace("\n&lt;", " &lt;") {
-        return Some("#193 inline HTML after a soft break is written after a space");
-    }
     if involves(&["&lt;", "Html"]) && html_blocks(&normalized(output)) > html_blocks(document) {
-        return Some("#193 inline HTML at the start of a line is written as an HTML block");
+        return Some("#193 a paragraph starting with inline HTML is written as an HTML block");
     }
     None
 }
@@ -2476,6 +2556,18 @@ fn gap_issue_157() {
         ..MarkdownOptions::default()
     };
     assert_round_trips_with("- a\n\n```\nx\n```\n", &options);
+}
+
+#[test]
+#[ignore = "#193: a paragraph whose first line would start an HTML block can be written only after a definition"]
+fn gap_issue_193() {
+    let mut document = parse("[b]: n\n    <div>\n");
+    let definition = find(&document, is_definition);
+    document.detach(definition).unwrap();
+    assert!(matches!(
+        round_trip(document, &MarkdownOptions::default(), false),
+        Outcome::Pass
+    ));
 }
 
 #[test]
