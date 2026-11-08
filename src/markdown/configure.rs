@@ -5,7 +5,7 @@
 
 //! Configuration.
 //!
-//! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L307.
+//! JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L307>.
 use crate::message::Message;
 use alloc::{format, string::String};
 

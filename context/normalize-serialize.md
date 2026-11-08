@@ -22,7 +22,7 @@ Throughout, "the HTML" of a document is `Document::render_html` with the given `
 
 **2.3 Copies are accepted on input.** A later definition of a bound label or identifier is a *copy*. `Document::parse`, `AstBuilder` and deserialization accept copies, as Markdown does. A copy binds nothing and renders nothing.
 
-**2.4 No edit adds a copy.** An edit that would add a definition or footnote definition of a label or identifier already defined in the attached document, or a subtree that defines one twice, is rejected with `StreamError::InvalidValue` before anything changes: `set_kind`, `append_child`, `attach`, `parse_children`. `insert_from` and `replace_heading_section` copy no link reference definitions and relabel or reject footnote definitions (6.3). Detaching a definition unbinds it, so the only definition of a label can be detached and attached again; a copy, once detached, cannot.
+**2.4 No edit adds a copy to the attached document.** An edit that would add to the attached document a definition or footnote definition of a label or identifier already defined there, or a subtree that defines one twice, is rejected with `StreamError::InvalidValue` before anything changes: `set_kind`, `append_child`, `attach`, `parse_children`. `insert_from` and `replace_heading_section` copy no link reference definitions and relabel or reject footnote definitions (6.3). Moving a definition within the attached document, with `attach`, is rejected with `InvalidValue` too when its label or identifier has a copy: the document's index keeps a label's definitions in document order, the first binding, so the move could reorder them and change which one binds. Detaching a definition unbinds it, so the only definition of a label can be detached and attached again; a copy, once detached, cannot. A detached tree has no index, so edits inside one are not checked for copies, which would take quadratic time (#226): it may hold copies, and attaching a tree that holds copies, or that defines what the attached document defines, is rejected.
 
 **2.5 Unbound references are valid.** A reference or footnote call that nothing in its tree binds is valid but not normalized. Its events, HTML, `text_content`, headings and heading ids give it as the text it reads back as. `normalize` makes it that text (3.1).
 
@@ -31,7 +31,7 @@ Throughout, "the HTML" of a document is `Document::render_html` with the given `
 **3.1 What it does, in order.** `Document::normalize` normalizes every tree, attached and detached, in time linear in the size of the arena. For each tree, in this order:
 
 1. Copies (2.3) are removed, each place they leave given the separators the parser puts there.
-2. References and footnote calls that the tree does not bind become their text (2.5). This is skipped when the document is settled (4.1).
+2. References and footnote calls that the tree does not bind become their text (2.5), except one that is itself the root of a detached tree, which has no parent to hold its text and stays a reference. This is skipped when the document is settled (4.1).
 3. A link inside another link's text is unwrapped, unless it is an autolink that reads back as one.
 4. Unwritable empties are removed: inline HTML without a value, HTML blocks of whitespace alone, lists without items and tables without a cell.
 5. Every child list is normalized: empty text and empty attention are removed, adjacent text is joined, adjacent inline code is joined when the second has no language, adjacent attention of the same kind is merged, strikethrough inside strikethrough is unwrapped, whitespace and breaks move out of the edges of attention, and breaks at the edges of a block are removed.
@@ -45,7 +45,11 @@ Then line endings in inline code become spaces, code block and frontmatter value
 
 **3.2 Idempotence.** After `normalize`, `is_normalized` holds, and normalizing again changes nothing: not the tree, not an ID, not a value. `is_normalized` holds exactly when `normalize` would change nothing, and takes linear time.
 
-**3.3 Round trip.** For a normalized document `d`, with any `MarkdownOptions` that it writes without an error, let `r` be `d` written, read back and normalized. Then `r` is `d` (compared without spans, IDs, separators, label case and whitespace, the line ending the parser keeps after a hard break or a task checkbox, and the final line ending of a last code block that has none), `r` has the HTML of `d` but for the line ending at the very end and those after hard breaks, and writing `r` gives exactly the Markdown that writing `d` gave. With other `ParseOptions` the writer does not know the options (5.2), and the round trip is not promised.
+**3.3 Round trip.** For a normalized document `d` whose root holds blocks, with `MarkdownOptions` that it writes without an error, let `r` be `d` written, read back and normalized. Then `r` is `d` (compared without spans, IDs, separators, label case and whitespace, the line ending the parser keeps after a hard break or a task checkbox, and the final line ending of a last code block that has none), `r` has the HTML of `d` but for the line ending at the very end and those after hard breaks, and writing `r` gives exactly the Markdown that writing `d` gave. With other `ParseOptions` the writer does not know the options (5.2), and the round trip is not promised.
+
+The options change what is written, not what it reads back as, with one exception: `LineWrapping::Unwrap` writes each soft break as one space, but the line ending of a hard break, and each run of line endings, spaces and tabs in a text value that holds a line ending as one space, so `r` is `d` with that change, but for a shortcut or collapsed reference whose text no longer matches its label, which is written full, and has its HTML. `normalize_markdown("a\nb\n")` is `"a b\n"`, and a heading that held a soft break is written in ATX form. Two options break the round trip today: `fences: false` writes `<!---->` between a list and indented code after it, which reads back as an HTML block (#157), and `rule: '-'` writes a rule after a paragraph line as a setext underline, and rules around the start of the document as frontmatter (#236).
+
+An inline document (1.2) is written as a paragraph's content, so it reads back as a document whose root holds one paragraph; that paragraph's content is what 3.3 promises of the root's, though not yet for every text (#223), and `attach` can still make an inline document from one that held blocks (#231).
 
 **3.4 HTML.** Normalizing changes the HTML only as follows.
 
@@ -66,7 +70,7 @@ Then line endings in inline code become spaces, code block and frontmatter value
 
 **4.1 Meaning.** A document is *settled* when every reference and footnote call in every tree is known to be bound. Settled is not normalized: a parsed document is settled and usually not normalized, as its text is split at escapes, and a normalized document is always settled. It is private, and changes only how much work is done: while it holds, `normalize` and `is_normalized` look nothing up for references, and `insert_from` does not walk the tree for unbound footnote calls.
 
-**4.2 What keeps it.** `Document::parse` sets it, `AstBuilder::finish` sets it when its stream gave every reference resolved and bound and every footnote call its definition, and `normalize` sets it. `insert_from` keeps it, as what it copies is bound or text and its copied definitions take no identifier a call names; an edit that fails keeps it, as it changes nothing; `text_mut`, `set_syntax` and cloning keep it, as they change no name. Every other successful edit clears it: `set_kind`, `append_child`, `detach`, `attach`, `extract_children`, `parse_children` and `replace_heading_section`. A deserialized document is not settled.
+**4.2 What keeps it.** `Document::parse` sets it, `AstBuilder::finish` sets it when its stream gave every reference resolved and bound and every footnote call its definition, and `normalize` sets it. `insert_from` keeps it, as what it copies is bound or text and its copied definitions take no identifier a call names; an edit that fails keeps it, as it changes nothing; `text_mut`, `frontmatter_mut`, `set_syntax` and cloning keep it, as they change no name. Every other successful edit clears it: `set_kind`, `append_child`, `detach`, `attach`, `extract_children`, `parse_children` and `replace_heading_section`. A deserialized document is not settled.
 
 ## 5. Output
 
@@ -78,7 +82,7 @@ Then line endings in inline code become spaces, code block and frontmatter value
 
 **5.4 HTML.** `Document::render_html` renders the document's events, `Document::events`, which give each bound reference as `Target::Resolved` to its definition, and unbound ones as their text (2.5). So the HTML of a parsed document is the parser's: `render_html` of `Document::parse(s, &options.parse)` equals `to_html_with_options(s, &options)`. `render_events` takes resolved targets only and rejects a `Target::Reference` with `StreamError::InvalidValue`. `render_node` renders one subtree in fragment mode, with the document's bindings, and errors only for an invalid ID or writer.
 
-**5.5 `normalize_markdown`.** `normalize_markdown(s)` is `s` parsed with the default options, normalized and written with `LineWrapping::Unwrap`, so it reads back as the normalized tree of `s` (3.3).
+**5.5 `normalize_markdown`.** `normalize_markdown(s)` is `s` parsed with the default options, normalized and written with `LineWrapping::Unwrap`, so it reads back as the normalized tree of `s` with each soft break and line ending in text a space (3.3).
 
 ## 6. Edits
 
@@ -88,10 +92,10 @@ Then line endings in inline code become spaces, code block and frontmatter value
 
 | Error | When |
 | --- | --- |
-| `InvalidRange` | An ID that is not in the arena, a source range outside the source, a position that is not a child of the parent (`attach`'s `before`, `insert_from`'s `after`), a node outside the source's attached document (`insert_from`), `text_mut` of a node that is not text, syntax for an incompatible node. |
+| `InvalidRange` | An ID that is not in the arena, as a node or a parent, a source range outside the source, a position that is not a child of the parent (`attach`'s `before`, `insert_from`'s `after`), a node outside the source's attached document (`insert_from`), `text_mut` of a node that is not text, syntax for an incompatible node. |
 | `Unbalanced` | A leaf parent, an end event appended, a cycle, moving or detaching the root. |
 | `InvalidNesting` | A node that the content model or `Reach` does not allow there (1.2), a change of kind that `set_kind` cannot make in place, a fragment that does not parse into what its parent holds. |
-| `InvalidValue` | An invalid value, such as a heading level outside 1 to 6 or a label the parser cannot read; an edit that would add a copy (2.4); a footnote clash under `FootnotePolicy::Reject`; a fresh identifier or label too long to be one. |
+| `InvalidValue` | An invalid value, such as a heading level outside 1 to 6 or a label the parser cannot read; an edit that would add a copy to the attached document, or move a definition whose label has a copy (2.4); a footnote clash under `FootnotePolicy::Reject`; a fresh identifier or label too long to be one. |
 
 **6.3 Copying between documents.** `insert_from` and `replace_heading_section` copy so that each copy renders as its original does in its own document:
 
@@ -125,7 +129,7 @@ Every open issue, classified: those where the implementation breaks a clause, wi
 | #110 | 3.3 | Nested attention: a switched inner marker lets a closing run glue onto a sibling's opener; the `tree-*` fuzz corpora fail on it. |
 | #111 | 3.3 | A `**` that can close may close an enclosing `*` emphasis. No repro yet. |
 | #149 | 3.3 | Hand-built tight lists whose items record spread read back loose. |
-| #157 | 3.3 | Older list separator cases: a nested list ending in a heading, spread from span gaps, `fences: false` after a footnote. |
+| #157 | 3.3 | Older list separator cases: a nested list ending in a heading, spread from span gaps, and `fences: false`, which writes `<!---->` before indented code after any list: `- a\n\n```\nx\n```\n` is written `- a\n\n<!---->\n\n    x\n`. |
 | #168 | 3.3 | Tight-item block pairs that still read back loose, and soft-break escapes. |
 | #177 | 3.3 | Block quotes in items: a tight list reads back loose, and two quotes merge. |
 | #181 | 3.3 | A paragraph after a quote ending in an empty item leaves the outer item. |
@@ -158,6 +162,8 @@ Every open issue, classified: those where the implementation breaks a clause, wi
 | #229 | 3.3 | An HTML block with an indented first line changes container when written. |
 | #231 | 1.2, 3.1 | `attach` puts phrasing directly under an emptied root, and a leading root separator survives normalizing. |
 | #232 | 3.3 | In a tight item, a block that cannot interrupt a paragraph merges into it when written. |
+| #236 | 3.3 | With `rule: '-'`, a rule after a paragraph line is written as a setext underline, `- a\n  ***\n` as `- a\n  ---\n`, and rules at the start of the document as frontmatter, `***\n\na\n\n***\n` as `---\n\na\n\n---\n`. |
+| not filed yet | 3.3 | With `LineWrapping::Unwrap`, a `~` after a soft break is written bare and then, written again, escaped: `&#x20;\n\~` is written `&#x20; ~\n`, which is written `&#x20; \~\n`. The HTML and tree read back; only stability fails. |
 | #233 | 7.2 | Edits deep in a phrasing nest walk every ancestor. |
 | #230 | enhancement | A table ending a nested item gains a separator when its list is written loose. The HTML and the output are stable, and 3.3 compares without separators, so this breaks no clause; the tree does not keep its separators. |
 | #180 | enhancement | Round trip under `ParseOptions::inline_code_info`, which the writer does not know (5.2): text ending in `word:` before code reads back as a language. |

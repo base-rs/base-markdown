@@ -10,12 +10,14 @@ use base_markdown::{
     normalize_markdown, render_events,
     stream::{Event, EventKind, Reference, StreamError, Tag, TagKind, Target, Text},
     to_html_with_options, to_markdown, to_markdown_with_options, CompileOptions, Document,
-    FootnotePolicy, InsertOptions, LineWrapping, MarkdownOptions, NodeId, Options, ParseOptions,
-    ReferenceKind,
+    FootnotePolicy, InsertOptions, LineWrapping, MarkdownOptions, NodeId, NodeSyntax, Options,
+    ParseOptions, ReferenceKind,
 };
+use regex::Regex;
 use support::corpus::{self, Random};
+use support::fixture::canonical;
 use support::linear::{assert_linear, timed};
-use support::round_trip::{round_trip, Outcome};
+use support::round_trip::{self, round_trip, Failure, Outcome};
 
 /// How many inputs each corpus test takes from each corpus; the fuzz in `roundtrip_fuzz.rs` takes many more.
 const SAMPLES: usize = 3000;
@@ -347,22 +349,109 @@ fn clause_2_3_copies_are_accepted_and_render_nothing() {
     assert_eq!(html(&built), html(&without));
 }
 
+fn note(identifier: &'static str, label: &'static str) -> EventKind<'static> {
+    EventKind::Start(Tag::FootnoteDefinition {
+        identifier: Text::Literal(identifier),
+        label: Some(Text::Literal(label)),
+    })
+}
+
+/// The definitions and footnote definitions that normalizing would remove as copies.
+fn copies<S: AsRef<str> + Clone>(document: &Document<S>) -> usize {
+    let mut normalized = document.clone();
+    normalized.normalize();
+    all(document, is_definition).len() - all(&normalized, is_definition).len()
+}
+
 #[test]
-fn clause_2_4_no_edit_adds_a_copy() {
-    let mut document = parse("[a]: /1\n\n[^n]: one\n\nx [^n]\n");
+fn clause_2_4_no_edit_adds_a_copy_to_the_attached_document() {
+    let mut document =
+        parse("[a]: /1\n\n[b]: /3\n\n[^n]: one\n\n[^m]: two\n\nx [^n] [^m]\n\n> q\n");
     let root = document.root();
+    let quote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::BlockQuote))
+    });
+    let definitions = all(&document, is_definition);
+    // append_child, of a definition and of a footnote definition.
     assert_rejected(&mut document, StreamError::InvalidValue, |document| {
         document.append_child(root, definition("A", "/2"))
     });
     assert_rejected(&mut document, StreamError::InvalidValue, |document| {
-        document.parse_children(root, "[b]: /1\n\n[b]: /2\n", &ParseOptions::default())
+        document.append_child(quote, note("N", "n"))
     });
-    // The only definition of a label can be detached and attached again.
-    let definition_id = find(&document, |kind| {
-        matches!(kind, EventKind::Definition { .. })
+    // set_kind, giving a definition a label that another has.
+    assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+        document.set_kind(definitions[1], definition("A", "/3"))
     });
-    document.detach(definition_id).unwrap();
-    document.attach(root, definition_id, None).unwrap();
+    assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+        document.set_kind(definitions[3], note("N", "n"))
+    });
+    // parse_children, of a label defined outside the replaced children, or defined twice.
+    for fragment in [
+        "[a]: /2\n",
+        "[^n]: two\n",
+        "[c]: /1\n\n[c]: /2\n",
+        "[^c]: 1\n\n[^c]: 2\n",
+    ] {
+        assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+            document.parse_children(quote, fragment, &ParseOptions::default())
+        });
+    }
+    // attach, of a detached tree that defines what the document defines, or holds a copy.
+    for fragment in ["[a]: /2\n", "[^n]: two\n", "[z]: /1\n\n[z]: /2\n"] {
+        let tree = document
+            .append_child(root, EventKind::Start(Tag::BlockQuote))
+            .unwrap();
+        document.detach(tree).unwrap();
+        // A detached tree has no index, so edits in it are not checked (#226).
+        document
+            .parse_children(tree, fragment, &ParseOptions::default())
+            .unwrap();
+        assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+            document.attach(root, tree, None)
+        });
+    }
+    // insert_from and replace_heading_section copy no link reference definition, and relabel a
+    // footnote definition or, under Reject, reject it.
+    let source = parse("s [r][a] [^n]\n\n[a]: /9\n\n[^n]: other\n");
+    assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+        document.insert_from(
+            root,
+            None,
+            &source,
+            source.children(source.root()),
+            &InsertOptions {
+                footnotes: FootnotePolicy::Reject,
+                ..InsertOptions::default()
+            },
+        )
+    });
+    document
+        .insert_from(
+            root,
+            None,
+            &source,
+            source.children(source.root()),
+            &InsertOptions::default(),
+        )
+        .unwrap();
+    assert_eq!(copies(&document), 0);
+    let mut sectioned = parse("[a]: /1\n\nx [^n]\n\n[^n]: one\n\n# h\n\ny\n");
+    let root = sectioned.root();
+    let heading = sectioned
+        .children(root)
+        .position(|id| {
+            matches!(
+                sectioned.node(id).unwrap().kind,
+                EventKind::Start(Tag::Heading(_))
+            )
+        })
+        .unwrap();
+    let replacement = parse("# r\n\n[a]: /2\n\n[^n]\n\n[^n]: three\n");
+    assert!(sectioned
+        .replace_heading_section(root, heading, &replacement, true, true)
+        .unwrap());
+    assert_eq!(copies(&sectioned), 0);
 }
 
 #[test]
@@ -374,6 +463,27 @@ fn clause_2_4_a_detached_copy_cannot_be_attached() {
     assert_rejected(&mut document, StreamError::InvalidValue, |document| {
         document.attach(root, copy, None)
     });
+    // The only definition of a label can be detached and attached again.
+    let mut document = parse("[a]: /1\n\nx\n");
+    let root = document.root();
+    let only = find(&document, is_definition);
+    document.detach(only).unwrap();
+    document.attach(root, only, None).unwrap();
+}
+
+#[test]
+fn clause_2_4_a_definition_whose_label_has_a_copy_cannot_move() {
+    let mut document = parse("[a]: /1\n\n> q\n\n[a]: /2\n");
+    let quote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::BlockQuote))
+    });
+    let binding = find(&document, is_definition);
+    assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+        document.attach(quote, binding, None)
+    });
+    document.normalize();
+    let binding = find(&document, is_definition);
+    document.attach(quote, binding, None).unwrap();
 }
 
 #[test]
@@ -428,6 +538,43 @@ fn clause_3_1_unbound_references_become_text_before_joining() {
 }
 
 #[test]
+fn clause_3_1_a_reference_that_roots_a_detached_tree_stays_a_reference() {
+    let mut document = parse("x\n");
+    let paragraph_id = first(&document, document.root());
+    let link = document
+        .append_child(
+            paragraph_id,
+            EventKind::Start(Tag::Link(Target::Reference(Box::new(Reference {
+                kind: ReferenceKind::Shortcut,
+                label: Text::Literal("a"),
+            })))),
+        )
+        .unwrap();
+    document.append_child(link, text("a")).unwrap();
+    let call = document
+        .append_child(
+            paragraph_id,
+            EventKind::FootnoteReference {
+                identifier: Text::Literal("N"),
+                label: Some(Text::Literal("n")),
+            },
+        )
+        .unwrap();
+    document.detach(link).unwrap();
+    document.detach(call).unwrap();
+    document.normalize();
+    assert!(document.is_normalized());
+    assert!(matches!(
+        document.node(link).unwrap().kind,
+        EventKind::Start(Tag::Link(Target::Reference(_)))
+    ));
+    assert!(matches!(
+        document.node(call).unwrap().kind,
+        EventKind::FootnoteReference { .. }
+    ));
+}
+
+#[test]
 fn clause_3_1_normalize_is_linear() {
     assert_linear("normalize", 400, |size| {
         let source = "a\\*b *c* _d_ [e][f] [^g]\n\n- h\n\n  [f]: /i\n".repeat(size);
@@ -440,6 +587,63 @@ fn clause_3_1_normalize_is_linear() {
 fn clause_3_2_normalize_is_idempotent() {
     each_input(|name, source| {
         let mut document = normalized(source);
+        assert!(document.is_normalized(), "{} {:?}", name, source);
+        let once = snapshot(&document);
+        document.normalize();
+        assert_eq!(snapshot(&document), once, "{} {:?}", name, source);
+    });
+}
+
+/// Make one edit of a random kind at random nodes, which may fail.
+fn random_edit(document: &mut Document<&str>, random: &mut Random) {
+    let ids: Vec<NodeId> = document.descendants(document.root()).collect();
+    let pick = |random: &mut Random| ids[random.below(ids.len())];
+    let (id, other) = (pick(random), pick(random));
+    let leaves = [
+        text("*a* "),
+        text(""),
+        EventKind::Start(Tag::Emphasis),
+        paragraph(),
+        EventKind::SoftBreak(Text::Literal("\n")),
+        EventKind::HardBreak,
+        definition("X", "/x"),
+    ];
+    let fragments = [
+        "a *b*",
+        "- c\n- d\n",
+        "[x]: /y\n",
+        "> e\n\n[^f]: g\n",
+        "h [x] [^f]",
+    ];
+    let _ = match random.below(6) {
+        0 => document.detach(id),
+        1 => document
+            .detach(id)
+            .and_then(|()| document.attach(other, id, None).map(|_| ())),
+        2 => document
+            .append_child(id, leaves[random.below(leaves.len())].clone())
+            .map(|_| ()),
+        3 => document.set_kind(id, text("b")),
+        4 => document.extract_children(id).map(|_| ()),
+        _ => document
+            .parse_children(
+                id,
+                fragments[random.below(fragments.len())],
+                &ParseOptions::default(),
+            )
+            .map(|_| ()),
+    };
+}
+
+#[test]
+fn clause_3_2_normalize_is_idempotent_after_edits() {
+    let mut random = Random(0x5EED_5EED);
+    each_input(|name, source| {
+        let mut document = parse(source);
+        for _ in 0..4 {
+            random_edit(&mut document, &mut random);
+        }
+        document.normalize();
         assert!(document.is_normalized(), "{} {:?}", name, source);
         let once = snapshot(&document);
         document.normalize();
@@ -463,34 +667,266 @@ fn clause_3_2_is_normalized_is_whether_normalize_changes_anything() {
     assert_eq!(snapshot(&document), before);
 }
 
+const ROUND_TRIP_SAMPLES: [&str; 12] = [
+    "# Title\n\nSome *emphasis*, **strong**, ~~deleted~~ and `code`.\n",
+    "- a\n- b\n  - c\n\n1. d\n2. e\n",
+    "- [ ] task\n- [x] done\n",
+    "> quote\n> > nested\n",
+    "| a | b |\n| :- | -: |\n| c | d |\n",
+    "[full][r], [collapsed][], [r], ![image][r]\n\n[r]: /u \"t\"\n",
+    "note[^n]\n\n[^n]: body\n",
+    "```rust\nfn main() {}\n```\n\n    indented\n",
+    "<div>\nhtml\n</div>\n\ninline <b>html</b>\n",
+    "line  \nbreak\\\nescape \\* &amp; &#x20;\n",
+    "---\ntitle: x\n---\n\ntext\n",
+    "Setext\n===\n\n***\n",
+];
+
 #[test]
 fn clause_3_3_normalize_round_trips() {
-    for source in [
-        "# Title\n\nSome *emphasis*, **strong**, ~~deleted~~ and `code`.\n",
-        "- a\n- b\n  - c\n\n1. d\n2. e\n",
-        "- [ ] task\n- [x] done\n",
-        "> quote\n> > nested\n",
-        "| a | b |\n| :- | -: |\n| c | d |\n",
-        "[full][r], [collapsed][], [r], ![image][r]\n\n[r]: /u \"t\"\n",
-        "note[^n]\n\n[^n]: body\n",
-        "```rust\nfn main() {}\n```\n\n    indented\n",
-        "<div>\nhtml\n</div>\n\ninline <b>html</b>\n",
-        "line  \nbreak\\\nescape \\* &amp; &#x20;\n",
-        "---\ntitle: x\n---\n\ntext\n",
-        "Setext\n===\n\n***\n",
-        "x[^a]\n\n[^a]: z\n\n- p\n  [^a]: y\n  2. q\n",
-    ] {
-        for options in [
-            MarkdownOptions::default(),
-            MarkdownOptions {
-                line_wrapping: LineWrapping::Unwrap,
-                ..MarkdownOptions::default()
-            },
-        ] {
+    let underscore = MarkdownOptions {
+        emphasis: '_',
+        strong: '_',
+        ..MarkdownOptions::default()
+    };
+    for source in ROUND_TRIP_SAMPLES
+        .iter()
+        .chain(&["x[^a]\n\n[^a]: z\n\n- p\n  [^a]: y\n  2. q\n"])
+    {
+        for options in [&MarkdownOptions::default(), &underscore] {
+            assert_round_trips_with(source, options);
+        }
+    }
+}
+
+/// `document` with each soft break but the line ending of a hard break, and each run of line endings, spaces and tabs in a text value that holds a line ending, one space, as `LineWrapping::Unwrap` writes them (3.3).
+fn unwrapped<'s>(document: &Document<&'s str>) -> Document<&'s str> {
+    let line_endings = Regex::new(r"[ \t]*\n[ \t\n]*").unwrap();
+    let mut unwrapped = document.clone();
+    let mut after_hard_break = false;
+    for id in document.descendants(document.root()) {
+        let kind = &document.node(id).unwrap().kind;
+        let after = core::mem::replace(&mut after_hard_break, matches!(kind, EventKind::HardBreak));
+        match kind {
+            // The line ending of a hard break is part of it.
+            EventKind::SoftBreak(_) if after => {}
+            EventKind::SoftBreak(_) => {
+                let parent = document.node(id).unwrap().parent().unwrap();
+                let space = unwrapped.append_child(parent, text(" ")).unwrap();
+                unwrapped.attach(parent, space, Some(id)).unwrap();
+                unwrapped.detach(id).unwrap();
+            }
+            EventKind::Text(value) => {
+                let value = value.resolve(document.source()).unwrap();
+                if value.contains('\n') {
+                    *unwrapped.text_mut(id).unwrap() =
+                        line_endings.replace_all(value, " ").into_owned();
+                }
+            }
+            _ => {}
+        }
+    }
+    unwrapped.normalize();
+    unwrapped
+}
+
+/// The canonical tree of `document` without whether each reference is full, as a shortcut or collapsed reference whose text no longer matches its label once unwrapped is written full.
+fn without_reference_forms<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
+    let form = Regex::new(r"Some\(\((true|false), ").unwrap();
+    canonical(document)
+        .iter()
+        .map(|entry| form.replace(entry, "Some((").into_owned())
+        .collect()
+}
+
+#[test]
+fn clause_3_3_unwrap_writes_soft_breaks_and_line_endings_in_text_as_spaces() {
+    let options = MarkdownOptions {
+        line_wrapping: LineWrapping::Unwrap,
+        ..MarkdownOptions::default()
+    };
+    assert_eq!(normalize_markdown("a\nb\n").unwrap(), "a b\n");
+    let soft = [
+        "a\nb\n",
+        "a  \nb\nc\n",
+        "a&#xA;b \t&#xA;\tc\n",
+        "Setext\nheading\n===\n",
+        "- a\n  b\n- c\n",
+        "> a\n> b\n",
+        "*a\nb* **c\nd**\n",
+        "[a\nb](/u) [c\nd]\n\n[c d]: /v\n",
+        "| a |\n| - |\n| b&#xA;c |\n",
+    ];
+    let mut sources: Vec<&str> = soft.iter().chain(&ROUND_TRIP_SAMPLES).copied().collect();
+    let mut generated = Vec::new();
+    for (_, seed, generate) in &CORPORA[..4] {
+        let mut random = Random(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+        generated.extend((0..SAMPLES / 3).map(|_| generate(&mut random)));
+    }
+    sources.extend(generated.iter().map(String::as_str));
+    for source in sources {
+        let document = normalized(source);
+        let expected = unwrapped(&document);
+        let output = to_markdown_with_options(&document, &options).unwrap();
+        let read = normalized(&output);
+        assert_eq!(
+            round_trip::html(&read, false),
+            round_trip::html(&expected, false),
+            "{:?}: {:?}",
+            source,
+            output
+        );
+        assert_eq!(
+            without_reference_forms(&read),
+            without_reference_forms(&expected),
+            "{:?}: {:?}",
+            source,
+            output
+        );
+        let again = to_markdown_with_options(&read, &options).unwrap();
+        if again.replace("\\~", "~") == output && again != output {
+            // A `~` after an unwrapped soft break is escaped when written again; see gap_unwrap_tilde.
+            continue;
+        }
+        assert_eq!(again, output, "{:?}", source);
+    }
+}
+
+#[test]
+fn clause_3_3_an_inline_document_is_written_as_a_paragraphs_content() {
+    let mut document = parse("x\n");
+    let root = document.root();
+    document.extract_children(root).unwrap();
+    document.append_child(root, text("a ")).unwrap();
+    let emphasis = document
+        .append_child(root, EventKind::Start(Tag::Emphasis))
+        .unwrap();
+    document.append_child(emphasis, text("b")).unwrap();
+    document.normalize();
+    let output = to_markdown(&document).unwrap();
+    assert_eq!(output, "a *b*\n");
+    let read = normalized(&output);
+    let paragraph_id = first(&read, read.root());
+    assert!(is_paragraph(&read.node(paragraph_id).unwrap().kind));
+    assert_eq!(
+        read.children(read.root())
+            .filter(|&id| !matches!(read.node(id).unwrap().kind, EventKind::Separator { .. }))
+            .count(),
+        1
+    );
+    assert_eq!(
+        html(&read),
+        format!("<p>{}</p>\n", html(&document).trim_end())
+    );
+    assert_eq!(to_markdown(&read).unwrap(), output);
+}
+
+/// The deepest nesting of emphasis and strong in `html`.
+fn nesting(html: &str) -> usize {
+    let (mut depth, mut deepest) = (0usize, 0);
+    for (at, _) in html.match_indices('<') {
+        let rest = &html[at..];
+        if rest.starts_with("<em>") || rest.starts_with("<strong>") {
+            depth += 1;
+            deepest = deepest.max(depth);
+        } else if rest.starts_with("</em>") || rest.starts_with("</strong>") {
+            depth = depth.saturating_sub(1);
+        }
+    }
+    deepest
+}
+
+fn html_blocks<S: AsRef<str>>(document: &Document<S>) -> usize {
+    all(document, |kind| {
+        matches!(kind, EventKind::Html { block: true, .. })
+    })
+    .len()
+}
+
+/// The issue of section 8 that explains why the normalized `document` does not round trip, by rules on its tree, its output and both renderings, or `None`.
+fn known_gap(
+    document: &Document<&str>,
+    failure: &Failure,
+    rules: &GapRules,
+) -> Option<&'static str> {
+    let (output, before, after) = (&failure.output, &failure.before, &failure.after);
+    let kinds: Vec<&EventKind> = document
+        .descendants(document.root())
+        .map(|id| &document.node(id).unwrap().kind)
+        .collect();
+    let source = document.source();
+    if kinds.iter().any(|kind| {
+        matches!(kind, EventKind::Definition { label, .. } if label.resolve(source).unwrap().starts_with('^'))
+    }) {
+        return Some("#208 a definition label starting with ^");
+    }
+    if (before.contains("<input") && rules.task_break.is_match(output))
+        || (failure.kind == "tree" && rules.task_line_ending.is_match(output))
+    {
+        return Some("#199 a task item starting with a break");
+    }
+    let leading_definition = all(document, is_item).into_iter().any(|item| {
+        document
+            .children(item)
+            .find(|&id| !matches!(document.node(id).unwrap().kind, EventKind::Separator { .. }))
+            .is_some_and(|id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Definition { .. }
+                )
+            })
+    });
+    if leading_definition {
+        return Some("#200 a leading definition in an item");
+    }
+    if rules.star_rule.is_match(output) {
+        return Some("#227 a * marker before a rule");
+    }
+    if nesting(before) > 1 || nesting(after) > 1 {
+        return Some("#110 nested attention");
+    }
+    if kinds.iter().any(|kind| {
+        matches!(kind, EventKind::Html { value, block: true } if value.resolve(source).unwrap().starts_with([' ', '\t']))
+    }) {
+        return Some("#229 an HTML block with an indented first line");
+    }
+    if before.replace("\n&lt;", " &lt;") == after.replace("\n&lt;", " &lt;") {
+        return Some("#193 inline HTML after a soft break is written after a space");
+    }
+    if html_blocks(&normalized(output)) > html_blocks(document) {
+        return Some("#193 inline HTML at the start of a line is written as an HTML block");
+    }
+    None
+}
+
+struct GapRules {
+    task_break: Regex,
+    task_line_ending: Regex,
+    star_rule: Regex,
+}
+
+#[test]
+fn clause_3_3_blocky_round_trip_failures_are_known_gaps() {
+    let rules = GapRules {
+        task_break: Regex::new(r"(?m)\] (&#xA;|&#x20;)?\s*$|\] &#xA;|\]  +\n|\] \\\n").unwrap(),
+        task_line_ending: Regex::new(r"\[[ x]\] &#xA;").unwrap(),
+        star_rule: Regex::new(r"(?m)^(> |\s)*([-*+] |\d+[.)] )*\* \*\*\*").unwrap(),
+    };
+    let mut random = Random(5u64.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+    for _ in 0..SAMPLES {
+        let source = corpus::blocky(&mut random);
+        let document = normalized(&source);
+        if let Outcome::Fail(failure) =
+            round_trip(document.clone(), &MarkdownOptions::default(), false)
+        {
             assert!(
-                matches!(round_trip(parse(source), &options, false), Outcome::Pass),
-                "{:?}",
-                source
+                known_gap(&document, &failure, &rules).is_some(),
+                "not a known gap: {} {:?}: {:?}\n{}\n{}",
+                failure.kind,
+                source,
+                failure.output,
+                failure.before,
+                failure.after
             );
         }
     }
@@ -547,24 +983,86 @@ fn html_change(source: &str) -> (String, String, String) {
     (before, html(&document), to_markdown(&document).unwrap())
 }
 
+/// `html` without the paragraph tags in items, which exceptions 1 and 4 add and remove.
+fn without_item_paragraphs(html: &str) -> String {
+    let mut output = String::new();
+    let mut depth = 0usize;
+    let mut rest = html;
+    while let Some(at) = rest.find('<') {
+        output.push_str(&rest[..at]);
+        rest = &rest[at..];
+        if rest.starts_with("<li") {
+            depth += 1;
+        } else if rest.starts_with("</li>") {
+            depth = depth.saturating_sub(1);
+        }
+        if depth > 0 && (rest.starts_with("<p>") || rest.starts_with("</p>")) {
+            rest = &rest[rest.find('>').unwrap() + 1..];
+        } else {
+            output.push('<');
+            rest = &rest[1..];
+        }
+    }
+    output + rest
+}
+
+/// `html` without what the five exceptions of 3.4 change, and attention, which normalizing moves: paragraph tags in items (exceptions 1 and 4), line endings (5), list numbers (4) and emptied lists (3), and, when `footnotes` (exception 2), the footnote section and the numbers and anchors of calls.
+fn without_exceptions(html: &str, footnotes: bool) -> String {
+    let mut html = without_attention(html);
+    if footnotes {
+        if let Some(at) = html.find("<section data-footnotes") {
+            html.truncate(at);
+        }
+        let call = Regex::new(r##"<sup><a href="#user-content-fn-([^"]*)"[^>]*>[^<]*</a></sup>"##)
+            .unwrap();
+        html = call.replace_all(&html, "<sup>$1</sup>").into_owned();
+    }
+    let html = without_item_paragraphs(&html).replace('\n', "");
+    let start = Regex::new(r#" start="\d+""#).unwrap();
+    start
+        .replace_all(&html, "")
+        .replace("<ul><li></li></ul>", "")
+        .replace("<ol><li></li></ol>", "")
+}
+
 #[test]
 fn clause_3_4_copy_removal_keeps_html_but_for_five_exceptions() {
+    let mut checked = [0, 0];
     each_input(|name, source| {
         let mut document = parse(source);
         let before = html(&document);
         let definitions = all(&document, is_definition).len();
+        // Exception 2 applies where a removed copy is a footnote definition that holds a call.
+        let calling: Vec<NodeId> = all(&document, |kind| {
+            matches!(kind, EventKind::Start(Tag::FootnoteDefinition { .. }))
+        })
+        .into_iter()
+        .filter(|&id| {
+            document.descendants(id).any(|id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::FootnoteReference { .. }
+                )
+            })
+        })
+        .collect();
         document.normalize();
-        if all(&document, is_definition).len() == definitions || before.contains("footnote") {
+        if all(&document, is_definition).len() == definitions || before.contains("/><br />") {
+            // No copy; a task item starting with a hard break is #199.
             return;
         }
+        let attached: Vec<NodeId> = document.descendants(document.root()).collect();
+        let footnotes = calling.iter().any(|id| !attached.contains(id));
+        checked[usize::from(footnotes)] += 1;
         assert_eq!(
-            without_attention(&html(&document)).trim_end(),
-            without_attention(&before).trim_end(),
+            without_exceptions(&html(&document), footnotes),
+            without_exceptions(&before, footnotes),
             "{} {:?}",
             name,
             source
         );
     });
+    assert!(checked[0] > 0 && checked[1] > 0, "{:?}", checked);
 }
 
 #[test]
@@ -696,7 +1194,7 @@ fn clause_4_1_settled_is_not_normalized() {
 fn clause_4_2_what_keeps_and_clears_settled() {
     let source = parse("Para[^n]\n\n[^n]: note\n");
     let fresh = || parse("a\n\n- b\n");
-    // Kept: insert_from, failed edits, text_mut and cloning.
+    // Kept: insert_from, failed edits, text_mut, set_syntax, cloning and frontmatter_mut.
     let mut document = fresh();
     let root = document.root();
     document
@@ -714,7 +1212,18 @@ fn clause_4_2_what_keeps_and_clears_settled() {
     let text_id = find(&document, |kind| matches!(kind, EventKind::Text(_)));
     document.text_mut(text_id).unwrap().push('!');
     assert!(settled(&document));
+    let item = find(&document, is_item);
+    document
+        .set_syntax(item, Some(NodeSyntax::ListItem { spread: false }))
+        .unwrap();
+    assert!(settled(&document));
     assert!(settled(&document.clone()));
+    let mut with_frontmatter = parse("---\na: b\n---\n\nx\n");
+    with_frontmatter
+        .frontmatter_mut()
+        .unwrap()
+        .push_str("\nc: d");
+    assert!(settled(&with_frontmatter));
     // Cleared by every other successful edit.
     type Edit = fn(&mut Document<&'static str>);
     let edits: [(&str, Edit); 7] = [
@@ -982,44 +1491,188 @@ fn clause_6_1_failed_edits_change_nothing() {
 
 #[test]
 fn clause_6_2_error_kinds() {
-    let mut document = parse("a\n\n- b\n\n[d]: /u\n");
+    let mut document = parse("a\n\n- b\n\n> q\n\n[d]: /u\n\n[d]: /v\n");
     let root = document.root();
     let paragraph_id = first(&document, root);
     let text_id = first(&document, paragraph_id);
-    let larger_source = "a\n\n".repeat(100);
-    let larger = parse(&larger_source);
-    let outside = larger.descendants(larger.root()).last().unwrap();
-    // InvalidRange: an ID not in the arena, a position not a child of the parent.
-    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
-        document.detach(outside)
-    });
-    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
-        document.extract_children(outside)
-    });
     let list = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::List { .. }))
     });
-    document.detach(list).unwrap();
-    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
-        document.attach(root, list, Some(text_id))
+    let item = first(&document, list);
+    let quote = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::BlockQuote))
     });
-    // Unbalanced: a leaf parent, an end event, a cycle.
+    let binding = find(&document, is_definition);
+    let loose = document.append_child(root, paragraph()).unwrap();
+    document.detach(loose).unwrap();
+    let larger_source = "a\n\n".repeat(100);
+    let larger = parse(&larger_source);
+    let outside = larger.descendants(larger.root()).last().unwrap();
+    let source = parse("s[^n]\n\n[^n]: other\n\n# t\n");
+    let nodes: Vec<NodeId> = source.children(source.root()).collect();
+    let mut with_note = parse("x[^n]\n\n[^n]: mine\n");
+    let note_root = with_note.root();
+    let far = Text::Source(0..10_000);
+
+    // InvalidRange: an ID that is not in the arena, as a node or a parent.
+    type Edit = fn(&mut Document<&str>, NodeId, &Document<&str>) -> Result<(), StreamError>;
+    let invalid_ids: [Edit; 11] = [
+        |document, id, _| document.set_kind(id, text("x")),
+        |document, id, _| document.append_child(id, text("x")).map(|_| ()),
+        |document, id, _| document.detach(id),
+        |document, id, _| document.attach(document.root(), id, None),
+        |document, id, _| {
+            let paragraph_id = first(document, document.root());
+            document.attach(id, paragraph_id, None)
+        },
+        |document, id, _| document.extract_children(id).map(|_| ()),
+        |document, id, _| document.text_mut(id).map(|_| ()),
+        |document, id, _| document.set_syntax(id, None),
+        |document, id, _| {
+            document
+                .parse_children(id, "x", &ParseOptions::default())
+                .map(|_| ())
+        },
+        |document, id, source| {
+            document
+                .insert_from(
+                    id,
+                    None,
+                    source,
+                    source.children(source.root()),
+                    &InsertOptions::default(),
+                )
+                .map(|_| ())
+        },
+        |document, id, source| {
+            document
+                .replace_heading_section(id, 0, source, true, true)
+                .map(|_| ())
+        },
+    ];
+    for edit in invalid_ids {
+        assert_rejected(&mut document, StreamError::InvalidRange, |document| {
+            edit(document, outside, &source)
+        });
+    }
+    // A source range outside the source.
+    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
+        document.append_child(paragraph_id, EventKind::Text(far.clone()))
+    });
+    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
+        document.set_kind(text_id, EventKind::Text(far.clone()))
+    });
+    // A position that is not a child of the parent.
+    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
+        document.attach(root, loose, Some(text_id))
+    });
+    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
+        document.insert_from(
+            root,
+            Some(text_id),
+            &source,
+            nodes.iter().copied(),
+            &InsertOptions::default(),
+        )
+    });
+    // A node outside the source's attached document.
+    let mut detached_source = parse("s\n\nt\n");
+    let detached = all(&detached_source, is_paragraph)[1];
+    detached_source.detach(detached).unwrap();
+    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
+        document.insert_from(
+            root,
+            None,
+            &detached_source,
+            [detached],
+            &InsertOptions::default(),
+        )
+    });
+    // text_mut of a node that is not text, and syntax for an incompatible node.
+    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
+        document.text_mut(paragraph_id).map(|_| ())
+    });
+    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
+        document.set_syntax(paragraph_id, Some(NodeSyntax::ListItem { spread: false }))
+    });
+
+    // Unbalanced: a leaf parent, an end event appended, a cycle, moving or detaching the root.
     assert_rejected(&mut document, StreamError::Unbalanced, |document| {
         document.append_child(text_id, text("x"))
     });
     assert_rejected(&mut document, StreamError::Unbalanced, |document| {
+        document.attach(text_id, loose, None)
+    });
+    assert_rejected(&mut document, StreamError::Unbalanced, |document| {
+        document.parse_children(text_id, "x", &ParseOptions::default())
+    });
+    assert_rejected(&mut document, StreamError::Unbalanced, |document| {
         document.append_child(paragraph_id, EventKind::End(TagKind::Paragraph))
     });
-    let item = first(&document, list);
     assert_rejected(&mut document, StreamError::Unbalanced, |document| {
         document.attach(item, list, None)
     });
-    // InvalidNesting and InvalidValue: clause 1.2 and 2.4.
+    assert_rejected(&mut document, StreamError::Unbalanced, |document| {
+        document.attach(quote, root, None)
+    });
+    assert_rejected(&mut document, StreamError::Unbalanced, |document| {
+        document.detach(root)
+    });
+
+    // InvalidNesting: what the content model does not allow there, a change of kind that
+    // set_kind cannot make in place, a fragment that does not parse into what its parent holds.
     assert_rejected(&mut document, StreamError::InvalidNesting, |document| {
-        document.attach(paragraph_id, list, None)
+        document.append_child(root, text("x"))
+    });
+    assert_rejected(&mut document, StreamError::InvalidNesting, |document| {
+        document.attach(paragraph_id, loose, None)
+    });
+    assert_rejected(&mut document, StreamError::InvalidNesting, |document| {
+        document.set_kind(paragraph_id, EventKind::Start(Tag::Heading(1)))
+    });
+    assert_rejected(&mut document, StreamError::InvalidNesting, |document| {
+        document.parse_children(paragraph_id, "# x", &ParseOptions::default())
+    });
+
+    // InvalidValue: an invalid value, a copy, a move of a definition whose label has a copy, a
+    // footnote clash under Reject, a fresh identifier too long to be one.
+    assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+        document.append_child(root, EventKind::Start(Tag::Heading(7)))
     });
     assert_rejected(&mut document, StreamError::InvalidValue, |document| {
-        document.append_child(root, definition("D", "/v"))
+        document.append_child(root, definition("", "/x"))
+    });
+    assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+        document.append_child(root, definition("D", "/w"))
+    });
+    assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+        document.attach(quote, binding, None)
+    });
+    assert_rejected(&mut with_note, StreamError::InvalidValue, |document| {
+        document.insert_from(
+            note_root,
+            None,
+            &source,
+            nodes.iter().copied(),
+            &InsertOptions {
+                footnotes: FootnotePolicy::Reject,
+                ..InsertOptions::default()
+            },
+        )
+    });
+    let long = "a".repeat(999);
+    let long_source = format!("x[^{0}]\n\n[^{0}]: n\n", long);
+    let mut long_note = parse(&long_source);
+    let long_copy = parse(&long_source);
+    let long_root = long_note.root();
+    assert_rejected(&mut long_note, StreamError::InvalidValue, |document| {
+        document.insert_from(
+            long_root,
+            None,
+            &long_copy,
+            long_copy.children(long_copy.root()),
+            &InsertOptions::default(),
+        )
     });
 }
 
@@ -1150,7 +1803,12 @@ fn clause_7_2_issue_233_phrasing_depth() {
 
 /// Assert that `source` round trips (3.3).
 fn assert_round_trips(source: &str) {
-    match round_trip(parse(source), &MarkdownOptions::default(), false) {
+    assert_round_trips_with(source, &MarkdownOptions::default());
+}
+
+/// Assert that `source` round trips with `options` (3.3).
+fn assert_round_trips_with(source: &str, options: &MarkdownOptions) {
+    match round_trip(parse(source), options, false) {
         Outcome::Pass => {}
         Outcome::Rejected => panic!("rejected {:?}", source),
         Outcome::Fail(failure) => panic!(
@@ -1169,6 +1827,7 @@ fn clause_3_3_issue_89_99_108_repros_round_trip() {
         "- [ ] \t*<http://a.b>*em**",
         "- a\n| a | b |\n| - | - |\n",
         "> a\n| a | b |\n| - | - |\n",
+        "~a~\\~(~",
     ] {
         assert_round_trips(source);
     }
@@ -1178,6 +1837,16 @@ fn clause_3_3_issue_89_99_108_repros_round_trip() {
 #[ignore = "#110: nested attention with a switched marker"]
 fn gap_issue_110() {
     assert_round_trips("*a*__**c*.*****\\~**&#x61;**__");
+}
+
+#[test]
+#[ignore = "#157: with fences: false, indented code after a list is written after <!---->"]
+fn gap_issue_157() {
+    let options = MarkdownOptions {
+        fences: false,
+        ..MarkdownOptions::default()
+    };
+    assert_round_trips_with("- a\n\n```\nx\n```\n", &options);
 }
 
 #[test]
@@ -1275,24 +1944,6 @@ fn gap_issue_229() {
     ));
 }
 
-/// The separators of a tree, which the round trip of 3.3 does not compare.
-fn separators<S: AsRef<str>>(document: &Document<S>) -> usize {
-    all(document, |kind| matches!(kind, EventKind::Separator { .. })).len()
-}
-
-#[test]
-#[ignore = "#230: a table ending a nested item gains a separator"]
-fn gap_issue_230() {
-    let document = normalized("- - | a |\n    | - |\n  r\n- b\n\n- c\n");
-    let output = to_markdown(&document).unwrap();
-    assert_eq!(
-        separators(&normalized(&output)),
-        separators(&document),
-        "{:?}",
-        output
-    );
-}
-
 #[test]
 #[ignore = "#231: attach puts phrasing directly under an emptied root"]
 fn gap_issue_231() {
@@ -1316,4 +1967,30 @@ fn gap_issue_232() {
         round_trip(document, &MarkdownOptions::default(), false),
         Outcome::Pass
     ));
+}
+
+#[test]
+#[ignore = "#236: with rule: '-', a rule is written as a setext underline or frontmatter"]
+fn gap_issue_236() {
+    let options = MarkdownOptions {
+        rule: '-',
+        ..MarkdownOptions::default()
+    };
+    for source in ["- a\n  ***\n", "***\n\na\n\n***\n"] {
+        assert_round_trips_with(source, &options);
+    }
+}
+
+#[test]
+#[ignore = "not filed yet: with Unwrap, a ~ after a soft break is written bare, then escaped"]
+fn gap_unwrap_tilde() {
+    let options = MarkdownOptions {
+        line_wrapping: LineWrapping::Unwrap,
+        ..MarkdownOptions::default()
+    };
+    let output = to_markdown_with_options(&normalized("&#x20;\n\\~\n"), &options).unwrap();
+    assert_eq!(
+        to_markdown_with_options(&normalized(&output), &options).unwrap(),
+        output
+    );
 }

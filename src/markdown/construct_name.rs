@@ -5,7 +5,7 @@
 
 //! Contexts consulted by escaping or nested-list marker selection.
 //!
-//! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/index.d.ts#L18.
+//! JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/index.d.ts#L18>.
 #[derive(Clone, Copy, PartialEq)]
 pub enum ConstructName {
     /// Whole autolink.

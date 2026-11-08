@@ -5,7 +5,7 @@
 
 //! API.
 //!
-//! JS equivalent: https://github.com/syntax-tree/mdast-util-to-markdown/blob/main/lib/index.js.
+//! JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/main/lib/index.js>.
 
 // Formatting rules are adapted from `mdast-util-to-markdown`; keep the parser's stricter lints on the surrounding API.
 #![allow(clippy::pedantic)]

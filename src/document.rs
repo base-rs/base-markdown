@@ -1452,8 +1452,9 @@ impl<S: AsRef<str>> Document<S> {
     /// Appending in document order, each node after the subtree before it is complete, takes amortized constant time per node, except that a footnote reference or a break also walks up through the phrasing that holds it, to check that no link encloses the reference and no table cell the break, in time linear in the depth of the phrasing nest, so appending many of them deep in one nest takes quadratic time (#233). Appending to another parent scans its children.
     ///
     /// # Errors
-    /// Rejects an invalid or leaf parent and end events with [`StreamError::Unbalanced`],
-    /// invalid source ranges with [`StreamError::InvalidRange`], invalid values with
+    /// Rejects a parent that is not in the arena, and invalid source ranges, with
+    /// [`StreamError::InvalidRange`], a leaf parent and end events with
+    /// [`StreamError::Unbalanced`], invalid values with
     /// [`StreamError::InvalidValue`], and a node that the parent cannot hold, such as a document
     /// root, a block in a paragraph, an item outside a list, phrasing in a root that holds blocks,
     /// a footnote reference inside a link, or a soft or hard break inside a table cell, with
@@ -1476,13 +1477,13 @@ impl<S: AsRef<str>> Document<S> {
         parent: NodeId,
         kind: EventKind<'static>,
     ) -> Result<NodeId, StreamError> {
+        let Some(node) = self.node(parent) else {
+            return Err(StreamError::InvalidRange);
+        };
+        let leaf = !matches!(node.kind, EventKind::Start(_));
         let kind = stored(kind);
         kind.validate(Some(self.source()))?;
-        if !matches!(
-            self.node(parent).map(|node| &node.kind),
-            Some(EventKind::Start(_))
-        ) || matches!(kind, EventKind::End(_))
-        {
+        if leaf || matches!(kind, EventKind::End(_)) {
             return Err(StreamError::Unbalanced);
         }
         self.check_nesting(parent, self.nodes[parent.index()].first_child, &kind)?;
@@ -1595,8 +1596,9 @@ impl<S: AsRef<str>> Document<S> {
     /// Move an existing subtree into a container, optionally before one of its children. No node or text allocation is required. Moving a subtree into or out of the attached document takes time linear in the subtree too, to mark its nodes and to add its definitions to the document's index of them or remove them. Every move also walks up through the phrasing that holds the new parent, to find whether a link or table cell is above it, in time linear in the depth of the phrasing nest, so many moves deep in one nest take quadratic time (#233), and when one is, scans the subtree.
     ///
     /// # Errors
-    /// Rejects cycles, a leaf parent and root moves with [`StreamError::Unbalanced`], invalid IDs
-    /// and positions with [`StreamError::InvalidRange`], and a subtree that the parent cannot
+    /// Rejects IDs that are not in the arena and positions that are not children of `parent`
+    /// with [`StreamError::InvalidRange`], cycles, a leaf parent and root moves with
+    /// [`StreamError::Unbalanced`], and a subtree that the parent cannot
     /// hold, as for [`Document::append_child`], or that holds a footnote reference when the parent
     /// is in a link, or a soft or hard break when it is in a table cell, with
     /// [`StreamError::InvalidNesting`], before modifying the tree. As an edit
@@ -1606,9 +1608,11 @@ impl<S: AsRef<str>> Document<S> {
     /// identifier a definition of its kind in the document already has, and moving a subtree
     /// within the document when it holds a definition or footnote definition of a label or
     /// identifier that the document defines more than once, which [`Document::normalize`] makes
-    /// once. Detaching a definition first unbinds it, so the only definition of its label can be
-    /// detached and attached again, but one that has a copy elsewhere cannot. Moving a
-    /// subtree out of its parent always leaves that parent valid, if not normalized.
+    /// once: the document's index keeps a label's definitions in document order, the first
+    /// binding, so such a move could reorder them and change which one binds. Detaching a
+    /// definition first unbinds it, so the only definition of its label can be detached and
+    /// attached again, but one that has a copy elsewhere cannot. Moving a subtree out of its
+    /// parent always leaves that parent valid, if not normalized.
     pub fn attach(
         &mut self,
         parent: NodeId,
@@ -1625,12 +1629,8 @@ impl<S: AsRef<str>> Document<S> {
         id: NodeId,
         before: Option<NodeId>,
     ) -> Result<(), StreamError> {
-        if id == self.root()
-            || !matches!(
-                self.node(parent).map(|node| &node.kind),
-                Some(EventKind::Start(_))
-            )
-        {
+        let parent_node = self.node(parent).ok_or(StreamError::InvalidRange)?;
+        if id == self.root() || !matches!(parent_node.kind, EventKind::Start(_)) {
             return Err(StreamError::Unbalanced);
         }
         self.node(id).ok_or(StreamError::InvalidRange)?;
