@@ -2751,6 +2751,8 @@ struct Scratch {
     trailing: Trailing,
     blocks: Vec<NodeId>,
     copies: Copies,
+    // The lists made tight or loose.
+    lists: Vec<NodeId>,
 }
 
 // Scratch storage for removing copies: which nodes are copies and which containers hold one at
@@ -3126,8 +3128,9 @@ impl<S: AsRef<str>> Document<S> {
         self.unwrap_links(root);
         self.remove_subtree(root, &mut scratch.blocks);
         self.normalize_subtree(root, &mut scratch.trailing);
-        self.remove_empty_paragraphs(root, &mut scratch.blocks);
-        self.join_tight_items(root);
+        self.remove_empty_paragraphs(root, &mut scratch.blocks, &mut scratch.lists);
+        self.join_tight_items(root, &mut scratch.lists);
+        self.settle_list_tables(root, &mut scratch.lists);
         self.settle_tasks(root);
         // The last leaf is only known once the rules above have run.
         if let Some(parsed) = end {
@@ -3414,11 +3417,16 @@ impl<S: AsRef<str>> Document<S> {
     }
 
     // Remove each paragraph without children, which is left once its phrasing is removed or its breaks are, from the top down, as removing one empties nothing else. A loose list that reads back tight once they are gone is made tight first. `kept` is scratch storage for the children kept so far in a list.
-    fn remove_empty_paragraphs(&mut self, root: NodeId, kept: &mut Vec<NodeId>) {
+    fn remove_empty_paragraphs(
+        &mut self,
+        root: NodeId,
+        kept: &mut Vec<NodeId>,
+        lists: &mut Vec<NodeId>,
+    ) {
         let mut current = Some(root);
         while let Some(id) = current {
             if reads_back_tight(&self.nodes, &self.nodes[id.index()]) {
-                self.set_tight(id, true);
+                self.set_tight(id, true, lists);
             }
             if self.nodes[id.index()].first_child.is_some() {
                 self.remove_empty_children(id, kept, |_, node, _| empty_paragraph(node));
@@ -3474,7 +3482,7 @@ impl<S: AsRef<str>> Document<S> {
     }
 
     // Once the rules above have run, make each tight list loose that has an item with two blocks in a row, not counting separators, that can be written apart only in a loose list, and in each other tight list join each run of paragraphs in a row in an item, not counting separators, into its first paragraph, with a soft break between each. Removing empty paragraphs and lists can leave paragraphs in a row, and a block quote that ends in a list in a paragraph only once those rules have run in it, so this is a pass of its own. Making a list loose and joining paragraphs change no block before or after them, so a list visited later is decided the same.
-    fn join_tight_items(&mut self, root: NodeId) {
+    fn join_tight_items(&mut self, root: NodeId, lists: &mut Vec<NodeId>) {
         let mut current = Some(root);
         while let Some(id) = current {
             if matches!(
@@ -3487,7 +3495,7 @@ impl<S: AsRef<str>> Document<S> {
                     })
                 };
                 if items().any(|item| loosens(self, item)) {
-                    self.set_tight(id, false);
+                    self.set_tight(id, false, lists);
                 } else {
                     let mut item = self.nodes[id.index()].first_child;
                     while let Some(item_id) = item {
@@ -3632,12 +3640,13 @@ impl<S: AsRef<str>> Document<S> {
         nodes[list.index()].first_child = current;
     }
 
-    // Make `list` tight or loose, with the paragraphs of its items, which are its only paragraphs that render differently. A separator after a paragraph made tight is removed, as the parser puts none there, and one is added after a paragraph made loose that a block follows, as the parser puts one there.
-    fn set_tight(&mut self, list: NodeId, tight: bool) {
+    // Make `list` tight or loose, with the paragraphs of its items, which are its only paragraphs that render differently, and push it to `lists`. A separator after a paragraph made tight is removed, as the parser puts none there, and one is added after a paragraph made loose that a block follows, as the parser puts one there.
+    fn set_tight(&mut self, list: NodeId, tight: bool, lists: &mut Vec<NodeId>) {
         let EventKind::Start(Tag::List { start, .. }) = self.nodes[list.index()].kind else {
             unreachable!("only a list is made tight or loose");
         };
         self.nodes[list.index()].kind = EventKind::Start(Tag::List { start, tight });
+        lists.push(list);
         let mut item = self.nodes[list.index()].first_child;
         while let Some(item_id) = item {
             let mut child = self.nodes[item_id.index()].first_child;
@@ -4119,21 +4128,90 @@ impl<S: AsRef<str>> Document<S> {
                 at = last;
                 continue;
             }
-            let tail = self.nodes[last.index()].next_sibling;
-            let wanted = self.table_line_after(at, last);
-            match tail {
-                Some(one) if !wanted && self.nodes[one.index()].next_sibling.is_none() => {
-                    self.nodes[last.index()].next_sibling = None;
-                    self.nodes[one.index()].parent = None;
-                }
-                None if wanted => {
-                    let separator = self.new_separator(at, "\n", false);
-                    self.nodes[last.index()].next_sibling = Some(separator);
-                }
-                _ => {}
-            }
+            self.settle_table_end(at, last);
             return;
         }
+    }
+
+    // Give `last`, the last block of `parent`, if it is a table, the separator after it that
+    // `table_line_after` says the parser puts there, unless what is after it could not be the
+    // parser's, two or more.
+    fn settle_table_end(&mut self, parent: NodeId, last: NodeId) {
+        let tail = self.nodes[last.index()].next_sibling;
+        let wanted = self.table_line_after(parent, last);
+        match tail {
+            Some(one) if !wanted && self.nodes[one.index()].next_sibling.is_none() => {
+                self.nodes[last.index()].next_sibling = None;
+                self.nodes[one.index()].parent = None;
+            }
+            None if wanted => {
+                let separator = self.new_separator(parent, "\n", false);
+                self.nodes[last.index()].next_sibling = Some(separator);
+            }
+            _ => {}
+        }
+    }
+
+    // Give each table under `root` that ends an item or footnote definition the separator after
+    // it that `table_line_after` says the parser puts there, where one of `lists`, the lists made
+    // tight or loose, decides whether a blank line follows it, and clear `lists`. Only the lists
+    // that the table ends a block of, through last blocks, or that hold the item it then ends,
+    // decide, so each container is passed once, from the one table below it that it ends with.
+    fn settle_list_tables(&mut self, root: NodeId, lists: &mut Vec<NodeId>) {
+        if lists.is_empty() {
+            return;
+        }
+        lists.sort_unstable();
+        let mut current = Some(root);
+        while let Some(id) = current {
+            current = next_descendant(&self.nodes, root, id);
+            if !matches!(self.nodes[id.index()].kind, EventKind::Start(Tag::Table)) {
+                continue;
+            }
+            let parent = self.nodes[id.index()].parent.filter(|parent| {
+                matches!(
+                    self.nodes[parent.index()].kind,
+                    EventKind::Start(Tag::Item { .. } | Tag::FootnoteDefinition { .. })
+                )
+            });
+            if let Some(parent) = parent {
+                if !self.block_after(id) && self.ends_in_lists(parent, lists) {
+                    self.settle_table_end(parent, id);
+                }
+            }
+        }
+        lists.clear();
+    }
+
+    // Whether a sibling other than a separator follows `id`.
+    fn block_after(&self, id: NodeId) -> bool {
+        core::iter::successors(self.nodes[id.index()].next_sibling, |id| {
+            self.nodes[id.index()].next_sibling
+        })
+        .any(|id| !separator(&self.nodes, Some(id)))
+    }
+
+    // Whether one of `lists`, sorted, holds `block` or a block that `block` ends, through last
+    // blocks of lists, items and footnote definitions, up to the first with a block after it.
+    fn ends_in_lists(&self, block: NodeId, lists: &[NodeId]) -> bool {
+        let mut at = block;
+        while let Some(container) = self.nodes[at.index()].parent {
+            if lists.binary_search(&container).is_ok() {
+                return true;
+            }
+            if self.block_after(at)
+                || !matches!(
+                    self.nodes[container.index()].kind,
+                    EventKind::Start(
+                        Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition { .. }
+                    )
+                )
+            {
+                break;
+            }
+            at = container;
+        }
+        false
     }
 
     // Leave one separator at the end of `settled`, after its index `from`, if `wanted`, and

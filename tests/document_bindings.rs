@@ -1950,7 +1950,8 @@ fn normalizing_removes_copies() {
     // have, or none where it has one (exception 5): the separators the parser puts there are
     // given instead, so the output reads back as the tree, separators too, and the HTML gains or
     // loses that line ending. So is a paragraph made loose given the one after it, and a table
-    // that ends an item the one after it that a blank line in the item gives.
+    // that ends an item the one after it that a blank line in the item gives, also where the
+    // list is made loose (exception 4) or a footnote copy before the table goes.
     let separators = |document: &Document| -> Vec<(String, bool)> {
         document
             .descendants(document.root())
@@ -1991,6 +1992,42 @@ fn normalizing_removes_copies() {
         (
             "- - [a]: /1\n    | a |\n    | - |\n  [a]: /2\n- b\n",
             "<ul>\n<li>\n<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n</ul>\n</li>\n<li>b</li>\n</ul>\n",
+        ),
+        (
+            "- | a |\n  | - |\n- [^n]: x\n  [^n]:\n  p\n",
+            "<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n<li>\n<p>p</p>\n</li>\n</ul>\n",
+        ),
+        (
+            "* [^n]: x\n  [^n]:\n  | a |\n  | - |\n*\n",
+            "<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n<li></li>\n</ul>\n",
+        ),
+        (
+            "- [^n]: [^n]: e\n      - [b]: /3\n- | a |\n  | - |\n-\n",
+            "<ul>\n<li></li>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n<li></li>\n</ul>\n",
+        ),
+        (
+            "> * [^n]: x\n>   [^n]:\n>   | a |\n>   | - |\n> *\n",
+            "<blockquote>\n<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n<li></li>\n</ul>\n</blockquote>\n",
+        ),
+        (
+            "- - | a |\n    | - |\n- [^n]: x\n  [^n]:\n  p\n",
+            "<ul>\n<li>\n<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n</ul>\n</li>\n<li>\n<p>p</p>\n</li>\n</ul>\n",
+        ),
+        (
+            "- - | a |\n    | - |\n  - b\n- [^n]: x\n  [^n]:\n  p\n",
+            "<ul>\n<li>\n<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n<li>b</li>\n</ul>\n</li>\n<li>\n<p>p</p>\n</li>\n</ul>\n",
+        ),
+        (
+            "- [^m]: | a |\n      | - |\n- [^n]: x\n  [^n]:\n  p\n",
+            "<ul>\n<li></li>\n<li>\n<p>p</p>\n</li>\n</ul>\n",
+        ),
+        (
+            "> - | a |\n>   | - |\n\n- [^n]: x\n  [^n]:\n  p\n",
+            "<blockquote>\n<ul>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n</ul>\n</blockquote>\n<ul>\n<li>\n<p>p</p>\n</li>\n</ul>\n",
+        ),
+        (
+            "[^n]:\n1. | a |\n   | - |\n1. >\n   [^n]:\n   >\n",
+            "<ol>\n<li>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</li>\n<li>\n<blockquote>\n</blockquote>\n<blockquote>\n</blockquote>\n</li>\n</ol>\n",
         ),
     ] {
         let mut document = parse(source);
