@@ -785,8 +785,9 @@ fn parsing_into_every_section_of_a_document_is_linear() {
 }
 
 /// Parsing into the innermost paragraph and block quote of a deep nest of block quotes, again and
-/// again, takes time linear in the parses whatever the depth: nothing walks up through the nest.
-/// Timed against the same parses into a nest of one.
+/// again, takes time linear in the parses whatever the depth: a block quote and a paragraph are
+/// below no link or cell they could be in, so nothing looks at the quotes around them. Timed
+/// against the same parses into a nest of one.
 #[test]
 fn parsing_deep_into_a_nest_is_linear() {
     let time = |depth: usize, parses: usize| {
@@ -813,6 +814,42 @@ fn parsing_deep_into_a_nest_is_linear() {
     support::linear::assert_against_control(
         "parse_children deep in a nest",
         1 << 8,
+        |size| time(size, size),
+        |size| time(1, size),
+    );
+}
+
+/// Parsing plain phrasing into the innermost emphasis of a deep nest of emphasis, again and again,
+/// takes time linear in the parses whatever the depth: a fragment that reads the same in a
+/// paragraph, a cell and a link is read without walking up through the nest to find which is
+/// above. Timed against the same parses into a nest of one.
+#[test]
+fn parsing_deep_into_a_nest_of_phrasing_is_linear() {
+    let time = |depth: usize, parses: usize| {
+        let source = format!("{}x{}\n", "*a ".repeat(depth), " a*".repeat(depth));
+        let mut document = parse(&source);
+        let innermost = document
+            .descendants(document.root())
+            .filter(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Start(Tag::Emphasis)
+                )
+            })
+            .last()
+            .unwrap();
+        timed(|| {
+            for index in 0..parses {
+                let fragment = if index % 2 == 0 { "y" } else { "y **z** w" };
+                document
+                    .parse_children(innermost, fragment, &gfm())
+                    .unwrap();
+            }
+        })
+    };
+    support::linear::assert_against_control(
+        "parse_children deep in a nest of phrasing",
+        1 << 9,
         |size| time(size, size),
         |size| time(1, size),
     );
@@ -924,6 +961,12 @@ fn a_link_rejects_a_fragment_that_holds_a_link() {
     }
     let source = "[PLACEHOLDER](/u)\n\n[a]: /a\n\n[^n]: Note.\n";
     for fragment in ["<http://a>", "www.a.com", "`[a]`", "\\[a\\]", "![i](/i)"] {
+        assert_splices(source, link, fragment, fragment);
+    }
+    // A fragment with no bracket is read as a paragraph before the ancestors are looked at, so
+    // these check that it still reads as link text: a run of delimiters next to the brackets can
+    // close, edge spaces stay, and a block start is text.
+    for fragment in ["*====(**", "**a(**", " *a* ", "# h", "- x", "***"] {
         assert_splices(source, link, fragment, fragment);
     }
 }
