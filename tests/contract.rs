@@ -843,25 +843,66 @@ fn html_blocks<S: AsRef<str>>(document: &Document<S>) -> usize {
     .len()
 }
 
-/// The issue of section 8 that explains why the normalized `document` does not round trip, by rules on its tree, its output and both renderings, or `None`.
+/// What differs between `before` and `after`: each without the longest common prefix and suffix.
+fn differing<'a>(before: &'a str, after: &'a str) -> (&'a str, &'a str) {
+    let prefix = before
+        .char_indices()
+        .zip(after.chars())
+        .find(|((_, one), other)| one != other)
+        .map_or(before.len().min(after.len()), |((at, _), _)| at);
+    let (before, after) = (&before[prefix..], &after[prefix..]);
+    let suffix: usize = before
+        .chars()
+        .rev()
+        .zip(after.chars().rev())
+        .take_while(|(one, other)| one == other)
+        .map(|(one, _)| one.len_utf8())
+        .sum();
+    (
+        &before[..before.len() - suffix],
+        &after[..after.len() - suffix],
+    )
+}
+
+/// The issue of section 8 that explains why the normalized `document` does not round trip, or `None`. Each rule needs the document to have the issue's shape, the failure to be of a kind the issue makes, and what differs between the two renderings or trees to involve that shape; a failure to write or to normalize is never a known gap.
 fn known_gap(
     document: &Document<&str>,
     failure: &Failure,
     rules: &GapRules,
 ) -> Option<&'static str> {
     let (output, before, after) = (&failure.output, &failure.before, &failure.after);
+    let (html, tree) = (failure.kind == "html", failure.kind == "tree");
+    if !html && !tree {
+        return None;
+    }
+    let (one, other) = differing(before, after);
+    let involves = |needles: &[&str]| {
+        needles
+            .iter()
+            .any(|needle| one.contains(needle) || other.contains(needle))
+    };
     let kinds: Vec<&EventKind> = document
         .descendants(document.root())
         .map(|id| &document.node(id).unwrap().kind)
         .collect();
     let source = document.source();
-    if kinds.iter().any(|kind| {
+    let caret_label = kinds.iter().any(|kind| {
         matches!(kind, EventKind::Definition { label, .. } if label.resolve(source).unwrap().starts_with('^'))
-    }) {
+    });
+    if caret_label && involves(&["^", "footnote", "Footnote"]) {
         return Some("#208 a definition label starting with ^");
     }
-    if (before.contains("<input") && rules.task_break.is_match(output))
-        || (failure.kind == "tree" && rules.task_line_ending.is_match(output))
+    // Only the break, or the space before it, differs.
+    let only_breaks = [one, other].iter().all(|side| {
+        ["<br />", "\\n", "&#xA;", "&#x20;"]
+            .iter()
+            .fold((*side).to_owned(), |side, needle| side.replace(needle, ""))
+            .trim()
+            .is_empty()
+    });
+    if only_breaks
+        && ((html && before.contains("<input") && rules.task_break.is_match(output))
+            || (tree && rules.task_line_ending.is_match(output)))
     {
         return Some("#199 a task item starting with a break");
     }
@@ -876,24 +917,29 @@ fn known_gap(
                 )
             })
     });
-    if leading_definition {
+    if leading_definition && involves(&["[", "<input", "<li", "Item", "Definition", "<a href"]) {
         return Some("#200 a leading definition in an item");
     }
-    if rules.star_rule.is_match(output) {
+    if html && rules.star_rule.is_match(output) && involves(&["<hr", "<li", "<ul"]) {
         return Some("#227 a * marker before a rule");
     }
-    if nesting(before) > 1 || nesting(after) > 1 {
+    if html
+        && (nesting(before) > 1 || nesting(after) > 1)
+        && involves(&["<em>", "</em>", "<strong>", "</strong>", "*", "_"])
+    {
         return Some("#110 nested attention");
     }
-    if kinds.iter().any(|kind| {
+    let indented_html = kinds.iter().any(|kind| {
         matches!(kind, EventKind::Html { value, block: true } if value.resolve(source).unwrap().starts_with([' ', '\t']))
-    }) {
+    });
+    let whitespace = one.trim().is_empty() && other.trim().is_empty();
+    if html && indented_html && (whitespace || involves(&["&lt;"])) {
         return Some("#229 an HTML block with an indented first line");
     }
-    if before.replace("\n&lt;", " &lt;") == after.replace("\n&lt;", " &lt;") {
+    if html && before.replace("\n&lt;", " &lt;") == after.replace("\n&lt;", " &lt;") {
         return Some("#193 inline HTML after a soft break is written after a space");
     }
-    if html_blocks(&normalized(output)) > html_blocks(document) {
+    if involves(&["&lt;", "Html"]) && html_blocks(&normalized(output)) > html_blocks(document) {
         return Some("#193 inline HTML at the start of a line is written as an HTML block");
     }
     None
@@ -905,20 +951,26 @@ struct GapRules {
     star_rule: Regex,
 }
 
-#[test]
-fn clause_3_3_blocky_round_trip_failures_are_known_gaps() {
-    let rules = GapRules {
+fn gap_rules() -> GapRules {
+    GapRules {
         task_break: Regex::new(r"(?m)\] (&#xA;|&#x20;)?\s*$|\] &#xA;|\]  +\n|\] \\\n").unwrap(),
         task_line_ending: Regex::new(r"\[[ x]\] &#xA;").unwrap(),
         star_rule: Regex::new(r"(?m)^(> |\s)*([-*+] |\d+[.)] )*\* \*\*\*").unwrap(),
-    };
+    }
+}
+
+#[test]
+fn clause_3_3_blocky_round_trip_failures_are_known_gaps() {
+    let rules = gap_rules();
     let mut random = Random(5u64.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+    let mut failures = 0;
     for _ in 0..SAMPLES {
         let source = corpus::blocky(&mut random);
         let document = normalized(&source);
         if let Outcome::Fail(failure) =
             round_trip(document.clone(), &MarkdownOptions::default(), false)
         {
+            failures += 1;
             assert!(
                 known_gap(&document, &failure, &rules).is_some(),
                 "not a known gap: {} {:?}: {:?}\n{}\n{}",
@@ -929,7 +981,30 @@ fn clause_3_3_blocky_round_trip_failures_are_known_gaps() {
                 failure.after
             );
         }
+        // The rules attribute no other failure of the same document.
+        let output = to_markdown(&document).unwrap();
+        let before = round_trip::html(&document, false);
+        for (kind, after) in [
+            ("html", format!("{}\n<p>BUG</p>", before)),
+            ("error", String::new()),
+            ("normalized", before.clone()),
+        ] {
+            let fake = Failure {
+                kind,
+                output: output.clone(),
+                before: before.clone(),
+                after,
+            };
+            assert_eq!(
+                known_gap(&document, &fake, &rules),
+                None,
+                "a {} failure attributed for {:?}",
+                kind,
+                source
+            );
+        }
     }
+    assert!(failures > 0, "the corpus still finds the gaps");
 }
 
 #[test]
@@ -983,54 +1058,232 @@ fn html_change(source: &str) -> (String, String, String) {
     (before, html(&document), to_markdown(&document).unwrap())
 }
 
-/// `html` without the paragraph tags in items, which exceptions 1 and 4 add and remove.
-fn without_item_paragraphs(html: &str) -> String {
-    let mut output = String::new();
-    let mut depth = 0usize;
-    let mut rest = html;
-    while let Some(at) = rest.find('<') {
-        output.push_str(&rest[..at]);
-        rest = &rest[at..];
-        if rest.starts_with("<li") {
-            depth += 1;
-        } else if rest.starts_with("</li>") {
-            depth = depth.saturating_sub(1);
-        }
-        if depth > 0 && (rest.starts_with("<p>") || rest.starts_with("</p>")) {
-            rest = &rest[rest.find('>').unwrap() + 1..];
-        } else {
-            output.push('<');
-            rest = &rest[1..];
-        }
-    }
-    output + rest
+fn is_list(kind: &EventKind) -> bool {
+    matches!(kind, EventKind::Start(Tag::List { .. }))
 }
 
-/// `html` without what the five exceptions of 3.4 change, and attention, which normalizing moves: paragraph tags in items (exceptions 1 and 4), line endings (5), list numbers (4) and emptied lists (3), and, when `footnotes` (exception 2), the footnote section and the numbers and anchors of calls.
-fn without_exceptions(html: &str, footnotes: bool) -> String {
-    let mut html = without_attention(html);
-    if footnotes {
-        if let Some(at) = html.find("<section data-footnotes") {
-            html.truncate(at);
+/// Whether `id` holds nothing but definitions, footnote definitions and separators, so that removing copies can empty it.
+fn holds_only_definitions<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
+    document.children(id).all(|child| {
+        let kind = &document.node(child).unwrap().kind;
+        is_definition(kind)
+            || matches!(kind, EventKind::Separator { .. })
+            || (is_item(kind) && holds_only_definitions(document, child))
+    })
+}
+
+/// `before`, as parsed, with the copies that `after`, the same document normalized, removed detached, and exceptions 1, 3 and 4 of 3.4 applied as `after` has them: each list whose tightness or start changed is given its new one, and each list or item that held only definitions and is gone is detached.
+fn with_list_exceptions<'s>(
+    before: &Document<&'s str>,
+    after: &Document<&'s str>,
+) -> Document<&'s str> {
+    with_exceptions_but_2(before, after, false)
+}
+
+/// [`with_list_exceptions`], but when `calls` the removed footnote definition copies that hold calls are kept, rendering nothing but still numbering their calls as parsed, so that only exception 2 is left.
+fn with_exceptions_but_2<'s>(
+    before: &Document<&'s str>,
+    after: &Document<&'s str>,
+    calls: bool,
+) -> Document<&'s str> {
+    let attached: Vec<NodeId> = after.descendants(after.root()).collect();
+    let mut expected = before.clone();
+    let removed: Vec<NodeId> = all(before, is_definition)
+        .into_iter()
+        .filter(|id| !attached.contains(id))
+        .collect();
+    let mut places = Vec::new();
+    for &copy in &removed {
+        let mut ancestor = before.node(copy).unwrap().parent();
+        let parent = ancestor.unwrap();
+        while let Some(id) = ancestor {
+            if removed.contains(&id) {
+                break;
+            }
+            ancestor = before.node(id).unwrap().parent();
         }
-        let call = Regex::new(r##"<sup><a href="#user-content-fn-([^"]*)"[^>]*>[^<]*</a></sup>"##)
-            .unwrap();
-        html = call.replace_all(&html, "<sup>$1</sup>").into_owned();
+        if ancestor.is_some() {
+            // Inside a removed copy, which goes with it.
+            continue;
+        }
+        let next = before
+            .children(parent)
+            .skip_while(|&id| id != copy)
+            .find(|id| attached.contains(id));
+        // The definitions in a copy that bind their own labels take its place (3.5).
+        let hoisted: Vec<NodeId> = before
+            .descendants(copy)
+            .filter(|&id| {
+                attached.contains(&id)
+                    && !attached.contains(&before.node(id).unwrap().parent().unwrap())
+            })
+            .collect();
+        for &id in &hoisted {
+            expected.detach(id).unwrap();
+        }
+        let calling = matches!(
+            before.node(copy).unwrap().kind,
+            EventKind::Start(Tag::FootnoteDefinition { .. })
+        ) && before.descendants(copy).any(|id| {
+            !hoisted
+                .iter()
+                .any(|&kept| before.descendants(kept).any(|inner| inner == id))
+                && matches!(
+                    before.node(id).unwrap().kind,
+                    EventKind::FootnoteReference { .. }
+                )
+        });
+        if !(calls && calling) {
+            expected.detach(copy).unwrap();
+        }
+        places.extend(hoisted.into_iter().map(|id| (parent, id, next)));
     }
-    let html = without_item_paragraphs(&html).replace('\n', "");
-    let start = Regex::new(r#" start="\d+""#).unwrap();
-    start
-        .replace_all(&html, "")
-        .replace("<ul><li></li></ul>", "")
-        .replace("<ol><li></li></ol>", "")
+    // Once every copy is gone, as attaching beside one is rejected (2.4).
+    for (parent, id, next) in places {
+        expected.attach(parent, id, next).unwrap();
+    }
+    // The separators where copies were are given again.
+    for id in all(before, |kind| matches!(kind, EventKind::Separator { .. })) {
+        if !attached.contains(&id) {
+            expected.detach(id).unwrap();
+        }
+    }
+    for id in all(before, |kind| is_list(kind) || is_item(kind)) {
+        if !attached.contains(&id) {
+            if holds_only_definitions(before, id) {
+                expected.detach(id).unwrap();
+            }
+            continue;
+        }
+        let kind = &after.node(id).unwrap().kind;
+        if let EventKind::Start(Tag::List { start, tight }) = *kind {
+            if kind != &before.node(id).unwrap().kind {
+                expected
+                    .set_kind(id, EventKind::Start(Tag::List { start, tight }))
+                    .unwrap();
+            }
+        }
+    }
+    expected
+}
+
+/// The footnote entries of `html` by their anchor, each without its back references, and the rest of `html`.
+fn footnote_entries(html: &str) -> (String, std::collections::BTreeMap<String, String>) {
+    let backreference =
+        Regex::new(r##" ?<a href="#user-content-fnref-[^"]*" data-footnote-backref=""[^>]*>↩(<sup>\d+</sup>)?</a>"##)
+            .unwrap();
+    let mut entries = std::collections::BTreeMap::new();
+    let Some(at) = html.find("<section data-footnotes") else {
+        return (html.to_owned(), entries);
+    };
+    let section = &html[at..];
+    let opening = "<li id=\"user-content-fn-";
+    let mut rest = section;
+    while let Some(start) = rest.find(opening) {
+        let body = &rest[start + opening.len()..];
+        let anchor_end = body.find('"').unwrap();
+        let anchor = &body[..anchor_end];
+        let content_start = anchor_end + 2;
+        let mut depth = 1;
+        let mut end = content_start;
+        while depth > 0 {
+            let next = body[end..].find("<li").map(|at| (at, true));
+            let close = body[end..].find("</li>").map(|at| (at, false));
+            let (offset, opens) = match (next, close) {
+                (Some(open), Some(close)) if open.0 < close.0 => open,
+                (_, Some(close)) => close,
+                _ => panic!("an unclosed footnote entry in {}", html),
+            };
+            depth = if opens { depth + 1 } else { depth - 1 };
+            end += offset + if opens { 3 } else { 5 };
+        }
+        let content = &body[content_start..end - 5];
+        entries.insert(
+            anchor.to_owned(),
+            backreference.replace_all(content, "").into_owned(),
+        );
+        rest = &body[end..];
+    }
+    (html[..at].to_owned(), entries)
+}
+
+/// `html` with the numbers and anchors of footnote calls dropped, which exception 2 changes.
+fn without_call_numbers(html: &str) -> String {
+    let call =
+        Regex::new(r##"<sup><a href="#user-content-fn-([^"]*)"[^>]*>\d+</a></sup>"##).unwrap();
+    call.replace_all(html, "<sup>[^$1]</sup>").into_owned()
+}
+
+/// `html` without attention, which normalizing moves, and without the line ending after a list or at the end, which exception 5 adds or removes.
+fn without_list_line_endings(html: &str) -> String {
+    without_attention(html)
+        .replace("</ul>\n", "</ul>")
+        .replace("</ol>\n", "</ol>")
+        .trim_end()
+        .to_owned()
+}
+
+/// Assert that `after`, the HTML of a normalized document, is `expected`, the HTML of the document as parsed with exceptions 1, 3 and 4 applied, but for exception 5 and, when `footnotes`, exception 2: footnote numbers, anchors, back references and the order of entries, and entries no remaining call calls.
+fn assert_html_but_for_exceptions(expected: &str, after: &str, footnotes: bool, context: &str) {
+    if !footnotes {
+        assert_eq!(
+            without_list_line_endings(after),
+            without_list_line_endings(expected),
+            "{}",
+            context
+        );
+        return;
+    }
+    let (expected_body, expected_entries) = footnote_entries(expected);
+    let (after_body, after_entries) = footnote_entries(after);
+    let after_body = without_call_numbers(&after_body);
+    assert_eq!(
+        without_list_line_endings(&after_body),
+        without_list_line_endings(&without_call_numbers(&expected_body)),
+        "{}",
+        context
+    );
+    let after_entries: std::collections::BTreeMap<_, _> = after_entries
+        .iter()
+        .map(|(anchor, content)| (anchor, without_call_numbers(content)))
+        .collect();
+    for (anchor, content) in &expected_entries {
+        match after_entries.get(anchor) {
+            Some(kept) => assert_eq!(
+                without_list_line_endings(kept),
+                without_list_line_endings(&without_call_numbers(content)),
+                "{}",
+                context
+            ),
+            None => {
+                let call = format!("<sup>[^{}]</sup>", anchor);
+                assert!(
+                    !after_body.contains(&call)
+                        && after_entries.values().all(|kept| !kept.contains(&call)),
+                    "entry {} gone but still called: {}",
+                    anchor,
+                    context
+                );
+            }
+        }
+    }
+    assert!(
+        after_entries
+            .keys()
+            .all(|anchor| expected_entries.contains_key(*anchor)),
+        "{}",
+        context
+    );
 }
 
 #[test]
 fn clause_3_4_copy_removal_keeps_html_but_for_five_exceptions() {
     let mut checked = [0, 0];
+    let mut numbered = 0;
     each_input(|name, source| {
         let mut document = parse(source);
         let before = html(&document);
+        let parsed = document.clone();
         let definitions = all(&document, is_definition).len();
         // Exception 2 applies where a removed copy is a footnote definition that holds a call.
         let calling: Vec<NodeId> = all(&document, |kind| {
@@ -1054,15 +1307,46 @@ fn clause_3_4_copy_removal_keeps_html_but_for_five_exceptions() {
         let attached: Vec<NodeId> = document.descendants(document.root()).collect();
         let footnotes = calling.iter().any(|id| !attached.contains(id));
         checked[usize::from(footnotes)] += 1;
-        assert_eq!(
-            without_exceptions(&html(&document), footnotes),
-            without_exceptions(&before, footnotes),
-            "{} {:?}",
-            name,
-            source
+        let expected = html(&with_exceptions_but_2(&parsed, &document, true));
+        let after = html(&document);
+        if footnotes && without_list_line_endings(&after) != without_list_line_endings(&expected) {
+            numbered += 1;
+        }
+        assert_html_but_for_exceptions(
+            &expected,
+            &after,
+            footnotes,
+            &format!("{} {:?}", name, source),
         );
     });
     assert!(checked[0] > 0 && checked[1] > 0, "{:?}", checked);
+    // Exception 2 is needed: some removed copy's calls changed the numbering.
+    assert!(numbered > 0, "{:?}", checked);
+}
+
+#[test]
+fn clause_3_4_the_exceptions_are_applied_exactly() {
+    for source in [
+        "[x]: /1\n\n- a\n\n  [x]: /2\n",
+        "[x]: /1\n\n- p\n  - [x]: /2\n",
+        "x[^a]\n\n[^a]: z\n\n- p\n  [^a]: y\n  2. q\n",
+        "- [c]: /6\n\n[c]: /6\n",
+    ] {
+        let parsed = parse(source);
+        let mut document = parsed.clone();
+        document.normalize();
+        assert_html_but_for_exceptions(
+            &html(&with_list_exceptions(&parsed, &document)),
+            &html(&document),
+            false,
+            source,
+        );
+    }
+    let source = "[^a]\n\n[^a]: one\n\n[^b]\n\n[^a]: two [^b]\n\n[^b]: b\n";
+    let parsed = parse(source);
+    let mut document = parsed.clone();
+    document.normalize();
+    assert_html_but_for_exceptions(&html(&parsed), &html(&document), true, source);
 }
 
 #[test]
@@ -1574,6 +1858,24 @@ fn clause_6_2_error_kinds() {
             nodes.iter().copied(),
             &InsertOptions::default(),
         )
+    });
+    // A position that is not in the arena.
+    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
+        document.attach(root, loose, Some(outside))
+    });
+    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
+        document.insert_from(
+            root,
+            Some(outside),
+            &source,
+            nodes.iter().copied(),
+            &InsertOptions::default(),
+        )
+    });
+    // A source node that is not in the source's arena, as from another document's.
+    assert!(source.node(outside).is_none());
+    assert_rejected(&mut document, StreamError::InvalidRange, |document| {
+        document.insert_from(root, None, &source, [outside], &InsertOptions::default())
     });
     // A node outside the source's attached document.
     let mut detached_source = parse("s\n\nt\n");
