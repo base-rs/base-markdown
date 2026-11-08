@@ -3153,10 +3153,22 @@ impl<S: AsRef<str>> Document<S> {
         let from = pending.len();
         let end = self.drop_copies(root, top, &mut scratch.copies, &mut scratch.origin, pending);
         let origin = &scratch.origin;
-        pending[from..].sort_unstable_by_key(|&(id, _)| {
-            let (lo, hi) = origin.range(id);
-            (lo, core::cmp::Reverse(hi))
-        });
+        let nodes = &self.nodes;
+        // Copies found from the numbering are numbered, as are a tree's copies when one is a
+        // footnote definition; otherwise none holds another, so their order does not matter.
+        if !top
+            || pending[from..].iter().any(|&(id, _)| {
+                matches!(
+                    nodes[id.index()].kind,
+                    EventKind::Start(Tag::FootnoteDefinition { .. })
+                )
+            })
+        {
+            pending[from..].sort_unstable_by_key(|&(id, _)| {
+                let (lo, hi) = origin.range(id);
+                (lo, core::cmp::Reverse(hi))
+            });
+        }
         // What a tree binds is what it keeps of its definitions, the first of each key, so its
         // references are looked up once its copies are gone, and only in what it keeps.
         if unbind {
@@ -3900,7 +3912,17 @@ impl<S: AsRef<str>> Document<S> {
             if copies.is_empty() {
                 return None;
             }
-            origin.number(self.source.as_ref(), &self.nodes, root);
+            // Only a footnote definition holds blocks, so only then can a copy's own tree hold
+            // copies, found from the numbering.
+            let holds = |id: &NodeId| {
+                matches!(
+                    self.nodes[id.index()].kind,
+                    EventKind::Start(Tag::FootnoteDefinition { .. })
+                )
+            };
+            if copies.iter().any(holds) {
+                origin.number(self.source.as_ref(), &self.nodes, root);
+            }
             scratch.reserve(self.nodes.len());
             let Copies {
                 copy,
@@ -3921,7 +3943,11 @@ impl<S: AsRef<str>> Document<S> {
                 }
             }
         } else {
-            if !origin.firsts(root, &mut scratch.firsts) {
+            if !matches!(
+                self.nodes[root.index()].kind,
+                EventKind::Start(Tag::FootnoteDefinition { .. })
+            ) || !origin.firsts(root, &mut scratch.firsts)
+            {
                 return None;
             }
             scratch.reserve(self.nodes.len());

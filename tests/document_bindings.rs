@@ -2393,7 +2393,7 @@ fn many_trees_with_copies_normalize_in_linear_time() {
         ),
         ("normalize detached quotes", &quotes),
     ] {
-        growth_against_control_from(1 << 9, label, make, |document| {
+        growth_against_control_from(1 << 8, label, make, |document| {
             document.clone().normalize();
         });
     }
@@ -2501,7 +2501,7 @@ fn deeply_nested_copies_normalize_in_linear_time() {
                 chain(depth)
             })
         };
-        growth_against_control_from(1 << 9, label, make, |document| {
+        growth_against_control_from(1 << 8, label, make, |document| {
             document.clone().normalize();
         });
     }
