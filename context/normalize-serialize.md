@@ -143,7 +143,7 @@ Every open issue, classified: those where the implementation breaks a clause, wi
 | #206 | 3.3 | With `resource_link`, an autolink in link text is written as a nested link. |
 | #207 | 3.3 | With `LineWrapping::Unwrap`, a literal before a soft and a hard break writes unstably. |
 | #208 | 1.2, 3.3 | A definition label starting with `^` reads back as a footnote definition; the parser makes one from `[a]: /u\n    [^b]: #\n`. |
-| #209 | 3.3 | Labels holding `|` in table cells do not read back. |
+| #209 | 3.3 | Labels holding `\|` in table cells do not read back. |
 | #210 | 3.3 | A collapsed reference with a hard break is written full. |
 | #211 | 3.3 | A shortcut reference whose text needs escaping is written full. |
 | #213 | 3.3 | An unclosed HTML block at the end of an item or quote gains a line ending. |
