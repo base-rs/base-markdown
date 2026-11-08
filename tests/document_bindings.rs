@@ -2464,6 +2464,63 @@ fn copies_removed_from_a_tree_are_normalized() {
     assert_eq!(document.text_content(copy), "[a]");
 }
 
+/// Normalizing copies nested in copies, each a tree that holds the next, and a copy at the
+/// bottom of deep lists or footnote definitions, whose containers each settle what ends them,
+/// takes time linear in the depth: against a control of a copy at the bottom of block quotes as
+/// deep, which settle nothing below them.
+#[test]
+fn deeply_nested_copies_normalize_in_linear_time() {
+    let identifiers = |depth: usize, cycle: &[&str]| {
+        (0..depth)
+            .map(|index| cycle[index % cycle.len()])
+            .collect::<String>()
+            + "y\n"
+    };
+    let chains: [(&str, &dyn Fn(usize) -> String); 4] = [
+        ("one identifier", &|depth| identifiers(depth, &["[^x]: "])),
+        ("two identifiers", &|depth| {
+            identifiers(depth, &["[^a]: ", "[^b]: "])
+        }),
+        ("lists", &|depth| {
+            format!("[a]: /0\n\n{}[a]: /1\n", "- ".repeat(depth))
+        }),
+        ("footnote definitions", &|depth| {
+            let containers = (0..depth).map(|index| format!("[^x{index}]: "));
+            format!("[a]: /0\n\n{}[a]: /1\n", containers.collect::<String>())
+        }),
+    ];
+    let control = |depth: usize| format!("[a]: /0\n\n{}[a]: /1\n", "> ".repeat(depth));
+    for (label, chain) in chains {
+        let mut document = parse(&chain(5));
+        document.normalize();
+        assert!(document.is_normalized(), "{}", label);
+        let make = |depth: usize, is_control: bool| {
+            parse(&if is_control {
+                control(depth)
+            } else {
+                chain(depth)
+            })
+        };
+        growth_against_control_from(1 << 9, label, make, |document| {
+            document.clone().normalize();
+        });
+    }
+    // Only the innermost of one identifier binds, and every other is a copy of its own, empty.
+    let mut document = parse(&identifiers(3, &["[^x]: "]));
+    document.normalize();
+    assert_eq!(to_markdown(&document).unwrap(), "[^x]: y\n");
+    let roots = document
+        .descendants(document.root())
+        .filter(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Start(Tag::FootnoteDefinition { .. })
+            )
+        })
+        .count();
+    assert_eq!(roots, 1);
+}
+
 /// Moving the definitions out of a copy of a footnote definition takes time linear in them:
 /// against a control whose footnote definition is not a copy.
 #[test]

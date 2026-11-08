@@ -1088,3 +1088,232 @@ mod tests {
         assert!((0..3).any(|_| ratio() < 2.5));
     }
 }
+
+// Not a position.
+const NONE: u32 = u32::MAX;
+
+// The definitions and footnote definitions of a tree that holds copies, at their positions in
+// the order that decides which of a key is first there, so that each copy removed from it, and
+// each removed from those in turn, finds the first of each key that it still holds without
+// walking what it holds. A copy holds the positions in the range of its subtree that are not
+// gone: what normalizing takes out of a copy because it binds in the tree around is marked gone
+// once each copy in it is done, and before any copy around it is, so whatever a copy is done
+// with, the nodes in its range that are not gone are those it holds. A position is the first of
+// its key there when the one before it of its key that is not gone is before the range, which
+// a tree over the positions finds for a range in time logarithmic in their number for each found,
+// so the copies of every tree removed from one take time linear in what each keeps, but for a
+// logarithm, however deeply they nest.
+#[derive(Debug, Default)]
+pub(crate) struct Origin {
+    // The range of the positions in each node's subtree, by index, for the nodes numbered.
+    lo: Vec<u32>,
+    hi: Vec<u32>,
+    numbered: Vec<usize>,
+    // The node at each position, and its key, as the position of the first of its key.
+    node: Vec<NodeId>,
+    key: Vec<u32>,
+    // The positions before and after each of its key that are not gone.
+    previous: Vec<u32>,
+    next: Vec<u32>,
+    // The first position at or after each that is not gone, or one to search from.
+    skip: Vec<u32>,
+    // Over the positions, as a tree of `width` leaves: the least, of each node's positions not
+    // gone, of the one before it of its key, plus one, or 0 for none, and how many.
+    width: usize,
+    least: Vec<u32>,
+    count: Vec<u32>,
+    stack: Vec<(usize, usize, usize, bool)>,
+}
+
+impl Origin {
+    // Number the definitions and footnote definitions of the tree under `root`, in the order
+    // `each_definition` visits them but for the root, which comes last.
+    pub(crate) fn number(&mut self, source: &str, nodes: &[Node], root: NodeId) {
+        for index in self.numbered.drain(..) {
+            self.lo[index] = NONE;
+            self.hi[index] = NONE;
+        }
+        if self.lo.len() < nodes.len() {
+            self.lo.resize(nodes.len(), NONE);
+            self.hi.resize(nodes.len(), NONE);
+        }
+        self.node.clear();
+        self.key.clear();
+        let mut definitions = KeyMap::default();
+        let mut footnotes = KeyMap::default();
+        let mut scratch = String::new();
+        let mut position = |id: NodeId, origin: &mut Self| {
+            let at = position_of(origin.node.len());
+            let (footnote, key) = indexed_key(source, nodes, id, &mut scratch);
+            let map = if footnote {
+                &mut footnotes
+            } else {
+                &mut definitions
+            };
+            let first = match map.get_or_file(key, id) {
+                Some(entry) => origin.position(entry.first),
+                None => at,
+            };
+            origin.node.push(id);
+            origin.key.push(first);
+        };
+        let footnote = |id: NodeId| {
+            matches!(
+                nodes[id.index()].kind,
+                EventKind::Start(Tag::FootnoteDefinition { .. })
+            )
+        };
+        let mut current = Some(root);
+        while let Some(id) = current {
+            self.lo[id.index()] = position_of(self.node.len());
+            self.numbered.push(id.index());
+            if matches!(nodes[id.index()].kind, EventKind::Definition { .. }) {
+                position(id, self);
+            }
+            let next = next_block(nodes, root, id);
+            let node = &nodes[id.index()];
+            if !(holds_blocks(&node.kind) && node.first_child().is_some()) {
+                let mut at = id;
+                loop {
+                    if footnote(at) {
+                        position(at, self);
+                    }
+                    self.hi[at.index()] = position_of(self.node.len());
+                    if at == root || nodes[at.index()].next_sibling().is_some() {
+                        break;
+                    }
+                    at = nodes[at.index()]
+                        .parent()
+                        .expect("a descendant has a parent before its subtree root");
+                }
+            }
+            current = next;
+        }
+        let len = self.node.len();
+        self.previous.clear();
+        self.previous.resize(len, NONE);
+        self.next.clear();
+        self.next.resize(len, NONE);
+        // The last position of each key so far, by its first.
+        let mut last = vec![NONE; len];
+        for at in 0..len {
+            let key = self.key[at] as usize;
+            let before = last[key];
+            self.previous[at] = before;
+            if before != NONE {
+                self.next[before as usize] = position_of(at);
+            }
+            last[key] = position_of(at);
+        }
+        self.skip.clear();
+        self.skip.extend((0..=len).map(position_of));
+        self.width = len.next_power_of_two();
+        self.least.clear();
+        self.least.resize(2 * self.width, NONE);
+        self.count.clear();
+        self.count.resize(2 * self.width, 0);
+        for at in 0..len {
+            self.least[self.width + at] = self.previous[at].wrapping_add(1);
+            self.count[self.width + at] = 1;
+        }
+        for at in (1..self.width).rev() {
+            self.least[at] = self.least[2 * at].min(self.least[2 * at + 1]);
+            self.count[at] = self.count[2 * at] + self.count[2 * at + 1];
+        }
+    }
+
+    // The range of positions in the subtree of `id`, which is numbered.
+    pub(crate) fn range(&self, id: NodeId) -> (u32, u32) {
+        let lo = self.lo[id.index()];
+        debug_assert!(lo != NONE, "only numbered nodes have a range");
+        (lo, self.hi[id.index()])
+    }
+
+    // The position of `id`, a definition or footnote definition numbered, the last of its range.
+    fn position(&self, id: NodeId) -> u32 {
+        self.hi[id.index()] - 1
+    }
+
+    // Put into `firsts` the first of each key that the copy `root` holds, of the tree numbered,
+    // `root` first for its own key, and say whether it holds any other, a copy.
+    pub(crate) fn firsts(&mut self, root: NodeId, firsts: &mut Vec<NodeId>) -> bool {
+        firsts.clear();
+        let (lo, hi) = self.range(root);
+        let own = self.key[self.position(root) as usize];
+        firsts.push(root);
+        let (lo, hi) = (lo as usize, hi as usize);
+        let mut held = 0;
+        self.stack.clear();
+        self.stack.push((1, 0, self.width, false));
+        while let Some((at, from, to, counted)) = self.stack.pop() {
+            if to <= lo || hi <= from {
+                continue;
+            }
+            let covered = lo <= from && to <= hi;
+            if covered && !counted {
+                held += self.count[at] as usize;
+            }
+            // Counted, what holds no first is passed.
+            if covered && self.least[at] as usize > lo {
+                continue;
+            }
+            if to - from == 1 {
+                if self.least[at] as usize <= lo && self.key[from] != own {
+                    firsts.push(self.node[from]);
+                }
+                continue;
+            }
+            let middle = (from + to) / 2;
+            let counted = counted || covered;
+            // The right half goes first, so that the left is taken first.
+            self.stack.push((2 * at + 1, middle, to, counted));
+            self.stack.push((2 * at, from, middle, counted));
+        }
+        held > firsts.len()
+    }
+
+    // Mark gone each position in the subtree of `id`, which is numbered.
+    pub(crate) fn remove(&mut self, id: NodeId) {
+        let (lo, hi) = self.range(id);
+        let mut at = self.find(lo);
+        while at < hi {
+            let index = at as usize;
+            self.set(index, NONE, 0);
+            let (before, after) = (self.previous[index], self.next[index]);
+            if after != NONE {
+                self.previous[after as usize] = before;
+                self.set(after as usize, before.wrapping_add(1), 1);
+            }
+            if before != NONE {
+                self.next[before as usize] = after;
+            }
+            self.skip[index] = at + 1;
+            at = self.find(at + 1);
+        }
+    }
+
+    // The first position at or after `at` that is not gone, or the number of positions.
+    fn find(&mut self, mut at: u32) -> u32 {
+        while self.skip[at as usize] != at {
+            let next = self.skip[self.skip[at as usize] as usize];
+            self.skip[at as usize] = next;
+            at = next;
+        }
+        at
+    }
+
+    fn set(&mut self, index: usize, least: u32, count: u32) {
+        let mut at = self.width + index;
+        self.least[at] = least;
+        self.count[at] = count;
+        while at > 1 {
+            at /= 2;
+            self.least[at] = self.least[2 * at].min(self.least[2 * at + 1]);
+            self.count[at] = self.count[2 * at] + self.count[2 * at + 1];
+        }
+    }
+}
+
+fn position_of(index: usize) -> u32 {
+    core::convert::TryFrom::try_from(index).expect("fewer definitions than u32::MAX")
+}
