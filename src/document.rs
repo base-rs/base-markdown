@@ -1444,7 +1444,7 @@ impl<S: AsRef<str>> Document<S> {
     }
     /// Append a new semantic node. Its source provenance is empty; values may still reference the source buffer.
     ///
-    /// Appending in document order, each node after the subtree before it is complete, takes amortized constant time per node, except that a footnote reference or a break also walks up through the phrasing that holds it, to check that no link encloses the reference and no table cell the break. Appending to another parent scans its children.
+    /// Appending in document order, each node after the subtree before it is complete, takes amortized constant time per node, except that a footnote reference or a break also walks up through the phrasing that holds it, to check that no link encloses the reference and no table cell the break, in time linear in the depth of the phrasing nest, so appending many of them deep in one nest takes quadratic time (#233). Appending to another parent scans its children.
     ///
     /// # Errors
     /// Rejects an invalid or leaf parent and end events with [`StreamError::Unbalanced`],
@@ -1587,7 +1587,7 @@ impl<S: AsRef<str>> Document<S> {
         self.nodes[id.index()].parent = None;
         self.nodes[id.index()].next_sibling = None;
     }
-    /// Move an existing subtree into a container, optionally before one of its children. No node or text allocation is required. Moving a subtree into or out of the attached document takes time linear in the subtree too, to mark its nodes and to add its definitions to the document's index of them or remove them.
+    /// Move an existing subtree into a container, optionally before one of its children. No node or text allocation is required. Moving a subtree into or out of the attached document takes time linear in the subtree too, to mark its nodes and to add its definitions to the document's index of them or remove them. Every move also walks up through the phrasing that holds the new parent, to find whether a link or table cell is above it, in time linear in the depth of the phrasing nest, so many moves deep in one nest take quadratic time (#233), and when one is, scans the subtree.
     ///
     /// # Errors
     /// Rejects cycles, a leaf parent and root moves with [`StreamError::Unbalanced`], invalid IDs
@@ -1914,10 +1914,10 @@ impl<S: AsRef<str>> Document<S> {
     /// children's definitions of that label. In a detached subtree there is no index, so the
     /// first such label costs one pass over the whole detached tree, and editing each node of a
     /// large detached tree this way takes quadratic time, the known gap of #226. Into a phrasing
-    /// parent, a fragment that a cell or link would read differently, or that could hold
-    /// something one restricts, such as one with a bracket, a pipe, a backslash or a line
-    /// ending, also costs a walk up through the parent's phrasing ancestors to its block; other
-    /// fragments, such as plain words and emphasis, do not.
+    /// parent, finding whether a link or table cell is above, which decides how the fragment is
+    /// read, walks the parent's phrasing ancestors, in time linear in the depth of the phrasing
+    /// nest, so many edits deep in one nest take quadratic time, as for
+    /// [`Document::append_child`] and [`Document::attach`] (#233).
     ///
     /// ```
     /// use base_markdown::{stream::{EventKind, Tag, Target}, to_markdown, Document, ParseOptions};
@@ -1979,10 +1979,46 @@ impl<S: AsRef<str>> Document<S> {
             crate::stream::Content::Root | crate::stream::Content::Blocks => false,
             _ => return Err(StreamError::InvalidNesting),
         };
+        let reach = self.reach(parent);
         // A blank fragment holds nothing, which needs no cell or link around it.
         let blank = markdown
             .bytes()
             .all(|byte| matches!(byte, b' ' | b'\t' | b'\n' | b'\r'));
+        let (cell, link) = (
+            phrasing && !blank && reach.cell(),
+            phrasing && !blank && reach.link(),
+        );
+        let options = crate::ParseOptions {
+            constructs: crate::Constructs {
+                frontmatter: false,
+                table: options.constructs.table || cell,
+                ..options.constructs.clone()
+            },
+            inline_code_info: options.inline_code_info,
+            html_block_blank_lines: options.html_block_blank_lines,
+            html_tag_namespaces: options.html_tag_namespaces,
+            strikethrough_single_tilde: options.strikethrough_single_tilde,
+        };
+        // Phrasing in a cell or link is read in one, which a lone head cell of a table and a
+        // link without a destination are, with spaces in the cell, which it trims, so that a
+        // backslash at the end of the fragment does not escape the `|` after it.
+        let mut wrapped = String::new();
+        let text = if cell || link {
+            for (around, open) in [(cell, "| "), (link, "[")] {
+                if around {
+                    wrapped.push_str(open);
+                }
+            }
+            wrapped.push_str(markdown);
+            for (around, close) in [(link, "]()"), (cell, " |\n|-|\n")] {
+                if around {
+                    wrapped.push_str(close);
+                }
+            }
+            wrapped.as_str()
+        } else {
+            markdown
+        };
         // The definitions of the replaced children, which a parent that holds phrasing has none
         // of, no longer bind.
         let mut leaving = Vec::new();
@@ -1993,47 +2029,25 @@ impl<S: AsRef<str>> Document<S> {
             leaving.sort_unstable();
         }
         let attached = self.attached(parent);
-        // Which of a link and a cell are above the parent decides how phrasing is read, and
-        // finding out walks the parent's phrasing ancestors. A fragment that reads the same in
-        // either and can hold nothing they restrict needs no walk if it reads as phrasing, so
-        // editing deep in a nest of phrasing costs no more than editing near its block. One that
-        // does not read as phrasing, such as `# h`, is read again where it is, which may be as
-        // text in a cell or link.
-        let mut read = None;
-        if phrasing && (blank || reads_alike(markdown)) {
-            let fragment = self.read_fragment(
+        let fragment = {
+            let outside = Around {
+                cx: self.context(),
                 parent,
-                markdown,
-                options,
-                blank,
-                crate::stream::Reach::default(),
-                (attached, &leaving),
-            );
-            if let Some(from) = fragment.phrasing_content(false, false) {
-                read = Some((fragment, from));
-            }
-        }
-        let (fragment, from) = if let Some(read) = read {
-            read
-        } else {
-            let reach = self.reach(parent);
-            let fragment = self.read_fragment(
-                parent,
-                markdown,
-                options,
-                blank,
-                reach,
-                (attached, &leaving),
-            );
-            let from = if phrasing {
-                let (cell, link) = (!blank && reach.cell(), !blank && reach.link());
-                fragment
-                    .phrasing_content(cell, link)
-                    .ok_or(StreamError::InvalidNesting)?
-            } else {
-                Some(fragment.root())
+                attached,
+                leaving: &leaving,
+                footnotes: !reach.link(),
+                table: core::cell::OnceCell::new(),
             };
-            (fragment, from)
+            Document::parse_fragment(text, &options, &outside)
+        };
+        // A block quote, an item and a footnote definition hold the blocks and separators that a
+        // document's root holds, so a flow parent holds every child of the fragment's root.
+        let from = if phrasing {
+            fragment
+                .phrasing_content(cell, link)
+                .ok_or(StreamError::InvalidNesting)?
+        } else {
+            Some(fragment.root())
         };
         // An edit adds no copy of a binding: the fragment's definitions may have only keys that no
         // definition outside the replaced children has.
@@ -2096,66 +2110,6 @@ impl<S: AsRef<str>> Document<S> {
                 .insert(parent, Some(NodeSyntax::ListItem { spread }));
         }
         Ok(())
-    }
-    // Parse a fragment for `parse_children` into `parent`, below the links and cells of `reach`,
-    // against the document's definitions other than `leaving`.
-    fn read_fragment(
-        &self,
-        parent: NodeId,
-        markdown: &str,
-        options: &crate::ParseOptions,
-        blank: bool,
-        reach: crate::stream::Reach,
-        (attached, leaving): (bool, &[NodeId]),
-    ) -> Document<String> {
-        let phrasing = matches!(
-            self.nodes[parent.index()].kind,
-            EventKind::Start(ref tag) if tag.kind().content() == crate::stream::Content::Phrasing
-        );
-        let (cell, link) = (
-            phrasing && !blank && reach.cell(),
-            phrasing && !blank && reach.link(),
-        );
-        let options = crate::ParseOptions {
-            constructs: crate::Constructs {
-                frontmatter: false,
-                table: options.constructs.table || cell,
-                ..options.constructs.clone()
-            },
-            inline_code_info: options.inline_code_info,
-            html_block_blank_lines: options.html_block_blank_lines,
-            html_tag_namespaces: options.html_tag_namespaces,
-            strikethrough_single_tilde: options.strikethrough_single_tilde,
-        };
-        // Phrasing in a cell or link is read in one, which a lone head cell of a table and a
-        // link without a destination are, with spaces in the cell, which it trims, so that a
-        // backslash at the end of the fragment does not escape the `|` after it.
-        let mut wrapped = String::new();
-        let text = if cell || link {
-            for (around, open) in [(cell, "| "), (link, "[")] {
-                if around {
-                    wrapped.push_str(open);
-                }
-            }
-            wrapped.push_str(markdown);
-            for (around, close) in [(link, "]()"), (cell, " |\n|-|\n")] {
-                if around {
-                    wrapped.push_str(close);
-                }
-            }
-            wrapped
-        } else {
-            String::from(markdown)
-        };
-        let outside = Around {
-            cx: self.context(),
-            parent,
-            attached,
-            leaving,
-            footnotes: !reach.link(),
-            table: core::cell::OnceCell::new(),
-        };
-        Document::parse_fragment(text, &options, &outside)
     }
     // Whether a node is a separator.
     fn separator(&self, id: NodeId) -> bool {
@@ -2348,29 +2302,6 @@ impl crate::definitions::Outside for Around<'_> {
                 .binds(footnote, key)
         }
     }
-}
-
-// Whether phrasing reads the same in a paragraph, in a table cell and in link text, and can hold
-// nothing that a cell or a link restricts: a footnote reference and a break need a bracket or a
-// line ending, and a link, an image and an HTML tag need a bracket, an angle bracket or the colon,
-// at sign or `www.` of a literal autolink. A cell also splits at a pipe and a link ends at a
-// bracket, either can be escaped, and only link text keeps whitespace at its edges and has
-// punctuation there, which changes whether a run of delimiters at an edge can open or close.
-fn reads_alike(markdown: &str) -> bool {
-    let bytes = markdown.as_bytes();
-    !bytes.iter().any(|byte| {
-        matches!(
-            byte,
-            b'[' | b']' | b'\\' | b'|' | b'<' | b'\n' | b'\r' | b':' | b'@'
-        )
-    }) && !bytes
-        .windows(4)
-        .any(|window| window.eq_ignore_ascii_case(b"www."))
-        && !bytes
-            .first()
-            .into_iter()
-            .chain(bytes.last())
-            .any(|byte| matches!(byte, b' ' | b'\t' | b'*' | b'_' | b'~'))
 }
 
 // Whether a child of an item decides how the item ends: other children write nothing after the item's last line.
