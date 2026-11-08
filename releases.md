@@ -4,6 +4,7 @@ Earlier history, from before the package was renamed from `socketry-markdown`, i
 
 ## Unreleased
 
+- With `MarkdownOptions { rule: '-', .. }`, a rule that `---` would not write is written with `*` (#236). A rule on the line after a paragraph or definition, in an item of a tight list, was written as a setext underline, so `- a\n  ***` read back as a heading, and a rule starting the document was written as a frontmatter fence that a later `---` line, such as another rule or a line of code, closed, so `***\n\na\n\n***` read back as frontmatter.
 - In phrasing, the serializer no longer escapes what follows spaces or tabs at the start of a line as if it started the line (#237). The first of those spaces or tabs is written as a character reference, which already keeps what follows from starting the line. Under `LineWrapping::Unwrap`, text after a leading `&#x20;` and a soft break was written unescaped when the space and the text were separate texts, and escaped when written again from the one text they read back as: `&#x20;\n\~` was written `&#x20; ~`, and then `&#x20; \~`. This affected `~`, `#`, `>`, `-`, `+`, `=` and a digit followed by `.` or `)`. Now both writes give `&#x20; ~`. With the default options, such text after a soft break and an encoded space is written without the escape, as in `a\n&#x20;-`, and reads back the same.
 
 ## v0.2.0

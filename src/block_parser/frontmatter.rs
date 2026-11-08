@@ -8,7 +8,7 @@ use crate::CodeFence;
 
 /// Return the full authored extent and the next physical line. Failed lookahead
 /// does not mutate block state.
-pub(super) fn scan(bytes: &[u8], start: usize) -> Option<(usize, usize)> {
+pub(crate) fn scan(bytes: &[u8], start: usize) -> Option<(usize, usize)> {
     let (fence, first) = open(bytes, start)?;
     let mut at = first;
     while at < bytes.len() {

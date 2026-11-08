@@ -699,6 +699,48 @@ fn clause_3_3_normalize_round_trips() {
     }
 }
 
+#[test]
+fn clause_3_3_a_dash_rule_round_trips() {
+    let options = MarkdownOptions {
+        rule: '-',
+        ..MarkdownOptions::default()
+    };
+    for source in ROUND_TRIP_SAMPLES.iter().chain(&[
+        "- a\n  ***\n",
+        "1. a\n   ***\n",
+        "- [a]: b\n  ***\n",
+        "> - a\n>   b\n>   ***\n>   ***\n",
+        "***\n\na\n\n***\n",
+        "***\n\n```\n---\n```\n",
+    ]) {
+        assert_round_trips_with(source, &options);
+    }
+}
+
+/// A `-` rule fails no input of the corpora that `*` writes (#236).
+#[test]
+fn clause_3_3_a_dash_rule_fails_nothing_a_star_rule_writes() {
+    let options = MarkdownOptions {
+        rule: '-',
+        ..MarkdownOptions::default()
+    };
+    each_input(|name, source| {
+        let document = normalized(source);
+        if !matches!(
+            round_trip(document.clone(), &MarkdownOptions::default(), false),
+            Outcome::Pass
+        ) {
+            return;
+        }
+        if let Outcome::Fail(failure) = round_trip(document, &options, false) {
+            panic!(
+                "{} {} {:?}: {:?}\n{}\n{}",
+                name, failure.kind, source, failure.output, failure.before, failure.after
+            );
+        }
+    });
+}
+
 /// `document` with each soft break but the line ending of a hard break, and each run of line endings, spaces and tabs in a text value that holds a line ending, one space, as `LineWrapping::Unwrap` writes them (3.3).
 fn unwrapped<'s>(document: &Document<&'s str>) -> Document<&'s str> {
     let line_endings = Regex::new(r"[ \t]*\n[ \t\n]*").unwrap();
@@ -2287,16 +2329,4 @@ fn gap_issue_232() {
         round_trip(document, &MarkdownOptions::default(), false),
         Outcome::Pass
     ));
-}
-
-#[test]
-#[ignore = "#236: with rule: '-', a rule is written as a setext underline or frontmatter"]
-fn gap_issue_236() {
-    let options = MarkdownOptions {
-        rule: '-',
-        ..MarkdownOptions::default()
-    };
-    for source in ["- a\n  ***\n", "***\n\na\n\n***\n"] {
-        assert_round_trips_with(source, &options);
-    }
 }

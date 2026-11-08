@@ -7,7 +7,7 @@
 
 //! Compact block preparation with source fragments and deferred inline scanning.
 mod definition;
-mod frontmatter;
+pub(crate) mod frontmatter;
 mod html;
 mod scanners;
 mod table;
