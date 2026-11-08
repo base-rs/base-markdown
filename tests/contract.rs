@@ -1414,6 +1414,257 @@ fn clause_3_4_edited_trees_join_paragraphs_in_tight_items() {
     assert_eq!(to_markdown(&document).unwrap(), "- a\n  Para\n- b\n");
 }
 
+/// The non-separator children of `id`.
+fn blocks_of<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> Vec<NodeId> {
+    document
+        .children(id)
+        .filter(|&id| !matches!(document.node(id).unwrap().kind, EventKind::Separator { .. }))
+        .collect()
+}
+
+/// The first item of the tight list in `context` whose first block is a paragraph, and `document` with its children parsed from `fragment`.
+fn parsed_into(context: &'static str, fragment: &str) -> (Document<&'static str>, NodeId) {
+    let mut document = parse(context);
+    let item = all(&document, is_item)
+        .into_iter()
+        .find(|&item| is_paragraph(&document.node(first(&document, item)).unwrap().kind))
+        .unwrap();
+    document
+        .parse_children(item, fragment, &ParseOptions::default())
+        .unwrap();
+    (document, item)
+}
+
+/// The first item of the tight list in `context` whose first block is a paragraph, given `blocks` in a row, not counting separators, with the separators `parse_children` gives them. Each two are parsed apart by a blank line, or, where that would merge them, such as two lists of one kind, by an HTML comment, which is then removed with the separator after it, so that they are in a row as an edit can put them. `@` in a block is its label, unique to its place.
+fn tight_item(context: &'static str, blocks: &[&str]) -> (Document<&'static str>, NodeId) {
+    let blocks: Vec<String> = blocks
+        .iter()
+        .enumerate()
+        .map(|(at, block)| block.replace('@', &format!("l{}", at)))
+        .collect();
+    let mut fragment = blocks[0].clone();
+    for pair in blocks.windows(2) {
+        let (document, item) = parsed_into(context, &format!("{}\n\n{}", pair[0], pair[1]));
+        fragment.push_str(if blocks_of(&document, item).len() == 2 {
+            "\n\n"
+        } else {
+            "\n\n<!---->\n\n"
+        });
+        fragment.push_str(&pair[1]);
+    }
+    let (mut document, item) = parsed_into(context, &fragment);
+    let separator = |document: &Document<&str>, id: Option<&NodeId>| {
+        id.is_some_and(|&id| matches!(document.node(id).unwrap().kind, EventKind::Separator { .. }))
+    };
+    for spacer in blocks_of(&document, item) {
+        if !matches!(&document.node(spacer).unwrap().kind, EventKind::Html { value, .. } if value.resolve(document.source()).unwrap() == "<!---->")
+        {
+            continue;
+        }
+        let children: Vec<NodeId> = document.children(item).collect();
+        let at = children.iter().position(|&id| id == spacer).unwrap();
+        document.detach(spacer).unwrap();
+        if separator(&document, children.get(at + 1)) {
+            document.detach(children[at + 1]).unwrap();
+        }
+    }
+    assert_eq!(
+        blocks_of(&document, item).len(),
+        blocks.len(),
+        "{:?}",
+        blocks
+    );
+    (document, item)
+}
+
+/// `document` with each list given the tightness and start it has in `normalized`, the same document normalized: the only change to the HTML that the tight-item rules make, as joining paragraphs in a tight list renders the same (3.4).
+fn with_lists_of<'s>(
+    document: &Document<&'s str>,
+    normalized: &Document<&'s str>,
+) -> Document<&'s str> {
+    let mut expected = document.clone();
+    for id in all(document, is_list) {
+        let kind = &normalized.node(id).unwrap().kind;
+        if let EventKind::Start(Tag::List { start, tight }) = *kind {
+            if kind != &document.node(id).unwrap().kind {
+                expected
+                    .set_kind(id, EventKind::Start(Tag::List { start, tight }))
+                    .unwrap();
+            }
+        }
+    }
+    expected
+}
+
+/// Assert that `blocks` in a row in an item of the tight list `context` normalize idempotently (3.2), change the HTML only where a list is made loose or renumbered (3.4) and round trip with `options` (3.3). With `fences: false`, indented code after a list is written after `<!---->`, which is #157.
+fn assert_tight_item_settles(context: &'static str, blocks: &[&str], options: &MarkdownOptions) {
+    let (document, _) = tight_item(context, blocks);
+    let mut normalized = document.clone();
+    normalized.normalize();
+    assert!(normalized.is_normalized(), "{:?}", blocks);
+    let once = snapshot(&normalized);
+    let mut again = normalized.clone();
+    again.normalize();
+    assert_eq!(snapshot(&again), once, "{:?}", blocks);
+    assert_eq!(
+        html(&normalized),
+        html(&with_lists_of(&document, &normalized)),
+        "{:?} in {:?}",
+        blocks,
+        context
+    );
+    match round_trip(document, options, false) {
+        Outcome::Pass => {}
+        Outcome::Fail(failure) if !options.fences && failure.output.contains("<!---->") => {}
+        Outcome::Rejected => panic!("rejected {:?}", blocks),
+        Outcome::Fail(failure) => panic!(
+            "{} {:?} in {:?}: {:?}\n{}\n{}",
+            failure.kind, blocks, context, failure.output, failure.before, failure.after
+        ),
+    }
+}
+
+/// One block of each kind that can be in an item, with variants where what follows or precedes it matters: paragraphs that could be read as a title, headings ATX and setext, code fenced and indented, HTML blocks of each of the seven kinds, definitions with and without a title, a table, footnote definitions, and block quotes and lists ending in a paragraph or in something else. An HTML block of kinds 1–5 that its last line does not close, which takes every line after it, is not here.
+const TIGHT_ITEM_BLOCKS: [&str; 39] = [
+    "a",
+    "\"t\"",
+    "(t)",
+    "# h",
+    "#\t",
+    "h\\\ni\n===",
+    "***",
+    "```\nx\n```",
+    "    x",
+    "<pre>\nx\n</pre>",
+    "<pre>x</pre>",
+    "<!-- c -->",
+    "<?x?>",
+    "<!X>",
+    "<![CDATA[x]]>",
+    "<div>",
+    "</div>",
+    "<b>",
+    "</b>",
+    "<x-y a=\"1\">",
+    "[@]: /u",
+    "[@]: /u \"t\"",
+    "| a |\n| - |",
+    "[^@]: x",
+    "[^@]: # h",
+    "> q",
+    "> - q",
+    "> # h",
+    "> <div>",
+    "> a\n>\n> b",
+    "- l",
+    "1. o",
+    "2. o",
+    "- # h",
+    "- <b>",
+    "-     c",
+    "- [ ] t",
+    "1. a\n2. b",
+    "- a\n\n  b",
+];
+
+const TIGHT_LISTS: [&str; 4] = [
+    "- p\n- q\n",
+    "1. p\n1. q\n",
+    "> - p\n> - q\n",
+    "- - p\n  - q\n- r\n",
+];
+
+#[test]
+fn clause_3_3_tight_items_round_trip_every_pair_of_blocks() {
+    for left in TIGHT_ITEM_BLOCKS {
+        for right in TIGHT_ITEM_BLOCKS {
+            assert_tight_item_settles(TIGHT_LISTS[0], &[left, right], &MarkdownOptions::default());
+        }
+    }
+}
+
+#[test]
+fn clause_3_3_tight_items_round_trip_random_blocks() {
+    let options = [
+        MarkdownOptions::default(),
+        MarkdownOptions {
+            fences: false,
+            ..MarkdownOptions::default()
+        },
+        MarkdownOptions {
+            tight_definitions: true,
+            bullet: '*',
+            ..MarkdownOptions::default()
+        },
+        MarkdownOptions {
+            list_item_indent: base_markdown::IndentOptions::Tab,
+            ..MarkdownOptions::default()
+        },
+    ];
+    let mut random = Random(0x7167_4752);
+    for _ in 0..SAMPLES {
+        let blocks: Vec<&str> = (0..1 + random.below(4))
+            .map(|_| TIGHT_ITEM_BLOCKS[random.below(TIGHT_ITEM_BLOCKS.len())])
+            .collect();
+        let context = TIGHT_LISTS[random.below(TIGHT_LISTS.len())];
+        let options = &options[random.below(options.len())];
+        // The parser reads indented code that starts an item on the line after a definition as a paragraph, `[a]: /u\n-     c`, a parser gap that only indented code written with `fences: false` reaches.
+        if !options.fences
+            && blocks
+                .windows(2)
+                .any(|pair| pair[0].starts_with("[@]") && pair[1] == "-     c")
+        {
+            continue;
+        }
+        assert_tight_item_settles(context, &blocks, options);
+    }
+}
+
+#[test]
+fn clause_3_4_tight_items_loosen_where_a_block_needs_a_blank_line() {
+    for (fragment, output) in [
+        // A paragraph and a kind-7 HTML block, which cannot interrupt it (#232, #219).
+        ("a\n\n <b>", "- a\n\n   <b>\n\n- q\n"),
+        // A kind-7 HTML block and a heading, which it would take as a line (#232, #191).
+        ("<b>\n\n#\t", "- <b>\n\n  #\n\n- q\n"),
+        // A paragraph and a definition, which cannot interrupt it (#232).
+        ("a\n\n[a]: /x", "- a\n\n  [a]: /x\n\n- q\n"),
+        // A kind-6 HTML block and a paragraph (#191).
+        ("<div>\n\na", "- <div>\n\n  a\n\n- q\n"),
+    ] {
+        let mut document = parse("- p\n- q\n");
+        let item = find(&document, is_item);
+        document
+            .parse_children(item, fragment, &ParseOptions::default())
+            .unwrap();
+        let mut normalized = document.clone();
+        normalized.normalize();
+        let loose = html(&with_lists_of(&document, &normalized));
+        assert!(loose.contains("<li>\n"), "{:?}: {}", fragment, loose);
+        assert_eq!(html(&normalized), loose, "{:?}", fragment);
+        assert_eq!(to_markdown(&normalized).unwrap(), output, "{:?}", fragment);
+        assert!(
+            matches!(
+                round_trip(document, &MarkdownOptions::default(), false),
+                Outcome::Pass
+            ),
+            "{:?}",
+            fragment
+        );
+    }
+    // A kind 1–5 HTML block closed on its last line ends there, so the list stays tight.
+    let (mut document, _) = tight_item("- p\n- q\n", &["<!-- c -->", "a"]);
+    document.normalize();
+    assert_eq!(to_markdown(&document).unwrap(), "- <!-- c -->\n  a\n- q\n");
+    // Two tables, which would read back as one.
+    let (mut document, _) = tight_item("- p\n- q\n", &["| a |\n| - |", "| b |\n| - |"]);
+    document.normalize();
+    assert_eq!(
+        to_markdown(&document).unwrap(),
+        "- | a |\n  | --- |\n\n  | b |\n  | --- |\n\n- q\n"
+    );
+}
+
 #[test]
 fn clause_3_5_copies_are_dismantled() {
     let mut document = parse("x[^a]\n\n[^a]: one\n\n[^a]: *two*\n\n    [b]: /u\n\n[b]\n");
@@ -2255,20 +2506,6 @@ fn gap_issue_231() {
     let text_id = first(&document, children[0]);
     document.detach(text_id).unwrap();
     assert!(document.attach(root, text_id, None).is_err());
-}
-
-#[test]
-#[ignore = "#232: a block that cannot interrupt a paragraph merges into it"]
-fn gap_issue_232() {
-    let mut document = parse("- p\n- q\n");
-    let item = find(&document, is_item);
-    document
-        .parse_children(item, "a\n\n <b>", &ParseOptions::default())
-        .unwrap();
-    assert!(matches!(
-        round_trip(document, &MarkdownOptions::default(), false),
-        Outcome::Pass
-    ));
 }
 
 #[test]

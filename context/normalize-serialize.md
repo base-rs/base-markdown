@@ -58,7 +58,7 @@ An inline document (1.2) is written as a paragraph's content, so it reads back a
   1. A loose list whose only item is left with fewer than two blocks becomes tight, so `[x]: /1\n\n- a\n\n  [x]: /2\n` renders `<li>a</li>` where it rendered `<li>\n<p>a</p>\n</li>`.
   2. The renderer counts footnote calls inside a footnote definition that is a copy, though it shows nothing of the copy, so once it is removed the footnote numbers, anchor ids, the order of entries, back references to calls not in the output and the entry of a footnote called only there can change (#225).
   3. An item whose only block was a copy is left empty, and when it starts a list directly after a paragraph in an item of a tight list it is removed (rule 7), as `- p\n  -` reads back as a heading: `[x]: /1\n\n- p\n  - [x]: /2\n` loses the inner list.
-  4. Blocks that a removed copy leaves in a row in an item of a tight list, which cannot be written as they are, get rule 7: two paragraphs are joined with a soft break, an ordered list directly after a paragraph starts at 1, as `x[^a]\n\n[^a]: z\n\n- p\n  [^a]: y\n  2. q\n` loses `start="2"`, and otherwise, such as for a definition after a paragraph, the list is made loose.
+  4. Blocks that a removed copy leaves in a row in an item of a tight list, which cannot be written as they are, get rule 7: two paragraphs are joined with a soft break, an ordered list directly after a paragraph starts at 1, as `x[^a]\n\n[^a]: z\n\n- p\n  [^a]: y\n  2. q\n` loses `start="2"`, and otherwise the list is made loose. The pairs that need it, which `needs_blank_line` in the writer decides for both, are two block quotes or two tables, which would read back as one; a definition, a heading that only a setext heading can write, or an HTML block of kind 7 after a paragraph, which none of them can interrupt, so an item of `- p\n- q\n` holding a paragraph `a` and a definition `[a]: /x` is written `- a\n\n  [a]: /x\n\n- q\n` (#232); a paragraph, definition or such a heading after a table, whose rows it would be read as; any block after an HTML block of kind 6 or 7, which ends only at a blank line, or of kinds 1–5 whose last line does not hold its end condition, so one holding `<b>` and an empty heading is written `- <b>\n\n  #\n\n- q\n`; and a block after a nested list or footnote definition that it would continue lazily. Any other pair is written on the next line, so the list stays tight. An HTML block of kinds 1–5 that no line closes takes every line after it in its container whatever separates them, so one followed by a block, which only an edit gives, cannot be written.
   5. Where a removed copy after a list, or at the end of the document, leaves the list next to what follows it, or at the end, the separators the parser puts there are given, so the round trip (3.3) holds, and the HTML gains or loses the line ending they render: `- [c]: /6\n\n[c]: /6\n` renders `<ul>\n<li></li>\n</ul>` and its normalized form, `- [c]: /6\n`, a line ending after it.
 - *Edited trees.* The other rules of section 3.1 rewrite shapes that only an edit makes, so that they can be written, and change the HTML where those shapes render differently from what can be written: unbound references and unwrapped links render as text, removed empties as nothing, a table in the parser's shape, and the tight-item rules join paragraphs, renumber lists and loosen lists as in exception 4.
 
@@ -134,7 +134,6 @@ Every open issue, classified: those where the implementation breaks a clause, wi
 | #177 | 3.3 | Block quotes in items: a tight list reads back loose, and two quotes merge. |
 | #181 | 3.3 | A paragraph after a quote ending in an empty item leaves the outer item. |
 | #183 | 3.3 | Whitespace-only inline HTML at block edges, and leading-space inline HTML after a line ending. |
-| #191 | 3.3 | A table or HTML block followed by another block in a tight item does not read back. |
 | #193 | 3.3 | Inline HTML shapes that cannot be written, including inline HTML at the start of a line after a soft break, which is written after a space. |
 | #196 | 3.3 | Inline HTML with a line ending in a setext heading can start a line with a block marker. |
 | #199 | 3.3, 3.4 | A task item whose text starts with a hard break or line ending: normalizing adds a space before the break, which changes the parsed HTML, and the output reads back differently. |
@@ -151,7 +150,6 @@ Every open issue, classified: those where the implementation breaks a clause, wi
 | #216 | 3.1, 3.3 | A hand-appended separator at the end of an item survives normalizing. |
 | #217 | 3.3, 1.2 | Level-3+ headings: `&amp;#` is not stable, and a hand-built hard break is lost. |
 | #218 | 3.3 | A root `(` without a final line ending differs in its final line ending. |
-| #219 | 3.3 | A paragraph and a type-7 HTML block in an item read back as one paragraph. |
 | #221 | 5.4 | `render_node` fails partway on a footnote call whose definition is outside the subtree. |
 | #222 | 3.3 | A node appended and moved before a paragraph in a tight item makes the list loose. |
 | #223 | 3.3 | Inline-root text `[b][c]` writes non-idempotent `**[b][c]**`. |
@@ -161,7 +159,6 @@ Every open issue, classified: those where the implementation breaks a clause, wi
 | #228 | parser, 3.3 | A paragraph after a quote ending in an empty item leaves the outer list, unlike comrak and markdown-rs, and the writer's output for it does not read back. |
 | #229 | 3.3 | An HTML block with an indented first line changes container when written. |
 | #231 | 1.2, 3.1 | `attach` puts phrasing directly under an emptied root, and a leading root separator survives normalizing. |
-| #232 | 3.3 | In a tight item, a block that cannot interrupt a paragraph merges into it when written. |
 | #233 | 7.2 | Edits deep in a phrasing nest walk every ancestor. |
 | #236 | 3.3 | With `rule: '-'`, a rule after a paragraph line is written as a setext underline, `- a\n  ***\n` as `- a\n  ---\n`, and rules at the start of the document as frontmatter, `***\n\na\n\n***\n` as `---\n\na\n\n---\n`. |
 | #237 | 3.3 | With `LineWrapping::Unwrap`, a `~` after a soft break is written bare and then, written again, escaped: `&#x20;\n\~` is written `&#x20; ~\n`, which is written `&#x20; \~\n`. The HTML and tree read back; only stability fails. |
