@@ -784,11 +784,29 @@ fn clause_3_3_unwrap_writes_soft_breaks_and_line_endings_in_text_as_spaces() {
             output
         );
         let again = to_markdown_with_options(&read, &options).unwrap();
-        if again.replace("\\~", "~") == output && again != output {
-            // A `~` after an unwrapped soft break is escaped when written again; #237, see gap_issue_237.
-            continue;
-        }
         assert_eq!(again, output, "{:?}", source);
+    }
+}
+
+/// A space or tab after a line ending is written as a character reference, so what follows it does not start a line, whether the two are one text or, as an unwrapped soft break leaves them, several, which read back as one (#237).
+#[test]
+fn clause_3_3_unwrapped_line_starts_are_written_stably() {
+    let options = MarkdownOptions {
+        line_wrapping: LineWrapping::Unwrap,
+        ..MarkdownOptions::default()
+    };
+    for marker in [
+        "\\~", "\\#", "\\>", "\\- a", "\\+ a", "\\=", "1\\. a", "1\\) a", "\\`",
+    ] {
+        let output =
+            to_markdown_with_options(&normalized(&format!("&#x20;\n{marker}\n")), &options)
+                .unwrap();
+        assert_eq!(
+            to_markdown_with_options(&normalized(&output), &options).unwrap(),
+            output,
+            "{:?}",
+            marker
+        );
     }
 }
 
@@ -2528,18 +2546,4 @@ fn gap_issue_236() {
     for source in ["- a\n  ***\n", "***\n\na\n\n***\n"] {
         assert_round_trips_with(source, &options);
     }
-}
-
-#[test]
-#[ignore = "#237: with Unwrap, a ~ after a soft break is written bare, then escaped"]
-fn gap_issue_237() {
-    let options = MarkdownOptions {
-        line_wrapping: LineWrapping::Unwrap,
-        ..MarkdownOptions::default()
-    };
-    let output = to_markdown_with_options(&normalized("&#x20;\n\\~\n"), &options).unwrap();
-    assert_eq!(
-        to_markdown_with_options(&normalized(&output), &options).unwrap(),
-        output
-    );
 }
