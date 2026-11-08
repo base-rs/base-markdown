@@ -1758,25 +1758,27 @@ impl<S: AsRef<str>> Document<S> {
         replace_heading: bool,
         remove_subsections: bool,
     ) -> Result<bool, StreamError> {
+        let settled = self.settled;
         self.edit(|document| {
             document.replace_heading_section_unsettled(
                 parent,
                 heading_index,
                 replacement,
-                replace_heading,
-                remove_subsections,
+                (replace_heading, remove_subsections),
+                settled,
             )
         })
     }
 
-    // [`Document::replace_heading_section`], which `edit` marks unsettled.
+    // [`Document::replace_heading_section`], which `edit` marks unsettled. `settled` is whether
+    // every reference was bound before it.
     fn replace_heading_section_unsettled<T: AsRef<str>>(
         &mut self,
         parent: NodeId,
         heading_index: usize,
         replacement: &Document<T>,
-        replace_heading: bool,
-        remove_subsections: bool,
+        (replace_heading, remove_subsections): (bool, bool),
+        settled: bool,
     ) -> Result<bool, StreamError> {
         self.node(parent).ok_or(StreamError::InvalidRange)?;
         let mut children = self.children(parent);
@@ -1804,24 +1806,28 @@ impl<S: AsRef<str>> Document<S> {
         // definition may take an identifier that only the section had.
         let attached = self.attached(parent);
         let mut leaving = Vec::new();
+        let mut replacing = Vec::new();
         let mut at = first;
         while at != end {
             let id = at.expect("the section ends in the selected sibling chain");
             leaving.extend(crate::bindings::definitions(&self.nodes, id));
+            replacing.push(id);
             at = self.nodes[id.index()].next_sibling;
         }
         leaving.sort_unstable();
-        let plan = self.plan(
-            parent,
-            end,
-            replacement,
-            replacement.children(replacement.root()),
-            &InsertOptions::default(),
-            &leaving,
-        )?;
+        replacing.sort_unstable();
         if !replace_heading {
             previous = Some(heading);
         }
+        let plan = self.plan(
+            parent,
+            (previous, end),
+            replacement,
+            replacement.children(replacement.root()),
+            &InsertOptions::default(),
+            (&replacing, &leaving),
+            settled,
+        )?;
         // A section is one contiguous sibling range: splice it out once, retaining stable IDs and independent detached subtrees.
         if first != end {
             if let Some(previous) = previous {
@@ -1844,6 +1850,8 @@ impl<S: AsRef<str>> Document<S> {
             }
         }
         self.apply(&plan, parent, previous, end, replacement);
+        // The section may have held the child that ended the item.
+        self.refresh_item(Some(parent));
         Ok(true)
     }
     /// Parse Markdown into a node's children, replacing all of them.

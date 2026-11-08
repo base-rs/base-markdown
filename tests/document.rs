@@ -1060,7 +1060,20 @@ fn section_copy_preserves_nested_siblings_empty_containers_and_insertion_boundar
             .descendants(root)
             .filter(|id| !existing.contains(id))
             .collect();
-        assert_eq!(copied.len(), replacement.nodes().len() - 1);
+        // The appended blocks, which have no separator between them, get the one the parser
+        // writes there.
+        let separators = |document: &Document, ids: &[base_markdown::NodeId]| {
+            ids.iter()
+                .filter(|&&id| {
+                    matches!(document.node(id).unwrap().kind, EventKind::Separator { .. })
+                })
+                .count()
+        };
+        let originals: Vec<_> = replacement.descendants(replacement.root()).collect();
+        assert_eq!(
+            copied.len() - separators(&document, &copied),
+            originals.len() - 1 - separators(&replacement, &originals)
+        );
         assert!(copied
             .iter()
             .all(|id| document.node(*id).unwrap().span.is_empty()));

@@ -2,7 +2,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Copying content from one document into another.
-use super::{borrow_kind, defines, tree_root, Document, NodeId};
+use super::{borrow_kind, defines, ends_item, tree_root, Document, NodeId};
 use crate::bindings::{Lookup, Scratch, Table};
 use crate::stream::{EventKind, StreamError, Tag, Target, Text};
 use crate::NodeSyntax;
@@ -15,12 +15,16 @@ use core::convert::TryFrom;
 use core::fmt::Write;
 
 /// What [`Document::insert_from`] does with a footnote definition that it copies when this
-/// document already binds its identifier.
+/// document already binds its identifier, or has a call of it that nothing binds, which the copy
+/// would bind.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum FootnotePolicy {
-    /// Give the copy a fresh identifier, the first of `identifier-2`, `identifier-3` and so on
-    /// that neither this document nor another copied definition binds, and rewrite the copied
-    /// calls to match.
+    /// Give the copy a fresh identifier, one of `identifier-2`, `identifier-3` and so on that
+    /// this document neither binds nor calls and that no other copied definition takes, and
+    /// rewrite the copied calls to match. It is chosen deterministically, and is the first such
+    /// one when those taken run from `identifier-2` without a gap, as relabelling makes them, but
+    /// past a gap it can be a later one: with `x-2`, `x-3` and `x-5` taken, `x` is relabelled
+    /// `x-6`, not `x-4`, which keeps finding it logarithmic in the number taken.
     #[default]
     Relabel,
     /// Reject the insert with [`StreamError::InvalidValue`].
@@ -40,9 +44,11 @@ pub struct InsertOptions {
 /// The nodes that [`Document::insert_from`] added.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Inserted {
-    /// The copies of the selected nodes, children of the parent, in order. Definitions and
-    /// footnote definitions among the selected nodes are not copied, nor the separators they
-    /// leave redundant.
+    /// The children that the insert added to the parent, in order: the copies of the selected
+    /// nodes, the separators that go between them and the parent's children beside them, and,
+    /// for a selected reference that nothing binds, the text around its children and the copies
+    /// of its children, which it becomes. Definitions and footnote definitions among the
+    /// selected nodes are not copied, nor the separators they leave redundant.
     pub nodes: Vec<NodeId>,
     /// The copies of the footnote definitions that the copied content calls, in the order they
     /// are first called, after the copied nodes.
@@ -51,8 +57,9 @@ pub struct Inserted {
 
 // What an insert copies and where, decided before anything changes.
 pub(super) struct Plan {
-    // The selected source nodes that are copied into the parent, in order.
-    top: Vec<NodeId>,
+    // The selected source nodes that are copied into the parent, in order, with `None` for a new
+    // separator.
+    top: Vec<Option<NodeId>>,
     // The source footnote definitions that are copied, in the order first called, each with the
     // suffix of its fresh identifier when it is relabelled.
     definitions: Vec<(NodeId, Option<String>)>,
@@ -181,40 +188,51 @@ impl<S: AsRef<str>> Document<S> {
     /// Copy nodes of another document into this one, as children of `parent` after `after`, or
     /// first when it is `None`, materializing their source-backed values into this document.
     ///
+    /// The place is given by the child to insert after, not before, unlike
+    /// [`Document::attach`]'s `before`: a node links only to its next sibling, so the place
+    /// after a child is found without walking the children, and the end of a heading's section,
+    /// the common place to insert, is the node that [`Document::heading_section_last`] gives.
+    ///
     /// `nodes` are nodes of `source`'s attached document, often its root's children, copied in
     /// order with what they hold. The copies render as the nodes render in `source`:
     ///
     /// - A reference bound there becomes a resource to where it leads, as this document may
     ///   define its label otherwise, so link reference definitions are not copied, wherever they
     ///   are among the nodes. A reference or footnote call that nothing binds there becomes the
-    ///   text it renders as, as [`Document::normalize`] makes it.
+    ///   text it renders as, as [`Document::normalize`] makes it: a reference becomes the text
+    ///   around its children, which follow it, so one copy can be several children.
     /// - A footnote call brings the footnote definition it calls in `source`, wherever it is,
     ///   copied once however many calls there are, and so do the calls in a copied definition.
     ///   The other footnote definitions among the nodes are not copied. The copied definitions go
     ///   after the copied nodes, in the order they are first called: in `parent`, or, when it
     ///   cannot hold one, such as a paragraph or list, or is an item of a tight list, which one
-    ///   would make loose, after its nearest ancestor in a container that can. When this document already binds a copied definition's identifier, in the
-    ///   tree that holds `parent`, the attached document or a detached subtree,
-    ///   [`InsertOptions::footnotes`] decides: by default it gets a fresh one, the first of
-    ///   `identifier-2`, `identifier-3` and so on that is neither bound nor another copy's, and
-    ///   its copied calls are rewritten to match. A copied definition binds its identifier for
-    ///   the rest of this document, so a call of it here that nothing bound renders as a call of
-    ///   it.
-    /// - Separators that a definition left out leaves redundant are left out. Into a container
-    ///   other than the root, as for [`Document::parse_children`], the separators after the last
-    ///   copied block are left out when nothing follows, and so are those after a paragraph that
-    ///   an item of a tight list makes tight, except before another paragraph, and an item is
-    ///   spread when it was, or, unless it is in a tight list, when the copied blocks had a blank
-    ///   line between two of them.
+    ///   would make loose, after its nearest ancestor in a container that can.
+    /// - A copied definition's identifier is taken when this document, in the tree that holds
+    ///   `parent`, the attached document or a detached subtree, binds it, or has a call of it
+    ///   that nothing binds, which the copy would make call it. [`InsertOptions::footnotes`]
+    ///   decides what a copy of a taken identifier gets: by default a fresh one, as
+    ///   [`FootnotePolicy::Relabel`] describes, and its copied calls are rewritten to match. So
+    ///   a call here keeps calling what it called, or nothing.
+    /// - Into a container of blocks, the separators between the copies, and between them and
+    ///   the children beside them, are those the parser writes there: one after each block that
+    ///   something follows, but for one after a definition, after a paragraph of an item of a
+    ///   tight list before a block other than a paragraph, and, as for
+    ///   [`Document::parse_children`], after the last block of a container other than the root.
+    ///   So two paragraphs of an item of a tight list stay two. An item is spread when it was,
+    ///   or, unless it is in a tight list, when the copied blocks had a blank line between two of
+    ///   them.
     /// - [`InsertOptions::heading_shift`] is added to each copied heading's level.
     ///
     /// Frontmatter is never copied. This takes time linear in the copied content, plus one
     /// lookup in each document's index for each reference and footnote call, and, for each
     /// relabelled definition, lookups logarithmic in the number of its identifier's relabelled
-    /// copies already here. Into a detached subtree, which has no index, the first footnote
-    /// definition copied costs one pass over the subtree, as for the lookups of #226. Inserting
-    /// into phrasing walks the parent's phrasing ancestors, in time linear in the depth of the
-    /// phrasing nest (#233).
+    /// copies already here. Copying a footnote definition costs one pass over the tree that holds
+    /// `parent` when this document has no index of it, a detached subtree, as for the lookups of
+    /// #226, and when it may have a call that nothing binds: when it was edited, other than by
+    /// this, since it was parsed, built with every reference bound, or normalized. So many inserts
+    /// of footnotes into one detached subtree, or into a document so edited, take quadratic time.
+    /// Inserting into phrasing walks the parent's phrasing ancestors, in time linear in the depth
+    /// of the phrasing nest (#233).
     ///
     /// To insert another document's content under a heading, after the heading's section:
     ///
@@ -263,8 +281,8 @@ impl<S: AsRef<str>> Document<S> {
     /// call when the parent is in a link, or a soft or hard break when it is in a table cell, and
     /// a copied footnote definition that no container from the parent up can hold. Rejects with
     /// [`StreamError::InvalidValue`] a shifted heading level outside 1 to 6, a copied footnote
-    /// definition whose identifier is bound here when [`InsertOptions::footnotes`] is
-    /// [`FootnotePolicy::Reject`], and a fresh identifier, label or call too long to be one.
+    /// definition whose identifier is taken here, bound or called by a call that nothing binds,
+    /// when [`InsertOptions::footnotes`] is [`FootnotePolicy::Reject`], and a fresh identifier, label or call too long to be one.
     /// Nothing is changed when an error is returned.
     pub fn insert_from<T: AsRef<str>>(
         &mut self,
@@ -274,7 +292,8 @@ impl<S: AsRef<str>> Document<S> {
         nodes: impl IntoIterator<Item = NodeId>,
         options: &InsertOptions,
     ) -> Result<Inserted, StreamError> {
-        self.edit(|document| {
+        let settled = self.settled;
+        let inserted = self.edit(|document| {
             let next = match document.node(parent) {
                 Some(node) => match after {
                     None => node.first_child,
@@ -285,9 +304,21 @@ impl<S: AsRef<str>> Document<S> {
                 },
                 None => return Err(StreamError::InvalidRange),
             };
-            let plan = document.plan(parent, next, source, nodes, options, &[])?;
+            let plan = document.plan(
+                parent,
+                (after, next),
+                source,
+                nodes,
+                options,
+                (&[], &[]),
+                settled,
+            )?;
             Ok(document.apply(&plan, parent, after, next, source))
-        })
+        })?;
+        // The copies' references and calls are bound or text, and the copied definitions bind no
+        // identifier that a call here names, so every reference that was bound still is.
+        self.settled = settled;
+        Ok(inserted)
     }
 
     /// The last node of the section of the heading `heading`: the last of its following
@@ -311,17 +342,20 @@ impl<S: AsRef<str>> Document<S> {
         Some(last)
     }
 
-    // Plan copying `nodes` of `source` into `parent` before `next`, checking everything that can
-    // fail. `leaving` holds the sorted definitions of this document that the insert replaces,
-    // which no longer bind.
+    // Plan copying `nodes` of `source` into `parent` after `after` and before `next`, checking
+    // everything that can fail. `replacing` holds the sorted children of `parent` that the insert
+    // replaces, and `leaving` the sorted definitions in them, which no longer bind. `settled` is
+    // whether every reference and footnote call of this document was bound before the edit.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn plan<T: AsRef<str>>(
         &self,
         parent: NodeId,
-        next: Option<NodeId>,
+        (after, next): (Option<NodeId>, Option<NodeId>),
         source: &Document<T>,
         nodes: impl IntoIterator<Item = NodeId>,
         options: &InsertOptions,
-        leaving: &[NodeId],
+        (replacing, leaving): (&[NodeId], &[NodeId]),
+        settled: bool,
     ) -> Result<Plan, StreamError> {
         // Callers check that the parent is a node of this document.
         let EventKind::Start(tag) = &self.nodes[parent.index()].kind else {
@@ -335,60 +369,75 @@ impl<S: AsRef<str>> Document<S> {
             selected.push(id);
         }
         let nested = parent != self.root();
-        let mut top = prune(source, selected, false);
-        if nested && next.is_none() {
-            while top.last().is_some_and(|&last| source.separator(last)) {
-                top.pop();
-            }
-        }
         let tight = nested && self.tight_item(parent);
-        if tight {
-            // Two paragraphs are apart only with a separator between them, as in a loose list.
-            let before_paragraph = |at: usize| {
-                top[at + 1..]
-                    .iter()
-                    .find(|&&id| !source.separator(id))
-                    .map_or_else(
-                        || {
-                            core::iter::successors(next, |id| self.nodes[id.index()].next_sibling)
-                                .find(|&id| !self.separator(id))
-                                .is_some_and(|id| {
-                                    matches!(
-                                        self.nodes[id.index()].kind,
-                                        EventKind::Start(Tag::Paragraph { .. })
-                                    )
-                                })
-                        },
-                        |&id| {
-                            matches!(
-                                source.nodes[id.index()].kind,
-                                EventKind::Start(Tag::Paragraph { .. })
-                            )
-                        },
-                    )
-            };
-            let mut kept = Vec::with_capacity(top.len());
-            let mut after_paragraph = false;
-            for (at, &id) in top.iter().enumerate() {
-                let separator = source.separator(id);
-                if !(separator && after_paragraph && !before_paragraph(at)) {
-                    kept.push(id);
+        let pruned = prune(source, selected, false);
+        // Into a container of blocks, the separators between the copies and the parent's children
+        // beside them are those the parser writes there: one after a block that something
+        // follows, but for none after a definition, which takes the place of the separator after
+        // it, none after a paragraph of an item of a tight list before a block other than a
+        // paragraph, and none after the last block of a container other than the root. A copied
+        // separator is kept where one goes, and a new one goes where one goes and none was copied.
+        let top: Vec<Option<NodeId>> = if matches!(
+            tag.kind().content(),
+            crate::stream::Content::Root | crate::stream::Content::Blocks
+        ) {
+            let paragraph =
+                |kind: &EventKind<'_>| matches!(kind, EventKind::Start(Tag::Paragraph { .. }));
+            // Whether a separator goes between a block, a paragraph or not, and the next.
+            let apart = |left: bool, right: bool| !(tight && left && !right);
+            // Whether the child `id` is a paragraph, if it is not a separator.
+            let block =
+                |id: NodeId| (!self.separator(id)).then(|| paragraph(&self.nodes[id.index()].kind));
+            // Whether the block before the next copy is a paragraph, if one that a separator
+            // follows is right before it.
+            let mut left = after
+                .filter(|&id| !defines(&self.nodes[id.index()].kind))
+                .and_then(block);
+            let mut copied_separator = None;
+            let mut top = Vec::with_capacity(pruned.len() + 2);
+            for id in pruned {
+                if source.separator(id) {
+                    copied_separator = copied_separator.or(Some(id));
+                    continue;
                 }
-                after_paragraph = matches!(
-                    source.nodes[id.index()].kind,
-                    EventKind::Start(Tag::Paragraph { .. })
-                );
+                let right = paragraph(&source.nodes[id.index()].kind);
+                if left.is_some_and(|left| apart(left, right)) {
+                    top.push(copied_separator);
+                }
+                copied_separator = None;
+                top.push(Some(id));
+                left = Some(right);
             }
-            top = kept;
-        }
+            match next {
+                Some(next) => {
+                    if let (Some(left), Some(right)) = (left, block(next)) {
+                        if apart(left, right) {
+                            top.push(copied_separator);
+                        }
+                    }
+                }
+                // The root's last line ending is a separator after its last block.
+                None if !nested && left.is_some() => top.extend(copied_separator.map(Some)),
+                None => {}
+            }
+            top
+        } else {
+            pruned.into_iter().map(Some).collect()
+        };
         // The content model: each copy against the parent, whose first child is its own or the
         // first copy.
         let first = self.nodes[parent.index()]
             .first_child
             .map(|id| &self.nodes[id.index()].kind)
-            .or_else(|| top.first().map(|id| &source.nodes[id.index()].kind));
+            .or_else(|| {
+                top.iter()
+                    .flatten()
+                    .next()
+                    .map(|id| &source.nodes[id.index()].kind)
+            });
         if top
             .iter()
+            .flatten()
             .any(|id| !source.nodes[id.index()].kind.nests_in(tag, first))
         {
             return Err(StreamError::InvalidNesting);
@@ -433,7 +482,7 @@ impl<S: AsRef<str>> Document<S> {
             }
             Ok(())
         };
-        each_kept(source, top.clone(), |id| {
+        each_kept(source, top.iter().flatten().copied().collect(), |id| {
             visit(&mut calls, &mut definitions, id, !reach.is_empty())
         })?;
         // The calls of the copied definitions bring definitions too.
@@ -479,11 +528,44 @@ impl<S: AsRef<str>> Document<S> {
             };
             identifier.resolve(source.source()).expect("validated")
         };
+        // The identifiers that a call of this document's tree names but nothing binds, other than
+        // in the replaced children, which a copied definition would make it call. A settled
+        // document has none. A call bound only by a definition that leaves is bound, and calls the
+        // copy that takes its identifier, as the replaced children's definitions did.
+        let mut unbound = BTreeSet::new();
+        if !definitions.is_empty() && !settled {
+            let mut left = BTreeSet::new();
+            for &id in leaving {
+                let (footnote, key) =
+                    crate::bindings::kind_key(&self.nodes[id.index()].kind, self.source());
+                if footnote {
+                    left.insert(key);
+                }
+            }
+            let tree = tree_root(&self.nodes, parent);
+            let mut current = Some(tree);
+            while let Some(id) = current {
+                let node = &self.nodes[id.index()];
+                if let EventKind::FootnoteReference { identifier, .. } = &node.kind {
+                    let key = identifier
+                        .resolve(self.source())
+                        .expect("document text is validated");
+                    if !binds(key) && !left.contains(key) {
+                        unbound.insert(String::from(key));
+                    }
+                }
+                current = match node.first_child {
+                    Some(child) if replacing.binary_search(&id).is_err() => Some(child),
+                    _ => crate::bindings::next_after(&self.nodes, tree, id),
+                };
+            }
+        }
+        let taken = |key: &str| binds(key) || unbound.contains(key);
         let mut clashes = Vec::new();
         let mut used = BTreeSet::new();
         for (index, (definition, _)) in definitions.iter().enumerate() {
             let key = identifier(*definition);
-            if binds(key) {
+            if taken(key) {
                 if options.footnotes == FootnotePolicy::Reject {
                     return Err(StreamError::InvalidValue);
                 }
@@ -497,7 +579,7 @@ impl<S: AsRef<str>> Document<S> {
         for index in clashes {
             let key = identifier(definitions[index].0);
             let suffix = fresh_suffix(key, |candidate| {
-                used.contains(candidate) || binds(candidate)
+                used.contains(candidate) || taken(candidate)
             });
             let mut fresh = String::from(key);
             fresh.push_str(&suffix);
@@ -527,7 +609,7 @@ impl<S: AsRef<str>> Document<S> {
             );
             if !tight && !spread {
                 let mut previous: Option<NodeId> = None;
-                for &id in top.iter().filter(|&&id| !source.separator(id)) {
+                for &id in top.iter().flatten().filter(|&&id| !source.separator(id)) {
                     if let Some(previous) = previous {
                         let end = source.nodes[previous.index()].span.end;
                         let start = source.nodes[id.index()].span.start;
@@ -642,41 +724,85 @@ impl<S: AsRef<str>> Document<S> {
         let attached = self.attached(parent);
         let mut inserted = Inserted::default();
         let mut previous = after;
+        let separator = |document: &mut Self, previous: Option<NodeId>| {
+            let kind = EventKind::Separator {
+                value: Text::Literal("\n"),
+                conditional: false,
+            };
+            document.insert_child(parent, kind, previous, next)
+        };
         for &id in &plan.top {
-            let copy = self.copy_kept(source, plan, id, parent, previous, next);
-            if attached {
-                self.index
-                    .insert_tree(self.source.as_ref(), &self.nodes, copy);
-            }
-            inserted.nodes.push(copy);
-            previous = Some(copy);
+            let Some(id) = id else {
+                let id = separator(self, previous);
+                inserted.nodes.push(id);
+                previous = Some(id);
+                continue;
+            };
+            let (first, last) = self.copy_kept(source, plan, id, parent, previous, next);
+            self.inserted_run(attached, first, last, &mut inserted.nodes);
+            previous = Some(last);
         }
+        // A footnote definition ends no item, so its container's ending stays as it was.
         if let Some((container, anchor)) = plan.definitions_in {
             let mut previous = anchor.or(previous);
             let next = previous.map_or(self.nodes[container.index()].first_child, |previous| {
                 self.nodes[previous.index()].next_sibling
             });
             for &(id, _) in &plan.definitions {
-                let copy = self.copy_kept(source, plan, id, container, previous, next);
-                if attached {
-                    self.index
-                        .insert_tree(self.source.as_ref(), &self.nodes, copy);
-                }
-                inserted.footnote_definitions.push(copy);
-                previous = Some(copy);
+                let (first, last) = self.copy_kept(source, plan, id, container, previous, next);
+                self.inserted_run(attached, first, last, &mut inserted.footnote_definitions);
+                previous = Some(last);
             }
-            self.refresh_item(Some(container));
         }
         if let Some(spread) = plan.spread {
             self.syntax
                 .insert(parent, Some(NodeSyntax::ListItem { spread }));
         }
-        self.refresh_item(Some(parent));
+        // An item ends as its last child that can end it does: in a loose list, any such child
+        // ends it as a block, and in a tight list, the last such copy, unless a child after it can,
+        // which is found without passing those before. A tight item holds no copied footnote
+        // definition, so only the separators and definitions it had can come between.
+        if matches!(
+            self.nodes[parent.index()].kind,
+            EventKind::Start(Tag::Item { .. })
+        ) {
+            let ending = |document: &Self, id: NodeId| ends_item(&document.nodes[id.index()].kind);
+            if let Some(&last) = inserted.nodes.iter().rev().find(|&&id| ending(self, id)) {
+                let later = self.tight_item(parent)
+                    && core::iter::successors(self.nodes[last.index()].next_sibling, |id| {
+                        self.nodes[id.index()].next_sibling
+                    })
+                    .any(|id| ending(self, id));
+                if !later {
+                    self.refresh_item_after_append(parent, last);
+                }
+            }
+        }
         inserted
     }
 
+    // Index and list the siblings from `first` to `last` that copying one node made.
+    fn inserted_run(&mut self, attached: bool, first: NodeId, last: NodeId, ids: &mut Vec<NodeId>) {
+        let mut at = first;
+        loop {
+            if attached {
+                self.index
+                    .insert_tree(self.source.as_ref(), &self.nodes, at);
+            }
+            ids.push(at);
+            if at == last {
+                break;
+            }
+            at = self.nodes[at.index()]
+                .next_sibling
+                .expect("a copy's run ends in its last node");
+        }
+    }
+
     // Copy the subtree at `root` of `source` and its kept children into `parent`, after
-    // `previous` and before `next`, as `plan` copies it.
+    // `previous` and before `next`, as `plan` copies it, giving the first and last of the
+    // siblings it makes: one, unless it is a reference that nothing binds, which becomes the text
+    // around its children.
     fn copy_kept<T: AsRef<str>>(
         &mut self,
         source: &Document<T>,
@@ -685,7 +811,7 @@ impl<S: AsRef<str>> Document<S> {
         parent: NodeId,
         previous: Option<NodeId>,
         next: Option<NodeId>,
-    ) -> NodeId {
+    ) -> (NodeId, NodeId) {
         let cx = source.context();
         let mut lookup = Lookup::new(cx, source.root());
         let mut scratch = Scratch::default();
@@ -776,8 +902,15 @@ impl<S: AsRef<str>> Document<S> {
         for id in unbound {
             self.unbind_node(id);
         }
+        let mut last = copied_root;
+        while let Some(after) = self.nodes[last.index()].next_sibling {
+            if Some(after) == next {
+                break;
+            }
+            last = after;
+        }
         self.mark_added();
         self.refresh_context(copied_root);
-        copied_root
+        (copied_root, last)
     }
 }

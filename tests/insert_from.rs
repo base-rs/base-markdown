@@ -133,17 +133,25 @@ fn check(document: &Document, context: &str) {
         context,
         written
     );
-    // The renderer writes a separator at the root's edge as a line ending, which reads back as
-    // none, and the line endings around a tight item's blocks as they were met, which the text
-    // compared above does not depend on.
-    let words = |html: String| html.split_whitespace().collect::<String>();
     assert_eq!(
-        words(html(&read)),
-        words(html(&normalized)),
+        words(&html(&read)),
+        words(&html(&normalized)),
         "{}: {:?}",
         context,
         written
     );
+}
+
+// `html` with each run of whitespace one space, and none next to a tag. The renderer writes a
+// separator at the root's edge as a line ending, which reads back as none, and the line endings
+// around a tight item's blocks as they were met, which the text does not depend on, but two
+// words apart stay apart.
+fn words(html: &str) -> String {
+    html.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace("> ", ">")
+        .replace(" <", "<")
 }
 
 #[test]
@@ -407,12 +415,13 @@ fn copies_into_containers_keep_separators_and_spread() {
         )
         .unwrap();
     // The separators the definitions leave are dropped, and those after the last block, as the
-    // parser writes none at the end of an item.
+    // parser writes none at the end of an item, and one goes between the item's paragraph and
+    // the first copy, as the parser writes one there.
     let kinds: Vec<bool> = document
         .children(item)
         .map(|id| matches!(document.node(id).unwrap().kind, EventKind::Separator { .. }))
         .collect();
-    assert_eq!(kinds, [false, false, true, false]);
+    assert_eq!(kinds, [false, true, false, true, false]);
     assert_eq!(
         to_markdown(&document).unwrap(),
         "- a\n\n  One.\n\n  Two.\n\n- b\n"
@@ -617,7 +626,13 @@ fn rendered_alone(document: &Document, id: NodeId) -> String {
         },
         span: 0..0,
     };
-    let mut events = vec![document_tag(true)];
+    // The root's events are a document's already.
+    let root = id == document.root();
+    let mut events = if root {
+        vec![]
+    } else {
+        vec![document_tag(true)]
+    };
     let mut skipped = 0;
     for (index, event) in document.subtree_events(id).enumerate() {
         let event = event.unwrap();
@@ -639,7 +654,9 @@ fn rendered_alone(document: &Document, id: NodeId) -> String {
             _ => events.push(event),
         }
     }
-    events.push(document_tag(false));
+    if !root {
+        events.push(document_tag(false));
+    }
     let mut output = String::new();
     if let Err(error) = base_markdown::render_events(
         document.source(),
@@ -673,12 +690,33 @@ fn random_inserts_render_as_their_sources() {
         "- a\n- b [^z]\n  > quote\n\n[^z]: z\n",
         "Text with [link](/u) and ![img][r] [^nope] [nope]\n\n[r]: /i\n",
         "# A\n\nSome [^a].\n\n[^a]: mine\n\n## B\n\n> [^b]: nested\n>\n> b [^b]\n",
+        "A [x][a] B ![alt *em*][a] [c] [^u]\n\n- [x][a]\n\n[a]: /u\n\n[c]: /c\n\n[^u]: U\n",
     ];
     let seeds: u64 = std::env::var("INSERT_SEEDS")
         .ok()
         .and_then(|seeds| seeds.parse().ok())
         .unwrap_or(48);
-    let documents: Vec<Document> = sources.iter().map(|source| parse(source)).collect();
+    let mut documents: Vec<Document> = sources.iter().map(|source| parse(source)).collect();
+    // The same documents with their definitions detached, whose references and calls nothing
+    // binds.
+    for source in sources {
+        let mut document = parse(source);
+        let definitions: Vec<NodeId> = document
+            .descendants(document.root())
+            .filter(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Definition { .. } | EventKind::Start(Tag::FootnoteDefinition { .. })
+                )
+            })
+            .collect();
+        for id in definitions {
+            if document.node(id).unwrap().parent().is_some() {
+                document.detach(id).unwrap();
+            }
+        }
+        documents.push(document);
+    }
     for seed in 0..seeds {
         let mut state = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
         let mut next = |bound: usize| -> usize {
@@ -749,13 +787,66 @@ fn random_inserts_render_as_their_sources() {
                     let copies = inserted.nodes.iter().copied().filter(|&id| {
                         !matches!(document.node(id).unwrap().kind, EventKind::Separator { .. })
                     });
-                    for (original, copy) in originals.zip(copies) {
-                        assert_eq!(
-                            rendered_alone(&document, copy),
-                            rendered_alone(source, original),
-                            "{}",
-                            context
-                        );
+                    // A reference that nothing binds is copied as the text around its children,
+                    // which render as it does together.
+                    let joined = |document: &Document, ids: &mut dyn Iterator<Item = NodeId>| {
+                        ids.map(|id| rendered_alone(document, id).replace(' ', ""))
+                            .collect::<String>()
+                    };
+                    assert_eq!(
+                        joined(&document, &mut copies.clone()),
+                        joined(source, &mut originals.clone()),
+                        "{}",
+                        context
+                    );
+                    // The parent renders as its children do apart: no copy runs into a child
+                    // beside it.
+                    if matches!(
+                        document.node(parent).unwrap().kind,
+                        EventKind::Start(Tag::Document { .. } | Tag::BlockQuote | Tag::Item { .. })
+                    ) {
+                        let text = |html: String| -> Vec<String> {
+                            let mut text = String::new();
+                            let mut tag = false;
+                            for character in html.chars() {
+                                match character {
+                                    '<' => tag = true,
+                                    '>' => {
+                                        tag = false;
+                                        text.push(' ');
+                                    }
+                                    _ if tag => {}
+                                    _ => text.push(character),
+                                }
+                            }
+                            text.split_whitespace().map(String::from).collect()
+                        };
+                        // An item renders in its list, and its siblings with it.
+                        let item = document.node(parent).unwrap().parent().filter(|_| {
+                            matches!(
+                                document.node(parent).unwrap().kind,
+                                EventKind::Start(Tag::Item { .. })
+                            )
+                        });
+                        let container = item.unwrap_or(parent);
+                        let parents: Vec<NodeId> = match item {
+                            Some(list) => document.children(list).collect(),
+                            None => vec![parent],
+                        };
+                        let apart: Vec<String> = parents
+                            .iter()
+                            .flat_map(|&parent| document.children(parent))
+                            .filter(|&id| {
+                                !matches!(
+                                    document.node(id).unwrap().kind,
+                                    EventKind::Definition { .. }
+                                        | EventKind::Start(Tag::FootnoteDefinition { .. })
+                                )
+                            })
+                            .flat_map(|id| text(rendered_alone(&document, id)))
+                            .collect();
+                        let whole = text(rendered_alone(&document, container));
+                        assert_eq!(whole, apart, "{}", context);
                     }
                     // Each copied footnote definition renders as one of the source's.
                     let definitions: Vec<String> = source
@@ -936,4 +1027,237 @@ fn adjacent_blocks_keep_an_item_tight_in_a_loose_list() {
         )
         .unwrap();
     check(&document, "loose");
+}
+
+// `document` with its definitions and footnote definitions at the root detached, so that
+// nothing binds the references and calls of them.
+fn unbound(source: &str) -> Document {
+    let mut document = parse(source);
+    let definitions: Vec<NodeId> = document
+        .children(document.root())
+        .filter(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Definition { .. } | EventKind::Start(Tag::FootnoteDefinition { .. })
+            )
+        })
+        .collect();
+    for id in definitions {
+        document.detach(id).unwrap();
+    }
+    document
+}
+
+/// A selected reference that nothing binds becomes the text around its children, all of which
+/// are inserted, in order, and listed.
+#[test]
+fn an_unbound_reference_is_copied_whole() {
+    for (text, twice, expected) in [
+        ("A [x][a] B\n\n[a]: /u\n", false, "<p>TA [x][a] B</p>\n"),
+        (
+            "![alt *em*][a]\n\n[a]: /u\n",
+            true,
+            "<p>T![alt <em>em</em>][a]![alt <em>em</em>][a]</p>\n",
+        ),
+    ] {
+        let source = unbound(text);
+        let paragraph = source.children(source.root()).next().unwrap();
+        let mut selected: Vec<NodeId> = source.children(paragraph).collect();
+        if twice {
+            selected.extend(selected.clone());
+        }
+        let mut document = parse("T\n");
+        let target = document.children(document.root()).next().unwrap();
+        let last = document.children(target).last();
+        let inserted = document
+            .insert_from(target, last, &source, selected, &InsertOptions::default())
+            .unwrap();
+        assert_eq!(html(&document), expected);
+        // The listed nodes are the paragraph's children after the one that was there.
+        let children: Vec<NodeId> = document.children(target).skip(1).collect();
+        assert_eq!(inserted.nodes, children);
+        check(&document, text);
+    }
+}
+
+/// A copied footnote definition takes no identifier that a call here names that nothing binds,
+/// as it would make the call call it: neither its own nor a fresh one, and with
+/// `FootnotePolicy::Reject` such a call is a clash.
+#[test]
+fn copied_definitions_capture_no_unbound_call() {
+    let target = |text: &str, unbound: &str| {
+        let mut document = parse(text);
+        let definition = find(&document, |kind| {
+            matches!(kind, EventKind::Start(Tag::FootnoteDefinition { identifier, .. })
+                if identifier.resolve("").ok() == Some(unbound))
+        });
+        document.detach(definition).unwrap();
+        document
+    };
+    let insert = |document: &mut Document, text: &str, footnotes: FootnotePolicy| {
+        let source = parse(text);
+        let root = document.root();
+        let last = document.children(root).last();
+        let options = InsertOptions {
+            footnotes,
+            ..InsertOptions::default()
+        };
+        document
+            .insert_from(
+                root,
+                last,
+                &source,
+                source.children(source.root()),
+                &options,
+            )
+            .map(|_| ())
+    };
+    // A fresh identifier skips one that a call names unbound.
+    let mut document = target(
+        "Mine[^x] and [^x-2]\n\n[^x]: Mine.\n\n[^x-2]: Other.\n",
+        "X-2",
+    );
+    insert(
+        &mut document,
+        "Theirs[^x]\n\n[^x]: Theirs.\n",
+        FootnotePolicy::Relabel,
+    )
+    .unwrap();
+    assert_eq!(
+        to_markdown(&document).unwrap(),
+        "Mine[^x] and [^x-2]\n\n[^x]: Mine.\n\nTheirs[^x-3]\n\n[^x-3]: Theirs.\n"
+    );
+    check(&document, "fresh");
+    // So does a copy's own identifier.
+    let mut document = target("Mine[^y]\n\n[^y]: Mine.\n", "Y");
+    insert(
+        &mut document,
+        "Theirs[^y]\n\n[^y]: Theirs.\n",
+        FootnotePolicy::Relabel,
+    )
+    .unwrap();
+    assert_eq!(
+        to_markdown(&document).unwrap(),
+        "Mine[^y]\n\nTheirs[^y-2]\n\n[^y-2]: Theirs.\n"
+    );
+    // With `Reject`, a call that nothing binds clashes, and nothing changes.
+    let mut document = target("Mine[^y]\n\n[^y]: Mine.\n", "Y");
+    let before = format!("{:?}", document);
+    assert_eq!(
+        failed(insert(
+            &mut document,
+            "Theirs[^y]\n\n[^y]: Theirs.\n",
+            FootnotePolicy::Reject
+        )),
+        "InvalidValue"
+    );
+    assert_eq!(format!("{:?}", document), before);
+    // A call in the section that a replacement replaces is gone, so it clashes with nothing.
+    let mut document = target("# s\n\nMine[^y]\n\n# t\n\n[^y]: Mine.\n", "Y");
+    let root = document.root();
+    let replacement = parse("# s\n\nTheirs[^y]\n\n[^y]: Theirs.\n");
+    assert!(document
+        .replace_heading_section(root, 0, &replacement, true, false)
+        .unwrap());
+    assert_eq!(
+        to_markdown(&document).unwrap(),
+        "# s\n\nTheirs[^y]\n\n[^y]: Theirs.\n\n# t\n"
+    );
+    // A call after the section bound only by a definition the section held calls the copy that
+    // takes its identifier, as it called the definition replaced.
+    let mut document = target(
+        "# s\n\nMine[^y]\n\n[^y]: Mine.\n\n# t\n\nAfter[^y]\n\n[^z]: Z.\n",
+        "Z",
+    );
+    let root = document.root();
+    assert!(document
+        .replace_heading_section(root, 0, &replacement, true, false)
+        .unwrap());
+    assert_eq!(
+        to_markdown(&document).unwrap(),
+        "# s\n\nTheirs[^y]\n\n[^y]: Theirs.\n\n# t\n\nAfter[^y]\n"
+    );
+}
+
+/// Into an item of a tight list, a copied paragraph beside one of the item's gets the separator
+/// between them that keeps them two paragraphs, before the first copy and after the last.
+#[test]
+fn copied_paragraphs_stay_apart_in_a_tight_item() {
+    let source = parse("Para\n");
+    for (first, expected) in [
+        (true, "<ul>\n<li>a\nPara</li>\n<li>b</li>\n</ul>\n"),
+        (false, "<ul>\n<li>Para\na</li>\n<li>b</li>\n</ul>\n"),
+    ] {
+        let mut document = parse("- a\n- b\n");
+        let list = document.children(document.root()).next().unwrap();
+        let item = document.children(list).next().unwrap();
+        let after = first.then(|| document.children(item).next().unwrap());
+        let inserted = document
+            .insert_from(
+                item,
+                after,
+                &source,
+                source.children(source.root()),
+                &InsertOptions::default(),
+            )
+            .unwrap();
+        assert_eq!(html(&document), expected);
+        assert_eq!(inserted.nodes.len(), 2);
+        check(&document, expected);
+    }
+}
+
+/// Replacing a section of an item writes what reads back as the same document, loose or tight.
+#[test]
+fn replacing_a_section_of_an_item_reads_back() {
+    for (text, expected) in [
+        ("- # A\n\n  old\n- x\n", "- # A\n\n  new\n\n- x\n"),
+        ("- # A\n  old\n- x\n", "- # A\n  new\n- x\n"),
+    ] {
+        let mut document = parse(text);
+        let list = document.children(document.root()).next().unwrap();
+        let item = document.children(list).next().unwrap();
+        assert!(document
+            .replace_heading_section(item, 0, &parse("new"), false, true)
+            .unwrap());
+        let written = to_markdown(&document).unwrap();
+        assert_eq!(written, expected);
+        assert_eq!(html(&document), html(&parse(&written)));
+        check(&document, text);
+    }
+}
+
+/// Many inserts into one item, each after the last, take time linear in the inserts, against the
+/// same inserts into many items, though the footnote definitions each brings collect after them.
+#[test]
+fn many_inserts_into_one_item_are_linear() {
+    let other = parse("x [^n]\n\n[^n]: n\n");
+    let time = |items: usize, inserts: usize| {
+        let mut document = parse(&"- a\n\n".repeat(items));
+        let list = document.children(document.root()).next().unwrap();
+        let items: Vec<NodeId> = document.children(list).collect();
+        timed(|| {
+            for &item in &items {
+                let mut last = document.children(item).last();
+                for _ in 0..inserts {
+                    let inserted = document
+                        .insert_from(
+                            item,
+                            last,
+                            &other,
+                            other.children(other.root()),
+                            &InsertOptions::default(),
+                        )
+                        .unwrap();
+                    last = inserted.nodes.last().copied();
+                }
+            }
+        })
+    };
+    support::linear::assert_against_control(
+        "many inserts into one item",
+        1 << 10,
+        |size| time(1, size),
+        |size| time(size, 1),
+    );
 }
