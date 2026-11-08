@@ -1147,6 +1147,19 @@ pub(crate) fn html_interrupts_paragraph(bytes: &[u8]) -> bool {
     bytes.first() == Some(&b'<') && html::Html::start(bytes, false, false).is_some()
 }
 
+/// Whether an HTML block whose value is `value` ends with its last line, so that the line after
+/// it can start another block: one of kinds 1–5 whose end condition is on its last line. A block
+/// of kind 6 or 7 ends only at a blank line, one of kinds 1–5 that its last line does not close
+/// takes the lines after it until one does, and a value that starts no HTML block, which only a
+/// hand-built tree has, is written as a paragraph, which the next block may continue.
+pub(crate) fn html_block_ends_on_last_line(value: &str) -> bool {
+    let bytes = value.trim_start_matches([' ', '\t']).as_bytes();
+    let last = memchr::memrchr(b'\n', bytes).map_or(0, |at| at + 1);
+    bytes.first() == Some(&b'<')
+        && html::Html::start(bytes, false, true)
+            .is_some_and(|kind| !kind.blank_terminated() && kind.closed(&bytes[last..]))
+}
+
 /// Definition-looking table headers take precedence over definitions; other headers follow ordinary paragraph indentation rules.
 fn table_definition_header(bytes: &[u8]) -> bool {
     let mut at = 1;

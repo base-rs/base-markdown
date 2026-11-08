@@ -161,9 +161,9 @@ impl<'a> State<'a> {
     /// would be a single line ending is written as a blank line too, which the list being loose
     /// already renders.
     ///
-    /// Any other blank line between two of its blocks, such as one that `needs_blank_line` asks
-    /// for, between two paragraphs, two block quotes or after a nested list or footnote
-    /// definition ending in a paragraph, makes it read back spread too, and an item that
+    /// Any other blank line between two of its blocks, such as one between two paragraphs or one
+    /// that `needs_blank_line` asks for, as between two block quotes or after an HTML block that
+    /// ends only at a blank line, makes it read back spread too, and an item that
     /// records spread is written with a blank line between each of its blocks, so it is written
     /// spread now.
     ///
@@ -1140,8 +1140,8 @@ impl<'a> State<'a> {
             return "\n\n<!---->\n\n";
         }
         if in_list(document, parent) {
-            // A block that would otherwise continue the one before it, or a block quote after
-            // another, needs a blank line. That blank line makes the item read back spread, though
+            // A block that would otherwise continue the one before it, or a block quote or table
+            // after another, needs a blank line. That blank line makes the item read back spread, though
             // a list or footnote definition takes it into its span (#157), so `spreads_item`
             // writes the item's other blocks spread too, and `Document::normalize` makes a tight
             // list with such an item loose (#168).
@@ -1758,11 +1758,17 @@ fn ends_in_list_or_footnote_definition<S: AsRef<str>>(
 /// `Document::normalize` makes a tight list loose when one of its items holds such a pair, other
 /// than two paragraphs, which it joins (#154, #168). So the two cannot disagree.
 ///
-/// - Two block quotes in a row would read back as one.
-/// - A paragraph, link reference definition or setext heading cannot interrupt a paragraph: after
-///   one, it would continue it, as text, a title or the heading's content. After a table, each of
-///   its lines would be a row. The parser gives none of these after a table, but normalizing can,
-///   when it hoists a definition out of a footnote definition that is a copy.
+/// - Two block quotes in a row would read back as one, and so would two tables, the second's head
+///   and delimiter row read as rows of the first.
+/// - A paragraph, link reference definition, setext heading or HTML block of kind 7 cannot
+///   interrupt a paragraph: after one, it would continue it, as text, a title, the heading's
+///   content or inline HTML (#232). After a table, each line of the first three would be a row,
+///   but an HTML block can start there. The parser gives none of these after a table, but
+///   normalizing can, when it hoists a definition out of a footnote definition that is a copy.
+/// - An HTML block of kind 6 or 7 ends only at a blank line, and one of kinds 1–5 at the line
+///   that holds its end condition, so unless that is its last line, it would take any block
+///   after it as more of its lines (#191). A definition, by contrast, ends at its own line, so
+///   any block can start on the next.
 /// - After a nested list or footnote definition that ends in a paragraph or definition, through
 ///   the last blocks of any containers in it, any of those or a table would continue that
 ///   paragraph lazily, as a table's rows cannot interrupt a lazy paragraph. So would one after a
@@ -1783,9 +1789,23 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
             || matches!(right_kind, EventKind::Start(Tag::Table)))
             && ends_in_paragraph(document, left)
     };
-    match document.node(left).unwrap().kind {
-        EventKind::Start(Tag::Paragraph { .. } | Tag::Table) => {
+    match &document.node(left).unwrap().kind {
+        EventKind::Start(Tag::Paragraph { .. }) => {
             continues_text(document, right, &setext)
+                || matches!(right_kind, EventKind::Html { value, block: true }
+                if !crate::block_parser::html_interrupts_paragraph(
+                    value.resolve(document.source()).unwrap()
+                        .trim_start_matches([' ', '\t']).as_bytes()
+                ))
+        }
+        EventKind::Start(Tag::Table) => {
+            continues_text(document, right, &setext)
+                || matches!(right_kind, EventKind::Start(Tag::Table))
+        }
+        EventKind::Html { value, block: true } => {
+            !crate::block_parser::html_block_ends_on_last_line(
+                value.resolve(document.source()).unwrap(),
+            )
         }
         EventKind::Start(Tag::BlockQuote) => {
             matches!(right_kind, EventKind::Start(Tag::BlockQuote))
