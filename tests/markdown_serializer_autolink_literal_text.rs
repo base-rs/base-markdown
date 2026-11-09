@@ -9,7 +9,6 @@ use pretty_assertions::assert_eq;
 
 mod support;
 use support::fixture::canonical;
-use support::linear::{assert_linear, timed};
 
 fn parse(source: &str) -> Document<String> {
     Document::parse(source.to_owned(), &ParseOptions::default()).unwrap()
@@ -273,27 +272,6 @@ fn parsed_literals_are_links_and_are_written_as_they_were() {
         let mut document = parse(source);
         document.normalize();
         assert_eq!(to_markdown(&document).unwrap(), source);
-    }
-}
-
-#[test]
-fn literal_scans_stay_linear() {
-    // Eight times the input takes about eight times as long, whether the text is one node or,
-    // without normalizing, many nodes split at escapes. A domain that starts inside one already
-    // scanned is not scanned again (`www.a_`), and the markers in the siblings of a text split at
-    // escapes are scanned from where the last scan stopped (`www\.a `, `x\@y.z`).
-    let time = |unit: &str, count: usize, normalize: bool| {
-        let source = unit.repeat(count) + "\n";
-        let mut document = Document::parse(source.as_str(), &ParseOptions::gfm()).unwrap();
-        if normalize {
-            document.normalize();
-        }
-        timed(|| {
-            to_markdown(&document).unwrap();
-        })
-    };
-    for (unit, normalize) in [("www.a_", true), ("www\\.a ", false), ("x\\@y.z", false)] {
-        assert_linear(unit, 1 << 8, |count| time(unit, count, normalize));
     }
 }
 

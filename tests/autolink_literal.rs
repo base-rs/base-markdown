@@ -8,12 +8,11 @@
 // To do: clippy introduced this in 1.72 but breaks when it fixes it.
 // Remove when solved.
 mod support;
-use base_markdown::{message, to_html, to_html_with_options, to_markdown, Options, ParseOptions};
+use base_markdown::{message, to_html, to_html_with_options, Options, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
 use support::fixture::Position;
 use support::fixture::{Link, Node, Paragraph, Root, Text};
-use support::linear::{assert_linear, timed};
 
 #[test]
 fn autolink_literal() -> Result<(), message::Message> {
@@ -3208,34 +3207,5 @@ fn literal_domains_are_host_names() {
             })
             .count();
         assert_eq!(links, usize::from(html.contains("<a ")), "{:?}", input);
-    }
-}
-
-#[test]
-fn literal_autolinks_are_linear() {
-    for unit in [
-        // A `www` after `_` within a domain, which an `_` makes invalid, starts another domain
-        // inside it (#123), with ASCII, non-ASCII and `-` before the `_`.
-        "www.a_",
-        "www.例_",
-        "www.a-_",
-        // Other literals: the cached trailing suffix of protocols and paths, an email with a
-        // scheme and resource, whose scans are bounded by the `@` on either side, and the
-        // parentheses of a path, counted once.
-        "http://a_www.a_",
-        "http://a_b.c/",
-        "xmpp:a@b/c_",
-        "a_b@c_",
-        "https://a.b/(",
-    ] {
-        assert_linear(unit, 1 << 8, |size| {
-            let source = unit.repeat(size) + "\n";
-            timed(|| {
-                let document =
-                    base_markdown::Document::parse(source.as_str(), &ParseOptions::default())
-                        .unwrap();
-                to_markdown(&document).unwrap();
-            })
-        });
     }
 }

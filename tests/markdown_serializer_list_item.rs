@@ -12,7 +12,6 @@ use base_markdown::{
 use pretty_assertions::assert_eq;
 use support::fixture::{canonical, List, ListItem, Node, Paragraph, Root, Text, ThematicBreak};
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
-use support::linear::{assert_linear, timed, SCALE};
 
 #[test]
 fn list_item() {
@@ -491,117 +490,6 @@ where
         start: None,
         spread: false,
     })
-}
-
-/// Assert that serializing the document `build` makes takes linear time with each of `options`.
-fn assert_serializes_linear(
-    label: &str,
-    size: usize,
-    options: &[(&str, Options)],
-    build: impl Fn(usize) -> Document<String>,
-) {
-    let small = build(size);
-    let large = build(SCALE * size);
-    for (name, options) in options {
-        assert_linear((label, name), size, |count| {
-            let document = if count == size { &small } else { &large };
-            timed(|| {
-                to_markdown_with_options(document, options).unwrap();
-            })
-        });
-    }
-}
-
-/// A task item of `size` definitions and then `4 * size` paragraphs, each holding a task marker.
-fn task_item_after_definitions(size: usize) -> Document<String> {
-    let mut document = Document::parse(String::new(), &ParseOptions::gfm()).unwrap();
-    let root = document.root();
-    let list = document
-        .append_child(
-            root,
-            EventKind::Start(Tag::List {
-                start: None,
-                tight: true,
-            }),
-        )
-        .unwrap();
-    let item = document
-        .append_child(
-            list,
-            EventKind::Start(Tag::Item {
-                block_end: false,
-                checked: Some(true),
-            }),
-        )
-        .unwrap();
-    for index in 0..size {
-        document
-            .append_child(
-                item,
-                EventKind::Definition {
-                    // Each its own label, as an edit adds no second definition of one.
-                    label: Value::from(format!("a{}", index)),
-                    destination: Value::Literal("/u"),
-                    title: None,
-                },
-            )
-            .unwrap();
-    }
-    for _ in 0..4 * size {
-        let paragraph = document
-            .append_child(item, EventKind::Start(Tag::Paragraph { tight: false }))
-            .unwrap();
-        document
-            .append_child(paragraph, EventKind::Text(Value::Literal(" a")))
-            .unwrap();
-    }
-    document
-}
-
-#[test]
-fn serializing_list_items_is_linear() {
-    let default = [("default", Options::default())];
-    type Build = fn(usize) -> String;
-    let cases: [(&str, Build); 4] = [
-        ("headings in one item", |size| {
-            format!("- {}", "# a\n  ".repeat(size))
-        }),
-        ("footnote definitions in one item", |size| {
-            format!("- {}", "[^a]: b\n  ".repeat(size))
-        }),
-        ("nested lists between paragraphs", |size| {
-            format!("- a\n{}", "  - b\n\n  c\n".repeat(size))
-        }),
-        ("nested items with several blocks", |size| {
-            format!("- a\n  - b\n{}", "    # c\n    d\n    - e\n".repeat(size))
-        }),
-    ];
-    let parse = ParseOptions::gfm();
-    for (label, build) in cases {
-        assert_serializes_linear(label, 1 << 8, &default, |size| {
-            Document::parse(build(size), &parse).unwrap()
-        });
-    }
-    // Finding the task marker does not depend on the options. With these, definitions are joined
-    // without a blank line.
-    let both = [
-        ("default", Options::default()),
-        (
-            "combination",
-            Options {
-                fences: false,
-                list_item_indent: IndentOptions::Mixed,
-                tight_definitions: true,
-                ..Options::default()
-            },
-        ),
-    ];
-    assert_serializes_linear(
-        "task markers after definitions",
-        1 << 8,
-        &both,
-        task_item_after_definitions,
-    );
 }
 
 #[test]

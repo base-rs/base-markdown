@@ -6,13 +6,7 @@ use crate::definitions::scratch_reference_key;
 use crate::document::{next_descendant, Node, NodeId};
 use crate::stream::{Content, EventKind, Tag, Target, Text};
 use crate::ReferenceKind;
-use alloc::{
-    boxed::Box,
-    collections::{BTreeMap, VecDeque},
-    string::String,
-    vec,
-    vec::Vec,
-};
+use alloc::{boxed::Box, collections::BTreeMap, string::String, vec, vec::Vec};
 
 /// The definition each label of the attached document names, built in one pass in document
 /// order.
@@ -54,7 +48,7 @@ pub(crate) struct Scratch {
 #[derive(Clone, Debug)]
 struct Entry {
     first: NodeId,
-    more: VecDeque<NodeId>,
+    more: crate::work::Deque<NodeId>,
 }
 
 impl Entry {
@@ -164,6 +158,7 @@ impl KeyMap {
             return None;
         }
         for slot in self.group(hash) {
+            crate::work::step!(1);
             let (at, low) = self.slots[slot];
             if at == EMPTY {
                 break;
@@ -218,7 +213,7 @@ impl KeyMap {
             name: start..self.names.len(),
             entry: Entry {
                 first: id,
-                more: VecDeque::new(),
+                more: crate::work::Deque::new(),
             },
         });
         self.place(at);
@@ -229,7 +224,10 @@ impl KeyMap {
     fn place(&mut self, at: usize) {
         let index: u32 = core::convert::TryFrom::try_from(at).expect("fewer keys than u32::MAX");
         let hash = self.entries[at].hash;
-        if let Some(slot) = self.group(hash).find(|&slot| self.slots[slot].0 == EMPTY) {
+        if let Some(slot) = self.group(hash).find(|&slot| {
+            crate::work::step!(1);
+            self.slots[slot].0 == EMPTY
+        }) {
             self.slots[slot] = (index, low_bits(hash));
         } else {
             let key = String::from(self.name(&self.entries[at]));
@@ -989,6 +987,9 @@ fn push_label(output: &mut String, label: &str, options: &crate::ParseOptions) {
 }
 
 #[cfg(test)]
+mod linear_tests;
+
+#[cfg(test)]
 mod tests {
     extern crate std;
     use super::{hash_key, KeyMap, NodeId, GROUP};
@@ -1073,26 +1074,17 @@ mod tests {
         );
     }
 
-    // Keys of one hash take time logarithmic in them each to file and find, as the overflow is
-    // ordered: 8 times as many grow the time at most a few times as much more than keys that
-    // spread over the groups do.
+    // Keys of one hash probe no more slots each to file and find than keys that spread over the
+    // groups do, as those past a full group go to the overflow, which is ordered, rather than
+    // probing on through other groups.
     #[test]
     fn keys_of_one_hash_take_logarithmic_time() {
-        let time = |count: usize, hash: &dyn Fn(&str) -> u64| {
-            (0..5)
-                .map(|_| {
-                    let start = std::time::Instant::now();
-                    drop(file_and_find(count, hash));
-                    start.elapsed().as_secs_f64()
-                })
-                .fold(f64::MAX, f64::min)
-        };
-        let ratio = || {
-            let one = |_: &str| 7;
-            let spread = |key: &str| hash_key(key);
-            (time(1 << 12, &one) / time(1 << 9, &one))
-                / (time(1 << 12, &spread) / time(1 << 9, &spread))
-        };
-        assert!((0..3).any(|_| ratio() < 2.5));
+        use crate::work::tests::{assert_against_control, counted};
+        assert_against_control(
+            "keys of one hash",
+            1 << 9,
+            |count| counted(|| drop(file_and_find(count, |_| 7))),
+            |count| counted(|| drop(file_and_find(count, hash_key))),
+        );
     }
 }

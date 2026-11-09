@@ -320,7 +320,9 @@ fn kind(character: Option<char>) -> Kind {
 
 /// Whether `text` ends with an odd number of backslashes, which escape the next character.
 pub(super) fn escapes_next(text: &str) -> bool {
-    text.bytes().rev().take_while(|&byte| byte == b'\\').count() % 2 == 1
+    let backslashes = text.bytes().rev().take_while(|&byte| byte == b'\\').count();
+    crate::work::step!(backslashes + 1);
+    backslashes % 2 == 1
 }
 
 /// Whether `text` ends with a domain that a literal `www.`, `http://` or `https://` would turn into a link.
@@ -330,6 +332,7 @@ fn literal_domain(text: &str) -> bool {
         .rev()
         .take_while(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_'))
         .count();
+    crate::work::step!(domain + 1);
     let (prefix, domain) = text.split_at(text.len() - domain);
     domain
         .get(..4)

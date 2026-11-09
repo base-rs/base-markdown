@@ -206,8 +206,11 @@ impl EventParser<'_> {
                 self.closing = self.cursor == 0;
                 // Parsed values store every line ending as LF, so the output line ending is LF too, and
                 // only a document without line endings leaves it to the renderer's default.
-                let line_ending = memchr::memchr2(b'\r', b'\n', self.source.as_bytes())
-                    .map(|_| LineEnding::LineFeed);
+                let line_ending = crate::work::searched!(
+                    memchr::memchr2(b'\r', b'\n', self.source.as_bytes()),
+                    self.source.len(),
+                )
+                .map(|_| LineEnding::LineFeed);
                 Some(Ok(Event {
                     kind: EventKind::Start(Tag::Document {
                         line_ending,
@@ -528,3 +531,6 @@ impl EventParser<'_> {
         }))
     }
 }
+
+#[cfg(test)]
+mod linear_tests;

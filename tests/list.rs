@@ -15,7 +15,6 @@ use support::fixture::Position;
 use support::fixture::{
     Blockquote, FootnoteDefinition, Heading, List, ListItem, Node, Paragraph, Root, Text,
 };
-use support::linear::{assert_linear, timed};
 
 #[test]
 fn list() -> Result<(), message::Message> {
@@ -888,23 +887,6 @@ fn item_spread_ignores_lines_of_detached_blocks() {
             assert!(!spread(&document, outer), "{:?}", source);
         }
     }
-}
-
-#[test]
-fn item_spread_counts_a_blank_line_after_a_nested_list_in_linear_time() {
-    // The blank line is found through the last blocks of nested lists, each looked through once.
-    assert_linear("blank line after nested lists", 1 << 9, |size| {
-        let source = format!("{}a\n\n  # h\n", "- ".repeat(size));
-        let document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
-        timed(|| {
-            assert_eq!(
-                items(&document, document.root())
-                    .filter(|&item| spread(&document, item))
-                    .count(),
-                1
-            );
-        })
-    });
 }
 
 #[test]

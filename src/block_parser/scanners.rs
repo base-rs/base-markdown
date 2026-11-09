@@ -227,7 +227,7 @@ pub(crate) fn scan_blank_line(bytes: &[u8]) -> Option<usize> {
 }
 
 pub(crate) fn scan_nextline(bytes: &[u8]) -> usize {
-    memchr2(b'\r', b'\n', bytes).map_or(bytes.len(), |index| {
+    crate::work::searched!(memchr2(b'\r', b'\n', bytes), bytes.len()).map_or(bytes.len(), |index| {
         index + scan_eol(&bytes[index..]).unwrap()
     })
 }

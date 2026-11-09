@@ -209,7 +209,9 @@ impl Blocks {
             source,
             options,
             blocks: Self {
-                nodes: Vec::with_capacity(source.len() / 64 + 1),
+                // Sized for the part prepared, as each push of an incremental parse prepares only
+                // what follows its last clean block.
+                nodes: Vec::with_capacity((source.len() - start) / 64 + 1),
                 codes: Vec::new(),
             },
             open: vec![0],

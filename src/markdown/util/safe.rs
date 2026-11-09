@@ -18,7 +18,9 @@ pub fn write_backslashes(value: &str, after: &str, results: &mut String) {
     let mut start = 0;
     let bytes = value.as_bytes();
     let mut at = 0;
-    while let Some(offset) = memchr::memchr(b'\\', &bytes[at..]) {
+    while let Some(offset) =
+        crate::work::searched!(memchr::memchr(b'\\', &bytes[at..]), bytes.len() - at)
+    {
         let position = at + offset;
         let next = bytes.get(position + 1).or_else(|| after.as_bytes().first());
         if next.is_some_and(u8::is_ascii_punctuation) {

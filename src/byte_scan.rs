@@ -51,6 +51,8 @@ impl AsciiSet {
             low,
         }
     }
+    /// The index of the first byte of `bytes` in the set, or its length when there is none,
+    /// counting the bytes read up to and including it.
     #[inline]
     pub(crate) fn find(&self, bytes: &[u8]) -> usize {
         #[cfg(not(all(target_arch = "aarch64", target_feature = "neon")))]
@@ -77,6 +79,7 @@ impl AsciiSet {
                     if vmaxvq_u8(matches) != 0 {
                         // A matched lane retains its byte index; other lanes become 255. Compute the minimum only for a matching chunk so safe runs keep their detection-only loop.
                         let first = vminvq_u8(vbslq_u8(matches, indices, vdupq_n_u8(u8::MAX)));
+                        crate::work::step!(offset + usize::from(first) + 1);
                         return offset + usize::from(first);
                     }
                     offset += 16;
@@ -84,10 +87,13 @@ impl AsciiSet {
             }
         }
         offset
-            + bytes[offset..]
-                .iter()
-                .position(|byte| self.members[usize::from(*byte)])
-                .unwrap_or(bytes.len() - offset)
+            + crate::work::searched!(
+                bytes[offset..]
+                    .iter()
+                    .position(|byte| self.members[usize::from(*byte)]),
+                bytes.len() - offset
+            )
+            .unwrap_or(bytes.len() - offset)
     }
 }
 

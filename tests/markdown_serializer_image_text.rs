@@ -5,12 +5,9 @@
 //! footnote calls, links and images in it, reads back as itself (#190).
 
 mod support;
-use base_markdown::{
-    normalize_markdown, to_html_with_options, to_markdown, Document, Options, ParseOptions,
-};
+use base_markdown::{normalize_markdown, to_html_with_options, to_markdown, Document, Options};
 use pretty_assertions::assert_eq;
 use support::fixture::canonical;
-use support::linear::{assert_linear, timed};
 
 /// Parse `source`, normalize it and write it, then check that what is written reads back as the
 /// same tree, renders the same HTML and is written again the same.
@@ -187,30 +184,4 @@ fn images_nested_in_images_read_back_up_to_the_limit() {
     // Deeper, it is an error like any content nested too deep, not a panic.
     let error = normalize_markdown(&nested(200)).unwrap_err();
     assert_eq!(error.rule_id, "nesting-too-deep");
-}
-
-#[test]
-fn image_text_is_linear() {
-    let options = ParseOptions::gfm();
-    let check = |source: &str| {
-        let mut document = Document::parse(source, &options).unwrap();
-        document.normalize();
-        let markdown = to_markdown(&document).unwrap();
-        assert_eq!(markdown, format!("{source}\n"));
-    };
-    // A long chain of links, calls and images in one image's text.
-    assert_linear("links in image text", 1 << 6, |size| {
-        let source = format!(
-            "![{}](/i)\n\n[^1]: x",
-            "[a](/v) ![b](/w) [^1] *c* ".repeat(size)
-        );
-        timed(|| check(&source))
-    });
-    // Images nested in images, as deep as they can be written, each with a link in its text, side
-    // by side. The size is how deep each nest is, so it grows up to the limit.
-    assert_linear("images in image text", 15, |size| {
-        let nest = format!("{}a{}", "![[l](/v) ".repeat(size), "](u)".repeat(size));
-        let source = vec![nest; 8].join(" ");
-        timed(|| check(&source))
-    });
 }

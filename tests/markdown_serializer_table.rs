@@ -7,7 +7,6 @@ use base_markdown::{
     to_html_with_options, to_markdown, Document, Options, ParseOptions, ReferenceKind,
 };
 use pretty_assertions::assert_eq;
-use support::linear::{assert_linear, timed};
 
 #[test]
 fn table_cells_escape_like_paragraphs() {
@@ -270,29 +269,7 @@ fn synthetic_delimiter_rows_in_paragraphs_stay_text() {
     }
 }
 
-/// Checking each line of a block for a delimiter row, and escaping the ones that are, takes time
-/// linear in the block (#146).
-#[test]
-fn delimiter_row_escapes_scale_linearly() {
-    type Build = fn(usize) -> String;
-    let cases: [(&str, Build); 3] = [
-        ("rows", |count| format!("- a\n{}", "| - |\n".repeat(count))),
-        ("headers", |count| {
-            format!("- a\n{}| - |\n", "| b\n".repeat(count))
-        }),
-        ("quoted", |count| {
-            format!("> a\n{}", "| - |\n".repeat(count))
-        }),
-    ];
-    for (label, build) in cases {
-        assert_linear(label, 1 << 7, |count| {
-            let document = Document::parse(build(count), &ParseOptions::gfm()).unwrap();
-            timed(|| {
-                to_markdown(&document).unwrap();
-            })
-        });
-    }
-}
+// That checking each line of a block for a delimiter row is linear (#146) is checked by counting work, in `src/markdown/linear_tests.rs`.
 
 /// Output is read with the document's own options (#257), so a table parsed as text without
 /// them is written as it is, and reads back as text under them; under options with tables, its

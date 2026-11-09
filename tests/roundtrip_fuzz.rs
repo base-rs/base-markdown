@@ -19,19 +19,17 @@ mod support;
 
 use base_markdown::{
     stream::{EventKind, Tag, Text as EventText},
-    Document, IncrementalParser, MarkdownOptions, ParseOptions,
+    Document, MarkdownOptions, ParseOptions,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::PoisonError;
 use support::corpus::{self, Random};
 use support::fixture::{
     AlignKind, Break, Delete, Emphasis, Heading, InlineCode, Link, Node, Paragraph, Root, Strong,
     Table, TableCell, TableRow, Text,
 };
-use support::linear::{assert_linear, timed, TIMING};
 use support::round_trip::{fail, round_trip, Failure, Outcome};
 
 /// Inputs per corpus when `FUZZ_INPUTS` is not set; the baseline records failures at this size.
@@ -546,8 +544,6 @@ const BLESS: &str = "FUZZ_BLESS=1 cargo test --test roundtrip_fuzz round_trip_fu
 
 #[test]
 fn round_trip_fuzz() {
-    // The fuzz threads would load the machine while a scaling test times.
-    let _timing = TIMING.lock().unwrap_or_else(PoisonError::into_inner);
     let count = environment("FUZZ_INPUTS").map_or(DEFAULT_INPUTS, |value| {
         value
             .parse()
@@ -736,24 +732,4 @@ fn baseline_rejects_malformed_lines() {
     assert!(parse("soup 1\n"));
     assert!(parse("soup x 0 0123456789abcdef\n"));
     assert!(parse("soup 1 0 digest\n"));
-}
-
-#[test]
-fn incremental_parsing_is_linear() {
-    // Each push completes a line, so each prepares the source again from the last clean block, which must not scan the accumulated source for a CR. With CRLF and CR endings, that scan finds one at once, so only LF endings are timed.
-    for unit in ["word\n\n"] {
-        assert_linear(unit, 1 << 7, |size| {
-            let options = ParseOptions::default();
-            let mut events = 0;
-            let elapsed = timed(|| {
-                let mut parser = IncrementalParser::new(&options);
-                for _ in 0..size * 16 {
-                    events += parser.push(unit).count();
-                }
-                events += parser.finish().count();
-            });
-            assert_eq!(events, size * 16 * 4);
-            elapsed
-        });
-    }
 }

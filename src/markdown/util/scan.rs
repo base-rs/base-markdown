@@ -9,7 +9,8 @@ use core::ops::Range;
 pub fn marker_runs(bytes: &[u8], marker: u8) -> impl Iterator<Item = Range<usize>> + '_ {
     let mut at = 0;
     core::iter::from_fn(move || {
-        let offset = memchr::memchr(marker, &bytes[at..])?;
+        let offset =
+            crate::work::searched!(memchr::memchr(marker, &bytes[at..]), bytes.len() - at)?;
         let start = at + offset;
         at = marker_run_end(bytes, start + 1, marker);
         Some(start..at)
@@ -19,6 +20,7 @@ pub fn marker_runs(bytes: &[u8], marker: u8) -> impl Iterator<Item = Range<usize
 // The first matching byte is already known. Continue from the following byte.
 pub fn marker_run_end(bytes: &[u8], mut at: usize, marker: u8) -> usize {
     while bytes.get(at) == Some(&marker) {
+        crate::work::step!(1);
         at += 1;
     }
     at

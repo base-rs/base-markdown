@@ -13,6 +13,8 @@ use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec, vec::Vec};
 use core::{num::NonZeroUsize, ops::Range};
 
 mod insert;
+#[cfg(test)]
+mod linear_tests;
 pub use insert::{FootnotePolicy, InsertOptions, Inserted};
 
 /// A stable index into a document's contiguous node arena.
@@ -25,6 +27,7 @@ impl NodeId {
         Self(NonZeroUsize::new(index + 1).expect("an arena index cannot reach usize::MAX"))
     }
     pub(crate) fn index(self) -> usize {
+        crate::work::read();
         self.0.get() - 1
     }
 }
@@ -2098,6 +2101,7 @@ impl<S: AsRef<str>> Document<S> {
             for child in self.children(parent) {
                 leaving.extend(crate::bindings::definitions(&self.nodes, child));
             }
+            crate::work::step!(leaving.len());
             leaving.sort_unstable();
         }
         let attached = self.attached(parent);
@@ -4324,6 +4328,7 @@ impl<S: AsRef<str>> Document<S> {
             // stay for each node kept, and an item's ending is its last child other than a
             // definition, a footnote definition or a separator, which are all that go or move.
             self.set_children(parent, &kept);
+            crate::work::step!(kept.len());
             tails.extend_from_slice(&kept);
         }
         // What follows a list or footnote definition kept above may have changed, so the
@@ -4531,6 +4536,7 @@ impl<S: AsRef<str>> Document<S> {
         if lists.is_empty() {
             return;
         }
+        crate::work::step!(lists.len());
         lists.sort_unstable();
         let mut current = Some(root);
         while let Some(id) = current {
@@ -4748,6 +4754,7 @@ impl<S: AsRef<str>> Document<S> {
         for &id in moved {
             self.nodes[id.index()].parent = None;
         }
+        crate::work::step!(holders.len());
         holders.sort_unstable();
         holders.dedup();
         let mut children = Vec::new();

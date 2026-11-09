@@ -5,5 +5,4 @@
 
 pub mod corpus;
 pub mod fixture;
-pub mod linear;
 pub mod round_trip;

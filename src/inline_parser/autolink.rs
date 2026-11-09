@@ -84,6 +84,7 @@ impl Host {
         let mut at = start;
         let mut clean = start;
         while at < boundary {
+            crate::work::step!(1);
             match bytes[at] {
                 b'.' | b'_' if at >= tail => break,
                 b'_' => {
@@ -175,6 +176,7 @@ pub(crate) fn literal_markers(text: &str, from: usize, www_start: bool, markers:
     // Literals whose domains are invalid, which an escape before a later `@` can make valid.
     let mut invalid = Vec::new();
     for marker in memchr::memchr2_iter(b':', b'.', &bytes[from..]).map(|at| from + at) {
+        crate::work::step!(1);
         let Some((start, domain_start, _)) = web_prefix(bytes, 0, marker, bytes.len()) else {
             continue;
         };
@@ -199,6 +201,7 @@ pub(crate) fn literal_markers(text: &str, from: usize, www_start: bool, markers:
     for at in memchr::memchr_iter(b'@', &bytes[from..]).map(|at| from + at) {
         let mut local = at;
         while local > 0 && local_part(bytes[local - 1]) {
+            crate::work::step!(1);
             local -= 1;
         }
         // An escaped byte ends the run of text an email is found in, and the next run starts
@@ -208,12 +211,14 @@ pub(crate) fn literal_markers(text: &str, from: usize, www_start: bool, markers:
             .rev()
             .take_while(|&&byte| byte == b'\\')
             .count();
+        crate::work::step!(backslashes);
         let mut min = if backslashes == 0 {
             0
         } else {
             local + backslashes % 2
         };
         while next < web && markers[next] < at {
+            crate::work::step!(1);
             if markers[next] >= local {
                 min = markers[next] + 1;
             }
@@ -231,6 +236,7 @@ pub(crate) fn literal_markers(text: &str, from: usize, www_start: bool, markers:
     let mut next = web;
     for (marker, domain_start, end) in invalid {
         while next < emails && markers[next] < end {
+            crate::work::step!(1);
             next += 1;
         }
         let Some(&at) = markers[web..emails].get(next - web) else {
@@ -267,6 +273,7 @@ pub(super) fn web(
     let mut opening = 0;
     let mut closing = 0;
     while at < boundary {
+        crate::work::step!(1);
         let byte = bytes[at];
         if at >= tail && is_trailing(byte) && (byte != b')' || closing >= opening) {
             break;
@@ -353,6 +360,7 @@ fn terminal_suffix(source: &str, start: usize, limit: usize) -> (usize, usize) {
     let mut at = start;
     let mut tail = start;
     while at < limit {
+        crate::work::step!(1);
         match bytes[at] {
             // A backslash is never part of a host or URI, and browsers read it as `/`, so it ends the literal like the end of the text would.
             b'<' | b'\\' => break,
@@ -364,6 +372,7 @@ fn terminal_suffix(source: &str, start: usize, limit: usize) -> (usize, usize) {
             b'&' => {
                 let mut end = at + 1;
                 while end < limit && bytes[end].is_ascii_alphabetic() {
+                    crate::work::step!(1);
                     end += 1;
                 }
                 if end > at + 1 && bytes.get(end) == Some(&b';') && end < limit {
@@ -437,6 +446,7 @@ pub(super) fn email(source: &str, min: usize, at: usize, limit: usize) -> Option
     let bytes = source.as_bytes();
     let mut start = at;
     while start > min && local_part(bytes[start - 1]) {
+        crate::work::step!(1);
         start -= 1;
     }
     // Browsers read a backslash as `/`, so it blocks the local part as a path separator would.
@@ -459,6 +469,7 @@ pub(super) fn email(source: &str, min: usize, at: usize, limit: usize) -> Option
     let mut end = at + 1;
     let mut dot = false;
     while end < limit {
+        crate::work::step!(1);
         match bytes[end] {
             b'-' | b'0'..=b'9' | b'A'..=b'Z' | b'_' | b'a'..=b'z' => {}
             b'/' if resource => {}

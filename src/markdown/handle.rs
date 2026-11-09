@@ -71,6 +71,7 @@ impl State<'_> {
         let end = self.output.len().saturating_sub(1);
         if self.output.ends_with([' ', '\t']) && super::attention::escapes_next(&self.output[..end])
         {
+            crate::work::step!(self.output.len() - end);
             self.output.insert(end, '\\');
         }
         match self.output.chars().next_back() {
@@ -214,7 +215,8 @@ impl State<'_> {
             self.container_phrasing(document, node, &Info::new("\n", "\n"))?;
             self.exit();
             let content = &self.output[start..];
-            let last_line = content.rfind('\n').map_or(0, |index| index + 1);
+            let last_line = crate::work::searched_back!(content.rfind('\n'), content.len())
+                .map_or(0, |index| index + 1);
             let size = content.len() - last_line;
             self.output.push('\n');
             self.output.extend(core::iter::repeat_n(
@@ -237,6 +239,7 @@ impl State<'_> {
             .next()
             .filter(|c| matches!(c, ' ' | '\t'))
         {
+            crate::work::step!(self.output.len() - content_start);
             self.output.replace_range(
                 content_start..content_start + 1,
                 if character == ' ' { "&#x20;" } else { "&#x9;" },
@@ -476,6 +479,7 @@ impl State<'_> {
         if (image || footnotes && constructs.label_start_link)
             && self.output[text_start..].starts_with('^')
         {
+            crate::work::step!(self.output.len() - text_start);
             self.output.insert(text_start, '\\');
         }
         self.exit();
@@ -536,12 +540,19 @@ impl State<'_> {
         } else {
             // The markers of the items this list starts, which are written but not yet followed
             // by their spaces, are on the line of the first item's marker too.
-            let line = &self.output[self.output.rfind('\n').map_or(0, |index| index + 1)..];
+            let line = &self.output[crate::work::searched_back!(
+                self.output.rfind('\n'),
+                self.output.len()
+            )
+            .map_or(0, |index| index + 1)..];
             // A `-` or `*` marker would make a line of indented code such as `--` a thematic
             // break with it.
             let breaks = |marker: char| {
                 marker != '+'
                     && code_lines.iter().any(|&(first, code)| {
+                        // The line of markers, for the first item, and the line of code are
+                        // scanned.
+                        crate::work::step!(usize::from(first) * line.len() + code.len() + 1);
                         let mut count = 1;
                         // A thematic break is read in any of the containers whose markers are on
                         // the line, so the markers count back to the first that is not `marker`.
@@ -880,13 +891,19 @@ fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
 /// Escape each pipe after `start` that an even run of backslashes leaves splitting a table cell.
 fn escape_table_pipes(output: &mut String, start: usize) {
     let mut position = start;
-    while let Some(offset) = memchr::memchr(b'|', &output.as_bytes()[position..]) {
+    while let Some(offset) = crate::work::searched!(
+        memchr::memchr(b'|', &output.as_bytes()[position..]),
+        output.len() - position,
+    ) {
         let pipe = position + offset;
         let backslashes = output.as_bytes()[start..pipe]
             .iter()
             .rev()
             .take_while(|&&byte| byte == b'\\')
             .count();
+        // The backslashes before the pipe are scanned, and what follows it moved when it is
+        // escaped.
+        crate::work::step!(backslashes + output.len() - pipe);
         if backslashes % 2 == 0 {
             output.insert(pipe, '\\');
             position = pipe + 2;

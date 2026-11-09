@@ -335,6 +335,7 @@ impl<'a> State<'a> {
         if block {
             if let Some(colon) = self.definition_colon.take() {
                 if crate::block_parser::starts_definition(&self.output[start..], &self.parse) {
+                    crate::work::step!(self.output.len() - colon);
                     self.output.insert(colon, '\\');
                 }
             }
@@ -346,6 +347,7 @@ impl<'a> State<'a> {
                         &self.parse,
                     )
                 {
+                    crate::work::step!(self.output.len() - start);
                     self.output.insert(start, '\\');
                 }
             }
@@ -358,6 +360,7 @@ impl<'a> State<'a> {
                     )
                 {
                     // Indented, the line continues the definition's paragraph (#193).
+                    crate::work::step!(self.output.len() - start);
                     self.output.insert_str(start, "    ");
                 } else if let Some(&first) = children.first() {
                     self.separate_html_start(document, first, start);
@@ -387,6 +390,7 @@ impl<'a> State<'a> {
                 &self.parse,
             )
         {
+            crate::work::step!(self.output.len() - end);
             self.output.replace_range(end..end + 1, "&#xA;");
         }
     }
@@ -398,13 +402,17 @@ impl<'a> State<'a> {
     /// the source, but not where a container prefix is written before it (#146). An escaped
     /// line is the head the next line is judged under. Without `Constructs::table`, no line is.
     fn escape_delimiter_rows(&mut self, start: usize, after_definition: bool) {
+        // The block is scanned for a line ending, and then line by line when it has one, where
+        // tables are read, and counted as scanned where they are not.
+        crate::work::step!(self.output.len() - start);
         if !self.parse.constructs.table || !after_definition && !self.output[start..].contains('\n')
         {
             return;
         }
         let mut header = after_definition.then(|| {
             let end = start - 1;
-            self.output[..end].rfind('\n').map_or(0, |index| index + 1)..end
+            crate::work::searched_back!(self.output[..end].rfind('\n'), end)
+                .map_or(0, |index| index + 1)..end
         });
         let mut header_escaped = false;
         let mut escapes = Vec::new();
@@ -414,8 +422,10 @@ impl<'a> State<'a> {
                 .find('\n')
                 .map_or(self.output.len(), |index| at + index);
             let line = &self.output[at..end];
+            crate::work::step!(line.len() + 1);
             header_escaped = header.is_some_and(|header| {
                 let header = &self.output[header];
+                crate::work::step!(header.len());
                 if header_escaped {
                     let mut written = String::with_capacity(header.len() + 1);
                     written.push('\\');
@@ -437,6 +447,7 @@ impl<'a> State<'a> {
         if escapes.is_empty() {
             return;
         }
+        crate::work::step!(self.output.len() - escapes[0]);
         let tail = self.output.split_off(escapes[0]);
         let mut cursor = escapes[0];
         for &position in &escapes {
@@ -574,10 +585,9 @@ impl<'a> State<'a> {
         if self.output.len() == length {
             return;
         }
-        let reference = self
-            .output
-            .rfind('&')
+        let reference = crate::work::searched_back!(self.output.rfind('&'), self.output.len())
             .expect("an encoded character is written as a reference");
+        crate::work::step!(self.output.len() - reference);
         let tail = self.output.split_off(reference);
         attention::escape_tilde_end(&mut self.output, start);
         self.output.push_str(&tail);
@@ -598,6 +608,7 @@ impl<'a> State<'a> {
         };
         let end = self.output.len() - 1;
         if last.is_ascii_punctuation() && attention::escapes_next(&self.output[start..end]) {
+            crate::work::step!(self.output.len() - (end - 1));
             self.output.remove(end - 1);
         }
         self.encode_end(start, char::from(last));
@@ -614,8 +625,11 @@ impl<'a> State<'a> {
         self.output.push_str(lines.next().unwrap_or_default());
         let mut at = 0;
         for line in lines {
-            at += value[at..].find('\n').unwrap() + 1;
-            let header = self.output.rfind('\n').map_or(0, |index| index + 1);
+            at += crate::work::searched!(value[at..].find('\n'), value.len() - at).unwrap() + 1;
+            let header = crate::work::searched_back!(self.output.rfind('\n'), self.output.len())
+                .map_or(0, |index| index + 1);
+            // The line before is read as a table's head.
+            crate::work::step!(self.output.len() - header);
             let row = self.parse.constructs.table
                 && crate::block_parser::starts_table(&self.output[header..], line);
             self.output.push('\n');
@@ -645,6 +659,7 @@ impl<'a> State<'a> {
         if self.parse.inline_code_info
             && crate::util::inline_code_info::before(phrasing, phrasing.len()).is_some()
         {
+            crate::work::step!(1);
             self.output.insert(self.output.len() - 1, '\\');
         }
     }
@@ -662,14 +677,16 @@ impl<'a> State<'a> {
             return;
         }
         let reference = start
-            + self.output[start..]
-                .find(';')
+            + crate::work::searched!(self.output[start..].find(';'), self.output.len() - start)
                 .expect("an encoded character is written as a reference")
             + 1;
         let run = self.output[reference..]
             .bytes()
             .take_while(|&byte| byte == b'~')
             .count();
+        // The run is scanned, and the text after it, which is the rest of this text, is moved
+        // when it is escaped.
+        crate::work::step!(self.output.len() - reference + 1);
         if run > 0 {
             let escaped = "\\~".repeat(run);
             self.output
@@ -809,6 +826,7 @@ impl<'a> State<'a> {
                                 &self.output.as_bytes()[start..],
                             ) =>
                         {
+                            crate::work::step!(self.output.len() - length);
                             self.output.insert(length, '\\');
                         }
                         // `[r]:` starts a definition only if a destination follows, which
@@ -1142,6 +1160,7 @@ impl<'a> State<'a> {
                 // continue to, so its first cell starts with an escape. Every cell of such a row
                 // is `-` with optional colons, so the first starts after `| `.
                 if crate::block_parser::delimiter_row(&self.output.as_bytes()[start..]) {
+                    crate::work::step!(self.output.len() - (start + 2));
                     self.output.insert(start + 2, '\\');
                 }
                 self.output.push_str("\n| ");
@@ -1520,6 +1539,7 @@ impl<'a> State<'a> {
         let end = start + input.len();
         self.escapes.clear();
         super::escape::collect(before, input, info.after, &self.stack, &mut self.escapes);
+        crate::work::step!(self.escapes.len());
         self.escapes.sort_unstable_by_key(|entry| entry.0);
         self.escapes.dedup_by(|right, left| {
             if right.0 == left.0 {
@@ -1670,8 +1690,7 @@ impl<'a> State<'a> {
             // escapes, so it runs to the next `>`.
             let mut next = 0;
             dropped.retain(|&escape| {
-                let end = output[escape..]
-                    .find('>')
+                let end = crate::work::searched!(output[escape..].find('>'), output.len() - escape)
                     .map_or(output.len(), |end| escape + end);
                 while markers.get(next).is_some_and(|&marker| marker < escape) {
                     next += 1;
@@ -1711,6 +1730,7 @@ impl<'a> State<'a> {
 fn starts_email(rest: &str, position: usize, applied: &[usize]) -> bool {
     let mut link = crate::util::autolink::Autolink::default();
     for (offset, &byte) in rest.as_bytes().iter().enumerate().skip(1) {
+        crate::work::step!(1);
         if applied.binary_search(&(position + offset)).is_ok() {
             return false;
         }

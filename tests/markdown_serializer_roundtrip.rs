@@ -10,7 +10,6 @@ mod support;
 use base_markdown::{Document, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::canonical;
-use support::linear::{assert_linear, timed};
 
 #[test]
 fn normalizes_unordered_list_markers_by_default() {
@@ -557,20 +556,6 @@ fn text_angle_brackets_escape_only_before_email_autolinks() {
             assert_eq!(to(&reparsed).unwrap(), first, "{:?}", input);
         }
     }
-}
-
-#[test]
-fn text_angle_bracket_email_scans_stay_linear() {
-    // Each scan stops before the next `<`, so doubling the input roughly doubles the time.
-    let time = |count: usize| {
-        let input = "<1.2-3 ".repeat(count) + "x\n";
-        let tree = Document::parse(&input, &Default::default()).unwrap();
-        let mut output = String::new();
-        let elapsed = timed(|| output = to(&tree).unwrap());
-        assert_eq!(output, input);
-        elapsed
-    };
-    assert_linear("<1.2-3 ", 1 << 9, time);
 }
 
 #[test]

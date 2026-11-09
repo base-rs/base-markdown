@@ -18,6 +18,7 @@ pub(crate) fn before(bytes: &[u8], code_start: usize) -> Option<(usize, &str)> {
     while start > 0 && is_info_char(bytes[start - 1]) {
         start -= 1;
     }
+    crate::work::step!(end - start + 1);
 
     if start == end || !bytes.get(start).copied().is_some_and(is_info_start_char) {
         return None;

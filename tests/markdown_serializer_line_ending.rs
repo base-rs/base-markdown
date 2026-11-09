@@ -17,7 +17,6 @@ use pretty_assertions::assert_eq;
 use support::fixture::{
     canonical, AlignKind, Break, Node, Paragraph, Root, Table, TableCell, TableRow, Text,
 };
-use support::linear::{assert_linear, timed};
 
 /// Serialize the normalized `document`, and check that the output is `expected`, that it parses
 /// and normalizes back to the same tree, and that serializing that gives the same output.
@@ -594,35 +593,6 @@ fn carriage_return_references_round_trip_in_text_and_titles() {
         base_markdown::normalize_markdown("a&#xD;\r\nb").unwrap(),
         "a&#xD; b\n"
     );
-}
-
-#[test]
-fn encoding_line_endings_is_linear() {
-    let options = ParseOptions::default();
-    type Build = fn(usize) -> String;
-    // Whether a line ending is followed only by the end of the text is decided without scanning the rest, and each cell of a wide table is written without scanning back to the start of its line.
-    let cases: [(&str, Build); 2] = [
-        ("consecutive line endings", |count| {
-            format!("a{}b\n", "&#xA;".repeat(count))
-        }),
-        ("table cells", |count| {
-            format!(
-                "{}|\n{}|\n{}|\n",
-                "| a ".repeat(count),
-                "| - ".repeat(count),
-                "| &#xA;a&#xA;&#xA;b&#xA; ".repeat(count)
-            )
-        }),
-    ];
-    for (label, build) in cases {
-        assert_linear(label, 1 << 7, |count| {
-            let mut document = Document::parse(build(count), &options).unwrap();
-            document.normalize();
-            timed(|| {
-                to_markdown(&document).unwrap();
-            })
-        });
-    }
 }
 
 /// The parser stores each line ending in a label as LF, and a label is written as it is, so a
