@@ -577,10 +577,6 @@ fn edits_detach_every_supported_leaf_and_preserve_arena_links() {
                 value: Text::Value(Cow::Borrowed("x")),
                 language: None,
             },
-            EventKind::Html {
-                value: Text::Literal("x"),
-                block: false,
-            },
         ],
         vec![
             EventKind::CodeBlock {

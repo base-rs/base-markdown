@@ -12,7 +12,7 @@ use pretty_assertions::assert_eq;
 use support::fixture::rejected;
 use support::fixture::to_markdown as to;
 use support::fixture::{
-    canonical, Break, Definition, FootnoteDefinition, FootnoteReference, Fragment, Heading, Html,
+    canonical, Break, Definition, FootnoteDefinition, FootnoteReference, Fragment, Heading,
     ImageReference, Link, LinkReference, Node, Paragraph, ReferenceKind, Root, Text,
 };
 
@@ -469,35 +469,6 @@ fn root(children: Vec<Node>) -> Document<String> {
     .document()
 }
 
-/// Serializes `document`, normalized, as `expected`, which reads back as the same HTML without
-/// a definition it did not have, and serializes the same. Inline HTML that does not start with
-/// `<` reads back as text, so the tree is not compared.
-fn assert_reads_back(mut document: Document<String>, expected: &str) {
-    document.normalize();
-    let markdown = to_markdown(&document).unwrap();
-    assert_eq!(markdown, expected);
-    let options = base_markdown::Options::default();
-    let mut reparsed = Document::parse(markdown.clone(), &options.parse).unwrap();
-    reparsed.normalize();
-    let html = |document: &Document<String>| {
-        let mut html = String::new();
-        base_markdown::render_events(
-            document.source(),
-            document.events(),
-            &options.compile,
-            &mut html,
-        )
-        .unwrap();
-        html
-    };
-    assert_eq!(
-        html(&reparsed).trim_end(),
-        html(&document).trim_end(),
-        "{markdown:?}"
-    );
-    assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{markdown:?}");
-}
-
 /// A label on several lines in a container is what the parser read, without the container
 /// prefixes on its lines, which are written again before them, so it is written as authored and
 /// does not grow. In a block quote it is written as a reference rather than a link (#146).
@@ -696,74 +667,18 @@ fn shortcut_references_before_a_bracket_round_trip() {
 }
 
 /// The `:` after a reference that starts a paragraph, or a footnote reference that starts a line,
-/// is escaped whatever node writes it, such as inline HTML (#146).
+/// was escaped when inline HTML wrote it (#146). Inline HTML is now one HTML construct (#193), so
+/// no node but text can write it, and those values are rejected where they are assigned.
 #[test]
 fn reference_before_colon_from_other_nodes_reads_back() {
-    let html = |value: &str| {
-        Node::Html(Html {
-            value: value.to_string(),
-            position: None,
-        })
-    };
-    let footnote = Node::FootnoteReference(FootnoteReference {
-        position: None,
-        identifier: String::from("1"),
-        label: None,
-    });
-    let footnote_definition = Node::FootnoteDefinition(FootnoteDefinition {
-        children: vec![Node::Paragraph(Paragraph {
-            children: vec![text("n")],
-            position: None,
-        })],
-        position: None,
-        identifier: String::from("1"),
-        label: None,
-    });
-    let paragraph = |children| {
-        Node::Paragraph(Paragraph {
-            children,
-            position: None,
-        })
-    };
-    for (tree, expected) in [
-        (
-            vec![
-                paragraph(vec![shortcut("r"), html(": /u")]),
-                definition("r"),
-            ],
-            "[r]\\: /u\n\n[r]: /u\n",
-        ),
-        // Not a definition, so written as it is.
-        (
-            vec![
-                paragraph(vec![shortcut("r"), html(": a b")]),
-                definition("r"),
-            ],
-            "[r]: a b\n\n[r]: /u\n",
-        ),
-        (
-            vec![
-                paragraph(vec![footnote.clone(), html(":x")]),
-                footnote_definition.clone(),
-            ],
-            "[^1]\\:x\n\n[^1]: n\n",
-        ),
-        (
-            vec![
-                paragraph(vec![text("a\n"), footnote.clone(), html(":x")]),
-                footnote_definition.clone(),
-            ],
-            "a\n[^1]\\:x\n\n[^1]: n\n",
-        ),
-        (
-            vec![
-                paragraph(vec![text("a "), footnote, html(":x")]),
-                footnote_definition,
-            ],
-            "a [^1]:x\n\n[^1]: n\n",
-        ),
-    ] {
-        assert_reads_back(root(tree), expected);
+    for value in [": /u", ": a b", ":x"] {
+        assert!(rejected(
+            EventKind::Html {
+                value: EventText::Literal(value),
+                block: false,
+            },
+            true
+        ));
     }
 }
 

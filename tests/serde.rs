@@ -229,6 +229,14 @@ fn invalid_serialized_arena_links_ranges_and_metadata_are_rejected() {
             json!({"Code":{"value":{"Value":"v"},"language":language}}),
         );
     }
+    // Inline HTML that is not one construct, owned or from the source `h` (#193).
+    for value in [
+        json!({"Value":"(x)"}),
+        json!({"Value":"<b>x"}),
+        json!({"Source":{"start":2,"end":3}}),
+    ] {
+        alter(text, "kind", json!({"Html":{"value":value,"block":false}}));
+    }
     alter(
         text,
         "kind",
@@ -250,6 +258,11 @@ fn invalid_serialized_arena_links_ranges_and_metadata_are_rejected() {
     valid["nodes"][text]["kind"] =
         json!({"Code":{"value":{"Value":"v"},"language":{"Value":"c++"}}});
     serde_json::from_value::<Document>(valid).unwrap();
+    for value in [json!({"Value":"<b\nc=\"d\">"}), json!({"Value":""})] {
+        let mut valid = base.clone();
+        valid["nodes"][text]["kind"] = json!({"Html":{"value":value,"block":false}});
+        serde_json::from_value::<Document>(valid).unwrap();
+    }
     let mut unseen = base.clone();
     unseen["nodes"][0]["first_child"] = Value::Null;
     cases.push(unseen);

@@ -988,7 +988,7 @@ mod tests {
                 .event(Event {
                     kind: EventKind::Html {
                         value: Text::Literal("prefix<script>\0tail"),
-                        block: false,
+                        block: true,
                     },
                     span: 0..0,
                 })

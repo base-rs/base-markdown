@@ -4790,13 +4790,19 @@ fn removes_html_that_cannot_be_written() {
             "{value:?}"
         );
     }
-    // HTML that can be written stays: an HTML block that is not blank, and inline HTML with a value, even of whitespace alone, which is written as it is between text.
+    // HTML that can be written stays: an HTML block that is not blank, and inline HTML with a value, which is one HTML construct (#193).
     for document in [
         build_blocks(concat([
             vec![html_block("<div>"), separator(), html_block(" <b>\n")],
             vec![separator(), html_block("x")],
         ])),
-        build(vec![text("a"), html(" "), text("b"), html("\n"), text("c")]),
+        build(vec![
+            text("a"),
+            html("<b>"),
+            text("b"),
+            html("<c\nd>"),
+            text("c"),
+        ]),
         build(vec![text("a"), html("<b>")]),
     ] {
         assert!(document.is_normalized());
@@ -4933,8 +4939,13 @@ fn without_unwritable(block: &Block) -> Option<Block> {
 }
 
 fn random_flow(random: &mut Random, depth: u32) -> Vec<Block> {
+    // Inline HTML is empty or one construct (#193); an HTML block can be anything.
     let html = |random: &mut Random, block: bool| EventKind::Html {
-        value: Text::Literal(["", "", " ", "\n", "<b>", "x"][random.below(6) as usize]),
+        value: Text::Literal(if block {
+            ["", "", " ", "\n", "<b>", "x"][random.below(6) as usize]
+        } else {
+            ["", "", "<b>", "</b>", "<!---->", "<?x?>"][random.below(6) as usize]
+        }),
         block,
     };
     (0..random.below(4))
@@ -4992,8 +5003,8 @@ fn removing_unwritable_html_and_lists_is_removing_them_by_hand() {
 
 #[test]
 fn serializing_html_without_a_value_after_a_line_ending_does_not_panic() {
-    // Inline HTML at the start of a line is checked for whether it would start an HTML block, which only a value that starts with `<` can.
-    for value in ["", "xdiv>"] {
+    // Inline HTML at the start of a line is checked for whether it would start an HTML block, which an empty value cannot.
+    for value in ["", "<b>"] {
         let document = build(vec![text("a"), soft(), html(value), text("b")]);
         assert_eq!(to_markdown(&document).unwrap(), format!("a\n{value}b\n"));
     }

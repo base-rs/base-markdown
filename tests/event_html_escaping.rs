@@ -24,32 +24,37 @@ fn escaping_preserves_unicode_and_handles_adjacent_markers_at_scan_boundaries() 
     ] {
         for length in [0, 1, 15, 16, 17, 31, 32, 33] {
             let prefix = "a".repeat(length);
-            let source = format!("{prefix}{raw}é😀{raw}");
-            for html in [false, true] {
+            // Inline HTML is one construct (#193), so inline raw HTML is a comment around the
+            // text, and block HTML keeps the NULs on the scan boundaries.
+            for (html, block) in [(false, false), (true, false), (true, true)] {
+                let source = if html && !block {
+                    format!("<!--{prefix}{raw}é😀{raw}-->")
+                } else {
+                    format!("{prefix}{raw}é😀{raw}")
+                };
                 let mut options = Options::default();
                 options.compile.allow_dangerous_html = html;
                 let text = Text::Source(0..source.len());
                 let body = if html {
-                    EventKind::Html {
-                        value: text,
-                        block: false,
-                    }
+                    EventKind::Html { value: text, block }
                 } else {
                     EventKind::Text(text)
                 };
-                let events = [
+                let mut events = vec![
                     event(EventKind::Start(Tag::Document {
                         line_ending: None,
                         frontmatter: None,
                     })),
                     event(body),
-                    event(EventKind::Text(Text::Literal(""))),
-                    event(EventKind::End(TagKind::Document)),
                 ];
+                if !block {
+                    events.push(event(EventKind::Text(Text::Literal(""))));
+                }
+                events.push(event(EventKind::End(TagKind::Document)));
                 let mut output = String::new();
                 render_events(
                     &source,
-                    IntoIterator::into_iter(events).map(Ok),
+                    events.into_iter().map(Ok),
                     &options.compile,
                     &mut output,
                 )
@@ -59,7 +64,7 @@ fn escaping_preserves_unicode_and_handles_adjacent_markers_at_scan_boundaries() 
                 } else {
                     format!("{prefix}{encoded}é😀{encoded}")
                 };
-                assert_eq!(output, expected, "{source:?}, html={html}");
+                assert_eq!(output, expected, "{source:?}, html={html}, block={block}");
             }
         }
     }

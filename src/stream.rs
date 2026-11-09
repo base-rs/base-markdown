@@ -667,7 +667,17 @@ pub enum EventKind<'a> {
         fence: Option<CodeFence>,
         unclosed: bool,
     },
-    /// Raw HTML.
+    /// Raw HTML, an HTML block or inline HTML.
+    ///
+    /// Inline HTML, with `block` false, is written as it is, so its value is one inline HTML
+    /// construct as the parser reads it: an open tag, a closing tag, a comment, a processing
+    /// instruction, a declaration or CDATA, with nothing before or after it, as `<b>`,
+    /// `<a\nhref="x">` or `<!-- c -->`. Tag names may have namespace prefixes, as
+    /// [`ParseOptions::html_tag_namespaces`][crate::ParseOptions::html_tag_namespaces] reads them,
+    /// and it holds no blank line, which would end its paragraph. An empty value is valid and
+    /// writes nothing; normalizing removes it. Any other value, such as text, `<b>x</b>`, `<b> `
+    /// or `<a\n\nb>`, is rejected with [`StreamError::InvalidValue`]
+    /// wherever an event enters a document or renderer.
     Html { value: Text<'a>, block: bool },
     /// A resolved definition, retained in the AST but omitted from HTML.
     ///
@@ -805,6 +815,13 @@ impl<'s> EventKind<'s> {
                     Ok(())
                 }
             }
+            // Inline HTML is written as it is, so it reads back as itself only when it is one
+            // construct the inline parser reads, or empty, which writes nothing and which
+            // normalizing removes.
+            Self::Html {
+                value,
+                block: false,
+            } => check(value, &crate::util::html_text::HtmlText::is_inline),
             Self::Start(Tag::Document {
                 frontmatter: Some(value),
                 ..
