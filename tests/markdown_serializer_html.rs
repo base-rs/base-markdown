@@ -901,4 +901,21 @@ fn containers_serialized_on_their_own_plan_only_themselves() {
         base_markdown::to_markdown_node(&document, quote, &options).unwrap(),
         "> <div>\n"
     );
+    // A node moved after its parent was made sits past the parent in the arena, and its plan
+    // stops at it.
+    let mut document = Document::parse("> <div>\n\n- x\n", &ParseOptions::default()).unwrap();
+    let mut flow = document.children(document.root());
+    let (quote, list) = (flow.next().unwrap(), flow.nth(1).unwrap());
+    let item = document.children(list).next().unwrap();
+    document.detach(quote).unwrap();
+    document.attach(item, quote, None).unwrap();
+    document.normalize();
+    assert_eq!(
+        base_markdown::to_markdown(&document).unwrap(),
+        "- x\n  > <div>\n"
+    );
+    assert_eq!(
+        base_markdown::to_markdown_node(&document, quote, &options).unwrap(),
+        "> <div>\n"
+    );
 }

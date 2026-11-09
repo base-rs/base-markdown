@@ -281,7 +281,9 @@ impl State<'_> {
                 if matches!(node.kind, EventKind::Html { block: true, .. }) {
                     holds[id.index()] = true;
                 }
-                if let (true, Some(parent)) = (holds[id.index()], node.parent()) {
+                // The root's parent is outside the walk, and may be past the end of `holds`.
+                let parent = node.parent().filter(|_| id != root);
+                if let (true, Some(parent)) = (holds[id.index()], parent) {
                     holds[parent.index()] = true;
                 }
             }
