@@ -11,6 +11,7 @@ use core::fmt::{self, Debug};
 use core::ops::RangeFull;
 use std::alloc::System;
 use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 
 /// A kind of work, counted on its own, so that a lot of one kind does not hide another kind growing faster.
 #[derive(Clone, Copy)]
@@ -211,6 +212,55 @@ pub(crate) fn assert_against_control(
             control_large
         );
     }
+}
+
+/// The least wall-clock time that `run` takes in five runs.
+pub(crate) fn timed(mut run: impl FnMut()) -> Duration {
+    (0..5)
+        .map(|_| {
+            let start = Instant::now();
+            run();
+            start.elapsed()
+        })
+        .fold(Duration::MAX, Duration::min)
+}
+
+/// Assert that `subject` takes no more than twice as much longer from `size` to `SCALE * size` as `control` does, in wall-clock time, in one of three tries, for work that no count sees.
+///
+/// Only ignored tests use this, which are run by hand on an idle host, as a loaded machine can stall any run: `subject` and `control` return the time that the part being checked took, with [`timed`], and a try over the bound is measured again, as noise makes linear work look slower only now and then, while quadratic work fails every time. The times are written to standard error, which `--nocapture` shows.
+pub(crate) fn assert_time_against_control(
+    label: impl Debug,
+    size: usize,
+    mut subject: impl FnMut(usize) -> Duration,
+    mut control: impl FnMut(usize) -> Duration,
+) {
+    let mut ratios = std::vec::Vec::new();
+    for _ in 0..3 {
+        let times = [
+            subject(size),
+            subject(SCALE * size),
+            control(size),
+            control(SCALE * size),
+        ]
+        .map(|time| time.as_secs_f64());
+        let ratio = (times[1] / times[0]) / (times[3] / times[2]);
+        std::eprintln!(
+            "time against control {:?}: {} -> {}: {:?} s, {:.2}x the control's growth",
+            label,
+            size,
+            SCALE * size,
+            times,
+            ratio
+        );
+        if ratio <= 2.0 {
+            return;
+        }
+        ratios.push(ratio);
+    }
+    panic!(
+        "{:?}: grew {:.2?} times the control's growth in wall-clock time",
+        label, ratios
+    );
 }
 
 #[test]

@@ -330,19 +330,27 @@ fn parse(source: &str) -> Document<String> {
     Document::parse(source.to_owned(), &ParseOptions::default()).unwrap()
 }
 
+/// A line of many footnote calls, `count` of them, each followed by the space or line ending
+/// `end`.
+fn labels_on_a_line(count: usize, end: char) -> Document<String> {
+    let text = "a".repeat(64);
+    parse(&format!(
+        "{}\n\n[^a]: x\n",
+        format!("[^a] {text}{end}").repeat(count)
+    ))
+}
+
 /// Writing the labels of a line of many footnote calls does work linear in the line, however
 /// long the line is before each (#192). The line is counted against the same text with a line
 /// ending for the space after each call, a control of the same size whose lines are short, so the
-/// ratio of the two growths shows only work that depends on the length of the line, which
-/// scanning back over the line for each call would make grow with it.
+/// ratio of the two growths shows only counted work that depends on the length of the line, such
+/// as a counted scan of the output for each call. A scan that no count sees, such as
+/// `self.output.rfind('\n')` for each call, the shape of #192, does not show here, and
+/// [`writing_many_labels_on_a_line_takes_linear_time`] times it.
 #[test]
 fn writing_many_labels_on_a_line_is_linear() {
-    let text = "a".repeat(64);
     let steps = |count: usize, end: char| {
-        let document = parse(&format!(
-            "{}\n\n[^a]: x\n",
-            format!("[^a] {text}{end}").repeat(count)
-        ));
+        let document = labels_on_a_line(count, end);
         counted(|| {
             to_markdown(&document).unwrap();
         })
@@ -352,5 +360,28 @@ fn writing_many_labels_on_a_line_is_linear() {
         1 << 9,
         |count| steps(count, ' '),
         |count| steps(count, '\n'),
+    );
+}
+
+/// Writing the labels of a line of many footnote calls takes time linear in the line, timed
+/// against the control of [`writing_many_labels_on_a_line_is_linear`]: a scan back over the
+/// written line for each call, the shape of #192, reads the output, which no count sees.
+#[test]
+#[ignore = "real time: run on an idle host with `cargo test --lib -- --ignored writing_many_labels_on_a_line_takes_linear_time`"]
+fn writing_many_labels_on_a_line_takes_linear_time() {
+    use crate::work::tests::{assert_time_against_control, timed};
+    let documents =
+        [1 << 12, SCALE << 12].map(|count| [' ', '\n'].map(|end| labels_on_a_line(count, end)));
+    let time = |count: usize, control: bool| {
+        let document = &documents[usize::from(count != 1 << 12)][usize::from(control)];
+        timed(|| {
+            to_markdown(document).unwrap();
+        })
+    };
+    assert_time_against_control(
+        "labels on a line",
+        1 << 12,
+        |count| time(count, false),
+        |count| time(count, true),
     );
 }
