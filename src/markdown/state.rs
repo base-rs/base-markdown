@@ -13,7 +13,7 @@ use crate::markdown::{
         format_code_as_indented::format_code_as_indented,
         format_heading_as_setext::{format_heading_as_setext, heading_as_setext},
         format_link_as_auto_link::{ends_at_boundary, written_link, WrittenLink},
-        safe::EscapeInfos,
+        safe::{EscapeInfos, Literal},
     },
     LineWrapping, Options,
 };
@@ -73,6 +73,14 @@ pub struct State<'a> {
     parent: Parent,
     pub bullet_current: Option<char>,
     pub bullet_last_used: Option<char>,
+    /// The bullets that each list of a run of adjacent lists can take, worked out at the run's
+    /// first list, with the next to write last.
+    pub(super) bullet_plan: Vec<(NodeId, u8)>,
+    /// Where the last literal autolink written where it may not be followed by a boundary ends.
+    pub(super) loose_end: Option<usize>,
+    /// The lists being written whose items' code is fenced, as no bullet reads back with it
+    /// indented.
+    pub(super) fenced_lists: Vec<NodeId>,
     pub index_stack: Vec<usize>,
     pub options: &'a Options,
     /// The options of the document being written, which its output reads back under (contract
@@ -115,6 +123,23 @@ pub struct State<'a> {
     /// How many nodes are open, which is the depth of the next node written: the serialized node
     /// is at depth 0. See `MAX_NESTING`.
     depth: usize,
+    /// The node being written, which a spelling that does not read back is reported for.
+    current: Option<NodeId>,
+    /// The first node written with a spelling that does not read back under the document's
+    /// options, as no other does, which `to_markdown` returns as `unwritable-node` (contract 3.3).
+    pub(super) unwritable: Option<NodeId>,
+    /// Whether the block being written has a link written bare next to what may change where it
+    /// ends, as `WrittenLink::Loose`, which is checked once the block is written.
+    pub(super) loose_links: bool,
+    /// Whether the block being written has a character written as it is where the options read
+    /// no escape for it, which is checked once the block is written.
+    raw_literals: bool,
+    /// Whether a paragraph, heading or table cell is being written, which `raw_literal` checks.
+    verifying: bool,
+    /// What the first line of each open list item, block quote and footnote definition starts
+    /// with, which a block written first in them follows on its line, and what its other lines
+    /// start with, innermost last.
+    pub(super) prefixes: Vec<(String, String)>,
 }
 
 impl<'a> Info<'a> {
@@ -220,6 +245,19 @@ impl<'a> State<'a> {
         lone && joined
     }
 
+    /// Whether `id` is a definition whose label starts with `^`, and holds no whitespace, which
+    /// reads back as a footnote definition where the options read those.
+    fn caret_definition<S: AsRef<str>>(&self, document: &Document<S>, id: NodeId) -> bool {
+        matches!(
+            &document.node(id).unwrap().kind,
+            EventKind::Definition { label, .. }
+                if crate::block_parser::caret_definition_label(
+                    label.resolve(document.source()).unwrap(),
+                    &self.parse,
+                )
+        )
+    }
+
     pub fn container_flow<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
@@ -251,7 +289,7 @@ impl<'a> State<'a> {
             self.fence_code = matches!(
                 document.node(child).unwrap().kind,
                 EventKind::CodeBlock { .. }
-            ) && fences_code(document, parent, before, records_spread || spread);
+            ) && self.fences(document, parent, before, records_spread || spread);
             self.atx_heading = matches!(
                 document.node(child).unwrap().kind,
                 EventKind::Start(Tag::Heading(_))
@@ -264,11 +302,46 @@ impl<'a> State<'a> {
                     )
                 })
                 && !self.output.ends_with("\n\n");
+            // A definition whose label starts with `^` reads back as a footnote definition at the
+            // start of a line, so it is written only as a continuation line of the definition
+            // before it, indented so it starts no footnote definition, which under
+            // `code_indented` off no indent does (#208).
+            if self.caret_definition(document, child)
+                && !(self.parse.constructs.code_indented
+                    && before.is_some_and(|before| is_definition(document, before)))
+            {
+                self.no_spelling_of(child);
+            }
             let start = self.output.len();
             self.write_node(document, child, &Info::new("\n", "\n"))?;
             self.joined_definition = None;
             if let Some(&next) = children.peek() {
-                let separator = if tight_definitions
+                // An HTML block of kinds 1–5 that its last line does not close takes the blocks
+                // after it, which `Document::normalize` closes for that (#191). Under
+                // `html_block_blank_lines`, one of kind 6 or 7 takes them too, and keeps the blank
+                // line before them, so one that keeps a final line ending without a blank line,
+                // which only the end of the document gives, has none either.
+                if let EventKind::Html { value, block: true } = &document.node(child).unwrap().kind
+                {
+                    let value = value.resolve(document.source()).unwrap();
+                    let kept =
+                        crate::block_parser::html_block_keeps_line_ending(value, &self.parse);
+                    let last_line = value.trim_end_matches('\n').rsplit('\n').next();
+                    if crate::block_parser::html_block_unclosed(value)
+                        || kept
+                            && !value.ends_with("\n\n")
+                            && last_line
+                                .is_some_and(|line| !line.trim_matches([' ', '\t']).is_empty())
+                    {
+                        self.no_spelling_of(child);
+                    }
+                }
+                let separator = if self.caret_definition(document, next)
+                    && is_definition(document, child)
+                    && self.parse.constructs.code_indented
+                {
+                    "\n    "
+                } else if tight_definitions
                     && is_definition(document, child)
                     && is_definition(document, next)
                 {
@@ -285,6 +358,11 @@ impl<'a> State<'a> {
                     )
                 };
                 self.output.push_str(separator);
+                // Without HTML blocks, the comment that ends a list or code before indented code
+                // is a paragraph, and no other line ends them.
+                if separator.contains("<!---->") && !self.parse.constructs.html_flow {
+                    self.no_spelling_of(next);
+                }
                 if let EventKind::Definition { title, .. } = &document.node(child).unwrap().kind {
                     let joined = separator == "\n"
                         && match document.node(next).unwrap().kind {
@@ -331,11 +409,26 @@ impl<'a> State<'a> {
             self.definition_colon = None;
         }
         let children: Vec<NodeId> = flow_children(document, parent).collect();
+        // Phrasing directly in the document, which only a built tree has, is not read back.
+        let checked = matches!(
+            kind,
+            EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_) | Tag::TableCell { .. })
+        );
+        let (loose, raw) = if checked {
+            (
+                core::mem::replace(&mut self.loose_links, false),
+                core::mem::replace(&mut self.raw_literals, false),
+            )
+        } else {
+            (false, false)
+        };
+        let verifying = self.verifying;
+        self.verifying |= checked;
         self.phrasing(document, &children, info, &Edge::default())?;
         if block {
             if let Some(colon) = self.definition_colon.take() {
                 if crate::block_parser::starts_definition(&self.output[start..], &self.parse) {
-                    self.output.insert(colon, '\\');
+                    self.escape_at(colon);
                 }
             }
             // Escaped, the character reads back as text that starts the block (#173).
@@ -346,7 +439,7 @@ impl<'a> State<'a> {
                         &self.parse,
                     )
                 {
-                    self.output.insert(start, '\\');
+                    self.escape_at(start);
                 }
             }
             if !self.stack.contains(&ConstructName::HeadingAtx) {
@@ -357,15 +450,127 @@ impl<'a> State<'a> {
                         self.options.line_wrapping == LineWrapping::Unwrap,
                     )
                 {
-                    // Indented, the line continues the definition's paragraph (#193).
+                    // Indented, the line continues the definition's paragraph (#193). Without
+                    // indented code, an indented line starts the same blocks, so nothing does.
                     self.output.insert_str(start, "    ");
+                    if !self.parse.constructs.code_indented {
+                        self.no_spelling();
+                    }
                 } else if let Some(&first) = children.first() {
                     self.separate_html_start(document, first, start);
                 }
                 self.escape_delimiter_rows(start, joined_definition.is_some());
             }
         }
+        // The block is read back as it is written, with the escapes above that keep it from
+        // reading as another block.
+        self.verifying = verifying;
+        if checked {
+            let raw = core::mem::replace(&mut self.raw_literals, raw);
+            if core::mem::replace(&mut self.loose_links, loose) || raw {
+                self.check_block(document, parent, start, raw);
+            }
+        }
         Ok(())
+    }
+
+    /// Check that `block`, whose phrasing is written at `output[start..]` with characters written
+    /// as they are where the options read no escape for them, or with links written bare next to
+    /// what may change where they end, reads back as written: the phrasing is read back alone, as
+    /// a paragraph or a table's cell, which forms the same inline nodes as the block does. A block
+    /// with references or footnote calls, which need definitions read with them, is read back
+    /// for its links alone, and has no spelling where a character has none. The block is checked
+    /// once the escapes that keep it from reading as another block are written.
+    fn check_block<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        block: NodeId,
+        start: usize,
+        raw: bool,
+    ) {
+        let cell = matches!(
+            document.node(block).unwrap().kind,
+            EventKind::Start(Tag::TableCell { .. })
+        );
+        // The containers whose first line the block starts on, whose prefixes are written before
+        // it there, such as a list item's marker, which can make a line of the block read as
+        // another, such as `- --`, a rule.
+        let mut first_in = 0;
+        let mut node = block;
+        while let Some(parent) = document.node(node).unwrap().parent() {
+            if flow_children(document, parent).next() != Some(node) {
+                break;
+            }
+            match document.node(parent).unwrap().kind {
+                EventKind::Start(
+                    Tag::Item { .. } | Tag::BlockQuote | Tag::FootnoteDefinition { .. },
+                ) => {
+                    first_in += 1;
+                }
+                EventKind::Start(Tag::List { .. }) => {}
+                _ => break,
+            }
+            node = parent;
+        }
+        let (mut prefix, mut continuation) = (String::new(), String::new());
+        // A table's cells are read back in a table of their own.
+        if cell {
+            first_in = 0;
+        }
+        for (first, rest) in &self.prefixes[self.prefixes.len().saturating_sub(first_in)..] {
+            prefix.push_str(first);
+            continuation.push_str(rest);
+        }
+        if let EventKind::Start(Tag::Heading(rank)) = document.node(block).unwrap().kind {
+            if self.stack.contains(&ConstructName::HeadingAtx) {
+                prefix.extend(core::iter::repeat_n('#', usize::from(rank)));
+                prefix.push(' ');
+            }
+        }
+        let written = self.output[start..].trim_start_matches([' ', '\t']);
+        let bound = document.subtree_events(block).any(|event| {
+            matches!(
+                event.map(|event| event.kind),
+                Ok(EventKind::FootnoteReference { .. }
+                    | EventKind::Start(
+                        Tag::Link(Target::Resolved(_) | Target::Reference(_))
+                            | Tag::Image(Target::Resolved(_) | Target::Reference(_))
+                    ))
+            )
+        });
+        let same = if bound {
+            // Only links are written bare, and none is a reference here, as without a link start
+            // and end none is read.
+            !raw && {
+                let read = Document::parse(written, &self.parse).ok();
+                read.is_some_and(|read| {
+                    links(document, document.subtree_events(block)).eq(links(&read, read.events()))
+                })
+            }
+        } else {
+            let mut source = prefix;
+            if cell {
+                source.push_str("| ");
+                source.push_str(written);
+                source.push_str(" |\n| - |\n");
+            } else {
+                for (index, line) in written.split('\n').enumerate() {
+                    if index > 0 {
+                        source.push('\n');
+                        source.push_str(&continuation);
+                    }
+                    source.push_str(line);
+                }
+            }
+            Document::parse(source.as_str(), &self.parse).is_ok_and(|read| {
+                let expected = inline_events(document, document.subtree_events(block), cell);
+                let actual = inline_events(&read, read.events(), cell);
+                expected.is_some() && expected == actual
+            })
+        };
+        if !same {
+            self.no_spelling_of(block);
+        }
     }
 
     /// Write the line ending after inline HTML that starts the block written at `output[start..]`
@@ -387,7 +592,11 @@ impl<'a> State<'a> {
                 &self.parse,
             )
         {
-            self.output.replace_range(end..end + 1, "&#xA;");
+            let mut written = String::new();
+            if !self.literal().write(&mut written, '\n', false) {
+                self.no_spelling();
+            }
+            self.output.replace_range(end..end + 1, &written);
         }
     }
 
@@ -442,28 +651,72 @@ impl<'a> State<'a> {
         for &position in &escapes {
             self.output
                 .push_str(&tail[cursor - escapes[0]..position - escapes[0]]);
-            self.output.push('\\');
-            cursor = position;
+            let character = tail[position - escapes[0]..]
+                .chars()
+                .next()
+                .expect("a delimiter row starts with a character");
+            self.write_literal(character, true);
+            cursor = position + character.len_utf8();
         }
         self.output.push_str(&tail[cursor - escapes[0]..]);
     }
 
-    fn attention_sequences(
+    fn attention_sequences<S: AsRef<str>>(
         &self,
-        kind: &EventKind<'_>,
+        document: &Document<S>,
+        id: NodeId,
     ) -> Result<Option<&'static [&'static str]>, Message> {
+        let kind = &document.node(id).unwrap().kind;
+        // Where no character can be escaped, a marker that the text in the attention holds
+        // would read as one, so the other is tried first.
+        let literal = self.literal();
+        let plain = !literal.backslash && !literal.reference;
+        let holds = |run: &dyn Fn(&str) -> bool| {
+            plain
+                && document.descendants(id).any(|child| {
+                    matches!(
+                        &document.node(child).unwrap().kind,
+                        EventKind::Text(value) if run(value.resolve(document.source()).unwrap())
+                    )
+                })
+        };
+        let holds_marker = |marker: char| holds(&|text: &str| text.contains(marker));
+        let pick = |preferred: char, asterisk, underscore| {
+            let other = if preferred == '*' { '_' } else { '*' };
+            let marker = if holds_marker(preferred) && !holds_marker(other) {
+                other
+            } else {
+                preferred
+            };
+            if marker == '*' {
+                asterisk
+            } else {
+                underscore
+            }
+        };
         Ok(match kind {
-            EventKind::Start(Tag::Emphasis) => Some(if self.options.check_emphasis()? == '*' {
-                attention::EMPHASIS_ASTERISK
-            } else {
-                attention::EMPHASIS_UNDERSCORE
-            }),
-            EventKind::Start(Tag::Strong) => Some(if self.options.check_strong()? == '*' {
-                attention::STRONG_ASTERISK
-            } else {
-                attention::STRONG_UNDERSCORE
-            }),
-            EventKind::Start(Tag::Delete) => Some(attention::STRIKETHROUGH),
+            EventKind::Start(Tag::Emphasis) => Some(pick(
+                self.options.check_emphasis()?,
+                attention::EMPHASIS_ASTERISK,
+                attention::EMPHASIS_UNDERSCORE,
+            )),
+            EventKind::Start(Tag::Strong) => Some(pick(
+                self.options.check_strong()?,
+                attention::STRONG_ASTERISK,
+                attention::STRONG_UNDERSCORE,
+            )),
+            // A run of two tildes in the text closes `~~`, and a run of one closes `~` too where
+            // the options read one, so a run of two alone is written in `~`.
+            EventKind::Start(Tag::Delete) => Some(
+                if self.parse.strikethrough_single_tilde
+                    && holds(&|text: &str| tilde_runs(text).any(|run| run == 2))
+                    && !holds(&|text: &str| tilde_runs(text).any(|run| run == 1))
+                {
+                    attention::STRIKETHROUGH_SINGLE
+                } else {
+                    attention::STRIKETHROUGH
+                },
+            ),
             _ => None,
         })
     }
@@ -520,7 +773,15 @@ impl<'a> State<'a> {
                 [self.attention_open[1][0] > 0, self.attention_open[1][1] > 0],
             ],
         };
-        let choice = attention::choose(sequences, &surroundings);
+        let choice = attention::choose(sequences, &surroundings).unwrap_or_else(|| {
+            self.no_spelling_of(id);
+            let sequence = sequences[0];
+            attention::encoding(
+                sequence,
+                sequence.chars().next().expect("sequences are not empty"),
+                &surroundings,
+            )
+        });
         let sequence = choice.sequence;
         let tilde = sequence.starts_with('~');
         if let (Previous::Text(start), Some(character)) = (previous, before) {
@@ -529,7 +790,7 @@ impl<'a> State<'a> {
                 self.encode_end(start, character);
             }
             if tilde {
-                attention::escape_tilde_end(&mut self.output, start);
+                self.escape_tilde_end(start);
             }
         }
         self.output.push_str(sequence);
@@ -551,7 +812,7 @@ impl<'a> State<'a> {
             self.attention_open[open][sequence.len() - 1] -= 1;
         }
         if let Some(start) = last_text {
-            attention::escape_tilde_end(&mut self.output, start);
+            self.escape_tilde_end(start);
             if let Some(character) = last.filter(|_| choice.encode_last) {
                 self.encode_end(start, character);
             }
@@ -569,7 +830,11 @@ impl<'a> State<'a> {
     /// judged against the character could now pair, and they are escaped.
     fn encode_end(&mut self, start: usize, character: char) {
         let length = self.output.len();
-        attention::encode_end(&mut self.output, start, character);
+        let literal = self.literal();
+        if !attention::encode_end(&mut self.output, start, character, literal) {
+            self.raw_literal();
+            return;
+        }
         // A reference is longer than the character it encodes.
         if self.output.len() == length {
             return;
@@ -579,8 +844,20 @@ impl<'a> State<'a> {
             .rfind('&')
             .expect("an encoded character is written as a reference");
         let tail = self.output.split_off(reference);
-        attention::escape_tilde_end(&mut self.output, start);
+        self.escape_tilde_end(start);
         self.output.push_str(&tail);
+    }
+
+    /// Escape tildes at the end of text written at `output[start..]`, as
+    /// `attention::escape_tilde_end` does.
+    fn escape_tilde_end(&mut self, start: usize) {
+        if !self.escapes_for(self.parse.constructs.strikethrough) {
+            return;
+        }
+        let literal = self.literal();
+        if !attention::escape_tilde_end(&mut self.output, start, literal) {
+            self.raw_literal();
+        }
     }
 
     /// End text written at `output[start..]` so that a language prefix written after it reads
@@ -597,7 +874,7 @@ impl<'a> State<'a> {
             return;
         };
         let end = self.output.len() - 1;
-        if last.is_ascii_punctuation() && attention::escapes_next(&self.output[start..end]) {
+        if last.is_ascii_punctuation() && self.literal().escapes_next(&self.output[start..end]) {
             self.output.remove(end - 1);
         }
         self.encode_end(start, char::from(last));
@@ -627,6 +904,10 @@ impl<'a> State<'a> {
                 )
             {
                 self.output.push_str("    ");
+                // Without indented code, an indented line starts the same blocks.
+                if !self.parse.constructs.code_indented {
+                    self.no_spelling();
+                }
             }
             self.output.push_str(line);
         }
@@ -645,7 +926,7 @@ impl<'a> State<'a> {
         if self.parse.inline_code_info
             && crate::util::inline_code_info::before(phrasing, phrasing.len()).is_some()
         {
-            self.output.insert(self.output.len() - 1, '\\');
+            self.escape_at(self.output.len() - 1);
         }
     }
 
@@ -657,7 +938,15 @@ impl<'a> State<'a> {
         let encodes = edge
             .encode
             .is_some_and(|character| self.output[start..].starts_with(character));
-        attention::edit_start(&mut self.output, start, edge);
+        let literal = self.literal();
+        let edge = &Edge {
+            encode: edge.encode,
+            tilde: edge.tilde && self.escapes_for(self.parse.constructs.strikethrough),
+        };
+        if !attention::edit_start(&mut self.output, start, edge, literal) {
+            self.raw_literal();
+            return;
+        }
         if !encodes {
             return;
         }
@@ -671,7 +960,13 @@ impl<'a> State<'a> {
             .take_while(|&byte| byte == b'~')
             .count();
         if run > 0 {
-            let escaped = "\\~".repeat(run);
+            let mut escaped = String::new();
+            for _ in 0..run {
+                // A character reference is written before the run, so one can be here too.
+                if !literal.write(&mut escaped, '~', true) {
+                    unreachable!("the options read character references");
+                }
+            }
             self.output
                 .replace_range(reference..reference + run, &escaped);
         }
@@ -709,7 +1004,7 @@ impl<'a> State<'a> {
             .is_some_and(|parent| self.is_task_paragraph(document, parent));
         for (position, &child) in children.iter().enumerate() {
             let kind = &document.node(child).unwrap().kind;
-            let sequences = self.attention_sequences(kind)?;
+            let sequences = self.attention_sequences(document, child)?;
             if after_hard_break && matches!(kind, EventKind::SoftBreak(_)) {
                 after_hard_break = false;
                 continue;
@@ -724,9 +1019,11 @@ impl<'a> State<'a> {
                 } else {
                     // Render nodes without a fixed prefix to determine the next character.
                     let checkpoint = self.output.len();
+                    let marks = (self.unwritable, self.loose_links, self.raw_literals);
                     self.write_node(document, next, &Info::new("", ""))?;
                     let first = self.output[checkpoint..].chars().next().unwrap_or_default();
                     self.output.truncate(checkpoint);
+                    (self.unwritable, self.loose_links, self.raw_literals) = marks;
                     // A line ending there is not the one that ends the block, so the NUL that
                     // follows it in the buffer stands for the rest of the next node and after.
                     let length = first.encode_utf8(&mut buffer).len();
@@ -748,8 +1045,12 @@ impl<'a> State<'a> {
                 ))
             {
                 // Indent the line so it continues the paragraph, keeping the soft or hard break
-                // before it, as indented code cannot interrupt a paragraph (#193).
+                // before it, as indented code cannot interrupt a paragraph (#193). Without
+                // indented code, an indented line starts the same blocks, so nothing does.
                 self.output.push_str("    ");
+                if !self.parse.constructs.code_indented {
+                    self.no_spelling_of(child);
+                }
                 Before::Literal(" ")
             } else {
                 // The children written so far follow what the container follows, such as the
@@ -795,7 +1096,7 @@ impl<'a> State<'a> {
                 self.defer_literals = false;
                 if text {
                     self.edit_start(length, &pending);
-                    if super::escape::autolink_literals(&self.stack) {
+                    if self.literals() {
                         self.escape_literals(length, &info);
                     }
                 }
@@ -809,7 +1110,7 @@ impl<'a> State<'a> {
                                 &self.output.as_bytes()[start..],
                             ) =>
                         {
-                            self.output.insert(length, '\\');
+                            self.escape_at(length);
                         }
                         // `[r]:` starts a definition only if a destination follows, which
                         // can be in later children, so the paragraph is judged once written.
@@ -890,6 +1191,71 @@ impl<'a> State<'a> {
     }
 
     fn write_node<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        id: NodeId,
+        info: &Info,
+    ) -> Result<(), Message> {
+        let previous = self.current.replace(id);
+        let result = self.write_node_kind(document, id, info);
+        self.current = previous;
+        result
+    }
+
+    /// Record that the node being written has no spelling that reads back under the document's
+    /// options, so that `to_markdown` returns `unwritable-node` for the first such node.
+    pub(super) fn no_spelling(&mut self) {
+        let id = self
+            .current
+            .or(self.serialization_root)
+            .expect("a node is being written");
+        self.no_spelling_of(id);
+    }
+
+    /// Record that the node being written has a character written as it is, where the options
+    /// read no escape for it: in a paragraph, heading or table cell, which is checked to read back
+    /// once written, and otherwise as having no spelling.
+    pub(super) fn raw_literal(&mut self) {
+        if self.verifying {
+            self.raw_literals = true;
+        } else {
+            self.no_spelling();
+        }
+    }
+
+    /// Record that `id` has no spelling, as `no_spelling` does for the node being written.
+    pub(super) fn no_spelling_of(&mut self, id: NodeId) {
+        self.unwritable.get_or_insert(id);
+    }
+
+    /// How a character is written so that it reads back as text under the document's options.
+    pub(super) fn literal(&self) -> Literal {
+        Literal {
+            backslash: self.parse.constructs.character_escape,
+            reference: self.parse.constructs.character_reference,
+        }
+    }
+
+    /// Write `character` so that it reads back as text, with a backslash where `backslash` and the
+    /// options allow one and a character reference otherwise, or as it is, recording that the
+    /// node has no spelling, where the options read neither.
+    pub(super) fn write_literal(&mut self, character: char, backslash: bool) {
+        let literal = self.literal();
+        if !literal.write(&mut self.output, character, backslash) {
+            self.raw_literal();
+        }
+    }
+
+    /// Insert a backslash, or what replaces it, before the character at `position` of the output,
+    /// as `write_literal` writes it.
+    pub(super) fn escape_at(&mut self, position: usize) {
+        let literal = self.literal();
+        if !literal.escape_at(&mut self.output, position) {
+            self.raw_literal();
+        }
+    }
+
+    fn write_node_kind<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         id: NodeId,
@@ -1012,7 +1378,15 @@ impl<'a> State<'a> {
                         let next_line = self.indented_code(document, id, false, None, first);
                         self.output.push(if next_line { '\n' } else { ' ' });
                         let start = self.output.len();
-                        self.container_flow(document, id)?;
+                        let prefix = if next_line {
+                            String::new()
+                        } else {
+                            alloc::format!("[^{label}]: ")
+                        };
+                        self.prefixes.push((prefix, "    ".into()));
+                        let result = self.container_flow(document, id);
+                        self.prefixes.pop();
+                        result?;
                         self.indent_lines(start, |line, index, blank, output| {
                             if (next_line || index > 0) && !blank {
                                 output.push_str("    ");
@@ -1142,7 +1516,7 @@ impl<'a> State<'a> {
                 // continue to, so its first cell starts with an escape. Every cell of such a row
                 // is `-` with optional colons, so the first starts after `| `.
                 if crate::block_parser::delimiter_row(&self.output.as_bytes()[start..]) {
-                    self.output.insert(start + 2, '\\');
+                    self.escape_at(start + 2);
                 }
                 self.output.push_str("\n| ");
                 for (index, cell) in flow_children(document, row).enumerate() {
@@ -1337,6 +1711,25 @@ impl<'a> State<'a> {
                 ))
     }
 
+    /// Whether code in `parent` after `before` needs a fence whatever the options: as
+    /// [`fences_code`] says, or as the first block of an item whose list has no bullet that
+    /// reads back with the code indented.
+    fn fences<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        parent: NodeId,
+        before: Option<NodeId>,
+        spread: bool,
+    ) -> bool {
+        fences_code(document, parent, before, spread)
+            || before.is_none()
+                && document
+                    .node(parent)
+                    .unwrap()
+                    .parent()
+                    .is_some_and(|list| self.fenced_lists.contains(&list))
+    }
+
     /// Whether flow child `id` of `parent`, after flow child `before`, if any, is code written
     /// indented. `spread` is whether `parent`'s blocks are joined by blank lines, as for
     /// `fences_code`.
@@ -1349,7 +1742,7 @@ impl<'a> State<'a> {
         id: NodeId,
     ) -> bool {
         if let EventKind::CodeBlock { value, info, .. } = &document.node(id).unwrap().kind {
-            !fences_code(document, parent, before, spread)
+            !self.fences(document, parent, before, spread)
                 && format_code_as_indented(
                     trim_terminal_ending(value.resolve(document.source()).unwrap()),
                     info.is_none(),
@@ -1376,6 +1769,9 @@ impl<'a> State<'a> {
             parent: Parent::NONE,
             bullet_current: None,
             bullet_last_used: None,
+            bullet_plan: Vec::new(),
+            loose_end: None,
+            fenced_lists: Vec::new(),
             index_stack: Vec::new(),
             options,
             parse: ParseOptions::default(),
@@ -1392,6 +1788,12 @@ impl<'a> State<'a> {
             joined_definition: None,
             task_item: None,
             depth: 0,
+            current: None,
+            unwritable: None,
+            loose_links: false,
+            raw_literals: false,
+            verifying: false,
+            prefixes: Vec::new(),
         }
     }
 
@@ -1492,7 +1894,9 @@ impl<'a> State<'a> {
                         ends_at_boundary(document, previous),
                         self,
                     ) {
-                        WrittenLink::Bare(text) => return text.chars().next(),
+                        WrittenLink::Bare(text) | WrittenLink::Loose(text) => {
+                            return text.chars().next()
+                        }
                         WrittenLink::Angle(_) => '<',
                         WrittenLink::Explicit => '[',
                     }
@@ -1519,7 +1923,14 @@ impl<'a> State<'a> {
         let start = before[0].len() + before[1].len();
         let end = start + input.len();
         self.escapes.clear();
-        super::escape::collect(before, input, info.after, &self.stack, &mut self.escapes);
+        super::escape::collect(
+            before,
+            input,
+            info.after,
+            &self.stack,
+            &self.parse.constructs,
+            &mut self.escapes,
+        );
         self.escapes.sort_unstable_by_key(|entry| entry.0);
         self.escapes.dedup_by(|right, left| {
             if right.0 == left.0 {
@@ -1575,7 +1986,9 @@ impl<'a> State<'a> {
             self.applied.push(position);
         }
         // Whether a `~` pairs depends on its neighbours as written, so decide them afterwards.
-        if super::escape::strikethrough(&self.stack) {
+        if self.escapes_for(self.parse.constructs.strikethrough)
+            && super::escape::strikethrough(&self.stack)
+        {
             super::escape::tildes(
                 input,
                 start,
@@ -1600,13 +2013,30 @@ impl<'a> State<'a> {
         if self.applied.len() > applied {
             self.applied.sort_unstable();
         }
+        // A literal autolink written where it is not followed by a boundary would take the text
+        // after it, so punctuation that starts that is escaped, which ends the link, as the
+        // parser reads one in text that an escape splits. A reference does not end one: the
+        // parser takes it into the link as written.
+        if self.loose_end == Some(self.output.len())
+            && self.parse.constructs.character_escape
+            && input
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_punctuation())
+            && self.applied.first() != Some(&start)
+        {
+            self.applied.insert(0, start);
+        }
         let written = self.output.len();
         self.email_escapes.clear();
+        let literal = self.literal();
+        let mut unwritable = false;
         let mut cursor = start;
         for &position in &self.applied {
             super::util::safe::write_backslashes(
                 &input[cursor - start..position - start],
                 "\\",
+                literal.backslash,
                 &mut self.output,
             );
             cursor = position;
@@ -1614,26 +2044,58 @@ impl<'a> State<'a> {
                 .chars()
                 .next()
                 .expect("escape positions are character boundaries");
-            if character.is_ascii_punctuation() && encode != Some(character) {
+            if character.is_ascii_punctuation() && encode != Some(character) && literal.backslash {
                 if self.email_candidates.binary_search(&position).is_ok() {
                     self.email_escapes.push(self.output.len() - written);
                 }
                 self.output.push('\\');
             } else {
-                use core::fmt::Write as _;
-                write!(self.output, "&#x{:X};", u32::from(character))
-                    .expect("String writing is infallible");
+                // Where no character can be escaped, a line of a paragraph or heading after its
+                // first is indented instead, which keeps what it starts with from starting a
+                // block, as no block but indented code starts indented 4 spaces. That reads back
+                // unless the character means something in phrasing, which the block's check
+                // finds.
+                if !literal.backslash
+                    && !literal.reference
+                    && self.parse.constructs.code_indented
+                    && self.verifying
+                    && self.output.len() > self.line_start
+                    && self.output.ends_with('\n')
+                {
+                    self.output.push_str("    ");
+                }
+                if !literal.write(&mut self.output, character, false) {
+                    unwritable = true;
+                }
                 cursor += character.len_utf8();
             }
         }
         super::util::safe::write_backslashes(
             &input[cursor - start..],
             info.after,
+            literal.backslash,
             &mut self.output,
         );
-        if !self.defer_literals && super::escape::autolink_literals(&self.stack) {
+        if unwritable {
+            self.raw_literal();
+        }
+        if !self.defer_literals && self.literals() {
             self.escape_literals(written, info);
         }
+    }
+
+    /// Whether text written now can form GFM literal autolinks, under the document's options.
+    pub(super) fn literals(&self) -> bool {
+        self.escapes_for(self.parse.constructs.autolink_literal)
+            && super::escape::autolink_literals(&self.stack)
+    }
+
+    /// Whether what would start or end a construct that the document's options turn on or off,
+    /// as `on` says, is escaped: always where backslash escapes are read, so the output reads
+    /// the same under other options too, and otherwise, where an escape is a reference or
+    /// cannot be written, only for a construct they read (contract 3.3).
+    pub(super) fn escapes_for(&self, on: bool) -> bool {
+        on || self.parse.constructs.character_escape
     }
 
     /// Escape what makes literal autolinks of the text written from `start`. Text is literal, so
@@ -1678,6 +2140,9 @@ impl<'a> State<'a> {
                 }
                 markers.get(next).is_some_and(|&marker| marker < end)
             });
+            // A character reference ends the text a literal is found in as a backslash does.
+            let literal = self.literal();
+            let mut unwritable = false;
             self.rewrite(start, |value, output| {
                 let mut dropped = dropped.iter().peekable();
                 let mut cursor = 0;
@@ -1687,11 +2152,15 @@ impl<'a> State<'a> {
                         cursor = escape + 1;
                     }
                     output.push_str(&value[cursor..marker]);
-                    output.push('\\');
-                    cursor = marker;
+                    let character = char::from(value.as_bytes()[marker]);
+                    unwritable |= !literal.write(output, character, true);
+                    cursor = marker + 1;
                 }
                 output.push_str(&value[cursor..]);
             });
+            if unwritable {
+                self.raw_literal();
+            }
             self.email_escapes = dropped;
         }
         self.literal_markers = markers;
@@ -1873,6 +2342,13 @@ fn starts_with_block_html<S: AsRef<str>>(document: &Document<S>, id: NodeId, unw
                 }
                 Some(_) => false,
             }
+}
+
+/// The lengths of the runs of tildes in `text`.
+fn tilde_runs(text: &str) -> impl Iterator<Item = usize> + '_ {
+    text.split(|character| character != '~')
+        .map(str::len)
+        .filter(|&run| run > 0)
 }
 
 /// Whether flow child `id` is a link reference definition.
@@ -2108,6 +2584,111 @@ pub(super) fn flow_children<S: AsRef<str>>(
     })
 }
 
+/// The inline events of the first block in `events` that is a paragraph, or a table cell when
+/// `cell`, with their values as strings and adjacent text joined, when it is the only block or
+/// cell. Separators, and the value of soft breaks, which is a line ending however written, are
+/// left out.
+fn inline_events<'d, S: AsRef<str>>(
+    document: &'d Document<S>,
+    events: impl Iterator<Item = Result<crate::stream::Event<'d>, crate::stream::StreamError>>,
+    cell: bool,
+) -> Option<Vec<EventKind<'static>>> {
+    use crate::stream::Text;
+    let source = document.source();
+    let mut inner = Vec::new();
+    let mut depth = 0usize;
+    let mut blocks = 0;
+    for event in events {
+        let kind = event.expect("a document's events are read").kind;
+        let outer = match &kind {
+            EventKind::Start(Tag::Paragraph { .. } | Tag::Heading(_)) => !cell,
+            EventKind::Start(
+                Tag::List { .. }
+                | Tag::Item { .. }
+                | Tag::BlockQuote
+                | Tag::FootnoteDefinition { .. },
+            ) if depth == 0 => continue,
+            EventKind::Start(Tag::TableCell { .. }) => cell,
+            _ => false,
+        };
+        if depth == 0 {
+            if outer {
+                blocks += 1;
+                depth = 1;
+            } else if !matches!(
+                kind,
+                EventKind::Start(
+                    Tag::Document { .. } | Tag::Table | Tag::TableHead | Tag::TableRow
+                ) | EventKind::End(_)
+                    | EventKind::Separator { .. }
+            ) {
+                return None;
+            }
+            continue;
+        }
+        match &kind {
+            EventKind::Start(_) => depth += 1,
+            EventKind::End(_) => {
+                depth -= 1;
+                if depth == 0 {
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        let kind = match kind {
+            EventKind::SoftBreak(_) => EventKind::SoftBreak(Text::Literal("\n")),
+            kind => kind.map_text(|text| {
+                Text::Value(alloc::borrow::Cow::Owned(String::from(
+                    text.resolve(source).unwrap_or_default(),
+                )))
+            }),
+        };
+        if let (EventKind::Text(text), Some(EventKind::Text(last))) = (&kind, inner.last_mut()) {
+            let joined = alloc::format!(
+                "{}{}",
+                last.resolve("").unwrap_or_default(),
+                text.resolve("").unwrap_or_default()
+            );
+            *last = Text::Value(alloc::borrow::Cow::Owned(joined));
+            continue;
+        }
+        inner.push(kind);
+    }
+    (blocks == 1).then_some(inner)
+}
+
+/// The destination and text of each link in `events`, in order.
+fn links<'d, S: AsRef<str>>(
+    document: &'d Document<S>,
+    events: impl Iterator<Item = Result<crate::stream::Event<'d>, crate::stream::StreamError>> + 'd,
+) -> impl Iterator<Item = (String, String)> + 'd {
+    let source = document.source();
+    let mut link: Option<(String, String)> = None;
+    events.filter_map(
+        move |event| match event.expect("a document's events are read").kind {
+            EventKind::Start(Tag::Link(target)) => {
+                let destination = target
+                    .destination()
+                    .map(|(destination, _)| {
+                        String::from(destination.resolve(source).unwrap_or_default())
+                    })
+                    .unwrap_or_default();
+                link = Some((destination, String::new()));
+                None
+            }
+            EventKind::Text(text) => {
+                if let Some((_, value)) = &mut link {
+                    value.push_str(text.resolve(source).unwrap_or_default());
+                }
+                None
+            }
+            EventKind::End(crate::stream::TagKind::Link) => link.take(),
+            _ => None,
+        },
+    )
+}
+
 /// How deep the serializer nests: a node more than this many levels below the serialized node,
 /// counting every block and inline node between them, is an error rather than a deeper recursion
 /// that could overflow the stack.
@@ -2138,6 +2719,21 @@ pub(super) fn list_number_too_long(number: u64) -> Message {
         )
         .into(),
         rule_id: "list-number-too-long",
+        source: "markdown",
+    }
+}
+
+/// A node that no spelling writes so that it reads back under the document's options, as
+/// contract 3.3 lists.
+pub(super) fn unwritable_node<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> Message {
+    let node = document.node(id).expect("an unwritable node exists");
+    Message {
+        span: Some(node.span.clone()),
+        reason: alloc::format!(
+            "{id:?} has no spelling that reads back under the document's parse options"
+        )
+        .into(),
+        rule_id: "unwritable-node",
         source: "markdown",
     }
 }

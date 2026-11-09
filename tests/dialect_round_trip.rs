@@ -154,23 +154,17 @@ fn adjacent_lists(random: &mut Random) -> String {
 }
 
 /// Random options: each construct and option is on or off with even odds, so every combination is
-/// sampled.
-///
-/// Step 4 of #257 handles the dialects left out here, where some shapes have no spelling at all
-/// and the writer will return `unwritable-node`:
-/// - `character_escape` off, where no backslash escape is read, and the writer escapes with them
-///   everywhere;
-/// - `code_indented` off, where an indented line starts no code, and the writer indents lines to
-///   keep them in a paragraph or label.
+/// sampled, those where some shapes have no spelling at all too, such as `character_escape` or
+/// `code_indented` off.
 fn options(random: &mut Random) -> ParseOptions {
     let mut flag = || random.below(2) == 0;
     let constructs = Constructs {
         attention: flag(),
         autolink: flag(),
         block_quote: flag(),
-        character_escape: true,
+        character_escape: flag(),
         character_reference: flag(),
-        code_indented: true,
+        code_indented: flag(),
         code_fenced: flag(),
         code_text: flag(),
         definition: flag(),
@@ -228,22 +222,6 @@ fn describe(options: &ParseOptions) -> String {
     changed.join(" ")
 }
 
-/// Whether `output` holds a spelling that the dialect of `options` does not read, which the writer
-/// falls back to for a shape that has no other: step 4 of #257 makes those `unwritable-node`.
-/// - Without `Constructs::character_reference`, what the writer encodes as a reference, such as
-///   a space at the end of a line.
-/// - Without a label start or `Constructs::label_end`, a link that neither autolink can hold, such
-///   as one with a title or a bare one next to text, written `[text](destination)`.
-/// - Without `Constructs::code_fenced`, indented code after a list or other indented code, which
-///   the writer separates with `<!---->`, or which needs a fence where indented code would
-///   continue the block before it.
-fn unwritable(options: &ParseOptions, output: &str) -> bool {
-    let constructs = &options.constructs;
-    !constructs.character_reference && output.contains("&#")
-        || !(constructs.label_start_link && constructs.label_end) && output.contains("](")
-        || !constructs.code_fenced && (output.contains("<!---->") || output.contains("```"))
-}
-
 /// Whether `document` has a shape that the writer gets wrong under any options, the default ones
 /// too, which are gaps on main rather than in following the dialect:
 /// - an HTML block indented with spaces or tabs after a list, footnote definition or block quote,
@@ -251,9 +229,8 @@ fn unwritable(options: &ParseOptions, output: &str) -> bool {
 ///   continues it, and in a block quote, a tab after spaces spans other columns after the quote's
 ///   prefix;
 /// - an HTML block that ends an item before another, which, when the list is written loose and
-///   the block has no end, takes the blank line between the items;
-/// - a definition whose label starts with `^`, which the writer can join to a footnote
-///   definition's line (#208), left to step 4 of #257.
+///   the block has no end, takes the blank line between the items (#273), which parsed
+///   documents give under the default options too, as `- <pre>\n  x\n- a\n\n- b\n`.
 fn known_gap<S: AsRef<str>>(document: &Document<S>) -> bool {
     use base_markdown::stream::{EventKind, Tag, TagKind};
     let mut quotes = 0;
@@ -270,11 +247,6 @@ fn known_gap<S: AsRef<str>>(document: &Document<S>) -> bool {
             _ => false,
         };
         match &kind {
-            EventKind::Definition { label, .. }
-                if label.resolve(document.source()).unwrap().starts_with('^') =>
-            {
-                return true;
-            }
             EventKind::Start(Tag::BlockQuote) => quotes += 1,
             EventKind::End(TagKind::BlockQuote) => quotes -= 1,
             EventKind::Separator { .. } => continue,
@@ -298,6 +270,19 @@ fn known_gap<S: AsRef<str>>(document: &Document<S>) -> bool {
         previous = Some(kind);
     }
     false
+}
+
+/// Whether `output` has link text with a reference after what starts a literal autolink, such as
+/// `[https://a.b>&#x2A;a](u)`, which the parser reads with the reference as text: a literal formed
+/// in link text keeps the references it spans, as markdown-rs does, though not the escapes, and
+/// comrak decodes both. That is a parser gap, which the writer meets where the options read no
+/// backslash escapes, so it writes a reference.
+fn literal_reference_in_label(output: &str) -> bool {
+    output.match_indices("](").any(|(end, _)| {
+        let label = &output[output[..end].rfind('[').map_or(0, |start| start + 1)..end];
+        label.contains("&#")
+            && (label.contains("://") || label.contains("www.") || label.contains('@'))
+    })
 }
 
 /// Whether `html` has emphasis or strong in emphasis or strong, which the writer can get wrong
@@ -330,24 +315,43 @@ fn shown() -> usize {
         .unwrap_or(10)
 }
 
+fn unwritable_shown() -> usize {
+    std::env::var("DIALECT_SHOW_UNWRITABLE")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0)
+}
+
 #[test]
 fn round_trip_under_every_dialect() {
     let mut random = Random(0x9e37_79b9_7f4a_7c15);
     let markdown = MarkdownOptions::default();
     let mut failures = Vec::new();
-    for _ in 0..inputs() {
+    let mut unwritable = Vec::new();
+    let count = inputs();
+    for _ in 0..count {
         let options = options(&mut random);
         let source = source(&mut random);
         let document = Document::parse(source.as_str(), &options).unwrap();
         let known = known_gap(&document);
         match round_trip(document, &markdown, false) {
             Outcome::Pass | Outcome::Rejected => {}
+            Outcome::Unwritable(error) => unwritable.push((source, options, error)),
             Outcome::Fail(failure)
-                if unwritable(&options, &failure.output)
-                    || known
-                    || nested_attention(&failure.before) => {}
+                if known
+                    || nested_attention(&failure.before)
+                    || literal_reference_in_label(&failure.output) => {}
             Outcome::Fail(failure) => failures.push((source, options, failure)),
         }
+    }
+    // Where no spelling reads back, the writer returns `unwritable-node` rather than output that
+    // reads back as something else, so a parsed document either round trips or is that error.
+    eprintln!("unwritable-node: {} of {count}", unwritable.len());
+    for (source, options, error) in unwritable.iter().take(unwritable_shown()) {
+        eprintln!(
+            "unwritable: {source:?}\n  options: {}\n  {error}",
+            describe(options)
+        );
     }
     for (source, options, failure) in failures.iter().take(shown()) {
         eprintln!(

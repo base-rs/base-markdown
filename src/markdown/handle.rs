@@ -31,7 +31,10 @@ impl State<'_> {
     ) -> Result<(), Message> {
         self.enter(ConstructName::Blockquote);
         let start = self.output.len();
-        self.container_flow(document, node)?;
+        self.prefixes.push(("> ".into(), "> ".into()));
+        let result = self.container_flow(document, node);
+        self.prefixes.pop();
+        result?;
         self.indent_lines(start, |line, _, blank, output| {
             output.push('>');
             if !blank {
@@ -56,6 +59,11 @@ impl State<'_> {
             self.output.push_str("\\\n");
             return;
         }
+        // Trailing spaces alone on a line make it blank, which ends the paragraph, so a hard
+        // break at the start of its phrasing or after a line ending has no spelling.
+        if self.output.len() == self.line_start || self.output.ends_with('\n') {
+            self.no_spelling();
+        }
         self.output.push_str("  \n");
     }
 
@@ -69,14 +77,16 @@ impl State<'_> {
         }
         // A backslash before the space would escape the reference's `&`, so it is escaped.
         let end = self.output.len().saturating_sub(1);
-        if self.output.ends_with([' ', '\t']) && super::attention::escapes_next(&self.output[..end])
-        {
+        if self.output.ends_with([' ', '\t']) && self.literal().escapes_next(&self.output[..end]) {
             self.output.insert(end, '\\');
         }
-        match self.output.chars().next_back() {
-            Some(' ') => self.output.replace_range(self.output.len() - 1.., "&#x20;"),
-            Some('\t') => self.output.replace_range(self.output.len() - 1.., "&#x9;"),
-            _ => {}
+        if let Some(character) = self.output.pop() {
+            if matches!(character, ' ' | '\t') {
+                // Where no reference is read, nothing keeps it, so the break has no spelling.
+                self.write_literal(character, false);
+            } else {
+                self.output.push(character);
+            }
         }
     }
 
@@ -216,12 +226,23 @@ impl State<'_> {
             let content = &self.output[start..];
             let last_line = content.rfind('\n').map_or(0, |index| index + 1);
             let size = content.len() - last_line;
+            // An empty last line, after a hard break, or of a heading without content, makes no
+            // underline, and the parser drops a break at the end of a heading, so none reads back
+            // (#270, #271).
+            if size == 0 {
+                self.no_spelling_of(node);
+            }
             self.output.push('\n');
             self.output.extend(core::iter::repeat_n(
                 if rank == 1 { '=' } else { '-' },
                 size,
             ));
             return Ok(());
+        }
+        // Without ATX headings, only a setext heading with content reads back as a heading, so
+        // an empty heading has no spelling (#270).
+        if !self.parse.constructs.heading_atx {
+            self.no_spelling_of(node);
         }
         self.enter(ConstructName::HeadingAtx);
         self.enter(ConstructName::Phrasing);
@@ -232,15 +253,9 @@ impl State<'_> {
         self.container_phrasing(document, node, &Info::new("# ", "\n"))?;
         if self.output.len() == content_start {
             self.output.pop();
-        } else if let Some(character) = self.output[content_start..]
-            .chars()
-            .next()
-            .filter(|c| matches!(c, ' ' | '\t'))
-        {
-            self.output.replace_range(
-                content_start..content_start + 1,
-                if character == ' ' { "&#x20;" } else { "&#x9;" },
-            );
+        } else if self.output[content_start..].starts_with([' ', '\t']) {
+            // The parser strips the space or tab, so it is a reference, which nothing replaces.
+            self.escape_at(content_start);
         }
         if self.options.close_atx {
             self.output.push(' ');
@@ -369,6 +384,14 @@ impl State<'_> {
                     self.output.push_str(text);
                     return Ok(());
                 }
+                WrittenLink::Loose(text) => {
+                    // What is next to the link can change where it ends, which is checked once
+                    // the block is written.
+                    self.output.push_str(text);
+                    self.loose_end = Some(self.output.len());
+                    self.loose_links = true;
+                    return Ok(());
+                }
                 WrittenLink::Angle(text) => {
                     let stack = mem::take(&mut self.stack);
                     self.enter(ConstructName::Autolink);
@@ -380,10 +403,23 @@ impl State<'_> {
                     self.stack = stack;
                     return Ok(());
                 }
-                WrittenLink::Explicit => {}
+                WrittenLink::Explicit => {
+                    // Without a link start and end, an explicit link reads back as text, except
+                    // that `[^` still starts one, checked once its text is written.
+                    let constructs = &self.parse.constructs;
+                    if !constructs.label_end
+                        || !constructs.label_start_link && !constructs.label_start_footnote
+                    {
+                        self.no_spelling();
+                    }
+                }
             }
         }
-        self.link_label(document, node, image, "](")?;
+        let text = self.link_label(document, node, image, "](")?;
+        if !image && !self.parse.constructs.label_start_link && !self.footnote_start(document, text)
+        {
+            self.no_spelling();
+        }
         self.output.push_str("](");
         self.destination_title(
             start,
@@ -396,6 +432,27 @@ impl State<'_> {
         Ok(())
     }
 
+    /// Whether link text written at `text` starts with `^` that reads back as the start of a link,
+    /// without `Constructs::label_start_link`, as `[^` starts a link where no footnote definition
+    /// binds its label.
+    fn footnote_start<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        text: core::ops::Range<usize>,
+    ) -> bool {
+        let constructs = &self.parse.constructs;
+        let Some(label) = self.output[text].strip_prefix('^') else {
+            return false;
+        };
+        constructs.label_start_footnote
+            && !(constructs.footnote_definition
+                && document
+                    .footnote_definition(&crate::util::normalize_identifier::normalize_identifier(
+                        label,
+                    ))
+                    .is_some())
+    }
+
     pub(super) fn reference<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
@@ -406,6 +463,7 @@ impl State<'_> {
         after: &str,
     ) -> Result<bool, Message> {
         let start = self.output.len();
+        let unwritable = self.unwritable;
         let text = self.link_label(document, node, image, "]")?;
         self.output.push_str("][");
         let reference_start = self.output.len();
@@ -421,6 +479,7 @@ impl State<'_> {
             // reference's only as long as `label_fits` allows: one that is longer is not written.
             if !matches!(kind, ReferenceKind::Full) && !crate::node_syntax::label_fits(label) {
                 self.output.truncate(start);
+                self.unwritable = unwritable;
                 return Ok(false);
             }
             self.output.push(']');
@@ -449,7 +508,7 @@ impl State<'_> {
     ) -> Result<core::ops::Range<usize>, Message> {
         // Image text is phrasing like link text, but literals form in it, unless the image is in
         // link text, and so does a bare link at its start, which reads back as the same link.
-        let literals = image && super::escape::autolink_literals(&self.stack);
+        let literals = image && self.literals();
         self.enter(if image {
             ConstructName::ImageLabel
         } else {
@@ -476,7 +535,7 @@ impl State<'_> {
         if (image || footnotes && constructs.label_start_link)
             && self.output[text_start..].starts_with('^')
         {
-            self.output.insert(text_start, '\\');
+            self.escape_at(text_start);
         }
         self.exit();
         Ok(text_start..self.output.len())
@@ -504,58 +563,23 @@ impl State<'_> {
         } else {
             self.options.check_bullet_other()?
         };
-        let mut first_empty = false;
-        let mut has_rule = false;
-        // The first line of code that an item starts with and that is written indented, which is
-        // then on the marker's line.
-        let mut code_lines = Vec::new();
-        // The content model holds only items in a list.
-        for (index, child) in flow_children(document, node).enumerate() {
-            let first = flow_children(document, child).next();
-            if index == 0 {
-                first_empty = first.is_none();
-            }
-            if let Some(first) = first {
-                match &document.node(first).unwrap().kind {
-                    EventKind::Rule => has_rule = true,
-                    EventKind::CodeBlock { value, info, .. } => {
-                        let value = trim_terminal_ending(value.resolve(document.source()).unwrap());
-                        if format_code_as_indented(value, info.is_none(), self) {
-                            code_lines
-                                .push((index == 0, value.split('\n').next().unwrap_or_default()));
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
+        let first_empty = flow_children(document, node)
+            .next()
+            .is_some_and(|item| flow_children(document, item).next().is_none());
+        let (has_rule, lines) = self.marker_lines(document, node);
+        let mut fenced = false;
         if ordered {
             if self.bullet_last_used == Some(bullet) {
                 bullet = bullet_other;
             }
         } else {
+            let rule = self.options.check_rule()?;
+            // The lists that directly follow this one each need a bullet other than the one
+            // before, so a bullet is ruled out too where it leaves the next no bullet (#257).
+            let next = self.next_bullets(document, node, rule);
             // The markers of the items this list starts, which are written but not yet followed
             // by their spaces, are on the line of the first item's marker too.
             let line = &self.output[self.output.rfind('\n').map_or(0, |index| index + 1)..];
-            // A `-` or `*` marker would make a line of indented code such as `--` a thematic
-            // break with it.
-            let breaks = |marker: char| {
-                marker != '+'
-                    && code_lines.iter().any(|&(first, code)| {
-                        let mut count = 1;
-                        // A thematic break is read in any of the containers whose markers are on
-                        // the line, so the markers count back to the first that is not `marker`.
-                        let before = if first { line } else { "" };
-                        let before = before
-                            .char_indices()
-                            .rfind(|&(_, c)| c != marker && c != ' ' && c != '\t')
-                            .map_or(before, |(index, c)| &before[index + c.len_utf8()..]);
-                        before.chars().chain(code.chars()).all(|c| {
-                            count += usize::from(c == marker);
-                            c == marker || c == ' ' || c == '\t'
-                        }) && count >= 3
-                    })
-            };
             let depth = self.stack.len();
             let positions = self.index_stack.len();
             // An empty first item in an empty first item would read as a thematic break.
@@ -570,7 +594,6 @@ impl State<'_> {
                 && self.index_stack[positions - 1] == 0
                 && self.index_stack[positions - 2] == 0
                 && self.index_stack[positions - 3] == 0;
-            let rule = self.options.check_rule()?;
             let preferred = bullet;
             // The preferred bullet is ruled out where it would join the list before, or start a
             // thematic break of empty items or of a rule as the item's first child.
@@ -580,8 +603,8 @@ impl State<'_> {
             // Each bullet is ruled out where it would join the list before or make a line a
             // thematic break; the preferred one is tried first, then the one that alternates
             // with it, then the third.
-            let excluded = |marker: char| {
-                breaks(marker)
+            let excluded = |marker: char, code: bool| {
+                breaks(marker, line, &lines, code)
                     || if marker == preferred {
                         different
                     } else {
@@ -593,21 +616,146 @@ impl State<'_> {
                 .copied()
                 .find(|&marker| marker != preferred && marker != bullet_other)
                 .unwrap_or(bullet_other);
-            // Where every bullet is ruled out, the choice ignores the thematic breaks that
-            // indented code would make, as #257 step 4 leaves to `unwritable-node`.
-            let fallback = if different { bullet_other } else { preferred };
-            bullet = [preferred, bullet_other, third]
-                .iter()
-                .copied()
-                .find(|&marker| !excluded(marker))
-                .unwrap_or(fallback);
+            let order = [preferred, bullet_other, third];
+            let choose = |code: bool| {
+                order.iter().copied().find(|&marker| {
+                    !excluded(marker, code) && next.is_none_or(|next| next & !bit(marker) != 0)
+                })
+            };
+            // Where every bullet is ruled out with the code indented, the code is fenced, where
+            // the options read fences, and otherwise no spelling reads back.
+            let chosen = choose(true).or_else(|| {
+                let chosen = choose(false).filter(|_| self.parse.constructs.code_fenced);
+                fenced = chosen.is_some();
+                chosen
+            });
+            bullet = chosen.unwrap_or_else(|| {
+                self.no_spelling_of(node);
+                preferred
+            });
+        }
+        if fenced {
+            self.fenced_lists.push(node);
         }
         self.bullet_current = Some(bullet);
-        self.container_flow(document, node)?;
+        let result = self.container_flow(document, node);
+        if fenced {
+            self.fenced_lists.pop();
+        }
+        result?;
         self.bullet_last_used = Some(bullet);
         self.bullet_current = bullet_current;
         self.exit();
         Ok(())
+    }
+
+    /// Whether list `list` has an item that starts with a thematic break, and the first lines
+    /// of its items that a bullet before them could make a thematic break: a line of code
+    /// written indented, and, where no character can be escaped, a line of text. Each is with
+    /// whether it is in the first item.
+    fn marker_lines<'d, S: AsRef<str>>(
+        &self,
+        document: &'d Document<S>,
+        list: NodeId,
+    ) -> (bool, Vec<(bool, &'d str, bool)>) {
+        let literal = self.literal();
+        let plain = !literal.backslash && !literal.reference;
+        let mut has_rule = false;
+        let mut lines = Vec::new();
+        // The content model holds only items in a list.
+        for (index, child) in flow_children(document, list).enumerate() {
+            let Some(first) = flow_children(document, child).next() else {
+                continue;
+            };
+            match &document.node(first).unwrap().kind {
+                EventKind::Rule => has_rule = true,
+                EventKind::CodeBlock { value, info, .. } => {
+                    let value = trim_terminal_ending(value.resolve(document.source()).unwrap());
+                    if format_code_as_indented(value, info.is_none(), self) {
+                        let line = value.split('\n').next().unwrap_or_default();
+                        lines.push((index == 0, line, true));
+                    }
+                }
+                EventKind::Start(Tag::Paragraph { .. })
+                    if plain && item_task(document, child).is_none() =>
+                {
+                    if let Some(EventKind::Text(value)) = document
+                        .node(first)
+                        .unwrap()
+                        .first_child()
+                        .map(|text| &document.node(text).unwrap().kind)
+                    {
+                        let value = value.resolve(document.source()).unwrap();
+                        let line = value.split('\n').next().unwrap_or_default();
+                        lines.push((index == 0, line, false));
+                    }
+                }
+                _ => {}
+            }
+        }
+        (has_rule, lines)
+    }
+
+    /// The bullets that the unordered list after `list`, directly, can be written with, such
+    /// that each list after it has one too, as a set of [`bit`]s, or `None` without one. The sets
+    /// of a run of lists are worked out at its first list, last to first, and kept for the
+    /// others, so each list is looked at once.
+    fn next_bullets<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        list: NodeId,
+        rule: char,
+    ) -> Option<u8> {
+        let unordered = |id: NodeId| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Start(Tag::List { start: None, .. })
+            )
+        };
+        let next = |id: NodeId| {
+            core::iter::successors(document.node(id).unwrap().next_sibling(), |&id| {
+                document.node(id).unwrap().next_sibling()
+            })
+            .find(|&id| !matches!(document.node(id).unwrap().kind, EventKind::Separator { .. }))
+            .filter(|&id| unordered(id))
+        };
+        let planned = self.bullet_plan.last().is_some_and(|&(id, _)| id == list);
+        if planned {
+            self.bullet_plan.pop();
+        }
+        let following = next(list)?;
+        if !planned {
+            // A run of lists starts here: each takes a bullet that leaves the next one one.
+            let mut run = Vec::new();
+            let mut current = Some(following);
+            while let Some(id) = current {
+                run.push(id);
+                current = next(id);
+            }
+            let mut after = None;
+            for &id in run.iter().rev() {
+                let (has_rule, lines) = self.marker_lines(document, id);
+                let bullets = |code: bool| {
+                    ['-', '*', '+']
+                        .iter()
+                        .copied()
+                        .filter(|&marker| {
+                            !breaks(marker, "", &lines, code)
+                                && !(rule == marker && has_rule)
+                                && after.is_none_or(|after: u8| after & !bit(marker) != 0)
+                        })
+                        .fold(0, |set, marker| set | bit(marker))
+                };
+                // A list that has no bullet with its code indented fences it, where it can.
+                let mut set = bullets(true);
+                if set == 0 && self.parse.constructs.code_fenced {
+                    set = bullets(false);
+                }
+                self.bullet_plan.push((id, set));
+                after = Some(set);
+            }
+        }
+        self.bullet_plan.last().map(|&(_, set)| set)
     }
 
     pub(super) fn list_item<S: AsRef<str>>(
@@ -684,7 +832,20 @@ impl State<'_> {
         let task_item = self
             .task_item
             .replace((node, item_task.map(|(paragraph, _)| paragraph)));
-        self.container_flow(document, node)?;
+        // What the item's first line starts with, for `check_block`.
+        let mut prefix = String::new();
+        if !blank_start {
+            prefix.push_str(&self.output[prefix_start..]);
+            prefix.extend(core::iter::repeat_n(' ', size - prefix_size));
+            if let Some((task, separator)) = task {
+                prefix.push_str(task);
+                prefix.push(separator);
+            }
+        }
+        self.prefixes.push((prefix, " ".repeat(size)));
+        let result = self.container_flow(document, node);
+        self.prefixes.pop();
+        result?;
         self.task_item = task_item;
         self.indent_lines(start, |line, index, blank, output| {
             if index == 0 {
@@ -818,6 +979,39 @@ fn checkbox<S: AsRef<str>>(
         .filter(|value| value.starts_with('\t'))
         .map_or(' ', |_| '\t');
     (if checked { "[x]" } else { "[ ]" }, separator)
+}
+
+/// The bit for bullet `marker` in a set of bullets.
+fn bit(marker: char) -> u8 {
+    match marker {
+        '-' => 1,
+        '*' => 2,
+        _ => 4,
+    }
+}
+
+/// Whether bullet `marker` would make one of `lines` a thematic break with it, where `line` is
+/// what the first item's marker follows on its line, counting lines of code only where `code`.
+/// A `+` makes none.
+fn breaks(marker: char, line: &str, lines: &[(bool, &str, bool)], code: bool) -> bool {
+    marker != '+'
+        && lines.iter().any(|&(first, text, is_code)| {
+            if is_code && !code {
+                return false;
+            }
+            let mut count = 1;
+            // A thematic break is read in any of the containers whose markers are on the line,
+            // so the markers count back to the first that is not `marker`.
+            let before = if first { line } else { "" };
+            let before = before
+                .char_indices()
+                .rfind(|&(_, c)| c != marker && c != ' ' && c != '\t')
+                .map_or(before, |(index, c)| &before[index + c.len_utf8()..]);
+            before.chars().chain(text.chars()).all(|c| {
+                count += usize::from(c == marker);
+                c == marker || c == ' ' || c == '\t'
+            }) && count >= 3
+        })
 }
 
 fn item_task<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> Option<(NodeId, bool)> {

@@ -74,14 +74,16 @@ pub fn normalize_markdown_with_options(
 /// written, such as a setext heading without [`crate::Constructs::heading_atx`], and escapes that
 /// only constructs they turn off would need, such as a table's delimiter row without
 /// [`crate::Constructs::table`], are left out, though some that they read back the same remain.
-/// Output read with other options may read differently.
+/// Where no spelling reads back under them, such as an empty heading without ATX headings, an
+/// error is returned rather than output that reads back as something else. Output read with
+/// other options may read differently.
 ///
 /// The output uses LF line endings. The parser stores every source line ending as LF in node values, so a CR in a value is a character: it is written as `&#xD;` where character references are decoded, such as in text and titles, and as it is in code, HTML and frontmatter, where a parsed value never has one.
 ///
 /// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably, and other trees are written without panicking, but possibly incorrectly or unstably, as [the contract](crate::contract), section 5, states.
 ///
 /// # Errors
-/// Returns invalid formatting options, unsupported syntax metadata, content nested too deeply, or a list item number that is too long. Serializing recurses once per level of nesting, so content nested more than 128 levels below the serialized node is an error rather than a stack overflow. Every block and inline node counts one level, including those in an image's text. CommonMark limits an ordered list marker to 9 digits, so an item whose number would have more, which would read back as text, is an error with the rule id `list-number-too-long`. An item's number is its list's start plus, when [`Options::increment_list_marker`] is on, its position among the list's items, so with it off only the start must fit.
+/// Returns invalid formatting options, unsupported syntax metadata, content nested too deeply, a list item number that is too long, or a node that has no spelling under the document's options. Serializing recurses once per level of nesting, so content nested more than 128 levels below the serialized node is an error rather than a stack overflow. Every block and inline node counts one level, including those in an image's text. CommonMark limits an ordered list marker to 9 digits, so an item whose number would have more, which would read back as text, is an error with the rule id `list-number-too-long`. An item's number is its list's start plus, when [`Options::increment_list_marker`] is on, its position among the list's items, so with it off only the start must fit. A node that no Markdown reads back as under [`Document::parse_options`] is an error with the rule id `unwritable-node`, whose span is the first such node's and whose reason names it by its `Debug` form, `NodeId(n)`, where `n` counts from 1 as in its serialized form, as [the contract](crate::contract), section 3.3, lists: with [`crate::Constructs::character_escape`] off, for example, a character that would read as markup where neither an escape nor a reference reads.
 pub fn to_markdown<S: AsRef<str>>(document: &Document<S>) -> Result<String, Message> {
     to_markdown_with_options(document, &Options::default())
 }
@@ -91,7 +93,7 @@ pub fn to_markdown<S: AsRef<str>>(document: &Document<S>) -> Result<String, Mess
 /// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably, and other trees are written without panicking, but possibly incorrectly or unstably, as [the contract](crate::contract), section 5, states.
 ///
 /// # Errors
-/// Returns invalid formatting options, unsupported syntax metadata, content nested more than 128 levels deep, or list item numbers of more than 9 digits, as for [`to_markdown`].
+/// Returns invalid formatting options, unsupported syntax metadata, content nested more than 128 levels deep, list item numbers of more than 9 digits, or a node without a spelling under the document's options (`unwritable-node`), as for [`to_markdown`].
 pub fn to_markdown_with_options<S: AsRef<str>>(
     document: &Document<S>,
     options: &Options,
@@ -106,7 +108,7 @@ pub fn to_markdown_with_options<S: AsRef<str>>(
 /// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably, and other trees are written without panicking, but possibly incorrectly or unstably, as [the contract](crate::contract), section 5, states.
 ///
 /// # Errors
-/// Returns an invalid node index, invalid formatting options, unsupported syntax metadata, content nested more than 128 levels below `node`, or list item numbers of more than 9 digits, as for [`to_markdown`]. An item serialized on its own is numbered by its position in its list.
+/// Returns an invalid node index, invalid formatting options, unsupported syntax metadata, content nested more than 128 levels below `node`, list item numbers of more than 9 digits, or a node without a spelling under the document's options (`unwritable-node`), as for [`to_markdown`]. An item serialized on its own is numbered by its position in its list.
 pub fn to_markdown_node<S: AsRef<str>>(
     document: &Document<S>,
     node: NodeId,
@@ -130,6 +132,9 @@ pub fn to_markdown_node<S: AsRef<str>>(
             || state::ends_in_kept_line_ending(document, node, true))
     {
         result.push('\n');
+    }
+    if let Some(id) = state.unwritable {
+        return Err(state::unwritable_node(document, id));
     }
     Ok(result)
 }

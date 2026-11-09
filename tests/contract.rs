@@ -2171,12 +2171,6 @@ fn known_gap(
         .map(|id| &document.node(id).unwrap().kind)
         .collect();
     let source = document.source();
-    let caret_label = kinds.iter().any(|kind| {
-        matches!(kind, EventKind::Definition { label, .. } if label.resolve(source).unwrap().starts_with('^'))
-    });
-    if caret_label && involves(&["^", "footnote", "Footnote"]) {
-        return Some("#208 a definition label starting with ^");
-    }
     // Only the break, or the space before it, differs.
     let only_breaks = [one, other].iter().all(|side| {
         ["<br />", "\\n", "&#xA;", "&#x20;"]
@@ -2782,7 +2776,7 @@ fn assert_tight_item_settles(context: &'static str, blocks: &[&str], options: &M
     match round_trip(document, options, false) {
         Outcome::Pass => {}
         Outcome::Fail(failure) if !options.fences && failure.output.contains("<!---->") => {}
-        Outcome::Rejected => panic!("rejected {:?}", blocks),
+        Outcome::Rejected | Outcome::Unwritable(_) => panic!("rejected {:?}", blocks),
         Outcome::Fail(failure) => panic!(
             "{} {:?} in {:?}: {:?}\n{}\n{}",
             failure.kind, blocks, context, failure.output, failure.before, failure.after
@@ -3667,7 +3661,7 @@ fn assert_round_trips(source: &str) {
 fn assert_round_trips_with(source: &str, options: &MarkdownOptions) {
     match round_trip(parse(source), options, false) {
         Outcome::Pass => {}
-        Outcome::Rejected => panic!("rejected {:?}", source),
+        Outcome::Rejected | Outcome::Unwritable(_) => panic!("rejected {:?}", source),
         Outcome::Fail(failure) => panic!(
             "{} {:?}: {:?}\n{}\n{}",
             failure.kind, source, failure.output, failure.before, failure.after
@@ -3726,7 +3720,6 @@ fn gap_issue_199() {
 }
 
 #[test]
-#[ignore = "#208: a definition label starting with ^ reads back as a footnote definition"]
 fn gap_issue_208() {
     assert_round_trips("[a]: /u\n    [^b]: #\n");
 }
