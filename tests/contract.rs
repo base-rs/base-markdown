@@ -446,6 +446,16 @@ fn clause_3_3_a_block_after_a_list_ending_in_an_unclosed_html_block_round_trips(
             source
         );
     }
+    // A list ending in an empty item, a paragraph or a closed HTML block keeps its blank line.
+    for source in ["-\n\nx", "- a\n\nx", "- <div>\n\nx", "- <pre>a</pre>\n\nx"] {
+        assert_round_trips(source);
+        let document = normalized(source);
+        assert!(
+            to_markdown(&document).unwrap().contains("\n\nx"),
+            "{:?}",
+            source
+        );
+    }
     // Indented code after such a list, which only an edit gives, is kept apart by an empty
     // comment, written on the next line too.
     let mut document = parse("- <pre>\n<!---->\n\n    code\n");
