@@ -1110,19 +1110,27 @@ indented delta <a href="#user-content-fnref-2" data-footnote-backref="" aria-lab
 
 [^1]: Paragraph
 
+
 # Heading
+
 
 [^2]: Paragraph
 
+
     “code”, which is paragraphs…
+
 
     …because of the indent!
 
+
 [^3]: Paragraph
+
 
 > block quote
 
+
 [^4]: Paragraph
+
 
 - list
 "###,
@@ -1164,19 +1172,27 @@ indented delta <a href="#user-content-fnref-2" data-footnote-backref="" aria-lab
 
 [^1]: Paragraph
 
+
     # Heading
+
 
 [^2]: Paragraph
 
+
         code
+
 
         more code
 
+
 [^3]: Paragraph
+
 
     > block quote
 
+
 [^4]: Paragraph
+
 
     - list
 "###,
@@ -1193,6 +1209,7 @@ indented delta <a href="#user-content-fnref-2" data-footnote-backref="" aria-lab
 <li id="user-content-fn-2">
 <p>Paragraph</p>
 <pre><code>code
+
 
 more code
 </code></pre>
