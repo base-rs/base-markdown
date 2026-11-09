@@ -538,7 +538,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             return Err(StreamError::Unbalanced);
         }
         if CHECK {
-            event.validate(Some(self.source))?;
+            event.validate(Some(self.source), None)?;
             self.check_nesting(&event.kind)?;
         }
         // A task item's checkbox waits for its paragraph past definitions and separators.
@@ -705,7 +705,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             }
             EventKind::Start(Tag::Document { .. }) => return Ok(()),
             _ if !self.reach.allows(kind) => return Err(StreamError::InvalidNesting),
-            EventKind::Start(tag) => self.reach.enter(tag.kind()),
+            EventKind::Start(tag) => self.reach.enter(tag, true),
             _ => {}
         }
         let fragment = self.fragment && self.stack.len() == 1;

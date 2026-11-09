@@ -530,10 +530,6 @@ pub(super) fn tildes(
     }
 }
 
-pub(super) fn unsafe_newline(stack: &[ConstructName]) -> bool {
-    scopes(stack) & NEWLINES != 0
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

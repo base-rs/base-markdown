@@ -252,21 +252,28 @@ impl TagKind {
 
 /// The containers above a node that restrict what can be below them at any depth, besides the
 /// rule for their children that [`TagKind::holds`] decides: a link holds no footnote reference,
-/// as a link's text cannot hold one, and a table cell holds no soft or hard break, as it is one
-/// line of its row. The parser produces neither. They are counted so that checking a node takes
-/// constant time where looking through its ancestors would make a deep nest quadratic.
+/// as a link's text cannot hold one, a table cell holds no soft or hard break, as it is one line
+/// of its row, and a heading that only an ATX heading can be holds no break either, as an ATX
+/// heading is one line: one of level 3 to 6, which a setext heading cannot be, or any heading
+/// when [`Constructs::heading_setext`][crate::Constructs::heading_setext] is off. The parser
+/// produces none of these. They are counted so that checking a node takes constant time where
+/// looking through its ancestors would make a deep nest quadratic.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Reach {
     links: usize,
     cells: usize,
+    // Headings hold phrasing only, so no heading is below another, and one flag counts them.
+    heading: bool,
 }
 
 impl Reach {
-    /// Count a container as above the nodes that follow, until it is left.
-    pub(crate) fn enter(&mut self, kind: TagKind) {
-        match kind {
-            TagKind::Link => self.links += 1,
-            TagKind::TableCell => self.cells += 1,
+    /// Count a container as above the nodes that follow, until it is left. `setext` is whether
+    /// the options read setext headings, or `true` for any options.
+    pub(crate) fn enter(&mut self, tag: &Tag<'_>, setext: bool) {
+        match tag {
+            Tag::Link(_) => self.links += 1,
+            Tag::TableCell { .. } => self.cells += 1,
+            Tag::Heading(level) => self.heading = *level > 2 || !setext,
             _ => {}
         }
     }
@@ -276,13 +283,14 @@ impl Reach {
         match kind {
             TagKind::Link => self.links -= 1,
             TagKind::TableCell => self.cells -= 1,
+            TagKind::Heading => self.heading = false,
             _ => {}
         }
     }
 
     /// Whether none of the containers counted restricts anything.
     pub(crate) fn is_empty(self) -> bool {
-        self.links == 0 && self.cells == 0
+        self.links == 0 && self.cells == 0 && !self.heading
     }
 
     /// Whether a link is counted.
@@ -298,13 +306,19 @@ impl Reach {
     /// Whether some container cannot have `kind` below it, so that adding it checks the
     /// containers above it.
     pub(crate) fn restricted(kind: &EventKind<'_>) -> bool {
-        !Self { links: 1, cells: 1 }.allows(kind)
+        !Self {
+            links: 1,
+            cells: 1,
+            heading: true,
+        }
+        .allows(kind)
     }
 
     /// Whether every container counted can have `kind` below it.
     pub(crate) fn allows(self, kind: &EventKind<'_>) -> bool {
         (self.links == 0 || !matches!(kind, EventKind::FootnoteReference { .. }))
-            && (self.cells == 0 || !matches!(kind, EventKind::SoftBreak(_) | EventKind::HardBreak))
+            && (self.cells == 0 && !self.heading
+                || !matches!(kind, EventKind::SoftBreak(_) | EventKind::HardBreak))
     }
 }
 
@@ -345,7 +359,11 @@ pub enum Tag<'a> {
     /// Whether the containing list suppresses paragraph tags.
     Paragraph { tight: bool },
     /// A heading level from one through six. Any other level is rejected with
-    /// [`StreamError::InvalidValue`] wherever an event enters a document or renderer.
+    /// [`StreamError::InvalidValue`] wherever an event enters a document or renderer. Only a
+    /// setext heading, of level 1 or 2, spans lines, so a heading of level 3 to 6, or any heading
+    /// in a document whose options turn off
+    /// [`Constructs::heading_setext`][crate::Constructs::heading_setext], holds no soft or hard
+    /// break at any depth, which is rejected with [`StreamError::InvalidNesting`].
     Heading(u8),
     /// A block quote.
     BlockQuote,
@@ -661,7 +679,8 @@ pub enum EventKind<'a> {
     /// reads before the span: a nonempty ASCII token whose first character is a letter or digit
     /// and whose other characters are letters, digits, `_`, `-`, `+`, `#` or `.`. Any other
     /// language, including an empty one, cannot be written and is rejected with
-    /// [`StreamError::InvalidValue`] wherever an event enters a document or renderer.
+    /// [`StreamError::InvalidValue`] wherever an event enters a document or renderer, and so is
+    /// any language in a document whose options do not set that option.
     Code {
         value: Text<'a>,
         language: Option<Text<'a>>,
@@ -685,6 +704,11 @@ pub enum EventKind<'a> {
     /// back exactly. An empty info string is code without one, which is `None`, so `Some` empty
     /// info is rejected with [`StreamError::InvalidValue`] wherever an event enters a document or
     /// renderer.
+    ///
+    /// In a document whose options turn off
+    /// [`Constructs::code_fenced`][crate::Constructs::code_fenced], a code block is indented code,
+    /// which has no info string, and whose value is not empty and starts and ends with a line that
+    /// is not blank; any other is rejected with [`StreamError::InvalidValue`].
     CodeBlock {
         value: Text<'a>,
         info: Option<Text<'a>>,
@@ -696,9 +720,11 @@ pub enum EventKind<'a> {
     /// Inline HTML, with `block` false, is written as it is, so its value is one inline HTML
     /// construct as the parser reads it: an open tag, a closing tag, a comment, a processing
     /// instruction, a declaration or CDATA, with nothing before or after it, as `<b>`,
-    /// `<a\nhref="x">` or `<!-- c -->`. Tag names may have namespace prefixes, as
+    /// `<a\nhref="x">` or `<!-- c -->`. Tag names may have namespace prefixes only where
     /// [`ParseOptions::html_tag_namespaces`][crate::ParseOptions::html_tag_namespaces] reads them,
-    /// and it holds no blank line, which would end its paragraph. An empty value is valid and
+    /// it is not what [`Constructs::autolink`][crate::Constructs::autolink] reads as an autolink
+    /// where that is on, such as `<tel:123>`, and it holds no blank line, which would end its
+    /// paragraph. A renderer, which has no options, takes what any options read. An empty value is valid and
     /// writes nothing; normalizing removes it. Any other value, such as text, `<b>x</b>`, `<b> `,
     /// `<a\n\nb>`, or `<a\n  b>`, whose continuation line a paragraph would strip, is rejected
     /// with [`StreamError::InvalidValue`] wherever an event enters a document or renderer.
@@ -706,15 +732,19 @@ pub enum EventKind<'a> {
     /// An HTML block, with `block` true, is one block as the block parser reads it, by its start
     /// and end conditions: the indentation the parser keeps before a block, at most three spaces,
     /// or one or two spaces then a tab and spaces, where those spaces and the tab, counted as one column, are at most three,
-    /// then HTML that starts a block, and the lines the block takes, without the final line
+    /// or any spaces and tabs where [`Constructs::code_indented`][crate::Constructs::code_indented]
+    /// is off, then HTML that starts a block, and the lines the block takes, without the final line
     /// ending, as `<div>`, `<div>\na` or `<!-- a\n\nb -->`. A block of kinds 1–5 holds no line
     /// after the one that holds its end condition; one that no line closes may end in the blank
     /// lines it takes, as `<!-- a\n\n` holds `<!-- a\n`. One of kind 6 or 7 holds no blank line,
     /// which ends it; but blank lines before a line indented at least as far as the least indented
-    /// line before it, and a final line ending, are valid in one of kind 6 or 7 too, as
+    /// line before it, and a final line ending, are valid in one of kind 6 or 7 where
     /// [`ParseOptions::html_block_blank_lines`][crate::ParseOptions::html_block_blank_lines]
-    /// keeps them. So `abc`, `<b> x`, `    <div>`, `<div>\n\nb` and `<div>\n    a\n\n  b` are
-    /// rejected, as is an empty value, which no block is.
+    /// keeps them. Namespace prefixes start a block of kind 7 where
+    /// [`ParseOptions::html_tag_namespaces`][crate::ParseOptions::html_tag_namespaces] reads them.
+    /// So under the default options `abc`, `<b> x`, `    <div>`, `<div>\n\nb` and
+    /// `<div>\n    a\n\n  b` are rejected, as is an empty value, which no block is. A renderer,
+    /// which has no options, takes what any options read.
     ///
     /// Both are raw, so they hold no CR.
     Html { value: Text<'a>, block: bool },
@@ -744,7 +774,15 @@ pub enum EventKind<'a> {
 }
 
 impl<'s> EventKind<'s> {
-    pub(crate) fn validate(&self, source: Option<&str>) -> Result<(), StreamError> {
+    /// Check this event's values, and, with `options`, that the options read the construct it is
+    /// and its values: valid means some parse with those options could produce it. Without
+    /// options, a value is valid when some options read it, which is what a renderer checks, as
+    /// rendering reads nothing back.
+    pub(crate) fn validate(
+        &self,
+        source: Option<&str>,
+        options: Option<&crate::ParseOptions>,
+    ) -> Result<(), StreamError> {
         // A raw value, which the writer writes as it is, holds no CR, which the parser reads as a
         // line ending and stores as LF.
         fn raw(value: &str) -> bool {
@@ -762,6 +800,14 @@ impl<'s> EventKind<'s> {
                 (value, source) => value.resolve(source.unwrap_or("")).map(Some),
             }
         }
+        if options.is_some_and(|options| !self.in_dialect(options)) {
+            return Err(StreamError::InvalidValue);
+        }
+        // Namespaced tag names, and HTML shaped as an autolink, each read as HTML under some
+        // options only, as is what `html_block_value` reads under some.
+        let namespaces = options.is_none_or(|options| options.html_tag_namespaces);
+        let autolinks = options.is_some_and(|options| options.constructs.autolink);
+        let indented_only = options.is_some_and(|options| !options.constructs.code_fenced);
         // A value is valid only in the form the parser stores, so no value holds NUL, which it
         // stores as U+FFFD, and each kind has its own rule beyond that. A source-backed value is
         // checked once its source is known.
@@ -838,8 +884,12 @@ impl<'s> EventKind<'s> {
                 }
             }
             // An empty info string is code without one, which is `None`.
+            // Indented code, when no fence is read, starts and ends with a line that is not blank.
             Self::CodeBlock { value, info, .. } => {
-                check(value, &raw)?;
+                check(value, &|value| {
+                    raw(value)
+                        && (!indented_only || crate::block_parser::indented_code_value(value))
+                })?;
                 match info {
                     Some(info) => check(info, &|info| !info.is_empty()),
                     None => Ok(()),
@@ -852,9 +902,12 @@ impl<'s> EventKind<'s> {
             Self::Html { value, block } => check(value, &|value| {
                 raw(value)
                     && if *block {
-                        crate::block_parser::html_block_value(value)
+                        crate::block_parser::html_block_value(value, options)
                     } else {
-                        crate::util::html_text::HtmlText::is_inline(value)
+                        crate::util::html_text::HtmlText::is_inline(value, namespaces)
+                            && !(autolinks
+                                && crate::util::autolink::recognize(value.bytes().skip(1))
+                                    .is_some())
                     }
             }),
             // The parser stores each line of frontmatter with its line ending.
@@ -877,6 +930,62 @@ impl<'s> EventKind<'s> {
                 check(label, &|label| crate::node_syntax::valid_label(label, true))
             }
             _ => Ok(()),
+        }
+    }
+
+    /// Whether `options` read the construct this event is, ignoring its values, which
+    /// [`EventKind::validate`] checks.
+    fn in_dialect(&self, options: &crate::ParseOptions) -> bool {
+        let constructs = &options.constructs;
+        // A `[^` that no footnote definition binds starts a link's label as `[` does.
+        let link = (constructs.label_start_link || constructs.label_start_footnote)
+            && constructs.label_end;
+        match self {
+            Self::Start(tag) => match tag {
+                Tag::Document { frontmatter, .. } => {
+                    frontmatter.is_none() || constructs.frontmatter
+                }
+                // A setext heading is of level 1 or 2.
+                Tag::Heading(level) => {
+                    constructs.heading_atx || (*level <= 2 && constructs.heading_setext)
+                }
+                Tag::BlockQuote => constructs.block_quote,
+                Tag::List { .. } => constructs.list_item,
+                Tag::Item { checked, .. } => {
+                    constructs.list_item && (checked.is_none() || constructs.task_list_item)
+                }
+                Tag::Emphasis | Tag::Strong => constructs.attention,
+                Tag::Delete => constructs.strikethrough,
+                // Only a link of its own can be an autolink.
+                Tag::Link(target) => {
+                    link || (target.reference().is_none()
+                        && (constructs.autolink || constructs.autolink_literal))
+                }
+                Tag::Image(_) => constructs.label_start_image && constructs.label_end,
+                Tag::Table
+                | Tag::TableHead
+                | Tag::TableBody
+                | Tag::TableRow
+                | Tag::TableCell { .. } => constructs.table,
+                Tag::FootnoteDefinition { .. } => constructs.footnote_definition,
+                Tag::Paragraph { .. } => true,
+            },
+            Self::HardBreak => constructs.hard_break_escape || constructs.hard_break_trailing,
+            Self::Rule => constructs.thematic_break,
+            Self::Code { language, .. } => {
+                constructs.code_text && (language.is_none() || options.inline_code_info)
+            }
+            // Only a fence has an info string.
+            Self::CodeBlock { info, .. } => {
+                constructs.code_fenced || (info.is_none() && constructs.code_indented)
+            }
+            Self::Html { block: true, .. } => constructs.html_flow,
+            Self::Html { block: false, .. } => constructs.html_text,
+            Self::Definition { .. } => constructs.definition,
+            Self::FootnoteReference { .. } => {
+                constructs.label_start_footnote && constructs.label_end
+            }
+            Self::End(_) | Self::Text(_) | Self::SoftBreak(_) | Self::Separator { .. } => true,
         }
     }
 
@@ -990,14 +1099,19 @@ pub struct Event<'a> {
 }
 
 impl Event<'_> {
-    pub(crate) fn validate(&self, source: Option<&str>) -> Result<(), StreamError> {
+    /// Check this event's span, and its kind as [`EventKind::validate`] does.
+    pub(crate) fn validate(
+        &self,
+        source: Option<&str>,
+        options: Option<&crate::ParseOptions>,
+    ) -> Result<(), StreamError> {
         if self.span.start > self.span.end
             || (matches!(self.kind, EventKind::End(_)) && !self.span.is_empty())
             || source.is_some_and(|source| source.get(self.span.clone()).is_none())
         {
             return Err(StreamError::InvalidRange);
         }
-        self.kind.validate(source)
+        self.kind.validate(source, options)
     }
 }
 
@@ -1013,12 +1127,15 @@ pub enum StreamError {
     Unbalanced,
     /// A node cannot be where it was put: a child that its parent's content model does not hold,
     /// such as a block inside a paragraph, an item outside a list or a row directly inside a
-    /// table, phrasing and blocks under one parent, or a footnote reference inside a link.
+    /// table, phrasing and blocks under one parent, a footnote reference inside a link, or a soft
+    /// or hard break inside a table cell or a heading that is one line (see [`Tag::Heading`]).
     InvalidNesting,
     /// A value has a form its event or syntax cannot hold, such as a heading level outside one
     /// through six, an inline code language that
     /// [`ParseOptions::inline_code_info`][crate::ParseOptions::inline_code_info] would not read
-    /// back, or an empty code block info string.
+    /// back, or an empty code block info string, or, in a document, a node or value that its
+    /// [`Document::parse_options`][crate::Document::parse_options] do not read, such as a table
+    /// without [`Constructs::table`][crate::Constructs::table].
     InvalidValue,
     /// The caller's output writer failed.
     Write(fmt::Error),

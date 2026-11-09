@@ -970,7 +970,10 @@ impl<'a> State<'a> {
             }
             // A soft break is a line ending, which is LF whatever value a constructed one has.
             EventKind::SoftBreak(_) => self.text("\n", info),
-            EventKind::HardBreak => self.hard_break(info),
+            EventKind::HardBreak => {
+                self.hard_break();
+                Ok(())
+            }
             EventKind::Rule => self.thematic_break(),
             EventKind::Code { value, language } => self.inline_code(
                 value.resolve(source).unwrap(),

@@ -54,14 +54,13 @@ impl HtmlText {
     /// empty, which writes nothing, or exactly one inline HTML construct as the inline parser
     /// reads it, an open tag, a closing tag, a comment, a processing instruction, a declaration
     /// or CDATA, with nothing after it, in the form the parser stores. Namespace prefixes in tag
-    /// names are allowed, as `ParseOptions::html_tag_namespaces` reads them, so that every parsed
-    /// value passes whatever the options.
-    pub fn is_inline(value: &str) -> bool {
+    /// names are allowed when `namespaces`, as `ParseOptions::html_tag_namespaces` reads them.
+    pub fn is_inline(value: &str, namespaces: bool) -> bool {
         let bytes = value.as_bytes();
         match bytes.split_first() {
             None => true,
             Some((b'<', rest)) => {
-                Self::scan(rest, true) == Some(rest.len()) && continuation_lines_start(bytes)
+                Self::scan(rest, namespaces) == Some(rest.len()) && continuation_lines_start(bytes)
             }
             _ => false,
         }

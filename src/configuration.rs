@@ -40,7 +40,7 @@ use alloc::string::String;
 #[cfg_attr(
     feature = "serde",
     derive(serde::Serialize, serde::Deserialize),
-    serde(rename_all = "camelCase")
+    serde(default, rename_all = "camelCase")
 )]
 pub struct Constructs {
     /// Attention.
@@ -934,6 +934,11 @@ impl CompileOptions {
 /// In most cases, you will want to use the default trait, or the `gfm` or
 /// `commonmark` method. [`Options`] lists what each preset enables.
 ///
+/// A [`Document`](crate::Document) records the options it was parsed with as its
+/// [`Document::parse_options`](crate::Document::parse_options), and holds only what a parse with
+/// them could produce. Serialized, a document's options are in its `options` field, and a missing
+/// field, or a missing construct, takes its default.
+///
 /// ## Examples
 ///
 /// ```
@@ -956,7 +961,7 @@ impl CompileOptions {
     derive(serde::Serialize, serde::Deserialize),
     serde(default, rename_all = "camelCase")
 )]
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParseOptions {
     /// Which constructs to enable and disable.
     ///

@@ -80,12 +80,26 @@ pub struct AstBuilder {
     definitions: Vec<NodeId>,
     complete: bool,
     failed: bool,
+    // The options that the document is valid under, which it records.
+    options: crate::ParseOptions,
 }
 
 impl AstBuilder {
-    /// Create an empty builder. It does not borrow or own the parser's source.
+    /// Create an empty builder of a document with [`ParseOptions::default`][crate::ParseOptions::default]. It does not borrow or own the parser's source.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create an empty builder of a document with `options`, which it records as
+    /// [`Document::parse_options`]: each event must be one that a parse with them could produce,
+    /// so a construct that they turn off, or a value only other options read, such as an inline
+    /// code language without [`ParseOptions::inline_code_info`][crate::ParseOptions::inline_code_info],
+    /// is rejected. Give the options the events were parsed with.
+    pub fn with_options(options: crate::ParseOptions) -> Self {
+        Self {
+            options,
+            ..Self::default()
+        }
     }
 
     /// Reserve arena and open-container capacity for allocation reuse.
@@ -101,7 +115,7 @@ impl AstBuilder {
     /// A zero budget does no work. Reaching the exact budget does not probe the iterator for another event.
     ///
     /// # Errors
-    /// Returns parser errors, [`StreamError::Unbalanced`] for malformed streams, and [`StreamError::InvalidNesting`] for a node that its parent cannot hold. A failed builder cannot be finished.
+    /// Returns parser errors, [`StreamError::Unbalanced`] for malformed streams, [`StreamError::InvalidNesting`] for a node that its parent cannot hold, and [`StreamError::InvalidValue`] for an invalid value or one that the builder's options do not read ([`AstBuilder::with_options`]). A failed builder cannot be finished.
     pub fn consume<'a>(
         &mut self,
         events: &mut impl Iterator<Item = Result<Event<'a>, StreamError>>,
@@ -138,7 +152,7 @@ impl AstBuilder {
     }
 
     fn append(&mut self, event: Event<'_>) -> Result<(), StreamError> {
-        event.validate(None)?;
+        event.validate(None, Some(&self.options))?;
         let event = Event {
             kind: event.kind.map_text(Text::owned),
             span: event.span,
@@ -201,7 +215,8 @@ impl AstBuilder {
             self.definitions.push(id);
         }
         if let EventKind::Start(tag) = &self.nodes[id.index()].kind {
-            self.reach.enter(tag.kind());
+            self.reach
+                .enter(tag, self.options.constructs.heading_setext);
             self.open.push(id);
         }
         Ok(())
@@ -229,6 +244,7 @@ impl AstBuilder {
             index: crate::bindings::Index::default(),
             settled: false,
             attached: Vec::new(),
+            options: self.options,
         };
         // Public producers can supply arbitrary offsets. Validate their contract once before
         // exposing the document, node by node, as the events of the document would be.
@@ -240,7 +256,7 @@ impl AstBuilder {
             if node.span.start > node.span.end || source.get(node.span.clone()).is_none() {
                 return Err(StreamError::InvalidRange);
             }
-            node.kind.validate(Some(source))?;
+            node.kind.validate(Some(source), Some(&document.options))?;
             if matches!(
                 node.kind,
                 EventKind::Start(Tag::Link(Target::Resolved(_)) | Tag::Image(Target::Resolved(_)))
@@ -301,20 +317,89 @@ pub struct Document<S = String> {
     // normalizing.
     #[cfg_attr(feature = "serde", serde(skip))]
     attached: Vec<bool>,
+    // The options the document is valid under: what some parse with them could produce.
+    options: crate::ParseOptions,
 }
 
 impl<S: AsRef<str>> Document<S> {
-    /// Parse an owned or borrowed UTF-8 buffer into an arena document.
+    /// Parse an owned or borrowed UTF-8 buffer into an arena document, which records `options`
+    /// as its [`Document::parse_options`].
     ///
     /// # Errors
     /// Returns stream validation errors; built-in Markdown parsing has no syntax errors.
     pub fn parse(source: S, options: &crate::ParseOptions) -> Result<Self, StreamError> {
-        let mut builder = AstBuilder::new();
+        let mut builder = AstBuilder::with_options(options.clone());
         let mut events = crate::EventParser::new(source.as_ref(), options).names();
         if builder.consume(&mut events, usize::MAX).is_err() {
             unreachable!("the built-in Markdown producer yields a balanced semantic stream");
         }
         builder.build(source, true)
+    }
+
+    /// The options the document is valid under, which it records: every node is one that a parse
+    /// with them could produce in its place. [`Document::parse`] records the options it parses
+    /// with, [`AstBuilder::with_options`] those it is given, and a document deserialized without
+    /// them [`ParseOptions::default`](crate::ParseOptions::default). Edits keep the document valid
+    /// under them, [`Document::parse_children`] reads with them, and [`Document::insert_from`]
+    /// and [`Document::replace_heading_section`] check each copy against them.
+    pub fn parse_options(&self) -> &crate::ParseOptions {
+        &self.options
+    }
+
+    /// Record other options for the document to be valid under, when every node, attached or
+    /// detached, is valid under them: a node of a construct that they turn off, such as a table
+    /// without [`Constructs::table`](crate::Constructs::table), or a value that they do not read,
+    /// such as inline HTML that [`Constructs::autolink`](crate::Constructs::autolink) would read
+    /// as an autolink, makes them invalid. Nothing is converted, so to move content to options
+    /// that do not read it, change the nodes first. This takes time linear in the nodes.
+    ///
+    /// ```
+    /// use base_markdown::{stream::StreamError, Document, ParseOptions};
+    ///
+    /// let mut document = Document::parse("a ~~b~~\n".to_owned(), &ParseOptions::gfm()).unwrap();
+    /// // CommonMark reads no strikethrough.
+    /// assert!(matches!(
+    ///     document.set_parse_options(ParseOptions::commonmark()),
+    ///     Err(StreamError::InvalidValue)
+    /// ));
+    /// assert_eq!(document.parse_options(), &ParseOptions::gfm());
+    /// // The defaults do.
+    /// document.set_parse_options(ParseOptions::default()).unwrap();
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`StreamError::InvalidValue`] for a node that the options do not read, and
+    /// [`StreamError::InvalidNesting`] for a node that its container cannot hold under them, such
+    /// as a soft break in a heading of level 1 or 2 without
+    /// [`Constructs::heading_setext`](crate::Constructs::heading_setext). Nothing is changed when
+    /// an error is returned.
+    pub fn set_parse_options(&mut self, options: crate::ParseOptions) -> Result<(), StreamError> {
+        let source = self.source.as_ref();
+        let setext = options.constructs.heading_setext;
+        // Each tree, from its root, with the containers above each node that restrict what is
+        // below them.
+        let mut pending: Vec<_> = (0..self.nodes.len())
+            .map(NodeId::new)
+            .filter(|id| self.nodes[id.index()].parent.is_none())
+            .map(|id| (id, crate::stream::Reach::default()))
+            .collect();
+        while let Some((id, reach)) = pending.pop() {
+            let node = &self.nodes[id.index()];
+            node.kind.validate(Some(source), Some(&options))?;
+            if !reach.allows(&node.kind) {
+                return Err(StreamError::InvalidNesting);
+            }
+            if let Some(next) = node.next_sibling {
+                pending.push((next, reach));
+            }
+            if let (Some(child), EventKind::Start(tag)) = (node.first_child, &node.kind) {
+                let mut reach = reach;
+                reach.enter(tag, setext);
+                pending.push((child, reach));
+            }
+        }
+        self.options = options;
+        Ok(())
     }
 
     // Parse a fragment of a document whose references and footnote calls are bound by the
@@ -324,7 +409,7 @@ impl<S: AsRef<str>> Document<S> {
         options: &crate::ParseOptions,
         outside: &dyn crate::definitions::Outside,
     ) -> Self {
-        let mut builder = AstBuilder::new();
+        let mut builder = AstBuilder::with_options(options.clone());
         let text = source.as_ref();
         let definitions = crate::definitions::Definitions::outside(outside);
         let (blocks, definitions) =
@@ -370,11 +455,14 @@ impl<S: AsRef<str>> Document<S> {
     /// root keeps its syntax, such as its frontmatter fences; any other node's syntax is reset.
     /// Changing a node takes constant time, except that changing a paragraph or item refreshes
     /// the item that holds it or itself from that item's children, and changing whether a list is
-    /// tight refreshes each of its items, so these take time linear in the children involved.
+    /// tight refreshes each of its items, and giving a heading a level whose headings cannot hold
+    /// a break scans its content, so these take time linear in the nodes involved.
     ///
     /// # Errors
-    /// Rejects invalid IDs and source ranges with [`StreamError::InvalidRange`], invalid values
-    /// with [`StreamError::InvalidValue`], and any other change of kind with
+    /// Rejects invalid IDs and source ranges with [`StreamError::InvalidRange`], invalid values,
+    /// including a value that the document's [`Document::parse_options`] do not read, with
+    /// [`StreamError::InvalidValue`], a heading level whose headings cannot hold the soft or hard
+    /// break that the heading holds (see [`Tag::Heading`]), and any other change of kind, with
     /// [`StreamError::InvalidNesting`]. Giving an attached definition or footnote definition a
     /// label or identifier that another definition of its kind in the document already has is
     /// rejected with [`StreamError::InvalidValue`] too, as an edit adds no copy of a binding.
@@ -390,13 +478,19 @@ impl<S: AsRef<str>> Document<S> {
         kind: EventKind<'static>,
     ) -> Result<(), StreamError> {
         let kind = stored(kind);
-        kind.validate(Some(self.source()))?;
+        kind.validate(Some(self.source()), Some(&self.options))?;
         let node = self
             .nodes
             .get(id.index())
             .ok_or(StreamError::InvalidRange)?;
         if !interchangeable(&node.kind, &kind) {
             return Err(StreamError::InvalidNesting);
+        }
+        // A heading of some levels holds no break, which its content may have.
+        if let EventKind::Start(tag @ Tag::Heading(_)) = &kind {
+            if self.holds_disallowed(id, tag) {
+                return Err(StreamError::InvalidNesting);
+            }
         }
         // Frontmatter makes a root hold blocks, so an inline root cannot take it.
         if let (EventKind::Start(tag), Some(first)) = (&kind, node.first_child) {
@@ -1425,12 +1519,21 @@ impl<S: AsRef<str>> Document<S> {
             let EventKind::Start(tag) = kind else {
                 unreachable!("a parent is a container");
             };
-            reach.enter(tag.kind());
+            reach.enter(tag, self.options.constructs.heading_setext);
             if kind.class() != crate::stream::Class::Phrasing {
                 break;
             }
         }
         reach
+    }
+    // Whether a node below `id` is one that `id` cannot hold at any depth if it were `tag`, in
+    // time linear in the subtree.
+    fn holds_disallowed(&self, id: NodeId, tag: &Tag<'_>) -> bool {
+        let mut reach = crate::stream::Reach::default();
+        reach.enter(tag, self.options.constructs.heading_setext);
+        self.descendants(id)
+            .skip(1)
+            .any(|id| !reach.allows(&self.nodes[id.index()].kind))
     }
     /// Append a new semantic node. Its source provenance is empty; values may still reference the source buffer.
     ///
@@ -1439,11 +1542,12 @@ impl<S: AsRef<str>> Document<S> {
     /// # Errors
     /// Rejects a parent that is not in the arena, and invalid source ranges, with
     /// [`StreamError::InvalidRange`], a leaf parent and end events with
-    /// [`StreamError::Unbalanced`], invalid values with
-    /// [`StreamError::InvalidValue`], and a node that the parent cannot hold, such as a document
-    /// root, a block in a paragraph, an item outside a list, phrasing in a root that holds blocks,
-    /// a footnote reference inside a link, or a soft or hard break inside a table cell, with
-    /// [`StreamError::InvalidNesting`]. Appending a
+    /// [`StreamError::Unbalanced`], invalid values, including a value that the document's
+    /// [`Document::parse_options`] do not read, with [`StreamError::InvalidValue`], and a node
+    /// that the parent cannot hold, such as a document root, a block in a paragraph, an item
+    /// outside a list, phrasing in a root that holds blocks, a footnote reference inside a link,
+    /// or a soft or hard break inside a table cell or a heading that cannot hold one (see
+    /// [`Tag::Heading`]), with [`StreamError::InvalidNesting`]. Appending a
     /// definition or footnote definition to the attached document whose label or identifier
     /// another definition of its kind there already has is rejected with
     /// [`StreamError::InvalidValue`], as an edit adds no copy of a binding. Nothing is changed
@@ -1467,7 +1571,7 @@ impl<S: AsRef<str>> Document<S> {
         };
         let leaf = !matches!(node.kind, EventKind::Start(_));
         let kind = stored(kind);
-        kind.validate(Some(self.source()))?;
+        kind.validate(Some(self.source()), Some(&self.options))?;
         if leaf || matches!(kind, EventKind::End(_)) {
             return Err(StreamError::Unbalanced);
         }
@@ -1843,6 +1947,9 @@ impl<S: AsRef<str>> Document<S> {
     }
     /// Parse Markdown into a node's children, replacing all of them.
     ///
+    /// `markdown` is read with the document's [`Document::parse_options`], so the children are
+    /// what a parse of the document could produce, but for frontmatter, as below.
+    ///
     /// The parent decides how `markdown` is read, as it would be read written there. A paragraph,
     /// heading, table cell, emphasis, strong, strikethrough, link or image holds phrasing, so
     /// `markdown` is read as the content of one paragraph: it must parse into one paragraph, or
@@ -1895,7 +2002,7 @@ impl<S: AsRef<str>> Document<S> {
     /// let mut document = Document::parse("Old text.\n".to_owned(), &options).unwrap();
     /// let paragraph = document.children(document.root()).next().unwrap();
     /// document
-    ///     .parse_children(paragraph, "Visit www.google.com for more details.", &options)
+    ///     .parse_children(paragraph, "Visit www.google.com for more details.")
     ///     .unwrap();
     ///
     /// // The literal autolink is parsed into a link.
@@ -1918,18 +2025,14 @@ impl<S: AsRef<str>> Document<S> {
     /// and, for a parent that holds phrasing, a fragment that parses into anything other than one
     /// paragraph, such as `# h`, `a\n\nb`, `- x`, a setext heading or a definition, as its
     /// blocks cannot be in the parent, or, in a table cell or link, into anything other than the
-    /// content of one cell or link, as above. As an edit adds no copy of a binding, it rejects with
+    /// content of one cell or link, as above, or, in a heading that cannot hold a break (see
+    /// [`Tag::Heading`]), a paragraph with a soft or hard break. As an edit adds no copy of a binding, it rejects with
     /// [`StreamError::InvalidValue`], into the attached document, a fragment that defines a label,
     /// or footnote identifier, twice, or one that a definition of its kind in the document outside
     /// the replaced children already has, such as `[a]: /x` into a block quote when `[a]: /y` is
     /// after it. Nothing is changed when an error is returned.
-    pub fn parse_children(
-        &mut self,
-        parent: NodeId,
-        markdown: &str,
-        options: &crate::ParseOptions,
-    ) -> Result<(), StreamError> {
-        self.edit(|document| document.parse_children_unsettled(parent, markdown, options))
+    pub fn parse_children(&mut self, parent: NodeId, markdown: &str) -> Result<(), StreamError> {
+        self.edit(|document| document.parse_children_unsettled(parent, markdown))
     }
 
     // [`Document::parse_children`], which `edit` marks unsettled.
@@ -1937,7 +2040,6 @@ impl<S: AsRef<str>> Document<S> {
         &mut self,
         parent: NodeId,
         markdown: &str,
-        options: &crate::ParseOptions,
     ) -> Result<(), StreamError> {
         let EventKind::Start(tag) = &self.node(parent).ok_or(StreamError::InvalidRange)?.kind
         else {
@@ -1957,16 +2059,13 @@ impl<S: AsRef<str>> Document<S> {
             phrasing && !blank && reach.cell(),
             phrasing && !blank && reach.link(),
         );
+        // A cell is read in a table, which the options read when the document holds a cell.
         let options = crate::ParseOptions {
             constructs: crate::Constructs {
                 frontmatter: false,
-                table: options.constructs.table || cell,
-                ..options.constructs.clone()
+                ..self.options.constructs.clone()
             },
-            inline_code_info: options.inline_code_info,
-            html_block_blank_lines: options.html_block_blank_lines,
-            html_tag_namespaces: options.html_tag_namespaces,
-            strikethrough_single_tilde: options.strikethrough_single_tilde,
+            ..self.options.clone()
         };
         // Phrasing in a cell or link is read in one, which a lone head cell of a table and a
         // link without a destination are, with spaces in the cell, which it trims, so that a
@@ -2018,6 +2117,16 @@ impl<S: AsRef<str>> Document<S> {
         } else {
             Some(fragment.root())
         };
+        // A heading of some levels holds no break, which a cell or link, read in one, has none of.
+        if let Some(from) = from {
+            if fragment
+                .descendants(from)
+                .skip(1)
+                .any(|id| !reach.allows(&fragment.nodes[id.index()].kind))
+            {
+                return Err(StreamError::InvalidNesting);
+            }
+        }
         // An edit adds no copy of a binding: the fragment's definitions may have only keys that no
         // definition outside the replaced children has.
         if attached {
@@ -4897,6 +5006,8 @@ impl<'de> serde::Deserialize<'de> for Document<String> {
             nodes: Vec<Node>,
             #[serde(default)]
             syntax: BTreeMap<NodeId, Option<NodeSyntax<'static>>>,
+            #[serde(default)]
+            options: crate::ParseOptions,
         }
         let stored = Stored::deserialize(deserializer)?;
         let mut document = Self {
@@ -4907,6 +5018,7 @@ impl<'de> serde::Deserialize<'de> for Document<String> {
             index: crate::bindings::Index::default(),
             settled: false,
             attached: Vec::new(),
+            options: stored.options,
         };
         document
             .validate_storage()
@@ -4954,7 +5066,7 @@ impl<S: AsRef<str>> Document<S> {
                 kind: borrow_kind(&node.kind),
                 span: node.span.clone(),
             }
-            .validate(Some(self.source()))?;
+            .validate(Some(self.source()), Some(&self.options))?;
             let container = matches!(node.kind, EventKind::Start(_));
             if matches!(node.kind, EventKind::End(_))
                 || (node.first_child.is_some() && !container)
@@ -4978,7 +5090,7 @@ impl<S: AsRef<str>> Document<S> {
             }
             if let (Some(child), EventKind::Start(tag)) = (node.first_child, &node.kind) {
                 let mut reach = reach;
-                reach.enter(tag.kind());
+                reach.enter(tag, self.options.constructs.heading_setext);
                 pending.push((child, Some(id), reach));
             }
         }

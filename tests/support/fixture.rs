@@ -264,8 +264,14 @@ impl Node {
             _ => None,
         }
     }
+    /// The tree as a document, under the default options with inline code languages, which a
+    /// fixture can hold.
     pub fn document(&self) -> Document {
-        let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+        let options = ParseOptions {
+            inline_code_info: true,
+            ..ParseOptions::default()
+        };
+        let mut document = Document::parse(String::new(), &options).unwrap();
         let root = document.root();
         if matches!(self, Self::Root(_) | Self::Fragment(_)) {
             let children = self.children().unwrap();

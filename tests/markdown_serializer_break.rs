@@ -5,10 +5,11 @@
 
 mod support;
 use base_markdown::markdown::Options;
+use base_markdown::stream::{EventKind, StreamError, Tag};
 use base_markdown::Document;
 use pretty_assertions::assert_eq;
 use support::fixture::{to_markdown as to, to_markdown_with_options as to_md_with_opts};
-use support::fixture::{Break, Heading, Node, Text};
+use support::fixture::{Break, Node};
 
 #[test]
 fn r#break() {
@@ -18,46 +19,17 @@ fn r#break() {
         "should support a break"
     );
 
-    assert_eq!(
-        to(&Node::Heading(Heading {
-            children: vec![
-                Node::Text(Text {
-                    value: String::from("a"),
-                    position: None
-                }),
-                Node::Break(Break { position: None }),
-                Node::Text(Text {
-                    value: String::from("b"),
-                    position: None
-                }),
-            ],
-            position: None,
-            depth: 3
-        }))
-        .unwrap(),
-        "### a b\n",
-        "should serialize breaks in heading (atx) as a space"
-    );
-
-    assert_eq!(
-        to(&Node::Heading(Heading {
-            children: vec![
-                Node::Text(Text {
-                    value: String::from("a "),
-                    position: None
-                }),
-                Node::Break(Break { position: None }),
-                Node::Text(Text {
-                    value: String::from("b"),
-                    position: None
-                }),
-            ],
-            position: None,
-            depth: 3
-        }))
-        .unwrap(),
-        "### a b\n",
-        "should serialize breaks in heading (atx) as a space"
+    // A heading of level 3 to 6 is ATX, which holds no break, so none can be built.
+    let mut document = Document::parse(String::new(), &Default::default()).unwrap();
+    let heading = document
+        .append_child(document.root(), EventKind::Start(Tag::Heading(3)))
+        .unwrap();
+    assert!(
+        matches!(
+            document.append_child(heading, EventKind::HardBreak),
+            Err(StreamError::InvalidNesting)
+        ),
+        "should reject breaks in heading (atx)"
     );
 
     assert_eq!(

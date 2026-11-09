@@ -5,7 +5,7 @@ use base_markdown::stream::Target;
 use base_markdown::{
     render_events,
     stream::{Event, EventKind, StreamError, Tag, TagKind, Text},
-    AstBuilder, BuildProgress, Document, EventHtmlRenderer, Options,
+    AstBuilder, BuildProgress, Document, EventHtmlRenderer, Options, ParseOptions,
 };
 
 fn event(kind: EventKind<'static>) -> Result<Event<'static>, StreamError> {
@@ -297,8 +297,16 @@ fn paragraph(kind: EventKind<'static>) -> Vec<Result<Event<'static>, StreamError
     ])
 }
 
+/// The default options, with inline code languages.
+fn code_info() -> ParseOptions {
+    ParseOptions {
+        inline_code_info: true,
+        ..ParseOptions::default()
+    }
+}
+
 fn build(source: &str, kind: EventKind<'static>) -> Result<(), StreamError> {
-    let mut builder = AstBuilder::new();
+    let mut builder = AstBuilder::with_options(code_info());
     builder.consume(&mut paragraph(kind).into_iter(), usize::MAX)?;
     builder.finish(source).map(drop)
 }
@@ -308,7 +316,15 @@ fn build(source: &str, kind: EventKind<'static>) -> Result<(), StreamError> {
 #[test]
 fn inline_code_languages_outside_the_prefix_grammar_are_rejected() {
     let options = Options::default();
+    // Options without inline code languages read none, valid or not.
     let mut ast = Document::parse("`x`", &options.parse).unwrap();
+    let paragraph_id = ast.node(ast.root()).unwrap().first_child().unwrap();
+    let text = ast.node(paragraph_id).unwrap().first_child().unwrap();
+    assert!(matches!(
+        ast.set_kind(text, code("rust")),
+        Err(StreamError::InvalidValue)
+    ));
+    let mut ast = Document::parse("`x`", &code_info()).unwrap();
     let paragraph_id = ast.node(ast.root()).unwrap().first_child().unwrap();
     let text = ast.node(paragraph_id).unwrap().first_child().unwrap();
     let invalid = |result: Result<(), StreamError>| {
@@ -333,7 +349,7 @@ fn inline_code_languages_outside_the_prefix_grammar_are_rejected() {
                 &mut String::new(),
             ));
             // A literal or owned language is checked as it is consumed.
-            let mut builder = AstBuilder::new();
+            let mut builder = AstBuilder::with_options(code_info());
             invalid(
                 builder
                     .consume(&mut paragraph(kind).into_iter(), usize::MAX)

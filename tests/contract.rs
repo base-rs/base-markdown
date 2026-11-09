@@ -312,7 +312,12 @@ fn clause_1_2_inline_html_is_one_construct() {
         "<a\n\tb>",
         "<!-- a\n b -->",
     ];
-    let mut document = parse("[r] <b>\n\n[r]: /u\n");
+    // Namespaced tag names are read with `html_tag_namespaces`.
+    let options = ParseOptions {
+        html_tag_namespaces: true,
+        ..ParseOptions::default()
+    };
+    let mut document = Document::parse("[r] <b>\n\n[r]: /u\n", &options).unwrap();
     let root = document.root();
     let paragraph_id = first(&document, root);
     let tag = find(&document, |kind| {
@@ -324,7 +329,7 @@ fn clause_1_2_inline_html_is_one_construct() {
         edited
             .append_child(paragraph_id, inline_html(value))
             .unwrap();
-        let mut builder = base_markdown::AstBuilder::new();
+        let mut builder = base_markdown::AstBuilder::with_options(options.clone());
         builder
             .consume(
                 &mut paragraph_of(inline_html(value)).into_iter().map(Ok),
@@ -348,7 +353,7 @@ fn clause_1_2_inline_html_is_one_construct() {
         assert_rejected(&mut document, StreamError::InvalidValue, |document| {
             document.append_child(paragraph_id, inline_html(value))
         });
-        let mut builder = base_markdown::AstBuilder::new();
+        let mut builder = base_markdown::AstBuilder::with_options(options.clone());
         assert!(matches!(
             builder
                 .consume(
@@ -619,7 +624,9 @@ fn clause_1_2_an_html_block_is_one_block_construct() {
         "<![CDATA[\n\n]]>",
         "<div>\t<&>",
     ];
-    // Text, a tag the block parser does not start a block with, code-block indentation, a blank
+    // Code-block indentation, which only options without indented code read as the HTML's.
+    let indented = ["    <div>", "   \t<div>", " \t  <div>"];
+    // Text, a tag the block parser does not start a block with, a blank
     // line that ends the block, a line after the one that closes it, and what the parser does not
     // store: CR, which it stores as LF, and NUL, which it stores as U+FFFD.
     let invalid = [
@@ -629,18 +636,17 @@ fn clause_1_2_an_html_block_is_one_block_construct() {
         "abc",
         "<b> x",
         "<b>x</b>",
-        "    <div>",
-        "\t<div>",
         "<div>\n\nb",
         "<!-- a -->\nb",
         "<pre></pre>\nb",
-        "   \t<div>",
-        " \t  <div>",
         "<div>\n    a\n\n  b",
         "<div>\n  a\n\nb",
         "<div>\r\na",
         "<div>\ra",
         "<div>\0",
+        // A line that starts with a tab gives the block its indentation under any options.
+        "\t<div>",
+        "\t <div>",
     ];
     // The parser gives no block its final line ending, which is a separator, so an unclosed block
     // at the end of a quote reads back as itself (#213). The blank lines an unclosed block of kinds
@@ -668,14 +674,19 @@ fn clause_1_2_an_html_block_is_one_block_construct() {
         assert_eq!(values, expected, "{:?}", source);
         assert_round_trips(source);
     }
-    let mut document = parse("<div>\n");
+    // Blank lines are read in kinds 6 and 7 with `html_block_blank_lines`.
+    let options = ParseOptions {
+        html_block_blank_lines: true,
+        ..ParseOptions::default()
+    };
+    let mut document = Document::parse("<div>\n", &options).unwrap();
     let root = document.root();
     let block = first(&document, root);
     for value in valid {
         let mut edited = document.clone();
         edited.set_kind(block, html_block(value)).unwrap();
         edited.append_child(root, html_block(value)).unwrap();
-        let mut builder = base_markdown::AstBuilder::new();
+        let mut builder = base_markdown::AstBuilder::with_options(options.clone());
         builder
             .consume(
                 &mut document_of(vec![html_block(value)]).into_iter().map(Ok),
@@ -691,7 +702,7 @@ fn clause_1_2_an_html_block_is_one_block_construct() {
         assert_rejected(&mut document, StreamError::InvalidValue, |document| {
             document.append_child(root, html_block(value))
         });
-        let mut builder = base_markdown::AstBuilder::new();
+        let mut builder = base_markdown::AstBuilder::with_options(options.clone());
         assert!(
             matches!(
                 builder
@@ -715,6 +726,28 @@ fn clause_1_2_an_html_block_is_one_block_construct() {
             ),
             Err(StreamError::InvalidValue)
         ));
+    }
+    let mut unindented = options.clone();
+    unindented.constructs.code_indented = false;
+    let mut other = Document::parse("<div>\n", &unindented).unwrap();
+    for value in indented {
+        assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+            document.set_kind(block, html_block(value))
+        });
+        other.set_kind(block, html_block(value)).unwrap();
+        let mut output = String::new();
+        render_events(
+            "",
+            document_of(vec![html_block(value)]).into_iter().map(Ok),
+            &CompileOptions::default(),
+            &mut output,
+        )
+        .unwrap();
+    }
+    for value in ["\t<div>", "\t <div>", "\t\t<div>"] {
+        assert_rejected(&mut other, StreamError::InvalidValue, |document| {
+            document.set_kind(block, html_block(value))
+        });
     }
 }
 
@@ -846,7 +879,47 @@ fn clause_3_3_titles_and_destinations_round_trip() {
     }
 }
 
-/// Every value the parser gives is valid, in the form it stores, under the options that change what it reads, in any container, with any line endings and with NUL, so a parsed document always rebuilds, and its values need no rewriting: a value holds no NUL, a raw value no CR, inline HTML no whitespace after a line ending, and an HTML block is one block construct (#257).
+/// Random options: each construct, and each option that changes what is read, on or off.
+fn random_options(random: &mut Random) -> ParseOptions {
+    let mut flip = || random.below(2) == 0;
+    ParseOptions {
+        constructs: base_markdown::Constructs {
+            attention: flip(),
+            autolink: flip(),
+            block_quote: flip(),
+            character_escape: flip(),
+            character_reference: flip(),
+            code_indented: flip(),
+            code_fenced: flip(),
+            code_text: flip(),
+            definition: flip(),
+            frontmatter: flip(),
+            autolink_literal: flip(),
+            footnote_definition: flip(),
+            label_start_footnote: flip(),
+            strikethrough: flip(),
+            table: flip(),
+            task_list_item: flip(),
+            hard_break_escape: flip(),
+            hard_break_trailing: flip(),
+            heading_atx: flip(),
+            heading_setext: flip(),
+            html_flow: flip(),
+            html_text: flip(),
+            label_start_image: flip(),
+            label_start_link: flip(),
+            label_end: flip(),
+            list_item: flip(),
+            thematic_break: flip(),
+        },
+        inline_code_info: flip(),
+        html_block_blank_lines: flip(),
+        html_tag_namespaces: flip(),
+        strikethrough_single_tilde: flip(),
+    }
+}
+
+/// Every value the parser gives is valid, in the form it stores, under the options it parsed with, which the document records, in any container, with any line endings and with NUL, so a parsed document always rebuilds under them, and its values need no rewriting: a value holds no NUL, a raw value no CR, inline HTML no whitespace after a line ending, and an HTML block is one block construct. Each input is also parsed with random options, each construct on or off (#257).
 #[test]
 fn clause_1_2_parsed_values_are_valid() {
     let options = [
@@ -887,7 +960,13 @@ fn clause_1_2_parsed_values_are_valid() {
     for (name, seed, generate) in generators {
         let mut random = Random(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
         for _ in 0..samples {
-            let source = generate(&mut random);
+            let mut source = generate(&mut random);
+            // Frontmatter, which some options read.
+            if random.below(8) == 0 {
+                source.insert_str(0, random.pick(&["---\na: b\n---\n", "+++\nx = 1\n+++\n\n"]));
+            }
+            let mut options = options.to_vec();
+            options.extend([random_options(&mut random), random_options(&mut random)]);
             // NUL after each `<`, `` ` ``, `[` and space reaches HTML, code, labels and text.
             let mut nul = String::with_capacity(source.len() * 2);
             for character in source.chars() {
@@ -904,9 +983,12 @@ fn clause_1_2_parsed_values_are_valid() {
             ];
             for source in &variants {
                 for options in &options {
-                    let document = Document::parse(source.as_str(), options)
-                        .unwrap_or_else(|error| panic!("{} {:?}: {}", name, source, error));
-                    let mut builder = base_markdown::AstBuilder::new();
+                    let document =
+                        Document::parse(source.as_str(), options).unwrap_or_else(|error| {
+                            panic!("{} {:?} {:?}: {}", name, source, options, error)
+                        });
+                    assert_eq!(document.parse_options(), options);
+                    let mut builder = base_markdown::AstBuilder::with_options(options.clone());
                     builder
                         .consume(&mut document.events(), usize::MAX)
                         .and_then(|_| builder.finish(document.source()).map(|_| ()))
@@ -965,6 +1047,396 @@ fn clause_1_4_values_are_source_ranges_with_lf_line_endings() {
     let output = to_markdown(&document).unwrap();
     assert!(!output.contains('\r'));
     assert_eq!(output, "```\na\n```\n\nb!\nc\n");
+}
+
+/// Options that read everything the default options read, and inline code languages and
+/// namespaced tags.
+fn permissive() -> ParseOptions {
+    ParseOptions {
+        inline_code_info: true,
+        html_tag_namespaces: true,
+        ..ParseOptions::default()
+    }
+}
+
+/// A document is valid under the options it records, which `Document::parse` records: a node of a
+/// construct that they turn off, or a value that only other options read, is invalid, so
+/// `set_parse_options` rejects options that do not read what the document holds, changing
+/// nothing, and records those that do (#257).
+#[test]
+fn clause_1_2_values_are_valid_under_the_documents_options() {
+    type Change = fn(&mut ParseOptions);
+    let rejected: &[(&str, ParseOptions, Change)] = &[
+        ("---\na: b\n---\n", permissive(), |o| {
+            o.constructs.frontmatter = false
+        }),
+        ("### h\n", permissive(), |o| {
+            o.constructs.heading_atx = false
+        }),
+        ("a\n=\n", permissive(), |o| {
+            o.constructs.heading_atx = false;
+            o.constructs.heading_setext = false;
+        }),
+        ("> a\n", permissive(), |o| o.constructs.block_quote = false),
+        ("- a\n", permissive(), |o| o.constructs.list_item = false),
+        ("- [x] a\n", permissive(), |o| {
+            o.constructs.task_list_item = false
+        }),
+        ("*a*\n", permissive(), |o| o.constructs.attention = false),
+        ("**a**\n", permissive(), |o| o.constructs.attention = false),
+        ("~~a~~\n", permissive(), |o| {
+            o.constructs.strikethrough = false
+        }),
+        // A resource could be an autolink, under options that read one.
+        ("[a](/b)\n", permissive(), |o| {
+            o.constructs.label_end = false;
+            o.constructs.autolink = false;
+            o.constructs.autolink_literal = false;
+        }),
+        ("[a]\n\n[a]: /b\n", permissive(), |o| {
+            o.constructs.label_start_link = false;
+            o.constructs.label_start_footnote = false;
+        }),
+        ("![a](/b)\n", permissive(), |o| {
+            o.constructs.label_start_image = false
+        }),
+        ("![a](/b)\n", permissive(), |o| {
+            o.constructs.label_end = false
+        }),
+        ("| a |\n| - |\n", permissive(), |o| {
+            o.constructs.table = false
+        }),
+        ("[^a]: b\n", permissive(), |o| {
+            o.constructs.footnote_definition = false
+        }),
+        ("a[^1]\n\n[^1]: b\n", permissive(), |o| {
+            o.constructs.label_start_footnote = false
+        }),
+        ("a[^1]\n\n[^1]: b\n", permissive(), |o| {
+            o.constructs.label_end = false
+        }),
+        ("a\\\nb\n", permissive(), |o| {
+            o.constructs.hard_break_escape = false;
+            o.constructs.hard_break_trailing = false;
+        }),
+        ("***\n", permissive(), |o| {
+            o.constructs.thematic_break = false
+        }),
+        ("`a`\n", permissive(), |o| o.constructs.code_text = false),
+        ("c:`a`\n", permissive(), |o| o.inline_code_info = false),
+        ("```c\na\n```\n", permissive(), |o| {
+            o.constructs.code_fenced = false
+        }),
+        // Indented code holds no blank line first or last, which a fence can.
+        ("```\n\na\n```\n", permissive(), |o| {
+            o.constructs.code_fenced = false
+        }),
+        ("```\na\n\n```\n", permissive(), |o| {
+            o.constructs.code_fenced = false
+        }),
+        ("```\n```\n", permissive(), |o| {
+            o.constructs.code_fenced = false
+        }),
+        ("    a\n", permissive(), |o| {
+            o.constructs.code_fenced = false;
+            o.constructs.code_indented = false;
+        }),
+        ("<div>\n", permissive(), |o| o.constructs.html_flow = false),
+        ("a <b>\n", permissive(), |o| o.constructs.html_text = false),
+        ("[a]: /b\n", permissive(), |o| {
+            o.constructs.definition = false
+        }),
+        ("<a:b>\n", permissive(), |o| o.html_tag_namespaces = false),
+        ("a <a:b>\n", permissive(), |o| o.html_tag_namespaces = false),
+        // HTML that autolinks would read as a link.
+        (
+            "a <tel:123>\n",
+            ParseOptions {
+                constructs: base_markdown::Constructs {
+                    autolink: false,
+                    ..permissive().constructs
+                },
+                ..permissive()
+            },
+            |o| o.constructs.autolink = true,
+        ),
+        // Blank lines in a block of kind 6 or 7, and indentation that indented code would read.
+        (
+            "<div>\n  a\n\n  b\n",
+            ParseOptions {
+                html_block_blank_lines: true,
+                ..permissive()
+            },
+            |o| o.html_block_blank_lines = false,
+        ),
+        (
+            "<div>\n",
+            ParseOptions {
+                html_block_blank_lines: true,
+                ..permissive()
+            },
+            |o| o.html_block_blank_lines = false,
+        ),
+        (
+            "    <div>\n",
+            ParseOptions {
+                constructs: base_markdown::Constructs {
+                    code_indented: false,
+                    ..permissive().constructs
+                },
+                ..permissive()
+            },
+            |o| o.constructs.code_indented = true,
+        ),
+    ];
+    for (source, options, change) in rejected {
+        let mut document = Document::parse(*source, options).unwrap();
+        let mut other = options.clone();
+        change(&mut other);
+        assert_ne!(&other, options, "{:?}", source);
+        assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+            document.set_parse_options(other.clone())
+        });
+        assert_eq!(document.parse_options(), options);
+        // Detached nodes are valid under the options too.
+        let first = first(&document, document.root());
+        document.detach(first).unwrap();
+        assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+            document.set_parse_options(other.clone())
+        });
+        // A document built under them rejects the same.
+        let mut builder = base_markdown::AstBuilder::with_options(other.clone());
+        let built = builder
+            .consume(
+                &mut Document::parse(*source, options).unwrap().events(),
+                usize::MAX,
+            )
+            .and_then(|_| builder.finish(*source).map(|_| ()));
+        assert!(
+            matches!(built, Err(StreamError::InvalidValue)),
+            "{:?}: {:?}",
+            source,
+            built
+        );
+    }
+    // What other constructs could have given is valid.
+    let accepted: &[(&str, Change)] = &[
+        // A setext heading is of level 1 or 2.
+        ("# h\n", |o| o.constructs.heading_atx = false),
+        ("## h\n", |o| o.constructs.heading_atx = false),
+        // A `[^` that no footnote definition binds starts a link as `[` does.
+        ("[a](/b)\n", |o| o.constructs.label_start_link = false),
+        // An autolink is a link of its own.
+        ("<http://a>\n", |o| {
+            o.constructs.label_start_link = false;
+            o.constructs.label_start_footnote = false;
+        }),
+        ("www.a.com\n", |o| {
+            o.constructs.label_start_link = false;
+            o.constructs.label_start_footnote = false;
+            o.constructs.autolink = false;
+        }),
+        ("a\\\nb\n", |o| o.constructs.hard_break_escape = false),
+        ("```\na\n```\n", |o| o.constructs.code_fenced = false),
+        ("<tel:123>\n", |o| o.constructs.autolink = false),
+        ("a <tel:123>\n", |o| o.constructs.autolink = true),
+    ];
+    for (source, change) in accepted {
+        let mut document = Document::parse(*source, &permissive()).unwrap();
+        let mut other = permissive();
+        change(&mut other);
+        document
+            .set_parse_options(other.clone())
+            .unwrap_or_else(|error| panic!("{:?}: {:?}", source, error));
+        assert_eq!(document.parse_options(), &other);
+    }
+    // Every edit checks against the options: the default ones read no namespaced tag.
+    let mut document = parse("a <b>\n");
+    let paragraph = first(&document, document.root());
+    let html = first(&document, paragraph);
+    assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+        document.set_kind(html, inline_html("<a:b>"))
+    });
+    assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+        document.append_child(paragraph, inline_html("<tel:123>"))
+    });
+    // A renderer has no options, so what any reads is valid there.
+    for value in ["<a:b>", "<tel:123>"] {
+        let mut output = String::new();
+        render_events(
+            "",
+            paragraph_of(inline_html(value)).into_iter().map(Ok),
+            &CompileOptions::default(),
+            &mut output,
+        )
+        .unwrap();
+    }
+}
+
+/// A heading of level 3 to 6, which only an ATX heading gives, and any heading without setext
+/// headings, holds no soft or hard break, at any depth, as an ATX heading is one line (#217,
+/// #257).
+#[test]
+fn clause_1_2_no_break_in_a_heading_of_one_line() {
+    let breaks = [
+        EventKind::SoftBreak(Text::Literal("\n")),
+        EventKind::HardBreak,
+    ];
+    let mut document = parse("### h *e*\n\nb\nc\n=\n");
+    let heading = first(&document, document.root());
+    let emphasis = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::Emphasis))
+    });
+    let setext = all(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::Heading(_)))
+    })[1];
+    for kind in &breaks {
+        for parent in [heading, emphasis] {
+            assert_rejected(&mut document, StreamError::InvalidNesting, |document| {
+                document.append_child(parent, kind.clone())
+            });
+        }
+        let mut builder = base_markdown::AstBuilder::new();
+        let mut events: Vec<_> = document_of(vec![EventKind::Start(Tag::Heading(3))]);
+        events.insert(
+            2,
+            Event {
+                kind: kind.clone(),
+                span: 0..0,
+            },
+        );
+        events.insert(
+            3,
+            Event {
+                kind: EventKind::End(TagKind::Heading),
+                span: 0..0,
+            },
+        );
+        events.remove(1);
+        events.insert(
+            1,
+            Event {
+                kind: EventKind::Start(Tag::Heading(3)),
+                span: 0..0,
+            },
+        );
+        let built = builder
+            .consume(&mut events.clone().into_iter().map(Ok), usize::MAX)
+            .and_then(|_| builder.finish("").map(|_| ()));
+        assert!(
+            matches!(built, Err(StreamError::InvalidNesting)),
+            "{:?}",
+            built
+        );
+        let mut output = String::new();
+        assert!(matches!(
+            render_events(
+                "",
+                events.into_iter().map(Ok),
+                &CompileOptions::default(),
+                &mut output
+            ),
+            Err(StreamError::InvalidNesting)
+        ));
+    }
+    // A setext heading holds its break, and keeps it at level 2, but not at level 3.
+    document
+        .set_kind(setext, EventKind::Start(Tag::Heading(2)))
+        .unwrap();
+    assert_rejected(&mut document, StreamError::InvalidNesting, |document| {
+        document.set_kind(setext, EventKind::Start(Tag::Heading(3)))
+    });
+    // A fragment is read into the heading as written there.
+    assert_rejected(&mut document, StreamError::InvalidNesting, |document| {
+        document.parse_children(heading, "a\nb")
+    });
+    assert_rejected(&mut document, StreamError::InvalidNesting, |document| {
+        document.parse_children(emphasis, "a\\\nb")
+    });
+    document.parse_children(setext, "a\\\nb").unwrap();
+    document.parse_children(heading, "a *b*").unwrap();
+    // Without setext headings, no heading holds a break.
+    let mut atx = permissive();
+    atx.constructs.heading_setext = false;
+    assert_rejected(&mut document, StreamError::InvalidNesting, |document| {
+        document.set_parse_options(atx.clone())
+    });
+    let mut document = Document::parse("## h\n", &atx).unwrap();
+    let heading = first(&document, document.root());
+    assert_rejected(&mut document, StreamError::InvalidNesting, |document| {
+        document.append_child(heading, EventKind::HardBreak)
+    });
+}
+
+/// A copy is checked against this document's options, which it is not converted to: a construct
+/// that they turn off is rejected, a reference bound in the source becomes a resource, which they
+/// must read, and one that nothing binds becomes text, which any options read (6.3, #257).
+#[test]
+fn clause_6_3_copies_are_checked_against_this_documents_options() {
+    let gfm = ParseOptions::gfm();
+    let commonmark = ParseOptions::commonmark();
+    let insert = |document: &mut Document<&str>, source: &Document<&str>, shift: i8| {
+        let root = document.root();
+        let options = InsertOptions {
+            heading_shift: shift,
+            ..InsertOptions::default()
+        };
+        document
+            .insert_from(root, None, source, source.children(source.root()), &options)
+            .map(|_| ())
+    };
+    let mut document = Document::parse("a\n", &commonmark).unwrap();
+    let source = Document::parse("~~a~~ [^1]\n\n[^1]: b\n", &gfm).unwrap();
+    assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+        insert(document, &source, 0)
+    });
+    // A call that nothing binds is text.
+    let mut source = Document::parse("a [^1]\n\n[^1]: b\n", &gfm).unwrap();
+    let definition = find(&source, |kind| {
+        matches!(kind, EventKind::Start(Tag::FootnoteDefinition { .. }))
+    });
+    source.detach(definition).unwrap();
+    insert(&mut document, &source, 0).unwrap();
+    // A bound reference becomes a resource, which needs a link's `[`.
+    let source = Document::parse("[a]\n\n[a]: /u\n", &gfm).unwrap();
+    let mut links = commonmark.clone();
+    links.constructs.label_start_link = false;
+    links.constructs.label_start_footnote = false;
+    links.constructs.autolink = false;
+    let mut other = Document::parse("a\n", &links).unwrap();
+    assert_rejected(&mut other, StreamError::InvalidValue, |document| {
+        insert(document, &source, 0)
+    });
+    // One that nothing binds becomes text.
+    let mut unbound = source.clone();
+    let definition = find(&unbound, |kind| {
+        matches!(kind, EventKind::Definition { .. })
+    });
+    unbound.detach(definition).unwrap();
+    insert(&mut other, &unbound, 0).unwrap();
+    let mut images = commonmark.clone();
+    images.constructs.label_start_image = false;
+    let mut other = Document::parse("a\n", &images).unwrap();
+    insert(&mut other, &source, 0).unwrap();
+    let source = Document::parse("![a]\n\n[a]: /u\n", &gfm).unwrap();
+    assert_rejected(&mut other, StreamError::InvalidValue, |document| {
+        insert(document, &source, 0)
+    });
+    // A shifted heading's level is read under them, and holds a break only where they allow.
+    let mut atx = gfm.clone();
+    atx.constructs.heading_atx = false;
+    let mut other = Document::parse("a\n", &atx).unwrap();
+    let source = Document::parse("# a\n", &gfm).unwrap();
+    insert(&mut other, &source, 1).unwrap();
+    assert_rejected(&mut other, StreamError::InvalidValue, |document| {
+        insert(document, &source, 2)
+    });
+    let mut same = Document::parse("a\n", &gfm).unwrap();
+    let source = Document::parse("a\nb\n-\n", &gfm).unwrap();
+    insert(&mut same, &source, 0).unwrap();
+    assert_rejected(&mut same, StreamError::InvalidNesting, |document| {
+        insert(document, &source, 1)
+    });
 }
 
 // 2. Names and bindings.
@@ -1070,7 +1542,7 @@ fn clause_2_4_no_edit_adds_a_copy_to_the_attached_document() {
         "[^c]: 1\n\n[^c]: 2\n",
     ] {
         assert_rejected(&mut document, StreamError::InvalidValue, |document| {
-            document.parse_children(quote, fragment, &ParseOptions::default())
+            document.parse_children(quote, fragment)
         });
     }
     // attach, of a detached tree that defines what the document defines, or holds a copy.
@@ -1080,9 +1552,7 @@ fn clause_2_4_no_edit_adds_a_copy_to_the_attached_document() {
             .unwrap();
         document.detach(tree).unwrap();
         // A detached tree has no index, so edits in it are not checked (#226).
-        document
-            .parse_children(tree, fragment, &ParseOptions::default())
-            .unwrap();
+        document.parse_children(tree, fragment).unwrap();
         assert_rejected(&mut document, StreamError::InvalidValue, |document| {
             document.attach(root, tree, None)
         });
@@ -1302,11 +1772,7 @@ fn random_edit(document: &mut Document<&str>, random: &mut Random) {
         3 => document.set_kind(id, text("b")),
         4 => document.extract_children(id).map(|_| ()),
         _ => document
-            .parse_children(
-                id,
-                fragments[random.below(fragments.len())],
-                &ParseOptions::default(),
-            )
+            .parse_children(id, fragments[random.below(fragments.len())])
             .map(|_| ()),
     };
 }
@@ -2245,9 +2711,7 @@ fn parsed_into(context: &'static str, fragment: &str) -> (Document<&'static str>
         .into_iter()
         .find(|&item| is_paragraph(&document.node(first(&document, item)).unwrap().kind))
         .unwrap();
-    document
-        .parse_children(item, fragment, &ParseOptions::default())
-        .unwrap();
+    document.parse_children(item, fragment).unwrap();
     (document, item)
 }
 
@@ -2456,9 +2920,7 @@ fn clause_3_4_tight_items_loosen_where_a_block_needs_a_blank_line() {
     ] {
         let mut document = parse("- p\n- q\n");
         let item = find(&document, is_item);
-        document
-            .parse_children(item, fragment, &ParseOptions::default())
-            .unwrap();
+        document.parse_children(item, fragment).unwrap();
         let mut normalized = document.clone();
         normalized.normalize();
         let loose = html(&with_lists_of(&document, &normalized));
@@ -2651,15 +3113,11 @@ fn clause_4_2_what_keeps_and_clears_settled() {
         }),
         ("parse_children", |document| {
             let root = document.root();
-            document
-                .parse_children(root, "x", &ParseOptions::default())
-                .unwrap();
+            document.parse_children(root, "x").unwrap();
         }),
         ("replace_heading_section", |document| {
             let root = document.root();
-            document
-                .parse_children(root, "# h\n\nx\n", &ParseOptions::default())
-                .unwrap();
+            document.parse_children(root, "# h\n\nx\n").unwrap();
             document.normalize();
             let replacement = Document::parse("y\n", &ParseOptions::default()).unwrap();
             assert!(document
@@ -2869,7 +3327,7 @@ fn clause_6_1_failed_edits_change_nothing() {
         document.detach(root)
     });
     assert_rejected(&mut document, StreamError::InvalidNesting, |document| {
-        document.parse_children(paragraph_id, "# x", &ParseOptions::default())
+        document.parse_children(paragraph_id, "# x")
     });
     assert_rejected(&mut document, StreamError::InvalidValue, |document| {
         document.insert_from(
@@ -2927,11 +3385,7 @@ fn clause_6_2_error_kinds() {
         |document, id, _| document.extract_children(id).map(|_| ()),
         |document, id, _| document.text_mut(id).map(|_| ()),
         |document, id, _| document.set_syntax(id, None),
-        |document, id, _| {
-            document
-                .parse_children(id, "x", &ParseOptions::default())
-                .map(|_| ())
-        },
+        |document, id, _| document.parse_children(id, "x").map(|_| ()),
         |document, id, source| {
             document
                 .insert_from(
@@ -3021,7 +3475,7 @@ fn clause_6_2_error_kinds() {
         document.attach(text_id, loose, None)
     });
     assert_rejected(&mut document, StreamError::Unbalanced, |document| {
-        document.parse_children(text_id, "x", &ParseOptions::default())
+        document.parse_children(text_id, "x")
     });
     assert_rejected(&mut document, StreamError::Unbalanced, |document| {
         document.append_child(paragraph_id, EventKind::End(TagKind::Paragraph))
@@ -3048,7 +3502,7 @@ fn clause_6_2_error_kinds() {
         document.set_kind(paragraph_id, EventKind::Start(Tag::Heading(1)))
     });
     assert_rejected(&mut document, StreamError::InvalidNesting, |document| {
-        document.parse_children(paragraph_id, "# x", &ParseOptions::default())
+        document.parse_children(paragraph_id, "# x")
     });
 
     // InvalidValue: an invalid value, a copy, a move of a definition whose label has a copy, a

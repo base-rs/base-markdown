@@ -139,6 +139,15 @@ fn each_kept<T: AsRef<str>>(
     Ok(())
 }
 
+// The copy of a reference that `definition` of `source` binds: a resource to where it leads.
+fn resource<T: AsRef<str>>(source: &Document<T>, definition: NodeId) -> Target<'static> {
+    let (destination, title) = crate::bindings::definition_target(&source.nodes, definition);
+    Target::Resource {
+        destination: destination.clone().materialized(source.source()),
+        title: title.map(|title| title.clone().materialized(source.source())),
+    }
+}
+
 // The level of a heading of `level` shifted by `shift`, if it is one.
 fn shifted(level: u8, shift: i8) -> Result<u8, StreamError> {
     u8::try_from(i16::from(level) + i16::from(shift))
@@ -456,6 +465,9 @@ impl<S: AsRef<str>> Document<S> {
         let mut calls = Vec::new();
         let mut definitions: Vec<(NodeId, Option<String>)> = Vec::new();
         let mut by_source = BTreeMap::new();
+        // A copy is valid under this document's options when it is under the source's, as they
+        // are the same, but for a shifted heading's level.
+        let foreign = source.options != self.options;
         let mut visit = |calls: &mut Vec<NodeId>,
                          definitions: &mut Vec<(NodeId, Option<String>)>,
                          id: NodeId,
@@ -464,9 +476,48 @@ impl<S: AsRef<str>> Document<S> {
             if restricted && !reach.allows(kind) {
                 return Err(StreamError::InvalidNesting);
             }
+            if foreign {
+                // What the copy is: a bound reference becomes a resource, and a reference or call
+                // that nothing binds text, which is valid under any options.
+                let copy = match kind {
+                    EventKind::Start(tag @ (Tag::Link(target) | Tag::Image(target)))
+                        if target.reference().is_some() =>
+                    {
+                        lookup
+                            .definition_of(cx, kind, &mut scratch)
+                            .map(|definition| {
+                                let target = resource(source, definition);
+                                EventKind::Start(if matches!(tag, Tag::Link(_)) {
+                                    Tag::Link(target)
+                                } else {
+                                    Tag::Image(target)
+                                })
+                            })
+                    }
+                    EventKind::FootnoteReference { .. }
+                        if lookup.unbound(cx, kind, &mut scratch) =>
+                    {
+                        None
+                    }
+                    _ => Some(borrow_kind(kind)),
+                };
+                if let Some(copy) = copy {
+                    copy.validate(Some(source.source()), Some(&self.options))?;
+                }
+            }
             match kind {
                 EventKind::Start(Tag::Heading(level)) => {
-                    shifted(*level, shift)?;
+                    let heading = Tag::Heading(shifted(*level, shift)?);
+                    EventKind::Start(heading.clone()).validate(None, Some(&self.options))?;
+                    // A heading of some levels holds no break.
+                    let mut reach = crate::stream::Reach::default();
+                    reach.enter(&heading, self.options.constructs.heading_setext);
+                    if source
+                        .descendants(id)
+                        .any(|id| !reach.allows(&source.nodes[id.index()].kind))
+                    {
+                        return Err(StreamError::InvalidNesting);
+                    }
                 }
                 EventKind::FootnoteReference { identifier, .. } => {
                     let identifier = identifier
@@ -589,12 +640,12 @@ impl<S: AsRef<str>> Document<S> {
             fresh.push_str(&suffix);
             used.insert(fresh);
             let copy = Self::relabelled(source, definitions[index].0, &suffix);
-            valid &= copy.validate(None).is_ok();
+            valid &= copy.validate(None, Some(&self.options)).is_ok();
             definitions[index].1 = Some(suffix);
         }
         for call in calls {
             if let Some(kind) = Self::relabelled_call(source, &definitions, &by_source, call) {
-                valid &= kind.validate(None).is_ok();
+                valid &= kind.validate(None, Some(&self.options)).is_ok();
             }
         }
         if !valid {
@@ -840,15 +891,7 @@ impl<S: AsRef<str>> Document<S> {
                     if target.reference().is_some() =>
                 {
                     match lookup.definition_of(cx, &node.kind, &mut scratch) {
-                        Some(definition) => {
-                            let (destination, title) =
-                                crate::bindings::definition_target(&source.nodes, definition);
-                            *target = Target::Resource {
-                                destination: destination.clone().materialized(source.source()),
-                                title: title
-                                    .map(|title| title.clone().materialized(source.source())),
-                            };
-                        }
+                        Some(definition) => *target = resource(source, definition),
                         None => unbound_here = true,
                     }
                 }

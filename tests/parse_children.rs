@@ -92,7 +92,7 @@ fn a_paragraph_takes_the_parsed_phrasing_of_its_new_content() {
     let paragraph = document.children(document.root()).next().unwrap();
     let old: Vec<_> = document.children(paragraph).collect();
     document
-        .parse_children(paragraph, "Visit www.google.com for more details.", &gfm())
+        .parse_children(paragraph, "Visit www.google.com for more details.")
         .unwrap();
     let link = document.children(paragraph).nth(1).unwrap();
     assert_eq!(destinations(&document), ["https://www.google.com"]);
@@ -128,7 +128,7 @@ fn every_container_that_holds_phrasing_reads_a_paragraphs_content() {
         let mut document = parse(source);
         let parent = find(&document, container);
         document
-            .parse_children(parent, "  x _y_ `z` <b>h</b> \\* &amp;  ", &gfm())
+            .parse_children(parent, "  x _y_ `z` <b>h</b> \\* &amp;  ")
             .unwrap();
         // Link text is read as written in a link, where whitespace at its edges stays.
         let link = matches!(
@@ -152,7 +152,7 @@ fn every_container_that_holds_phrasing_reads_a_paragraphs_content() {
     let image = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::Image { .. }))
     });
-    document.parse_children(image, "x &amp; y", &gfm()).unwrap();
+    document.parse_children(image, "x &amp; y").unwrap();
     assert_eq!(document.text_content(image), "x & y");
     reads_back(document);
 }
@@ -181,7 +181,7 @@ fn a_container_that_holds_phrasing_rejects_block_syntax_and_is_left_unchanged() 
         let before = kinds(&document, document.root());
         assert!(
             matches!(
-                document.parse_children(paragraph, fragment, &gfm()),
+                document.parse_children(paragraph, fragment),
                 Err(StreamError::InvalidNesting)
             ),
             "{:?}",
@@ -199,12 +199,12 @@ fn a_fragment_of_nothing_empties_the_parent() {
         let link = find(&document, |kind| {
             matches!(kind, EventKind::Start(Tag::Link { .. }))
         });
-        document.parse_children(link, fragment, &gfm()).unwrap();
+        document.parse_children(link, fragment).unwrap();
         assert_eq!(document.children(link).count(), 0);
         let quote = find(&document, |kind| {
             matches!(kind, EventKind::Start(Tag::BlockQuote))
         });
-        document.parse_children(quote, fragment, &gfm()).unwrap();
+        document.parse_children(quote, fragment).unwrap();
         assert_eq!(document.children(quote).count(), 0);
         reads_back(document);
     }
@@ -223,7 +223,7 @@ fn every_container_that_holds_blocks_reads_blocks() {
     for container in containers {
         let mut document = parse(source);
         let parent = find(&document, container);
-        document.parse_children(parent, fragment, &gfm()).unwrap();
+        document.parse_children(parent, fragment).unwrap();
         let blocks: Vec<_> = document
             .children(parent)
             .map(|id| document.node(id).unwrap().kind.clone())
@@ -256,19 +256,19 @@ fn lists_tables_and_their_parts_and_leaves_are_rejected() {
     for container in containers {
         let parent = find(&document, container);
         assert!(matches!(
-            document.parse_children(parent, "- x", &gfm()),
+            document.parse_children(parent, "- x"),
             Err(StreamError::InvalidNesting)
         ));
     }
     let text = find(&document, |kind| matches!(kind, EventKind::Text(_)));
     assert!(matches!(
-        document.parse_children(text, "x", &gfm()),
+        document.parse_children(text, "x"),
         Err(StreamError::Unbalanced)
     ));
     let foreign = parse("a\n\nb\n\nc\n\nd\n\ne\n\nf\n\ng\n\nh\n");
     let missing = foreign.descendants(foreign.root()).last().unwrap();
     assert!(matches!(
-        document.parse_children(missing, "x", &gfm()),
+        document.parse_children(missing, "x"),
         Err(StreamError::InvalidRange)
     ));
     assert_eq!(kinds(&document, document.root()), before);
@@ -282,7 +282,6 @@ fn references_and_footnote_calls_resolve_against_the_documents_definitions() {
         .parse_children(
             paragraph,
             "[x][R], [r][], [r], [y][missing], [^n] and [^missing].",
-            &gfm(),
         )
         .unwrap();
     assert_eq!(destinations(&document), ["/u", "/u", "/u"]);
@@ -307,7 +306,7 @@ fn references_and_footnote_calls_resolve_against_the_documents_definitions() {
 fn a_fragment_without_definitions_or_references_needs_no_definitions() {
     let mut document = parse("Old.\n\n[r]: /u\n");
     let paragraph = document.children(document.root()).next().unwrap();
-    document.parse_children(paragraph, "r] x", &gfm()).unwrap();
+    document.parse_children(paragraph, "r] x").unwrap();
     assert_eq!(document.text_content(paragraph), "r] x");
 }
 
@@ -321,13 +320,13 @@ fn a_footnote_call_inside_a_link_stays_text_as_the_parser_leaves_it() {
     let emphasis = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::Emphasis))
     });
-    document.parse_children(emphasis, "c [^n]", &gfm()).unwrap();
+    document.parse_children(emphasis, "c [^n]").unwrap();
     assert_eq!(footnote_references(&document), 0);
     assert_eq!(document.text_content(emphasis), "c [^n]");
     let link = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::Link { .. }))
     });
-    document.parse_children(link, "[^n] d", &gfm()).unwrap();
+    document.parse_children(link, "[^n] d").unwrap();
     assert_eq!(footnote_references(&document), 0);
     reads_back(document);
     // An image outside a link can hold a call.
@@ -335,7 +334,7 @@ fn a_footnote_call_inside_a_link_stays_text_as_the_parser_leaves_it() {
     let image = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::Image { .. }))
     });
-    document.parse_children(image, "b [^n]", &gfm()).unwrap();
+    document.parse_children(image, "b [^n]").unwrap();
     assert_eq!(footnote_references(&document), 1);
 }
 
@@ -352,7 +351,6 @@ fn a_block_fragments_definitions_bind_for_the_rest_of_the_document() {
         .parse_children(
             quote,
             "[a][r] [b][s] [c][old] [^n]\n\n[s]: /own-s\n[old]: /new-old\n",
-            &gfm(),
         )
         .unwrap();
     // A definition outside the parent binds, the fragment's own bind, and so do they the
@@ -387,7 +385,7 @@ fn a_fragment_that_would_add_a_copy_of_a_binding_is_rejected_and_changes_nothing
         let children: Vec<_> = document.children(quote).collect();
         assert!(
             matches!(
-                document.parse_children(quote, fragment, &gfm()),
+                document.parse_children(quote, fragment),
                 Err(StreamError::InvalidValue)
             ),
             "{:?}",
@@ -404,12 +402,10 @@ fn a_fragment_that_would_add_a_copy_of_a_binding_is_rejected_and_changes_nothing
     let quote = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::BlockQuote))
     });
-    document
-        .parse_children(quote, "[old]: /again\n", &gfm())
-        .unwrap();
+    document.parse_children(quote, "[old]: /again\n").unwrap();
     document.detach(quote).unwrap();
     document
-        .parse_children(quote, "[old]: /one\n\n[old]: /two\n", &gfm())
+        .parse_children(quote, "[old]: /one\n\n[old]: /two\n")
         .unwrap();
 }
 
@@ -419,7 +415,7 @@ fn an_existing_reference_binds_to_the_definition_that_replaces_its_own() {
     let quote = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::BlockQuote))
     });
-    document.parse_children(quote, "[r]: /b", &gfm()).unwrap();
+    document.parse_children(quote, "[r]: /b").unwrap();
     assert_eq!(destinations(&document), ["/b"]);
     assert_eq!(reads_back(document), "[x][r]\n\n> [r]: /b\n");
 }
@@ -431,7 +427,7 @@ fn frontmatter_is_never_read_and_the_documents_own_is_kept() {
     let mut document = Document::parse("---\nk: v\n---\n\nOld.\n".to_owned(), &options).unwrap();
     let root = document.root();
     document
-        .parse_children(root, "---\ntitle: x\n---\n", &options)
+        .parse_children(root, "---\ntitle: x\n---\n")
         .unwrap();
     assert_eq!(document.frontmatter(), Some("k: v\n"));
     let blocks: Vec<_> = document
@@ -454,11 +450,9 @@ fn an_item_and_its_paragraphs_follow_the_lists_tightness() {
     let item = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::Item { .. }))
     });
-    document.parse_children(item, "c", &gfm()).unwrap();
+    document.parse_children(item, "c").unwrap();
     assert_eq!(rendered(&document), "<ul>\n<li>c</li>\n<li>b</li>\n</ul>\n");
-    document
-        .parse_children(item, "c\n\n```\nd\n```", &gfm())
-        .unwrap();
+    document.parse_children(item, "c\n\n```\nd\n```").unwrap();
     assert!(matches!(
         document.node(item).unwrap().kind,
         EventKind::Start(Tag::Item {
@@ -476,7 +470,7 @@ fn an_inline_root_becomes_a_root_of_blocks() {
     document
         .append_child(root, EventKind::Text(Text::Literal("inline")))
         .unwrap();
-    document.parse_children(root, "# h\n\np", &gfm()).unwrap();
+    document.parse_children(root, "# h\n\np").unwrap();
     let markdown = to_markdown(&document).unwrap();
     assert_eq!(markdown, "# h\n\np\n");
     let reparsed = Document::parse(markdown.as_str(), &gfm()).unwrap();
@@ -490,7 +484,7 @@ fn values_are_owned_and_line_endings_stored_as_line_feeds() {
         matches!(kind, EventKind::Start(Tag::BlockQuote))
     });
     let fragment = String::from("a\r\nb [c](/d)\r\n\r\n    code\r\n");
-    document.parse_children(quote, &fragment, &gfm()).unwrap();
+    document.parse_children(quote, &fragment).unwrap();
     drop(fragment);
     assert_eq!(document.source(), "> Old.\n");
     assert_eq!(
@@ -508,7 +502,7 @@ fn a_table_cell_rejects_a_line_ending_and_is_left_unchanged() {
         });
         assert!(
             matches!(
-                document.parse_children(cell, fragment, &gfm()),
+                document.parse_children(cell, fragment),
                 Err(StreamError::InvalidNesting)
             ),
             "{:?}",
@@ -519,7 +513,7 @@ fn a_table_cell_rejects_a_line_ending_and_is_left_unchanged() {
     // Other phrasing parents take one.
     let mut document = parse("c\n");
     let paragraph = document.children(document.root()).next().unwrap();
-    document.parse_children(paragraph, "a\nb", &gfm()).unwrap();
+    document.parse_children(paragraph, "a\nb").unwrap();
     reads_back(document);
 }
 
@@ -529,15 +523,13 @@ fn labels_resolve_exactly_as_the_parser_reads_them() {
     let mut document = parse("Old.\n\n> Quote.\n\n[a\\]b]: /escaped\n\n[a b]: /quoted\n");
     let paragraph = document.children(document.root()).next().unwrap();
     document
-        .parse_children(paragraph, "[a\\]b] and [x][A\\]B]", &gfm())
+        .parse_children(paragraph, "[a\\]b] and [x][A\\]B]")
         .unwrap();
     assert_eq!(destinations(&document), ["/escaped", "/escaped"]);
     let quote = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::BlockQuote))
     });
-    document
-        .parse_children(quote, "> [x][a\n> b]", &gfm())
-        .unwrap();
+    document.parse_children(quote, "> [x][a\n> b]").unwrap();
     assert_eq!(destinations(&document), ["/escaped", "/escaped", "/quoted"]);
     reads_back(document);
 }
@@ -549,7 +541,7 @@ fn a_fragments_own_footnote_definition_binds_its_calls() {
         matches!(kind, EventKind::Start(Tag::BlockQuote))
     });
     document
-        .parse_children(quote, "Call.[^n] [^m]\n\n[^n]: Own.\n", &gfm())
+        .parse_children(quote, "Call.[^n] [^m]\n\n[^n]: Own.\n")
         .unwrap();
     let own = document.footnote_definition("N").unwrap();
     assert_eq!(document.text_content(own), "Own.");
@@ -561,15 +553,14 @@ fn a_fragments_own_footnote_definition_binds_its_calls() {
 /// the next definition of the label, which a parsed document may have, as the first leaves.
 #[test]
 fn parsing_into_the_container_of_the_first_definition_binds_the_next_outside_it() {
-    let options = gfm();
     let mut document = parse("> [a]: /first\n\nText.\n\n[a]: /second\n");
     let quote = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::BlockQuote))
     });
-    document.parse_children(quote, "[a]", &options).unwrap();
+    document.parse_children(quote, "[a]").unwrap();
     assert_eq!(destinations(&document), ["/second"]);
     let paragraph = document.children(document.root()).nth(2).unwrap();
-    document.parse_children(paragraph, "[a]", &options).unwrap();
+    document.parse_children(paragraph, "[a]").unwrap();
     assert_eq!(destinations(&document), ["/second", "/second"]);
     reads_back(document);
 }
@@ -578,14 +569,13 @@ fn parsing_into_the_container_of_the_first_definition_binds_the_next_outside_it(
 /// the attached document only.
 #[test]
 fn parsing_children_adds_and_removes_definitions() {
-    let options = gfm();
     let mut document = parse("> [b]: /old\n\n[x][b] [x][c]\n");
     let quote = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::BlockQuote))
     });
     let old = document.definition("b").unwrap();
     document
-        .parse_children(quote, "[c]: /c\n\n[^n]: Note.\n", &options)
+        .parse_children(quote, "[c]: /c\n\n[^n]: Note.\n")
         .unwrap();
     assert_eq!(document.definition("b"), None);
     let c = document.definition("c").unwrap();
@@ -595,9 +585,7 @@ fn parsing_children_adds_and_removes_definitions() {
     assert_eq!(destinations(&document), ["unbound"]);
     // A detached parent's fragment is not indexed.
     document.detach(quote).unwrap();
-    document
-        .parse_children(quote, "[d]: /d\n", &options)
-        .unwrap();
+    document.parse_children(quote, "[d]: /d\n").unwrap();
     assert_eq!(document.definition("d"), None);
     assert_eq!(document.definition("c"), None);
     // The old definition is detached, as `extract_children` leaves it.
@@ -612,7 +600,7 @@ fn an_item_takes_the_spread_of_its_fragment() {
     let item = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::Item { .. }))
     });
-    document.parse_children(item, "b\n\n<b>\n", &gfm()).unwrap();
+    document.parse_children(item, "b\n\n<b>\n").unwrap();
     assert_eq!(
         document.syntax(item),
         Some(NodeSyntax::ListItem { spread: true })
@@ -622,7 +610,7 @@ fn an_item_takes_the_spread_of_its_fragment() {
     let item = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::Item { .. }))
     });
-    document.parse_children(item, "b\n> q\n", &gfm()).unwrap();
+    document.parse_children(item, "b\n> q\n").unwrap();
     assert_eq!(
         document.syntax(item),
         Some(NodeSyntax::ListItem { spread: false })
@@ -639,9 +627,7 @@ fn a_detached_parent_resolves_against_the_trees_definitions() {
     let paragraph = document.children(quote).next().unwrap();
     document.detach(quote).unwrap();
     // A detached tree binds only its own references, so `[s]` stays text.
-    document
-        .parse_children(paragraph, "[r] [s]", &gfm())
-        .unwrap();
+    document.parse_children(paragraph, "[r] [s]").unwrap();
     let link = document.children(paragraph).next().unwrap();
     assert!(matches!(
         &document.node(link).unwrap().kind,
@@ -650,7 +636,7 @@ fn a_detached_parent_resolves_against_the_trees_definitions() {
     assert_eq!(document.destination(link), Some(("/u", None)));
     assert_eq!(document.text_content(paragraph), "r [s]");
     // Parsing into the quote, its definition no longer binds.
-    document.parse_children(quote, "[r] [s]", &gfm()).unwrap();
+    document.parse_children(quote, "[r] [s]").unwrap();
     assert_eq!(document.text_content(quote), "[r] [s]");
 }
 
@@ -692,7 +678,7 @@ fn parsing_into_every_paragraph_of_a_document_is_linear() {
             for (document, paragraphs) in documents.iter_mut().zip(&paragraphs) {
                 for &paragraph in paragraphs {
                     document
-                        .parse_children(paragraph, "q [r] *s* [^n]", &gfm())
+                        .parse_children(paragraph, "q [r] *s* [^n]")
                         .unwrap();
                 }
             }
@@ -771,7 +757,7 @@ fn parsing_into_every_section_of_a_document_is_linear() {
             for ((document, quotes), fragments) in documents.iter_mut().zip(&quotes).zip(&fragments)
             {
                 for ((quote, _), fragment) in quotes.iter().zip(fragments) {
-                    document.parse_children(*quote, fragment, &gfm()).unwrap();
+                    document.parse_children(*quote, fragment).unwrap();
                 }
             }
         })
@@ -802,12 +788,10 @@ fn parsing_deep_into_a_nest_is_linear() {
         timed(|| {
             for _ in 0..parses {
                 document
-                    .parse_children(quote, "q [r] [d]\n\n[d]: /d\n", &gfm())
+                    .parse_children(quote, "q [r] [d]\n\n[d]: /d\n")
                     .unwrap();
                 let paragraph = document.children(quote).next().unwrap();
-                document
-                    .parse_children(paragraph, "s [r] [d]", &gfm())
-                    .unwrap();
+                document.parse_children(paragraph, "s [r] [d]").unwrap();
             }
         })
     };
@@ -829,7 +813,7 @@ fn assert_splices(
 ) {
     let mut document = parse(source);
     let id = find(&document, parent);
-    document.parse_children(id, fragment, &gfm()).unwrap();
+    document.parse_children(id, fragment).unwrap();
     let written = parse(&source.replacen("PLACEHOLDER", spliced, 1));
     assert_eq!(canonical(&document), canonical(&written), "{fragment:?}");
     assert_eq!(rendered(&document), rendered(&written), "{fragment:?}");
@@ -879,7 +863,7 @@ fn a_fragment_read_in_an_item_adds_no_separator_the_parser_would_not() {
     }
     let mut document = parse("- PLACEHOLDER\n");
     let id = find(&document, item);
-    document.parse_children(id, "a\n\nb\n", &gfm()).unwrap();
+    document.parse_children(id, "a\n\nb\n").unwrap();
     assert_eq!(
         kinds(&document, id)
             .iter()
@@ -914,7 +898,7 @@ fn a_link_rejects_a_fragment_that_holds_a_link() {
             let id = find(&document, parent);
             assert!(
                 matches!(
-                    document.parse_children(id, fragment, &gfm()),
+                    document.parse_children(id, fragment),
                     Err(StreamError::InvalidNesting)
                 ),
                 "{:?}",
@@ -959,26 +943,23 @@ fn a_cell_reads_a_fragment_as_written_in_a_cell() {
         let id = find(&document, cell);
         assert!(
             matches!(
-                document.parse_children(id, fragment, &gfm()),
+                document.parse_children(id, fragment),
                 Err(StreamError::InvalidNesting)
             ),
             "{:?}",
             fragment
         );
     }
-    // A cell is read as one whatever the options.
     let mut document = parse(source);
     let id = find(&document, cell);
-    let mut options = gfm();
-    options.constructs.table = false;
-    document.parse_children(id, "a\\|b", &options).unwrap();
+    document.parse_children(id, "a\\|b").unwrap();
     assert_eq!(document.text_content(id), "a|b");
     // Phrasing inside a cell reads as in the cell too.
     let mut document = parse("| *x* |\n| - |\n");
     let emphasis = find(&document, |kind| {
         matches!(kind, EventKind::Start(Tag::Emphasis))
     });
-    document.parse_children(emphasis, "a\\|b", &gfm()).unwrap();
+    document.parse_children(emphasis, "a\\|b").unwrap();
     assert_eq!(document.text_content(emphasis), "a|b");
     reads_back(document);
 }
