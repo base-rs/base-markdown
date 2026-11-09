@@ -669,8 +669,13 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         let value = value
                             .resolve(self.source)
                             .expect("event values are source-valid");
-                        self.html_ending =
-                            *block && crate::block_parser::html_block_ends_in_empty_line(value);
+                        // An empty line that a block of kinds 1–5 ends in, as any options read it.
+                        self.html_ending = *block
+                            && crate::block_parser::HtmlBlockShape::of(
+                                value,
+                                &crate::block_parser::HtmlBlockShape::any_options(),
+                            )
+                            .is_some_and(|shape| shape.ends_in_empty_line);
                         if self.options.allow_dangerous_html && self.options.tagfilter {
                             crate::util::tagfilter::write_filtered(value, |part| {
                                 self.escaped(part, false)

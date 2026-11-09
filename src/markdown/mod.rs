@@ -21,6 +21,7 @@ mod configure;
 mod construct_name;
 mod escape;
 mod handle;
+mod plan;
 mod state;
 pub(crate) use self::{
     state::needs_blank_line, util::format_heading_as_setext::heading_as_setext,
@@ -128,36 +129,18 @@ pub fn to_markdown_node<S: AsRef<str>>(
     if !inline
         && !result.is_empty()
         && (!result.ends_with('\n')
-            || ends_in_empty_line(document, node)
-            || state::ends_in_kept_line_ending(document, node, true))
+            || state
+                .trailing_html(document, node)
+                .is_some_and(|(shape, _)| shape.ends_in_empty_line || shape.keeps_line_ending))
     {
         result.push('\n');
     }
+    debug_assert!(
+        !state.misfit || state.unwritable.is_some(),
+        "a container that no plan fits holds or precedes a block that does not fit"
+    );
     if let Some(id) = state.unwritable {
         return Err(state::unwritable_node(document, id));
     }
     Ok(result)
-}
-
-/// Whether the last node written for `node`, its last descendant but for separators, is an HTML block whose last line
-/// is empty, which an unclosed block of kinds 1–5 that takes a blank line at its end has.
-fn ends_in_empty_line<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> bool {
-    let mut last = node;
-    while let Some(child) = document
-        .children(last)
-        .filter(|&child| {
-            !matches!(
-                document.node(child).unwrap().kind,
-                crate::stream::EventKind::Separator { .. }
-            )
-        })
-        .last()
-    {
-        last = child;
-    }
-    matches!(
-        &document.node(last).unwrap().kind,
-        crate::stream::EventKind::Html { value, block: true }
-            if value.resolve(document.source()).is_ok_and(crate::block_parser::html_block_ends_in_empty_line)
-    )
 }

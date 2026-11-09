@@ -222,56 +222,6 @@ fn describe(options: &ParseOptions) -> String {
     changed.join(" ")
 }
 
-/// Whether `document` has a shape that the writer gets wrong under any options, the default ones
-/// too, which are gaps on main rather than in following the dialect:
-/// - an HTML block indented with spaces or tabs after a list, footnote definition or block quote,
-///   or in a block quote (#229): written after a list or footnote definition, the indented line
-///   continues it, and in a block quote, a tab after spaces spans other columns after the quote's
-///   prefix;
-/// - an HTML block that ends an item before another, which, when the list is written loose and
-///   the block has no end, takes the blank line between the items (#273), which parsed
-///   documents give under the default options too, as `- <pre>\n  x\n- a\n\n- b\n`.
-fn known_gap<S: AsRef<str>>(document: &Document<S>) -> bool {
-    use base_markdown::stream::{EventKind, Tag, TagKind};
-    let mut quotes = 0;
-    let mut previous = None;
-    let mut html_item_end = false;
-    for event in document.events() {
-        let kind = event.unwrap().kind;
-        if html_item_end && matches!(kind, EventKind::Start(Tag::Item { .. })) {
-            return true;
-        }
-        html_item_end = match (&previous, &kind) {
-            (Some(EventKind::Html { block: true, .. }), EventKind::End(TagKind::Item)) => true,
-            (_, EventKind::Separator { .. }) => html_item_end,
-            _ => false,
-        };
-        match &kind {
-            EventKind::Start(Tag::BlockQuote) => quotes += 1,
-            EventKind::End(TagKind::BlockQuote) => quotes -= 1,
-            EventKind::Separator { .. } => continue,
-            EventKind::Html { value, block: true }
-                if value
-                    .resolve(document.source())
-                    .unwrap()
-                    .starts_with([' ', '\t'])
-                    && (quotes > 0
-                        || matches!(
-                            previous,
-                            Some(EventKind::End(
-                                TagKind::List | TagKind::FootnoteDefinition | TagKind::BlockQuote
-                            ))
-                        )) =>
-            {
-                return true;
-            }
-            _ => {}
-        }
-        previous = Some(kind);
-    }
-    false
-}
-
 /// Whether `output` has link text with a reference after what starts a literal autolink, such as
 /// `[https://a.b>&#x2A;a](u)`, which the parser reads with the reference as text: a literal formed
 /// in link text keeps the references it spans, as markdown-rs does, though not the escapes, and
@@ -333,13 +283,11 @@ fn round_trip_under_every_dialect() {
         let options = options(&mut random);
         let source = source(&mut random);
         let document = Document::parse(source.as_str(), &options).unwrap();
-        let known = known_gap(&document);
         match round_trip(document, &markdown, false) {
             Outcome::Pass | Outcome::Rejected => {}
             Outcome::Unwritable(error) => unwritable.push((source, options, error)),
             Outcome::Fail(failure)
-                if known
-                    || nested_attention(&failure.before)
+                if nested_attention(&failure.before)
                     || literal_reference_in_label(&failure.output) => {}
             Outcome::Fail(failure) => failures.push((source, options, failure)),
         }

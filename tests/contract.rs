@@ -450,8 +450,9 @@ fn clause_3_3_a_block_after_a_list_ending_in_an_unclosed_html_block_round_trips(
     ] {
         assert_round_trips(source);
         let document = normalized(source);
+        // A blank line the item itself holds after the block is written as a blank line.
         assert!(
-            !to_markdown(&document).unwrap().contains("<pre>\n\n"),
+            source.contains("<pre>\n\n") || !to_markdown(&document).unwrap().contains("<pre>\n\n"),
             "{:?}",
             source
         );
@@ -623,9 +624,20 @@ fn clause_1_2_an_html_block_is_one_block_construct() {
         "<!X>",
         "<![CDATA[\n\n]]>",
         "<div>\t<&>",
+        // A tab is narrower after a container that leaves the line at a column other than a
+        // tab stop, where these are indented no more than 3 columns (#275).
+        "\t<div>",
+        "\t <div>",
     ];
     // Code-block indentation, which only options without indented code read as the HTML's.
-    let indented = ["    <div>", "   \t<div>", " \t  <div>"];
+    // That includes a tab wherever it is wider than 4 columns less what is before it.
+    let indented = [
+        "    <div>",
+        "   \t<div>",
+        " \t  <div>",
+        "\t\t<div>",
+        "  \t <div>",
+    ];
     // Text, a tag the block parser does not start a block with, a blank
     // line that ends the block, a line after the one that closes it, and what the parser does not
     // store: CR, which it stores as LF, and NUL, which it stores as U+FFFD.
@@ -644,9 +656,6 @@ fn clause_1_2_an_html_block_is_one_block_construct() {
         "<div>\r\na",
         "<div>\ra",
         "<div>\0",
-        // A line that starts with a tab gives the block its indentation under any options.
-        "\t<div>",
-        "\t <div>",
     ];
     // The parser gives no block its final line ending, which is a separator, so an unclosed block
     // at the end of a quote reads back as itself (#213). The blank lines an unclosed block of kinds
@@ -743,11 +752,6 @@ fn clause_1_2_an_html_block_is_one_block_construct() {
             &mut output,
         )
         .unwrap();
-    }
-    for value in ["\t<div>", "\t <div>", "\t\t<div>"] {
-        assert_rejected(&mut other, StreamError::InvalidValue, |document| {
-            document.set_kind(block, html_block(value))
-        });
     }
 }
 
@@ -2166,11 +2170,6 @@ fn known_gap(
             .iter()
             .any(|needle| one.contains(needle) || other.contains(needle))
     };
-    let kinds: Vec<&EventKind> = document
-        .descendants(document.root())
-        .map(|id| &document.node(id).unwrap().kind)
-        .collect();
-    let source = document.source();
     // Only the break, or the space before it, differs.
     let only_breaks = [one, other].iter().all(|side| {
         ["<br />", "\\n", "&#xA;", "&#x20;"]
@@ -2193,13 +2192,6 @@ fn known_gap(
         && involves(&["<em>", "</em>", "<strong>", "</strong>", "*", "_"])
     {
         return Some("#110 nested attention");
-    }
-    let indented_html = kinds.iter().any(|kind| {
-        matches!(kind, EventKind::Html { value, block: true } if value.resolve(source).unwrap().starts_with([' ', '\t']))
-    });
-    let whitespace = one.trim().is_empty() && other.trim().is_empty();
-    if html && indented_html && (whitespace || involves(&["&lt;"])) {
-        return Some("#229 an HTML block with an indented first line");
     }
     if involves(&["&lt;", "Html"]) && html_blocks(&normalized(output)) > html_blocks(document) {
         return Some("#193 a paragraph starting with inline HTML is written as an HTML block");
@@ -3794,16 +3786,34 @@ fn gap_issue_228() {
     ));
 }
 
+/// An HTML block after a detached paragraph keeps its container (#229).
 #[test]
-#[ignore = "#229: an HTML block with an indented first line changes container"]
-fn gap_issue_229() {
-    let mut document = parse("- x\n\nb\n\n  <div>");
-    let detached = all(&document, is_paragraph)[1];
-    document.detach(detached).unwrap();
-    assert!(matches!(
-        round_trip(document, &MarkdownOptions::default(), false),
-        Outcome::Pass
-    ));
+fn clause_3_3_an_html_block_keeps_its_container_after_an_edit() {
+    // In the last, the outer item reads back spread, as it does with a block quote for the HTML
+    // block, so only the HTML is compared: the HTML block stays out of the inner item.
+    for (source, index, tree) in [
+        ("- b\n    <div>", 0, true),
+        ("- x\n\nb\n\n  <div>", 1, true),
+        ("* - c\n    </div>\n  b\n    <div>", 1, false),
+    ] {
+        let mut document = parse(source);
+        let detached = all(&document, is_paragraph)[index];
+        document.detach(detached).unwrap();
+        // The separators on both sides of the paragraph stay, and are written as one.
+        let separators = all(&document, |kind| {
+            matches!(kind, EventKind::Separator { .. })
+        });
+        for pair in separators.windows(2) {
+            if document.node(pair[0]).unwrap().next_sibling() == Some(pair[1]) {
+                document.detach(pair[1]).unwrap();
+            }
+        }
+        match round_trip(document, &MarkdownOptions::default(), false) {
+            Outcome::Pass => {}
+            Outcome::Fail(failure) if !tree && failure.kind == "tree" => {}
+            _ => panic!("{:?}", source),
+        }
+    }
 }
 
 #[test]

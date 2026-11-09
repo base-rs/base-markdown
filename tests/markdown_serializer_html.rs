@@ -4,10 +4,11 @@
 // Copyright, 2026, by Samuel Williams.
 
 mod support;
-use base_markdown::{to_markdown, Document, ParseOptions};
+use base_markdown::{to_markdown, CompileOptions, Document, MarkdownOptions, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::to_markdown as to;
 use support::fixture::{Break, Html, Node, Paragraph, Text};
+use support::round_trip::{round_trip, Outcome};
 
 #[test]
 fn html() {
@@ -209,4 +210,712 @@ fn complete_tag_alone_on_a_paragraph_first_line_stays_inline() {
         assert!(rendered.starts_with("<p>"), "{:?}", rendered);
         assert_eq!(to_markdown(&document).unwrap(), markdown);
     }
+}
+
+/// Parse `source`, write it, and check that the output is `written` and reads back as the same
+/// tree and HTML (contract 3.3).
+fn assert_written(source: &str, written: &str) {
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    assert_eq!(to_markdown(&document).unwrap(), written, "{:?}", source);
+    match round_trip(document, &MarkdownOptions::default(), false) {
+        Outcome::Pass => {}
+        Outcome::Fail(failure) => panic!(
+            "{} {:?}: {:?}\n{}\n{}",
+            failure.kind, source, failure.output, failure.before, failure.after
+        ),
+        Outcome::Rejected | Outcome::Unwritable(_) => panic!("rejected {:?}", source),
+    }
+}
+
+#[test]
+fn html_block_indentation_keeps_its_columns() {
+    let html = |source: &str| {
+        let mut output = String::new();
+        let options = CompileOptions {
+            allow_dangerous_html: true,
+            ..CompileOptions::default()
+        };
+        Document::parse(source, &ParseOptions::default())
+            .unwrap()
+            .render_html(&options, &mut output)
+            .unwrap();
+        output
+    };
+    // What is left of a tab a container takes part of is the block's, as cmark keeps it (#263,
+    // #274). markdown-rs 1.0.0 drops it after an item's content column.
+    assert_eq!(
+        html("> \t<div>\n"),
+        "<blockquote>\n\t<div>\n</blockquote>\n"
+    );
+    assert_eq!(
+        html("> [a]: /u\n> \t<div>\n"),
+        "<blockquote>\n\t<div>\n</blockquote>\n"
+    );
+    assert_eq!(
+        html("> a\n>\n> \t<div>\n"),
+        "<blockquote>\n<p>a</p>\n\t<div>\n</blockquote>\n"
+    );
+    assert_eq!(
+        html("- <pre>\n\tx</pre>\n"),
+        "<ul>\n<li>\n<pre>\n  x</pre>\n</li>\n</ul>\n"
+    );
+    for (source, written) in [
+        ("> \t<div>\n", "> \t<div>\n"),
+        ("- <pre>\n\tx</pre>\n", "- <pre>\n    x</pre>\n"),
+        // The item keeps the column at which the tab is no wider than the block's indentation
+        // allows (#266).
+        ("-    a\n\n       \t<div>\n", "-    a\n\n       \t<div>\n"),
+        ("1.   a\n\n      \t<div>\n", "1.   a\n\n      \t<div>\n"),
+        ("- a\n\n  \t<div>\n", "- a\n\n  \t<div>\n"),
+        ("   >   \t<pre>\n", "   >   \t<pre>\n"),
+        // A list before an indented HTML block is written wider than its indentation (#262).
+        ("  - i\n  <div>\n", "-  i\n\n  <div>\n"),
+        ("-\tc\n  <!A\n", "-  c\n\n  <!A\n"),
+        ("1.   a\n   <div>\n", "1.  a\n\n   <div>\n"),
+        ("-   <!-- x -->\n  <textarea>\n", "-  <!-- x -->\n\n  <textarea>\n"),
+        // An unclosed block of kinds 1–5 ending an item is joined to the next by a line ending,
+        // and the list shows that it is loose by another join (#273).
+        ("1. <!--x\n2. a\n\n   b\n", "1. <!--x\n2. a\n\n   b\n"),
+        // A footnote definition's label takes the whitespace after it.
+        ("[^1]:\n     <v>", "[^1]:\n     <v>\n"),
+        (
+            "-\t-\t  <a:b c=\"d\">\n       \t<![CDATA[\n1.    \t</style>\n  <a:b>\n",
+            "-  - ```\n     <a:b c=\"d\">\n     ```\n      \t<![CDATA[\n1. ```\n    </style>\n   ```\n\n\\<a:b>\n",
+        ),
+    ] {
+        assert_written(source, written);
+    }
+}
+
+/// Parses `source` under `options`, and checks that it round trips when written with `markdown`
+/// and renders `html`.
+fn assert_round_trips(
+    source: &str,
+    options: &ParseOptions,
+    markdown: &MarkdownOptions,
+    html: &str,
+) {
+    let document = Document::parse(source, options).unwrap();
+    let compile = CompileOptions {
+        allow_dangerous_html: true,
+        ..CompileOptions::default()
+    };
+    let mut output = String::new();
+    document.render_html(&compile, &mut output).unwrap();
+    assert_eq!(output, html, "{:?}", source);
+    match round_trip(document, markdown, false) {
+        Outcome::Pass => {}
+        Outcome::Fail(failure) => panic!(
+            "{} {:?}: {:?}\n{}\n{}",
+            failure.kind, source, failure.output, failure.before, failure.after
+        ),
+        Outcome::Rejected | Outcome::Unwritable(_) => panic!("rejected {:?}", source),
+    }
+}
+
+#[test]
+fn html_blocks_continue_no_block_before_them() {
+    let unindented = ParseOptions {
+        constructs: base_markdown::Constructs {
+            code_indented: false,
+            ..base_markdown::Constructs::default()
+        },
+        ..ParseOptions::default()
+    };
+    // A footnote definition takes a line indented 4 columns or more after a blank line, so the
+    // item keeps the block indented less, whatever its preferred padding.
+    for indent in [
+        base_markdown::IndentOptions::One,
+        base_markdown::IndentOptions::Tab,
+        base_markdown::IndentOptions::Mixed,
+    ] {
+        let markdown = MarkdownOptions {
+            list_item_indent: indent,
+            ..MarkdownOptions::default()
+        };
+        assert_round_trips(
+            "- [^ab]: a\n\n  \t<div>\n",
+            &unindented,
+            &markdown,
+            "<ul>\n<li>\n\t<div>\n</li>\n</ul>\n",
+        );
+        assert_round_trips(
+            " 10. [^a]: a\n\n     \t<div>\n",
+            &unindented,
+            &markdown,
+            "<ol start=\"10\">\n<li>\n\t<div>\n</li>\n</ol>\n",
+        );
+    }
+    // An empty item takes no line after the blank line after it.
+    for (source, html) in [
+        (
+            "-\n\n      <div>\n",
+            "<ul>\n<li></li>\n</ul>\n      <div>\n",
+        ),
+        (
+            "- a\n-\n\n      <div>\n",
+            "<ul>\n<li>a</li>\n<li></li>\n</ul>\n      <div>\n",
+        ),
+        (
+            "2)\n\n        <pre>x</pre>\n",
+            "<ol start=\"2\">\n<li></li>\n</ol>\n        <pre>x</pre>\n",
+        ),
+    ] {
+        assert_round_trips(source, &unindented, &MarkdownOptions::default(), html);
+    }
+    // An HTML block that keeps its blank lines takes a line indented at all after them, so the
+    // block quote or list after it has no spaces before its `>` or marker.
+    let blank_lines = ParseOptions {
+        html_block_blank_lines: true,
+        ..ParseOptions::default()
+    };
+    for (source, html) in [
+        (
+            "  > <div>\n  >\n  > > \t<p>\n",
+            "<blockquote>\n<div>\n\n<blockquote>\n\t<p>\n</blockquote>\n</blockquote>",
+        ),
+        (
+            "-  <div>\n\n   -\n     \t<p>\n",
+            "<ul>\n<li>\n<div>\n\n<ul>\n<li>\n\t<p>\n</li>\n</ul>\n</li>\n</ul>",
+        ),
+        (
+            "- <div>\n    x\n\n   - a\n",
+            "<ul>\n<li>\n<div>\n  x\n\n<ul>\n<li>a</li>\n</ul>\n</li>\n</ul>\n",
+        ),
+    ] {
+        assert_round_trips(source, &blank_lines, &MarkdownOptions::default(), html);
+    }
+    // At the root, a block after a footnote definition indented 4 columns has no other column.
+    let mut document =
+        Document::parse("[^ab]: x\n\n<p>\n\n    <a href=\"x\">\n", &unindented).unwrap();
+    let block = document.children(document.root()).nth(1).unwrap();
+    document.detach(block).unwrap();
+    assert_eq!(
+        to_markdown(&document).unwrap_err().rule_id,
+        "unwritable-node"
+    );
+}
+
+#[test]
+fn html_blocks_with_no_column_are_unwritable() {
+    let options = ParseOptions::default();
+    // A tab after a space is 4 columns wide at the root.
+    let mut document = Document::parse("<div>", &options).unwrap();
+    let block = document.children(document.root()).next().unwrap();
+    document
+        .set_kind(
+            block,
+            base_markdown::stream::EventKind::Html {
+                value: base_markdown::stream::Text::Literal(" \t<div>"),
+                block: true,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        to_markdown(&document).unwrap_err().rule_id,
+        "unwritable-node"
+    );
+    // An item is at most 8 columns wide with a bullet, so a block indented 8 columns after its
+    // list, which only options without indented code read, would continue it.
+    let unindented = ParseOptions {
+        constructs: base_markdown::Constructs {
+            code_indented: false,
+            ..base_markdown::Constructs::default()
+        },
+        ..ParseOptions::default()
+    };
+    let mut document = Document::parse("- x\n\nb\n\n        <div>\n", &unindented).unwrap();
+    let paragraph = document
+        .children(document.root())
+        .find(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                base_markdown::stream::EventKind::Start(
+                    base_markdown::stream::Tag::Paragraph { .. }
+                )
+            )
+        })
+        .unwrap();
+    document.detach(paragraph).unwrap();
+    assert_eq!(
+        to_markdown(&document).unwrap_err().rule_id,
+        "unwritable-node"
+    );
+    // A loose list that only a blank line after an unclosed block would show loose.
+    let mut document = Document::parse("- <pre>\n- a\n", &options).unwrap();
+    let list = document.children(document.root()).next().unwrap();
+    document
+        .set_kind(
+            list,
+            base_markdown::stream::EventKind::Start(base_markdown::stream::Tag::List {
+                start: None,
+                tight: false,
+            }),
+        )
+        .unwrap();
+    document.normalize();
+    assert_eq!(
+        to_markdown(&document).unwrap_err().rule_id,
+        "unwritable-node"
+    );
+}
+
+/// Sets the kind of the HTML block at `path`, by child index from the root, to one of `value`.
+fn set_html(document: &mut Document<String>, path: &[usize], value: &'static str) {
+    let mut id = document.root();
+    for &index in path {
+        id = document.children(id).nth(index).unwrap();
+    }
+    document
+        .set_kind(
+            id,
+            base_markdown::stream::EventKind::Html {
+                value: base_markdown::stream::Text::Literal(value),
+                block: true,
+            },
+        )
+        .unwrap();
+}
+
+#[test]
+fn html_block_containers_that_cannot_be_written_are_unwritable() {
+    let options = ParseOptions::default();
+    // An item that starts with a blank line cannot interrupt the paragraph before its list.
+    let mut document = Document::parse(String::from("- a\n  - <pre>\n"), &options).unwrap();
+    set_html(&mut document, &[0, 0, 1, 0, 0], " <pre>");
+    assert_eq!(
+        to_markdown(&document).unwrap_err().rule_id,
+        "unwritable-node"
+    );
+    // The block in the item fits only the columns that a line indented 3 columns, which the
+    // item must be wider than, takes.
+    let mut document = Document::parse(String::from("- <div>\n\n<div>\n"), &options).unwrap();
+    set_html(&mut document, &[0, 0, 0], "\t <div>");
+    set_html(&mut document, &[2], "   <div>");
+    assert_eq!(
+        to_markdown(&document).unwrap_err().rule_id,
+        "unwritable-node"
+    );
+    // Code that a tight item keeps after a paragraph needs a fence.
+    let unfenced = ParseOptions {
+        constructs: base_markdown::Constructs {
+            code_fenced: false,
+            ..base_markdown::Constructs::default()
+        },
+        ..ParseOptions::default()
+    };
+    let mut document = Document::parse(String::from("- a\n"), &unfenced).unwrap();
+    let list = document.children(document.root()).next().unwrap();
+    let item = document.children(list).next().unwrap();
+    document
+        .append_child(
+            item,
+            base_markdown::stream::EventKind::CodeBlock {
+                value: base_markdown::stream::Text::Literal("code\n"),
+                info: None,
+                fence: None,
+                unclosed: false,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        to_markdown(&document).unwrap_err().rule_id,
+        "unwritable-node"
+    );
+}
+
+/// Each indentation, kind of HTML block, open or closed, and container, with a list before or
+/// after, round trips, with indented code or without (#275).
+#[test]
+fn html_blocks_round_trip_in_every_container() {
+    let indents = ["", " ", "  ", "   ", " \t", "  \t", "\t", " \t "];
+    let blocks = [
+        "<pre>",
+        "<pre></pre>",
+        "<!-- x",
+        "<!-- x -->",
+        "<?x",
+        "<?x?>",
+        "<!X",
+        "<!X>",
+        "<![CDATA[",
+        "<![CDATA[]]>",
+        "<div>",
+        "<a href=\"x\">",
+    ];
+    // Where each container starts the block, first in it or after a paragraph, and the prefix of
+    // the line after it.
+    let mut containers = Vec::new();
+    for pre in 0..4 {
+        for pad in 1..5 {
+            let marker = format!("{}-{}", " ".repeat(pre), " ".repeat(pad));
+            let rest = " ".repeat(pre + 1 + pad);
+            containers.push((marker.clone(), rest.clone()));
+            containers.push((format!("{}a\n\n{}", marker, rest), rest));
+        }
+    }
+    for spaces in 0..4 {
+        let marker = format!("{}> ", " ".repeat(spaces));
+        containers.push((marker.clone(), marker.clone()));
+        containers.push((format!("{}a\n>\n{}", marker, marker), marker));
+    }
+    containers.push(("[^1]:\n    ".into(), "    ".into()));
+    containers.push(("[^1]: a\n\n    ".into(), "    ".into()));
+    // No list, or a tight or loose one before or after.
+    let lists = [
+        ("", ""),
+        ("- a\n", ""),
+        ("1. a\n\n2. b\n", ""),
+        ("", "- a\n"),
+        ("", "1. a\n\n2. b\n"),
+    ];
+    let unindented = ParseOptions {
+        constructs: base_markdown::Constructs {
+            code_indented: false,
+            ..base_markdown::Constructs::default()
+        },
+        ..ParseOptions::default()
+    };
+    for options in [ParseOptions::default(), unindented] {
+        for indent in indents {
+            for block in blocks {
+                for (start, rest) in &containers {
+                    for (before, after) in lists {
+                        let source = format!(
+                            "{}{}{}{}\n{}c\n\n{}",
+                            before, start, indent, block, rest, after
+                        );
+                        let document = Document::parse(source.as_str(), &options).unwrap();
+                        match round_trip(document, &MarkdownOptions::default(), false) {
+                            Outcome::Pass => {}
+                            Outcome::Unwritable(_) | Outcome::Rejected => {
+                                panic!("rejected {:?}", source)
+                            }
+                            Outcome::Fail(failure) => panic!(
+                                "{} {:?}: {:?}\n{}\n{}",
+                                failure.kind, source, failure.output, failure.before, failure.after
+                            ),
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Parses `source` under `options` and checks that it round trips, and writes again the same,
+/// when written with `markdown`.
+fn assert_writes(source: &str, options: &ParseOptions, markdown: &MarkdownOptions) {
+    let document = Document::parse(source, options).unwrap();
+    match round_trip(document, markdown, false) {
+        Outcome::Pass => {}
+        Outcome::Fail(failure) => panic!(
+            "{} {:?}: {:?}\n{}\n{}",
+            failure.kind, source, failure.output, failure.before, failure.after
+        ),
+        Outcome::Rejected | Outcome::Unwritable(_) => panic!("rejected {:?}", source),
+    }
+}
+
+fn parse_options(
+    code_indented: bool,
+    html_block_blank_lines: bool,
+    footnotes: bool,
+) -> ParseOptions {
+    ParseOptions {
+        constructs: base_markdown::Constructs {
+            code_indented,
+            footnote_definition: footnotes,
+            label_start_footnote: footnotes,
+            ..base_markdown::Constructs::default()
+        },
+        html_block_blank_lines,
+        ..ParseOptions::default()
+    }
+}
+
+fn indent(list_item_indent: base_markdown::IndentOptions) -> MarkdownOptions {
+    MarkdownOptions {
+        list_item_indent,
+        ..MarkdownOptions::default()
+    }
+}
+
+#[test]
+fn html_blocks_after_nested_containers_find_a_spelling() {
+    use base_markdown::IndentOptions::{Mixed, One, Tab};
+    let default = ParseOptions::default();
+    let unindented = parse_options(false, false, false);
+    let footnotes = parse_options(true, false, true);
+    let kept = parse_options(false, true, true);
+    // A list ending in an empty item and written with a blank line after it.
+    for source in [
+        "- -\n\n    <div>\n",
+        "- *\n\n    <div>",
+        "- 1.\n\n      <div>",
+    ] {
+        assert_writes(source, &default, &MarkdownOptions::default());
+    }
+    assert_writes(
+        "- a\n  -\n\n       <?",
+        &default,
+        &MarkdownOptions::default(),
+    );
+    for source in [
+        "- - a\n  -\n\n      <div>",
+        "-\n\n-\n    -\n\n    <div>\n\n    \tw",
+    ] {
+        assert_writes(source, &unindented, &MarkdownOptions::default());
+    }
+    // An item starting with indented HTML after an empty item.
+    for source in [
+        "*\n\n*\n  \t<div>\ny\n",
+        "*\n*\n  \t<v>",
+        " *\n\n *\n   \t<?x\n   a\n",
+    ] {
+        assert_writes(source, &kept, &indent(One));
+    }
+    // A footnote definition in an item starting with an HTML block.
+    for source in [
+        "x[^1]\n\n- [^1]:\n      \t<b>\n",
+        " 10.\n     [^1]:\n         \t<v>",
+    ] {
+        assert_writes(source, &footnotes, &indent(Tab));
+    }
+    // Spaces before the `>` of a quote holding the item.
+    assert_writes(">-\n>*\n  >   \t <b>\n", &default, &indent(One));
+    assert_writes(" *\n  * \t<!x", &unindented, &indent(Mixed));
+    for source in ["-  >\n  - \t<?", "-     -\n\t<x>"] {
+        assert_writes(source, &unindented, &indent(One));
+    }
+    assert_writes("- 1.\n  \t<!--", &kept, &indent(Tab));
+    // The outer item leaves the inner one the columns the later blocks need, and the padding does
+    // not depend on how the source was spaced, so the write is stable.
+    assert_writes(
+        "-   1.   <pre>x\n\n         <div>\n\n            w\n\n       \t<!-- c -->\n",
+        &unindented,
+        &indent(Mixed),
+    );
+    // #288: the inner item takes padding that keeps the HTML block after it in the outer item.
+    for list_item_indent in [One, Tab, Mixed] {
+        assert_writes(
+            "-    -   a\n           \t<div>\n\n        <p>\n",
+            &default,
+            &indent(list_item_indent),
+        );
+    }
+}
+
+#[test]
+fn a_loose_list_whose_blank_line_a_kept_html_block_holds_is_unwritable() {
+    // Detaching the item whose blank line made the list loose leaves only the blank line the HTML
+    // block keeps as its content, which does not make a list loose, so no spelling reads back
+    // loose and the write fails instead of writing a tight list.
+    let options = parse_options(true, true, false);
+    let mut document = Document::parse("1. <div>\n   y\n\n2. x\n\n3. q\n", &options).unwrap();
+    let list = document.children(document.root()).next().unwrap();
+    let third = document.children(list).nth(2).unwrap();
+    assert!(matches!(
+        document.node(third).unwrap().kind,
+        base_markdown::stream::EventKind::Start(base_markdown::stream::Tag::Item { .. })
+    ));
+    document.detach(third).unwrap();
+    assert!(matches!(
+        round_trip(document, &MarkdownOptions::default(), false),
+        Outcome::Unwritable(_)
+    ));
+}
+
+#[test]
+fn html_block_plans_cover_every_container() {
+    let footnotes = parse_options(true, false, true);
+    // An empty footnote definition before an HTML block in an item.
+    assert_writes(
+        "- [^a]:\n\n  <div>\n",
+        &footnotes,
+        &MarkdownOptions::default(),
+    );
+    // Ordered items keep their number's width when markers are not incremented.
+    let same = MarkdownOptions {
+        increment_list_marker: false,
+        ..MarkdownOptions::default()
+    };
+    assert_writes(
+        "1. a\n1. - b\n     \t<div>\n",
+        &parse_options(false, false, false),
+        &same,
+    );
+    // A footnote definition holding a block that fits neither line after its label is
+    // unwritable, at that block.
+    let options = parse_options(false, false, true);
+    let mut document =
+        Document::parse("[^a]: - x\n\n    b\n\n            <div>\n", &options).unwrap();
+    let definition = document.children(document.root()).next().unwrap();
+    let paragraph = document
+        .children(definition)
+        .find(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                base_markdown::stream::EventKind::Start(
+                    base_markdown::stream::Tag::Paragraph { .. }
+                )
+            )
+        })
+        .unwrap();
+    document.detach(paragraph).unwrap();
+    assert!(matches!(
+        round_trip(document, &MarkdownOptions::default(), false),
+        Outcome::Unwritable(_)
+    ));
+    // And so is one whose first block is such an HTML block.
+    let mut document = Document::parse("[^a]: <div>\n", &parse_options(true, false, true)).unwrap();
+    let definition = document.children(document.root()).next().unwrap();
+    let block = document.children(definition).next().unwrap();
+    document
+        .set_kind(
+            block,
+            base_markdown::stream::EventKind::Html {
+                value: base_markdown::stream::Text::Literal(" \t<div>"),
+                block: true,
+            },
+        )
+        .unwrap();
+    assert!(matches!(
+        round_trip(document, &MarkdownOptions::default(), false),
+        Outcome::Unwritable(_)
+    ));
+}
+
+#[test]
+fn an_html_block_whose_last_line_is_blank_keeps_it_in_an_item() {
+    // The last line of the HTML block is blank but for the item's indentation, which is kept, so
+    // the item stays tight (third review, R1).
+    assert_written(
+        "- a\n  [^l]: <!--\n      \n  b",
+        "- a\n  [^l]: <!--\n      \n  b\n",
+    );
+    assert_written(
+        "- :\n  [^l]:<!--\n \n  h",
+        "- :\n  [^l]: <!--\n      \n  h\n",
+    );
+    assert_written(
+        "- [^b]:[^b]:<?\n\n      [^a]:\n  f",
+        "- [^b]: [^b]: <?\n          \n      [^a]:\n  f\n",
+    );
+}
+
+#[test]
+fn a_kept_blank_line_before_a_block_in_an_item_shows_the_list_loose() {
+    use base_markdown::IndentOptions::{Mixed, One, Tab};
+    // Under `html_block_blank_lines`, an HTML block keeps the blank line after it, which shows
+    // the list loose where a block follows in the same item, so the list is writable (R2).
+    let kept = parse_options(true, true, false);
+    let unfenced = ParseOptions {
+        constructs: base_markdown::Constructs {
+            code_fenced: false,
+            ..kept.constructs.clone()
+        },
+        ..kept.clone()
+    };
+    let plain = ParseOptions {
+        constructs: base_markdown::Constructs {
+            code_indented: false,
+            ..unfenced.constructs.clone()
+        },
+        ..unfenced.clone()
+    };
+    let footnotes = |options: &ParseOptions| ParseOptions {
+        constructs: base_markdown::Constructs {
+            footnote_definition: true,
+            label_start_footnote: true,
+            ..options.constructs.clone()
+        },
+        ..options.clone()
+    };
+    for options in [
+        &kept,
+        &unfenced,
+        &plain,
+        &footnotes(&kept),
+        &footnotes(&plain),
+    ] {
+        let indentable = options.constructs.footnote_definition || options.constructs.code_indented;
+        for source in [
+            "- <e>\n- <e>\n\n  h",
+            "- <div>\n- <div>\n\n  a",
+            "9. <div>\n9.\t<a f=\"\">\n\n    y",
+            ">- <y>\n>\n>   <e>\n>-",
+            "- 9. <!x\n  <y>\n\n  .",
+            // Without footnotes, `[^b]:<y>` is a definition, and the paragraph after it, whose
+            // line would start an HTML block, has no spelling where `code_indented` is off.
+            "*\t[^b]:<y>\n    <v>\n\n    >",
+        ]
+        .iter()
+        .filter(|source| indentable || !source.contains("[^b]"))
+        {
+            for indent_option in [One, Tab, Mixed] {
+                assert_writes(source, options, &indent(indent_option));
+            }
+        }
+    }
+}
+
+#[test]
+fn nested_items_that_start_blank_are_no_thematic_break() {
+    // Items that each start with a blank line would write `- - -`, a thematic break, so the
+    // innermost takes another bullet (R3).
+    assert_written("-\n  -\n    -\n      \t<y>", "- - *\n      \t<y>\n");
+    assert_written("-\n  -\n    -\n        <y>", "- - *\n        <y>\n");
+    assert_writes(
+        "[^bb]:[^a]:[^n]:\n+  [^bb]:\n      +   [^bb]:\n             +   [^n]:\n                \t<y>",
+        &parse_options(true, false, true),
+        &indent(base_markdown::IndentOptions::Mixed),
+    );
+}
+
+#[test]
+fn containers_serialized_on_their_own_plan_only_themselves() {
+    // A serialized node is planned without the blocks after it, which are not written.
+    let options = MarkdownOptions::default();
+    let document = Document::parse("- <div>\n\n  a\n- b\n\nc\n", &ParseOptions::default()).unwrap();
+    let list = document.children(document.root()).next().unwrap();
+    let item = document.children(list).next().unwrap();
+    assert_eq!(
+        base_markdown::to_markdown_node(&document, item, &options).unwrap(),
+        "- <div>\n\n  a\n"
+    );
+    assert_eq!(
+        base_markdown::to_markdown_node(&document, list, &options).unwrap(),
+        "- <div>\n\n  a\n\n- b\n"
+    );
+    // The last item's width reaches no block after the serialized list.
+    let document = Document::parse("- <div>\n\n<div>\n", &ParseOptions::default()).unwrap();
+    let list = document.children(document.root()).next().unwrap();
+    assert_eq!(
+        base_markdown::to_markdown_node(&document, list, &options).unwrap(),
+        "- <div>\n"
+    );
+    let document = Document::parse("> <div>\n\nc\n", &ParseOptions::default()).unwrap();
+    let quote = document.children(document.root()).next().unwrap();
+    assert_eq!(
+        base_markdown::to_markdown_node(&document, quote, &options).unwrap(),
+        "> <div>\n"
+    );
+    // A node moved after its parent was made sits past the parent in the arena, and its plan
+    // stops at it.
+    let mut document = Document::parse("> <div>\n\n- x\n", &ParseOptions::default()).unwrap();
+    let mut flow = document.children(document.root());
+    let (quote, list) = (flow.next().unwrap(), flow.nth(1).unwrap());
+    let item = document.children(list).next().unwrap();
+    document.detach(quote).unwrap();
+    document.attach(item, quote, None).unwrap();
+    document.normalize();
+    assert_eq!(
+        base_markdown::to_markdown(&document).unwrap(),
+        "- x\n  > <div>\n"
+    );
+    assert_eq!(
+        base_markdown::to_markdown_node(&document, quote, &options).unwrap(),
+        "> <div>\n"
+    );
 }
