@@ -785,8 +785,9 @@ impl<'s> EventKind<'s> {
             |identifier: &Text<'s>, label: Option<&Text<'s>>, valid: &dyn Fn(&str) -> bool| {
                 let written = label.unwrap_or(identifier);
                 check(written, valid)?;
-                match (resolved(identifier, source)?, resolved(written, source)?) {
-                    (Some(identifier), Some(written))
+                // `check` has resolved `written` already.
+                match (resolved(identifier, source)?, resolved(written, source)) {
+                    (Some(identifier), Ok(Some(written)))
                         if crate::util::normalize_identifier::normalize_identifier(written)
                             != identifier =>
                     {

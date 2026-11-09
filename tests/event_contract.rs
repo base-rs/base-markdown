@@ -1014,6 +1014,12 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
             value: Text::Literal("<div><&>"),
             block: true,
         }],
+        // An unclosed block ending in an empty line, whose line ending is written before the
+        // next block.
+        vec![EventKind::Html {
+            value: Text::Literal("<pre>\n"),
+            block: true,
+        }],
         wrap(
             &[Tag::Heading(1)],
             vec![
