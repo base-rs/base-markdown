@@ -22,25 +22,25 @@ pub struct EventParser<'a> {
     cursor: usize,
     closing: bool,
     phase: Phase,
-    // Whether the source has a CR, so that source line endings in values need writing as LF.
-    carriage_returns: bool,
+    // Whether the source has a CR or NUL, so that values need the form the parser stores.
+    raw: bool,
 }
 impl<'a> EventParser<'a> {
     /// Prepare Markdown for pull consumption.
     /// Built-in Markdown preparation has no syntax errors.
     pub fn new(source: &'a str, options: &'a ParseOptions) -> Self {
         let (blocks, definitions) = Blocks::parse(source, options);
-        let carriage_returns = memchr::memchr(b'\r', source.as_bytes()).is_some();
-        Self::from_blocks(source, options, blocks, definitions, carriage_returns)
+        let raw = crate::util::line_ending::needs_normalizing(source);
+        Self::from_blocks(source, options, blocks, definitions, raw)
     }
 
-    /// Pull events from blocks that have already been prepared from `source`. `carriage_returns` must be true if `source` has a CR; it may be true when it has none, which only costs a check of each value.
+    /// Pull events from blocks that have already been prepared from `source`. `raw` must be true if `source` has a CR or NUL; it may be true when it has none, which only costs a check of each value.
     pub(crate) fn from_blocks(
         source: &'a str,
         options: &'a ParseOptions,
         blocks: Blocks,
         definitions: Definitions<'a>,
-        carriage_returns: bool,
+        raw: bool,
     ) -> Self {
         Self {
             blocks,
@@ -52,7 +52,7 @@ impl<'a> EventParser<'a> {
             cursor: 0,
             closing: false,
             phase: Phase::Start,
-            carriage_returns,
+            raw,
         }
     }
 }
@@ -83,11 +83,12 @@ impl Iterator for EventParser<'_> {
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         let event = self.next_event();
-        if !self.carriage_returns {
+        if !self.raw {
             return event;
         }
-        // Line endings are structure, so every value stores LF, whichever the source used.
-        // Separators are already LF when yielded.
+        // Line endings are structure, so every value stores LF, whichever the source used, and
+        // no value holds NUL, which is U+FFFD, as CommonMark asks. Separators are already LF when
+        // yielded.
         let source = self.source;
         event.map(|event| {
             event.map(|event| Event {

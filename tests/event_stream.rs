@@ -387,7 +387,7 @@ fn edits_and_consumers_validate_the_same_contract() {
 }
 
 #[test]
-fn virtual_container_spaces_and_autolink_nulls_keep_authored_values() {
+fn virtual_container_spaces_keep_authored_values_and_nul_is_replaced() {
     let options = Options::gfm();
     for (source, expected) in [
         (
@@ -400,7 +400,7 @@ fn virtual_container_spaces_and_autolink_nulls_keep_authored_values() {
         (">\t</b>", "<blockquote>\n&lt;/b&gt;\n</blockquote>"),
         (
             "https://x.org\0",
-            "<p><a href=\"https://x.org%00\">https://x.org�</a></p>",
+            "<p><a href=\"https://x.org%EF%BF%BD\">https://x.org�</a></p>",
         ),
         (
             "[x](https://x.org\0)",

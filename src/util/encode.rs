@@ -5,14 +5,13 @@
 //! Encode HTML.
 use core::fmt::{self, Write};
 
+// Raw HTML is written as it is, as no value holds NUL. Encoded text replaces NUL too, as some of
+// it can still hold one: the compile options' strings, and text edited through
+// `Document::text_mut`, which cannot check its `String`.
 #[inline]
-pub(crate) fn find_escape(bytes: &[u8], encode: bool) -> usize {
+pub(crate) fn find_escape(bytes: &[u8]) -> usize {
     static ESCAPES: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\0&\"<>");
-    if encode {
-        ESCAPES.find(bytes)
-    } else {
-        memchr::memchr(0, bytes).unwrap_or(bytes.len())
-    }
+    ESCAPES.find(bytes)
 }
 
 // `index` must be the first candidate returned by `find_escape`, strictly before the end of `value`. Keep the last successfully written byte even when a caller's writer fails partway through an escape.
@@ -20,7 +19,6 @@ pub(crate) fn write_escaped(
     output: &mut impl Write,
     last: &mut Option<u8>,
     value: &str,
-    encode: bool,
     mut index: usize,
 ) -> fmt::Result {
     let mut start = 0;
@@ -40,7 +38,7 @@ pub(crate) fn write_escaped(
         output.write_str(replacement)?;
         *last = replacement.as_bytes().last().copied();
         start = index + 1;
-        index = start + find_escape(&value.as_bytes()[start..], encode);
+        index = start + find_escape(&value.as_bytes()[start..]);
         if index == value.len() {
             break;
         }
@@ -59,29 +57,14 @@ mod tests {
         for length in [0, 1, 15, 16, 17, 31, 32, 33, 64] {
             let prefix = "a".repeat(length);
             let value = alloc::format!("{prefix}é😀<&\"\0>tail\0");
-            for encode in [false, true] {
-                let mut output = alloc::string::String::from("existing<&");
-                assert_eq!(super::find_escape(b"", encode), 0);
-                let index = super::find_escape(value.as_bytes(), encode);
-                super::write_escaped(&mut output, &mut None, &value, encode, index).unwrap();
-                let suffix = if encode {
-                    "é😀&lt;&amp;&quot;�&gt;tail�"
-                } else {
-                    "é😀<&\"�>tail�"
-                };
-                assert_eq!(output, alloc::format!("existing<&{prefix}{suffix}"));
-            }
-        }
-    }
-
-    #[test]
-    fn raw_html_still_replaces_null_bytes() {
-        for (encode, expected) in [(false, "<&>\"�"), (true, "&lt;&amp;&gt;&quot;�")] {
-            let mut output = alloc::string::String::new();
-            let value = "<&>\"\0";
-            let index = super::find_escape(value.as_bytes(), encode);
-            super::write_escaped(&mut output, &mut None, value, encode, index).unwrap();
-            assert_eq!(output, expected);
+            let mut output = alloc::string::String::from("existing<&");
+            assert_eq!(super::find_escape(b""), 0);
+            let index = super::find_escape(value.as_bytes());
+            super::write_escaped(&mut output, &mut None, &value, index).unwrap();
+            assert_eq!(
+                output,
+                alloc::format!("existing<&{prefix}é😀&lt;&amp;&quot;�&gt;tail�")
+            );
         }
     }
 }

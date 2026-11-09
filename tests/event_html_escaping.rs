@@ -18,17 +18,18 @@ fn escaping_preserves_unicode_and_handles_adjacent_markers_at_scan_boundaries() 
     for (raw, encoded) in [
         ("", ""),
         ("plain é😀", "plain é😀"),
-        ("\0", "�"),
         ("&\"<>", "&amp;&quot;&lt;&gt;"),
-        ("\0&\"<>\0&", "�&amp;&quot;&lt;&gt;�&amp;"),
+        ("&\"<>&", "&amp;&quot;&lt;&gt;&amp;"),
     ] {
         for length in [0, 1, 15, 16, 17, 31, 32, 33] {
             let prefix = "a".repeat(length);
             // Inline HTML is one construct (#193), so inline raw HTML is a comment around the
-            // text, and block HTML keeps the NULs on the scan boundaries.
+            // text, and an HTML block one block construct (#257), so it starts with a tag.
             for (html, block) in [(false, false), (true, false), (true, true)] {
                 let source = if html && !block {
                     format!("<!--{prefix}{raw}é😀{raw}-->")
+                } else if block {
+                    format!("<div>{prefix}{raw}é😀{raw}")
                 } else {
                     format!("{prefix}{raw}é😀{raw}")
                 };
@@ -60,13 +61,49 @@ fn escaping_preserves_unicode_and_handles_adjacent_markers_at_scan_boundaries() 
                 )
                 .unwrap();
                 let expected = if html {
-                    source.replace('\0', "�")
+                    source.clone()
                 } else {
                     format!("{prefix}{encoded}é😀{encoded}")
                 };
                 assert_eq!(output, expected, "{source:?}, html={html}, block={block}");
             }
         }
+    }
+    // The parser stores NUL as U+FFFD, so a value with NUL is rejected rather than escaped (#257).
+    for body in [
+        EventKind::Text(Text::Literal("a\0")),
+        EventKind::Html {
+            value: Text::Literal("<!--\0-->"),
+            block: false,
+        },
+        EventKind::Html {
+            value: Text::Literal("<div>\0"),
+            block: true,
+        },
+    ] {
+        let block = matches!(body, EventKind::Html { block: true, .. });
+        let mut events = vec![
+            event(EventKind::Start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })),
+            event(body),
+        ];
+        if !block {
+            events.push(event(EventKind::Text(Text::Literal(""))));
+        }
+        events.push(event(EventKind::End(TagKind::Document)));
+        let mut options = Options::default();
+        options.compile.allow_dangerous_html = true;
+        assert!(matches!(
+            render_events(
+                "",
+                events.into_iter().map(Ok),
+                &options.compile,
+                &mut String::new()
+            ),
+            Err(StreamError::InvalidValue)
+        ));
     }
 }
 
@@ -158,7 +195,7 @@ fn failed_escape_writes_retain_the_last_successfully_written_byte() {
         .unwrap();
     renderer
         .event(event(EventKind::Html {
-            value: Text::Literal("prefix"),
+            value: Text::Literal("<p>prefix"),
             block: true,
         }))
         .unwrap();
@@ -170,7 +207,7 @@ fn failed_escape_writes_retain_the_last_successfully_written_byte() {
     renderer
         .event(event(EventKind::End(TagKind::Document)))
         .unwrap();
-    assert_eq!(writer.output, "prefix\n<hr />");
+    assert_eq!(writer.output, "&lt;p&gt;prefix\n<hr />");
 }
 
 #[test]

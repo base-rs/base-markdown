@@ -60,12 +60,17 @@ struct Capture {
 /// Render semantic events directly into a caller-owned writer.
 ///
 /// Parser output and [`crate::Document::events`] use exactly this renderer. The renderer retains nesting state and footnote bodies, never the full event stream.
+// The flags are independent states of one stream, not options.
+#[allow(clippy::struct_excessive_bools)]
 pub struct EventHtmlRenderer<'a, W> {
     output: &'a mut W,
     source: &'a str,
     options: &'a CompileOptions,
     line_ending: LineEnding,
     last: Option<u8>,
+    // Whether the HTML block just written ends in an empty line, whose line ending the block's
+    // final one, a separator where the parser gives one, follows.
+    html_ending: bool,
     stack: Vec<Frame>,
     // The frames of `stack` that restrict what is below them at any depth.
     reach: crate::stream::Reach,
@@ -93,6 +98,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             options,
             line_ending: options.default_line_ending.clone(),
             last: None,
+            html_ending: false,
             stack: Vec::new(),
             reach: crate::stream::Reach::default(),
             images: 0,
@@ -127,17 +133,21 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     }
 
     fn escaped(&mut self, value: &str, encode: bool) -> Result<(), StreamError> {
-        let index = find_escape(value.as_bytes(), encode);
+        let index = if encode {
+            find_escape(value.as_bytes())
+        } else {
+            value.len()
+        };
         // Ordinary spans need only one write; select a destination for the replacement loop only when an escape is present.
         if index == value.len() {
             return self.write(value);
         }
         if let Some(heading) = self.heading.as_mut() {
-            write_escaped(&mut heading.output, &mut self.last, value, encode, index)
+            write_escaped(&mut heading.output, &mut self.last, value, index)
         } else if let Some(capture) = self.captures.last_mut() {
-            write_escaped(&mut capture.output, &mut self.last, value, encode, index)
+            write_escaped(&mut capture.output, &mut self.last, value, index)
         } else {
-            write_escaped(self.output, &mut self.last, value, encode, index)
+            write_escaped(self.output, &mut self.last, value, index)
         }
         .map_err(StreamError::Write)
     }
@@ -545,6 +555,17 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         if let Some(heading) = &mut self.heading {
             crate::headings::append_text::<true>(&event.kind, self.source, &mut heading.text);
         }
+        if core::mem::take(&mut self.html_ending)
+            && !matches!(
+                event.kind,
+                EventKind::Separator {
+                    conditional: false,
+                    ..
+                }
+            )
+        {
+            self.newline()?;
+        }
         match &event.kind {
             EventKind::Start(tag) => self.start(tag, event.span.end),
             EventKind::End(kind) => self.end(*kind, event.span.end),
@@ -648,6 +669,8 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         let value = value
                             .resolve(self.source)
                             .expect("event values are source-valid");
+                        self.html_ending =
+                            *block && crate::block_parser::html_block_ends_in_empty_line(value);
                         if self.options.allow_dangerous_html && self.options.tagfilter {
                             crate::util::tagfilter::write_filtered(value, |part| {
                                 self.escaped(part, false)
@@ -959,16 +982,10 @@ mod tests {
             tagfilter: true,
             ..CompileOptions::default()
         };
-        for (remaining, expected) in [
-            "",
-            "prefix",
-            "prefix&lt;",
-            "prefix&lt;script>",
-            "prefix&lt;script>�",
-        ]
-        .iter()
-        .copied()
-        .enumerate()
+        for (remaining, expected) in ["", "<div>prefix", "<div>prefix&lt;"]
+            .iter()
+            .copied()
+            .enumerate()
         {
             let mut writer = Writer {
                 remaining,
@@ -987,7 +1004,7 @@ mod tests {
             renderer
                 .event(Event {
                     kind: EventKind::Html {
-                        value: Text::Literal("prefix<script>\0tail"),
+                        value: Text::Literal("<div>prefix<script>tail"),
                         block: true,
                     },
                     span: 0..0,

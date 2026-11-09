@@ -20,29 +20,28 @@ pub(crate) fn line_endings(value: &str) -> impl Iterator<Item = Range<usize>> + 
     })
 }
 
-/// Append `value` to `output` with each CRLF and lone CR written as LF.
+/// Append source text `value` to `output` in the form the parser stores it: each CRLF and lone CR
+/// written as LF, as line endings are structure, and each NUL as U+FFFD, as `CommonMark` asks.
 pub(crate) fn push_normalized(output: &mut String, value: &str) {
     let mut rest = value;
-    while let Some(index) = memchr::memchr(b'\r', rest.as_bytes()) {
+    while let Some(index) = memchr::memchr2(b'\r', 0, rest.as_bytes()) {
         output.push_str(&rest[..index]);
-        output.push('\n');
+        let nul = rest.as_bytes()[index] == 0;
+        output.push(if nul { '\u{FFFD}' } else { '\n' });
         rest = &rest[index + 1..];
-        if let Some(after) = rest.strip_prefix('\n') {
-            rest = after;
+        if !nul {
+            if let Some(after) = rest.strip_prefix('\n') {
+                rest = after;
+            }
         }
     }
     output.push_str(rest);
 }
 
-/// Append `value` to `output` with each CRLF, lone CR and LF written as one space, which is how the parser reads a line ending in inline code.
-pub(crate) fn push_spaced(output: &mut String, value: &str) {
-    let mut written = 0;
-    for ending in line_endings(value) {
-        output.push_str(&value[written..ending.start]);
-        output.push(' ');
-        written = ending.end;
-    }
-    output.push_str(&value[written..]);
+/// Whether source text holds a CR or NUL, which the parser does not store as they are, so that a
+/// value pointing into it may need copying into the form it stores ([`push_normalized`]).
+pub(crate) fn needs_normalizing(value: &str) -> bool {
+    memchr::memchr2(b'\r', 0, value.as_bytes()).is_some()
 }
 
 /// Start of one terminal physical line ending before `end`, or `end` itself.

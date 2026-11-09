@@ -13,21 +13,11 @@ use support::fixture::{Break, Html, Node, Paragraph, Text};
 fn html() {
     assert_eq!(
         to(&Node::Html(Html {
-            value: String::new(),
+            value: String::from("<a>\nb"),
             position: None
         }))
         .unwrap(),
-        "",
-        "should support an empty html"
-    );
-
-    assert_eq!(
-        to(&Node::Html(Html {
-            value: String::from("a\nb"),
-            position: None
-        }))
-        .unwrap(),
-        "a\nb\n",
+        "<a>\nb\n",
         "should support html"
     );
 

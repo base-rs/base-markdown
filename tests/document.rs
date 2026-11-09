@@ -14,6 +14,26 @@ fn html<S: AsRef<str>>(document: &Document<S>) -> String {
         .unwrap();
     output
 }
+// Give the root of `document` the frontmatter body `body`, keeping its line ending.
+fn set_frontmatter<S: AsRef<str>>(
+    document: &mut Document<S>,
+    body: &str,
+) -> Result<(), base_markdown::stream::StreamError> {
+    let root = document.root();
+    let EventKind::Start(Tag::Document { line_ending, .. }) = &document.node(root).unwrap().kind
+    else {
+        panic!("the root is a document");
+    };
+    let line_ending = line_ending.clone();
+    document.set_kind(
+        root,
+        EventKind::Start(Tag::Document {
+            line_ending,
+            frontmatter: Some(body.to_owned().into()),
+        }),
+    )
+}
+
 fn empty() -> Document {
     Document::parse(String::new(), &ParseOptions::default()).unwrap()
 }
@@ -309,12 +329,22 @@ fn frontmatter_edits_detach_the_body_and_keep_fence_metadata() {
             document.syntax(root),
             Some(NodeSyntax::Frontmatter { .. })
         ));
-        document.frontmatter_mut().unwrap().push_str("edited");
-        document.frontmatter_mut().unwrap().push('!');
+        // A body is its lines, each with its line ending, so one without a final line ending is
+        // rejected, and the root keeps its fences.
+        let edited = format!("{before}edited!");
+        assert!(matches!(
+            set_frontmatter(&mut document, &edited),
+            Err(base_markdown::stream::StreamError::InvalidValue)
+        ));
+        set_frontmatter(&mut document, &format!("{edited}\n")).unwrap();
         assert_eq!(
             document.frontmatter(),
-            Some(format!("{before}edited!").as_str())
+            Some(format!("{before}edited!\n").as_str())
         );
+        assert!(matches!(
+            document.syntax(root),
+            Some(NodeSyntax::Frontmatter { .. })
+        ));
         assert_eq!(html(&document), "");
         let output = base_markdown::to_markdown(&document).unwrap();
         let reparsed = Document::parse(output.as_str(), &options).unwrap();
@@ -327,7 +357,6 @@ fn frontmatter_edits_detach_the_body_and_keep_fence_metadata() {
     let mut document = empty();
     let root = document.root();
     assert!(document.frontmatter().is_none());
-    assert!(document.frontmatter_mut().is_none());
     document
         .set_kind(
             root,
@@ -667,11 +696,17 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
         "```a`b\nx\n```",
         "---\nx\n--- extra",
     ] {
-        let document = with_frontmatter(raw, 0..raw.len());
+        // A body ends in a line ending, as the parser stores each line with its own.
+        let raw = if raw.ends_with('\n') {
+            raw.to_owned()
+        } else {
+            format!("{raw}\n")
+        };
+        let document = with_frontmatter(&raw, 0..raw.len());
         assert!(document.syntax(document.root()).is_none(), "{:?}", raw);
     }
     // A custom producer can supply a body range and explicit fences without storing fenced source.
-    let mut document = with_frontmatter("prebody", 3..7);
+    let mut document = with_frontmatter("prebody\n", 3..8);
     let root = document.root();
     document
         .set_syntax(
@@ -687,7 +722,7 @@ fn authored_metadata_handles_custom_provenance_without_assuming_markdown_syntax(
             }),
         )
         .unwrap();
-    assert_eq!(document.frontmatter(), Some("body"));
+    assert_eq!(document.frontmatter(), Some("body\n"));
     // Frontmatter at the start of the source has its fences inferred.
     let document = with_frontmatter("---\nbody\n---", 4..9);
     assert!(matches!(
@@ -807,7 +842,7 @@ fn copied_sections_materialize_frontmatter_footnotes_and_edited_values() {
     let mut options = Options::gfm();
     options.parse.constructs.frontmatter = true;
     let mut replacement=Document::parse("--- custom\nbody\n---\n\n- a\n\n  b\n\nNote[^Mixed] &amp;.\n\n[^Mixed]: Body.\n\n```rust meta\nx\n```\n".to_owned(),&options.parse).unwrap();
-    replacement.frontmatter_mut().unwrap().push_str("edited\n");
+    set_frontmatter(&mut replacement, "body\nedited\n").unwrap();
     let text = replacement
         .descendants(replacement.root())
         .find(|id| matches!(replacement.node(*id).unwrap().kind, EventKind::Text(_)))

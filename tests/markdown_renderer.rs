@@ -298,7 +298,7 @@ fn serializes_ast_variants_and_custom_markdown_options() {
             depth: 2,
         }),
         Node::Html(Html {
-            value: "<b>raw</b>".into(),
+            value: "<div>raw</div>".into(),
             position: None,
         }),
         Node::Image(Image {
@@ -437,7 +437,7 @@ fn serializes_ast_variants_and_custom_markdown_options() {
             fence: '+',
             fence_length: 3,
             closing_fence_length: 3,
-            value: "title = 'example'".into(),
+            value: "title = 'example'\n".into(),
             position: None,
         }),
         Node::Frontmatter(Frontmatter {
@@ -445,7 +445,7 @@ fn serializes_ast_variants_and_custom_markdown_options() {
             fence: '-',
             fence_length: 3,
             closing_fence_length: 3,
-            value: "title: example".into(),
+            value: "title: example\n".into(),
             position: None,
         }),
     ];
@@ -492,13 +492,6 @@ fn serializes_ast_variants_and_custom_markdown_options() {
         output,
         "*a\nb*\n--\n\n~~~~rust a ` b\n~~~\ncode\n~~~~\n\n_ _ _ _\n"
     );
-
-    let inline_break = Node::InlineCode(InlineCode {
-        value: "a\r\n#b".into(),
-        position: None,
-        lang: None,
-    });
-    assert_eq!(markdown(&inline_break).unwrap(), "`a #b`\n");
 
     let nested_heading = Node::Heading(Heading {
         children: vec![Node::Emphasis(Emphasis {

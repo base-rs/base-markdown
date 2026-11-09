@@ -897,7 +897,10 @@ impl Builder<'_> {
             let next = at + scan_nextline(&bytes[at..]);
             if retain_blanks {
                 let mut indent = LineStart::new(&bytes[at..]);
-                let width = indent.scan_space_upto(usize::MAX) + spaces;
+                indent.scan_all_space();
+                // Widths are those of the line as the value stores it, which `html_block_value`
+                // measures the same way.
+                let width = html_indent_width(spaces, &bytes[at..]);
                 if !indent.is_at_eol()
                     && width > 0
                     && (minimum_indent == 0 || width < minimum_indent)
@@ -911,10 +914,7 @@ impl Builder<'_> {
             let continued = self.containers(&mut line) == self.open.len();
             let content = next + line.bytes_scanned();
             if closed || next == bytes.len() || !continued {
-                return self.finish_html(
-                    next,
-                    retain_blanks || next == bytes.len() && !closed && !kind.blank_terminated(),
-                );
+                return self.finish_html(next, retain_blanks);
             }
             if kind.blank_terminated() && scan_blank_line(&bytes[content..]).is_some() {
                 if !retain_blanks {
@@ -935,13 +935,15 @@ impl Builder<'_> {
                     }
                     let begin = end + prefix.bytes_scanned();
                     let mut indentation = prefix.clone();
-                    let width = indentation.scan_space_upto(usize::MAX);
+                    indentation.scan_all_space();
                     if !indentation.is_at_eol() {
+                        // The line keeps what is left of a tab its containers took part of.
+                        let width = html_indent_width(prefix.remaining_space(), &bytes[begin..]);
                         if width == 0 || (minimum_indent > 0 && width < minimum_indent) {
                             return self.finish_html(end, true);
                         }
                         at = begin;
-                        spaces = 0;
+                        spaces = prefix.remaining_space();
                         break;
                     }
                     blank = end;
@@ -1221,6 +1223,104 @@ pub(crate) fn html_block_ends_on_last_line(value: &str) -> bool {
     bytes.first() == Some(&b'<')
         && html::Html::start(bytes, false, true)
             .is_some_and(|kind| !kind.blank_terminated() && kind.closed(&bytes[last..]))
+}
+
+/// Whether an HTML block whose value is `value` is one of kinds 1–5 that its last line does not
+/// close, so that it takes every line after it in its container, blank or not, until one does.
+pub(crate) fn html_block_unclosed(value: &str) -> bool {
+    let bytes = value.trim_start_matches([' ', '\t']).as_bytes();
+    let last = memchr::memrchr(b'\n', bytes).map_or(0, |at| at + 1);
+    // Namespaces change only which tags start a block of kind 7, which takes no such lines.
+    bytes.first() == Some(&b'<')
+        && html::Html::start(bytes, false, true)
+            .is_some_and(|kind| !kind.blank_terminated() && !kind.closed(&bytes[last..]))
+}
+
+/// Whether `value`, an HTML block's, ends in an empty line whose line ending is not in it: one of
+/// kinds 1–5 that ends in a blank line it took. One of kind 6 or 7 ends in a line feed only where
+/// `ParseOptions::html_block_blank_lines` keeps its final line ending in it.
+pub(crate) fn html_block_ends_in_empty_line(value: &str) -> bool {
+    let bytes = value.trim_start_matches([' ', '\t']).as_bytes();
+    // Namespaces change only which tags start a block of kind 7.
+    value.ends_with('\n')
+        && html::Html::start(bytes, false, true).is_some_and(|kind| !kind.blank_terminated())
+}
+
+/// The width of the spaces and tabs that start `bytes` after `spaces` spaces, with a tab to the
+/// next multiple of four counted from where the spaces start.
+fn html_indent_width(spaces: usize, bytes: &[u8]) -> usize {
+    let mut width = spaces;
+    for &byte in bytes {
+        match byte {
+            b' ' => width += 1,
+            b'\t' => width += 4 - width % 4,
+            _ => break,
+        }
+    }
+    width
+}
+
+/// Whether `value`, which holds no CR, is the value of one HTML block as the parser stores it.
+///
+/// It starts with the indentation the parser keeps before a block: up to three spaces, or one or
+/// two spaces then a tab and spaces, where those spaces and the tab, counted as one column, are at
+/// most three, as a tab first is not kept. HTML that starts a block follows, then the lines the block takes, with no line
+/// ending after the last. A block of kinds 1–5 ends at the first line that holds its end
+/// condition, so no line before its last holds it; one that no line closes takes every line to
+/// the end of its container, blank or not, so its last line may be blank. A block of kind 6 or 7
+/// ends before a blank line, so it holds none, except where `ParseOptions::html_block_blank_lines`
+/// continues it: a run of blank lines before a line indented by at least one column, and by at
+/// least the least positive indentation of the lines before it that are not blank, or at its end,
+/// which that option keeps with the line ending after it. Namespace prefixes in tag names are
+/// allowed, as `ParseOptions::html_tag_namespaces` reads them, so that every parsed value passes
+/// whatever the options.
+pub(crate) fn html_block_value(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let spaces = bytes.iter().take_while(|&&byte| byte == b' ').count();
+    let mut indent = spaces;
+    if spaces > 0 && bytes.get(spaces) == Some(&b'\t') {
+        indent += 1;
+        let after = bytes[indent..]
+            .iter()
+            .take_while(|&&byte| byte == b' ')
+            .count();
+        if spaces + 1 + after > 3 {
+            return false;
+        }
+        indent += after;
+    }
+    let html = &bytes[indent..];
+    if spaces > 3 || html.first() != Some(&b'<') {
+        return false;
+    }
+    let Some(kind) =
+        html::Html::start(html, false, true).or_else(|| html::Html::start(html, true, true))
+    else {
+        return false;
+    };
+    let mut lines = bytes.split(|&byte| byte == b'\n').peekable();
+    let mut blank = false;
+    let mut minimum_indent = 0;
+    while let Some(line) = lines.next() {
+        let after_blank = blank;
+        blank = line.iter().all(|byte| matches!(byte, b' ' | b'\t'));
+        let last = lines.peek().is_none();
+        if kind.blank_terminated() {
+            if blank {
+                continue;
+            }
+            let width = html_indent_width(0, line);
+            if after_blank && (width == 0 || width < minimum_indent) {
+                return false;
+            }
+            if width > 0 && (minimum_indent == 0 || width < minimum_indent) {
+                minimum_indent = width;
+            }
+        } else if !last && kind.closed(line) {
+            return false;
+        }
+    }
+    true
 }
 
 pub(crate) fn footnote_prefix(bytes: &[u8], start: usize) -> Option<(Range<usize>, usize)> {
