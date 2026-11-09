@@ -526,6 +526,75 @@ fn caret_definitions() {
     assert!(unwritable(&document));
 }
 
+/// `normalize` keeps a copy of a definition that a definition whose label starts with `^`
+/// follows, its only carrier, so the normalized document is still written (#208), and drops one
+/// whose `^` definition is a copy that goes too.
+#[test]
+fn caret_definition_carriers() {
+    for (source, expected) in [
+        (
+            "[a]: /u\n\nx\n\n[a]: /u\n    [^b]: #\n",
+            "[a]: /u\n\nx\n\n[a]: /u\n    [^b]: #\n",
+        ),
+        (
+            "+ [a]: /u\n  [^b]: #\n  [a]: /u\n      [^b]: #\n",
+            "- [a]: /u\n  [^b]: #\n  [a]: /u\n      [^b]: #\n",
+        ),
+        (
+            "[a]: /u\n    [^b]: #\n\n[a]: /v\n    [^b]: #\n",
+            "[a]: /u\n    [^b]: #\n",
+        ),
+        (
+            "[x]: /u\n    [^b]: #\n\n[a]: /1\n\n[a]: /2\n    [^b]: #\n",
+            "[x]: /u\n    [^b]: #\n\n[a]: /1\n",
+        ),
+        (
+            "[x]: /u\n    [^b]: #\n\n[a]: /1\n\n[a]: /2\n    [^b]: #\n    [^c]: #\n",
+            "[x]: /u\n    [^b]: #\n\n[a]: /1\n\n[a]: /2\n    [^b]: #\n    [^c]: #\n",
+        ),
+        (
+            "[a]: /u\n    [^b]: #\n\n[a]: /v\n    [^b]: #\n    [^c]: #\n",
+            "[a]: /u\n    [^b]: #\n\n[a]: /v\n    [^b]: #\n    [^c]: #\n",
+        ),
+    ] {
+        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+        document.normalize();
+        assert!(document.is_normalized(), "{:?}", source);
+        assert_eq!(to_markdown(&document).unwrap(), expected, "{:?}", source);
+    }
+    check(&[(
+        &[],
+        "[a]: /u\n\nx\n\n[a]: /u\n    [^b]: #\n",
+        "[a]: /u\n\nx\n\n[a]: /u\n    [^b]: #\n",
+    )]);
+    // A detached tree keeps its carriers too.
+    let mut document = Document::parse(
+        "> [a]: /u\n>\n> [a]: /v\n>     [^b]: #\n\n[c]: /w\n",
+        &ParseOptions::default(),
+    )
+    .unwrap();
+    let quote = document
+        .node(document.root())
+        .unwrap()
+        .first_child()
+        .unwrap();
+    document.detach(quote).unwrap();
+    document.normalize();
+    assert!(document.is_normalized());
+    assert_eq!(document.descendants(quote).count(), 4);
+}
+
+/// Without escapes, a block that would read as a table's delimiter row under the line before is
+/// escaped before its block is read back, so it is written.
+#[test]
+fn delimiter_rows_checked_once_escaped() {
+    check(&[(
+        &["!label_end"],
+        ">www.b] ||\n-|-",
+        "> www.b\\] ||\n> \\-|-\n",
+    )]);
+}
+
 /// Without ATX headings, an empty heading has no spelling, as a setext heading needs content, and
 /// `normalize` leaves it, as it removes no heading (#270). A heading that ends in a hard break has
 /// none either, as the parser drops a break there, which `normalize` does too (#271).

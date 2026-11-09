@@ -428,7 +428,7 @@ fn run(corpus: &Corpus, count: usize, record: bool) -> Tally {
             }
             Ok(Outcome::Fail(failure)) => failure,
             Ok(Outcome::Unwritable(error)) => Failure {
-                kind: "unwritable",
+                kind: "error",
                 output: error.to_string(),
                 before: String::new(),
                 after: String::new(),

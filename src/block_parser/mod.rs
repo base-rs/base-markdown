@@ -1145,6 +1145,15 @@ pub(crate) fn starts_footnote_definition(bytes: &[u8]) -> bool {
     footnote_prefix(bytes, 0).is_some()
 }
 
+/// Whether a link reference definition labelled `label` reads, written alone at a line's start,
+/// as a footnote definition under `options`: its label starts with `^`, which only a definition
+/// on a lazy line after another one has.
+pub(crate) fn caret_definition_label(label: &str, options: &crate::ParseOptions) -> bool {
+    options.constructs.footnote_definition
+        && label.starts_with('^')
+        && starts_footnote_definition(alloc::format!("[{label}]:").as_bytes())
+}
+
 /// Whether `delimiter`, the content of a line after its indentation that starts with `|`, `-` or
 /// `:` and is not a list item, is a delimiter row with as many cells as the row `header` on the
 /// line before it, so that the two lines start a table. Neither includes its line ending.

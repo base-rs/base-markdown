@@ -229,7 +229,8 @@ fn describe(options: &ParseOptions) -> String {
 ///   continues it, and in a block quote, a tab after spaces spans other columns after the quote's
 ///   prefix;
 /// - an HTML block that ends an item before another, which, when the list is written loose and
-///   the block has no end, takes the blank line between the items.
+///   the block has no end, takes the blank line between the items (#273), which parsed
+///   documents give under the default options too, as `- <pre>\n  x\n- a\n\n- b\n`.
 fn known_gap<S: AsRef<str>>(document: &Document<S>) -> bool {
     use base_markdown::stream::{EventKind, Tag, TagKind};
     let mut quotes = 0;

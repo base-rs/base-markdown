@@ -248,16 +248,14 @@ impl<'a> State<'a> {
     /// Whether `id` is a definition whose label starts with `^`, and holds no whitespace, which
     /// reads back as a footnote definition where the options read those.
     fn caret_definition<S: AsRef<str>>(&self, document: &Document<S>, id: NodeId) -> bool {
-        self.parse.constructs.footnote_definition
-            && matches!(
-                &document.node(id).unwrap().kind,
-                EventKind::Definition { label, .. }
-                    if label.resolve(document.source()).unwrap().starts_with('^')
-                        && crate::block_parser::starts_footnote_definition(
-                            alloc::format!("[{}]:", label.resolve(document.source()).unwrap())
-                                .as_bytes()
-                        )
-            )
+        matches!(
+            &document.node(id).unwrap().kind,
+            EventKind::Definition { label, .. }
+                if crate::block_parser::caret_definition_label(
+                    label.resolve(document.source()).unwrap(),
+                    &self.parse,
+                )
+        )
     }
 
     pub fn container_flow<S: AsRef<str>>(
@@ -427,13 +425,6 @@ impl<'a> State<'a> {
         let verifying = self.verifying;
         self.verifying |= checked;
         self.phrasing(document, &children, info, &Edge::default())?;
-        self.verifying = verifying;
-        if checked {
-            let raw = core::mem::replace(&mut self.raw_literals, raw);
-            if core::mem::replace(&mut self.loose_links, loose) || raw {
-                self.check_block(document, parent, start, raw);
-            }
-        }
         if block {
             if let Some(colon) = self.definition_colon.take() {
                 if crate::block_parser::starts_definition(&self.output[start..], &self.parse) {
@@ -471,6 +462,15 @@ impl<'a> State<'a> {
                 self.escape_delimiter_rows(start, joined_definition.is_some());
             }
         }
+        // The block is read back as it is written, with the escapes above that keep it from
+        // reading as another block.
+        self.verifying = verifying;
+        if checked {
+            let raw = core::mem::replace(&mut self.raw_literals, raw);
+            if core::mem::replace(&mut self.loose_links, loose) || raw {
+                self.check_block(document, parent, start, raw);
+            }
+        }
         Ok(())
     }
 
@@ -478,8 +478,9 @@ impl<'a> State<'a> {
     /// as they are where the options read no escape for them, or with links written bare next to
     /// what may change where they end, reads back as written: the phrasing is read back alone, as
     /// a paragraph or a table's cell, which forms the same inline nodes as the block does. A block
-    /// with references or footnote calls, which need definitions read with them, is not read
-    /// back, and has no spelling where a character has none.
+    /// with references or footnote calls, which need definitions read with them, is read back
+    /// for its links alone, and has no spelling where a character has none. The block is checked
+    /// once the escapes that keep it from reading as another block are written.
     fn check_block<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
@@ -1710,9 +1711,6 @@ impl<'a> State<'a> {
                 ))
     }
 
-    /// Whether flow child `id` of `parent`, after flow child `before`, if any, is code written
-    /// indented. `spread` is whether `parent`'s blocks are joined by blank lines, as for
-    /// `fences_code`.
     /// Whether code in `parent` after `before` needs a fence whatever the options: as
     /// [`fences_code`] says, or as the first block of an item whose list has no bullet that
     /// reads back with the code indented.
@@ -1732,6 +1730,9 @@ impl<'a> State<'a> {
                     .is_some_and(|list| self.fenced_lists.contains(&list))
     }
 
+    /// Whether flow child `id` of `parent`, after flow child `before`, if any, is code written
+    /// indented. `spread` is whether `parent`'s blocks are joined by blank lines, as for
+    /// `fences_code`.
     fn indented_code<S: AsRef<str>>(
         &self,
         document: &Document<S>,
@@ -2343,7 +2344,6 @@ fn starts_with_block_html<S: AsRef<str>>(document: &Document<S>, id: NodeId, unw
             }
 }
 
-/// Whether flow child `id` is a link reference definition.
 /// The lengths of the runs of tildes in `text`.
 fn tilde_runs(text: &str) -> impl Iterator<Item = usize> + '_ {
     text.split(|character| character != '~')
@@ -2351,6 +2351,7 @@ fn tilde_runs(text: &str) -> impl Iterator<Item = usize> + '_ {
         .filter(|&run| run > 0)
 }
 
+/// Whether flow child `id` is a link reference definition.
 fn is_definition<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
     matches!(
         document.node(id).unwrap().kind,

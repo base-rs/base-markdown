@@ -315,6 +315,10 @@ impl KeyMap {
         }
     }
 
+    fn values(&self) -> impl Iterator<Item = &Entry> {
+        self.entries.iter().map(|filed| &filed.entry)
+    }
+
     fn values_mut(&mut self) -> impl Iterator<Item = &mut Entry> {
         self.entries.iter_mut().map(|filed| &mut filed.entry)
     }
@@ -627,17 +631,27 @@ impl Index {
         self.copies > 0
     }
 
-    // Remove the copies of every key, which are about to be removed from the document, and
-    // give them, in no particular order, in time linear in the keys and copies.
-    pub(crate) fn take_copies(&mut self) -> Vec<NodeId> {
+    // The copies of every key, in no particular order, in time linear in the keys and copies.
+    pub(crate) fn copies(&self) -> Vec<NodeId> {
         let mut copies = Vec::with_capacity(self.copies);
-        for map in [&mut self.keys.definitions, &mut self.keys.footnotes] {
-            for entry in map.values_mut() {
-                copies.extend(entry.more.drain(..));
+        for map in [&self.keys.definitions, &self.keys.footnotes] {
+            for entry in map.values() {
+                copies.extend(entry.more.iter().copied());
             }
         }
-        self.copies = 0;
         copies
+    }
+
+    // Remove the copies but `kept`, which are about to be removed from the document, in time
+    // linear in the keys and copies.
+    pub(crate) fn drop_copies(&mut self, kept: &alloc::collections::BTreeSet<NodeId>) {
+        self.copies = 0;
+        for map in [&mut self.keys.definitions, &mut self.keys.footnotes] {
+            for entry in map.values_mut() {
+                entry.more.retain(|id| kept.contains(id));
+                self.copies += entry.more.len();
+            }
+        }
     }
 
     // Add the definitions of the subtree under `root`, which has just been attached, and whose
