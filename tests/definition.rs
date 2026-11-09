@@ -138,6 +138,95 @@ fn indented_code_starts_a_container_opened_after_a_definition() {
     }
 }
 
+/// The HTML of `source` through `to_html`, the event parser and `Document::parse`, which must agree.
+fn html_three_ways(source: &str, options: &Options) -> String {
+    use base_markdown::{render_events, Document, EventParser};
+
+    let html = to_html_with_options(source, options);
+    let mut events = String::new();
+    render_events(
+        source,
+        EventParser::new(source, &options.parse),
+        &options.compile,
+        &mut events,
+    )
+    .unwrap();
+    assert_eq!(events, html, "events of {source:?}");
+    let document = Document::parse(source, &options.parse).unwrap();
+    let mut rendered = String::new();
+    document
+        .render_html(&options.compile, &mut rendered)
+        .unwrap();
+    assert_eq!(rendered, html, "document of {source:?}");
+    html
+}
+
+#[test]
+fn definitions_are_read_from_a_paragraph_when_it_closes() {
+    // A line starting with `[` starts a paragraph, and definitions are taken from the front of
+    // its text when it closes, so the lines after a definition continue that paragraph unless
+    // they interrupt one (#249, #252, #257). The expected HTML is comrak's, or markdown-rs's where
+    // comrak keeps a lazy line's indentation in a block quote.
+    for (source, expected) in [
+        // An ordered list that does not start at 1 and an empty item cannot interrupt a paragraph.
+        ("[x]: /u\n2. c\n", "<p>2. c</p>"),
+        ("[x]: /u\n2)     c\n", "<p>2)     c</p>"),
+        ("[x]: /u\n-\n", "<p>-</p>"),
+        ("[x]: /u\n-  \n", "<p>-</p>"),
+        ("[x]: /u\n- \n    c\n", "<p>-\nc</p>"),
+        ("[x]: /u\n1. c\n", "<ol>\n<li>c</li>\n</ol>"),
+        // A lazy line continues the paragraph in the block quote.
+        (
+            "> [a]: /u\n\t<div>\n",
+            "<blockquote>\n<p>&lt;div&gt;</p>\n</blockquote>",
+        ),
+        (
+            "> [a]: /u\n    <div>\n",
+            "<blockquote>\n<p>&lt;div&gt;</p>\n</blockquote>",
+        ),
+        // An HTML block of kind 7 cannot interrupt a paragraph.
+        ("[a]: /u\n<b>\n", "<p>&lt;b&gt;</p>"),
+        ("[a]: /u\n<div>\n", "&lt;div&gt;"),
+        // A setext underline with nothing left before it is text.
+        ("[a]: /u\n===\n", "<p>===</p>"),
+        ("[a]: /u\nb\n===\n", "<h1>b</h1>"),
+        (
+            "[a]: /u\n[b]: /v\n\n[a] [b]\n",
+            "<p><a href=\"/u\">a</a> <a href=\"/v\">b</a></p>",
+        ),
+    ] {
+        assert_eq!(
+            html_three_ways(source, &Options::default()).trim_end(),
+            expected,
+            "{source:?}"
+        );
+    }
+    // A setext underline with nothing left before it heads a table, as paragraph text would.
+    assert_eq!(
+        html_three_ways("[a]: /u\n-\n| - |\n", &Options::gfm()).trim_end(),
+        "<table>\n<thead>\n<tr>\n<th>-</th>\n</tr>\n</thead>\n</table>"
+    );
+}
+
+#[test]
+fn definitions_read_at_paragraph_close_scale_linearly() {
+    use support::linear::{assert_linear, timed};
+
+    for (label, unit) in [
+        ("definitions", "[a]: /u\n"),
+        ("failing titles", "[a]: /u\n'x\n"),
+        ("unclosed labels", "[a\n"),
+        ("lists that cannot interrupt", "[a]: /u\n2. c\n"),
+    ] {
+        assert_linear(label, 1 << 11, |size| {
+            let source = unit.repeat(size);
+            timed(|| {
+                to_html(&source);
+            })
+        });
+    }
+}
+
 #[test]
 fn definitions_preserve_values_across_parser_options() {
     use base_markdown::{render_events, stream::EventKind, Document, EventParser};

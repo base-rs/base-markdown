@@ -153,7 +153,8 @@ impl<'a> State<'a> {
     /// Whether `item` is an item of a loose list that is written with a blank line between each of
     /// its blocks, whatever spread it records.
     ///
-    /// An item with a paragraph directly followed by a list that cannot interrupt a paragraph,
+    /// An item with a paragraph or definition, which is read from a paragraph's text, directly
+    /// followed by a list that cannot interrupt a paragraph,
     /// one that starts with an empty item or is ordered and starts at a number other than 1, needs
     /// a blank line between them, or the list would read back as text in the paragraph or, after
     /// `-`, as a setext heading. When the join would otherwise be a single line ending, the item is
@@ -200,7 +201,7 @@ impl<'a> State<'a> {
             if let Some(left) = left {
                 let apart = matches!(
                     document.node(left).unwrap().kind,
-                    EventKind::Start(Tag::Paragraph { .. })
+                    EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. }
                 ) && !list_interrupts_paragraph(document, right);
                 let written = writes_blank_line(
                     self.default_separator(document, before, left, right, item, spread),
@@ -1814,10 +1815,14 @@ fn ends_in_list_or_footnote_definition<S: AsRef<str>>(
 ///   content or inline HTML (#232). After a table, each line of the first three would be a row,
 ///   but an HTML block can start there. The parser gives none of these after a table, but
 ///   normalizing can, when it hoists a definition out of a footnote definition that is a copy.
+/// - A link reference definition is read from the front of a paragraph when the paragraph
+///   closes, so the line after it continues that paragraph unless it interrupts one (#249). A
+///   paragraph, definition or setext heading after it is read as before, but an HTML block of
+///   kind 7 would be inline HTML in the paragraph's text, and a table's head row would be read
+///   as the delimiter row of a table whose head is the definition's last line.
 /// - An HTML block of kind 6 or 7 ends only at a blank line, and one of kinds 1–5 at the line
 ///   that holds its end condition, so unless that is its last line, it would take any block
-///   after it as more of its lines (#191). A definition, by contrast, ends at its own line, so
-///   any block can start on the next.
+///   after it as more of its lines (#191).
 /// - After a nested list or footnote definition that ends in a paragraph or definition, through
 ///   the last blocks of any containers in it, any of those or a table would continue that
 ///   paragraph lazily, as a table's rows cannot interrupt a lazy paragraph. So would one after a
@@ -1841,6 +1846,18 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
     match &document.node(left).unwrap().kind {
         EventKind::Start(Tag::Paragraph { .. }) => {
             continues_text(document, right, &setext)
+                || matches!(right_kind, EventKind::Html { value, block: true }
+                if !crate::block_parser::html_interrupts_paragraph(
+                    value.resolve(document.source()).unwrap()
+                        .trim_start_matches([' ', '\t']).as_bytes()
+                ))
+        }
+        // A definition is read from the front of a paragraph, which the next line continues
+        // unless it interrupts it. An HTML block of kind 7 written there does not, and a table's
+        // head would be that paragraph's last line, or its delimiter row, read under the
+        // definition's line.
+        EventKind::Definition { .. } => {
+            matches!(right_kind, EventKind::Start(Tag::Table))
                 || matches!(right_kind, EventKind::Html { value, block: true }
                 if !crate::block_parser::html_interrupts_paragraph(
                     value.resolve(document.source()).unwrap()

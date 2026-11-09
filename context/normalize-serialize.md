@@ -135,10 +135,10 @@ Every open issue, classified: those where the implementation breaks a clause, wi
 | #181 | 3.3 | A paragraph after a quote ending in an empty item leaves the outer item. |
 | #183 | 3.3 | With `fences: false`, a tight item of a paragraph and indented code is written as a lazy continuation. Its inline HTML shapes, of whitespace alone or with a leading space, are rejected since #193. |
 | #191 | 3.3 | An HTML block of kinds 1–5 that no line closes, followed by another block, which only an edit gives, does not read back. |
-| #193 | 3.3 | Inline HTML shapes that cannot be written. A paragraph or setext heading whose first line would start an HTML block with inline HTML, such as `<div>`, or `<b>` alone on its line, can be written only on the line after a definition, indented, and anywhere else reads back as an HTML block: one built by hand, one left first in its container by a removed copy, `[x]: /1\n\n- [x]: /2\n      <div>\n`, or one the parser gives where it should give something else after a definition, such as the paragraph of `> [b]: /v\n\t<div>\n`, which it puts after the quote (#252). `<b>` before a soft break in the removed-copy shape, `[x]: /1\n\n- [x]: /2\n      <b>\n      c\n`, is written `- <b>&#xA;c`, which keeps it inline but makes the soft break text. |
+| #193 | 3.3 | Inline HTML shapes that cannot be written. A paragraph or setext heading whose first line would start an HTML block with inline HTML, such as `<div>`, or `<b>` alone on its line, can be written only on the line after a definition, indented, and anywhere else reads back as an HTML block: one built by hand, or one left first in its container by a removed copy, `[x]: /1\n\n- [x]: /2\n      <div>\n`, or `> [x]: /1\n\n> [x]: /2\n> <b>\n`, where the parser reads `<b>` as text after a definition (#249). `<b>` before a soft break in the removed-copy shape, `[x]: /1\n\n- [x]: /2\n      <b>\n      c\n`, is written `- <b>&#xA;c`, which keeps it inline but makes the soft break text. |
 | #196 | 3.3 | Inline HTML with a line ending in a setext heading can start a line with a block marker. |
 | #199 | 3.3, 3.4 | A task item whose text starts with a hard break or line ending: normalizing adds a space before the break, which changes the parsed HTML, and the output reads back differently. |
-| #200 | 3.3 | A leading definition in a task-like item does not read back. |
+| #200 | 3.3 | A leading definition in a task-like item does not read back; the checkbox is written before the definition, as in `1. [a]:\n  --\n[x] [y]\n`, whose task paragraph the parser reads after the definition since #249. |
 | #205 | 3.3 | An escape after literal-like text in link text is dropped. |
 | #206 | 3.3 | With `resource_link`, an autolink in link text is written as a nested link. |
 | #207 | 3.3 | With `LineWrapping::Unwrap`, a literal before a soft and a hard break writes unstably. |
@@ -158,7 +158,7 @@ Every open issue, classified: those where the implementation breaks a clause, wi
 | #226 | 7.2 | Lookups in a detached tree are quadratic over its nodes. |
 | #227 | 3.3 | A `*` marker before thematic-break content writes `* ***`, read back as a rule; with `rule: '-'`, `- a\n+ b\n- ***\n` is written `- a\n\n* b\n\n* ---\n`, whose last two lists read back as one. |
 | #228 | parser, 3.3 | A paragraph after a quote ending in an empty item leaves the outer list, unlike comrak and markdown-rs, and the writer's output for it does not read back. |
-| #229 | 3.3 | An HTML block with an indented first line changes container when written. |
+| #229 | 3.3 | An HTML block with an indented first line changes container when written: `1.   a\n   <div>\n` is written `1. a\n\n   <div>\n`, which puts the block in the item. Since #249 the parser also gives one after a definition in an item, `1.   [a]: /u\n   <a href="x">\n`. |
 | #231 | 1.2, 3.1 | `attach` puts phrasing directly under an emptied root, and a leading root separator survives normalizing. |
 | #233 | 7.2 | Edits deep in a phrasing nest walk every ancestor. |
 | #257 | 1.2, 3.3 | Valid inline HTML that does not read back as itself: `\|` or a line ending in a table cell, a value only some parse options read as HTML, such as `<tel:123>`, which reads back as a link where autolinks are on, and a NUL, which reads back as U+FFFD. |
