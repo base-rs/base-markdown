@@ -805,7 +805,7 @@ impl<'s> EventKind<'s> {
         }
         // Namespaced tag names, and HTML shaped as an autolink, each read as HTML under some
         // options only, as is what `html_block_value` reads under some.
-        let namespaces = options.map_or(true, |options| options.html_tag_namespaces);
+        let namespaces = options.is_none_or(|options| options.html_tag_namespaces);
         let autolinks = options.is_some_and(|options| options.constructs.autolink);
         let indented_only = options.is_some_and(|options| !options.constructs.code_fenced);
         // A value is valid only in the form the parser stores, so no value holds NUL, which it

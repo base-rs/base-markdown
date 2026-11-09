@@ -1275,8 +1275,8 @@ fn html_indent_width(spaces: usize, bytes: &[u8]) -> usize {
 /// `ParseOptions::html_tag_namespaces` reads them. Without `options`, each of these is read as
 /// some options read it.
 pub(crate) fn html_block_value(value: &str, options: Option<&crate::ParseOptions>) -> bool {
-    let namespaces = options.map_or(true, |options| options.html_tag_namespaces);
-    let blank_lines = options.map_or(true, |options| options.html_block_blank_lines);
+    let namespaces = options.is_none_or(|options| options.html_tag_namespaces);
+    let blank_lines = options.is_none_or(|options| options.html_block_blank_lines);
     let limited = options.is_some_and(|options| options.constructs.code_indented);
     let bytes = value.as_bytes();
     let spaces = bytes.iter().take_while(|&&byte| byte == b' ').count();
