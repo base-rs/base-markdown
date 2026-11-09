@@ -1878,6 +1878,11 @@ fn clause_3_3_a_soft_break_after_a_built_hard_break_is_its_line_ending() {
     let shapes = [
         (vec![EventKind::HardBreak, soft(), text("~")], "\\\n\\~\n"),
         (vec![EventKind::HardBreak, text("~")], "\\\n\\~\n"),
+        // A second soft break is a line ending of its own, kept encoded.
+        (
+            vec![EventKind::HardBreak, soft(), soft(), text("~")],
+            "\\\n&#xA;\\~\n",
+        ),
         (
             vec![
                 EventKind::Start(Tag::Delete),
