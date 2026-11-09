@@ -4,6 +4,7 @@
 //! Fixed Markdown escaping rules. Scopes and neighbor predicates are static;
 //! matching allocates nothing and retains regex-style non-overlapping matches.
 use super::{construct_name::ConstructName, util::safe::EscapeInfos};
+use crate::Constructs;
 use alloc::vec::Vec;
 use core::ops::Range;
 
@@ -65,18 +66,99 @@ struct Rule {
     after: After,
     include: u32,
     exclude: u32,
+    /// Whether the document's options turn on a construct that the character would start or end
+    /// there. Where the options read no backslash escapes, the character is encoded or written as
+    /// it is only for one they read (contract 3.3); a backslash escape is written either way, so
+    /// that the output reads the same under other options.
+    need: fn(&Constructs) -> bool,
 }
 // These are static records, not runtime constructors.
 macro_rules! rule {
     ($byte:expr, $before:expr, $after:expr, $include:expr, $exclude:expr $(,)?) => {
+        rule!($byte, $before, $after, $include, $exclude, always)
+    };
+    ($byte:expr, $before:expr, $after:expr, $include:expr, $exclude:expr, $need:expr $(,)?) => {
         Rule {
             byte: $byte,
             before: $before,
             after: $after,
             include: $include,
             exclude: $exclude,
+            need: $need,
         }
     };
+}
+
+/// What the escapes of the rules that whitespace, line endings and the edges of labels, titles,
+/// destinations and table cells need, which every dialect reads.
+fn always(_: &Constructs) -> bool {
+    true
+}
+fn atx(constructs: &Constructs) -> bool {
+    constructs.heading_atx
+}
+fn reference(constructs: &Constructs) -> bool {
+    constructs.character_reference
+}
+fn label(constructs: &Constructs) -> bool {
+    constructs.label_end
+        && (constructs.label_start_link
+            || constructs.label_start_image
+            || constructs.label_start_footnote)
+}
+fn image(constructs: &Constructs) -> bool {
+    constructs.label_end && constructs.label_start_image
+}
+fn resource(constructs: &Constructs) -> bool {
+    constructs.label_end
+}
+fn ordered(constructs: &Constructs) -> bool {
+    constructs.list_item
+}
+fn bullet(constructs: &Constructs) -> bool {
+    constructs.list_item || constructs.thematic_break
+}
+fn dash(constructs: &Constructs) -> bool {
+    constructs.list_item || constructs.thematic_break || constructs.heading_setext
+}
+fn attention(constructs: &Constructs) -> bool {
+    constructs.attention
+}
+fn html_line(constructs: &Constructs) -> bool {
+    constructs.html_flow || constructs.html_text || constructs.autolink
+}
+fn html(constructs: &Constructs) -> bool {
+    constructs.html_text || constructs.autolink
+}
+fn email(constructs: &Constructs) -> bool {
+    constructs.autolink
+}
+fn setext(constructs: &Constructs) -> bool {
+    constructs.heading_setext
+}
+fn quote(constructs: &Constructs) -> bool {
+    constructs.block_quote
+}
+fn label_line(constructs: &Constructs) -> bool {
+    label(constructs)
+        || constructs.definition
+        || constructs.footnote_definition
+        || constructs.task_list_item
+}
+fn hard_break(constructs: &Constructs) -> bool {
+    constructs.hard_break_escape
+}
+fn underscore_line(constructs: &Constructs) -> bool {
+    constructs.thematic_break || constructs.attention
+}
+fn fence(constructs: &Constructs) -> bool {
+    constructs.code_fenced
+}
+fn code(constructs: &Constructs) -> bool {
+    constructs.code_text
+}
+fn grave_line(constructs: &Constructs) -> bool {
+    constructs.code_fenced || constructs.code_text
 }
 use After::{Any as A, Set};
 use Before::{Any as B, Digits, Encoded, EncodedDigits, EncodedLine, Line, Previous};
@@ -104,62 +186,91 @@ static RULES: &[Rule] = &[
     rule!(b' ', Encoded, A, PHRASING, bit(TableCell)),
     rule!(b' ', Before::Start, A, TRIMMED, 0),
     rule!(b' ', B, After::End, TRIMMED, 0),
-    rule!(b'!', B, Set(b"["), PHRASING, FULL_SPANS),
+    rule!(b'!', B, Set(b"["), PHRASING, FULL_SPANS, image),
     rule!(b'"', B, A, bit(TitleQuote), 0),
     // Rules that judge the start of a line apply nowhere in a table cell, where a line ending in
     // a value is a reference, so `~` after one is written as it is.
-    rule!(b'#', Line, A, 0, bit(TableCell)),
-    rule!(b'#', EncodedLine, A, 0, bit(TableCell)),
+    rule!(b'#', Line, A, 0, bit(TableCell), atx),
+    rule!(b'#', EncodedLine, A, 0, bit(TableCell), atx),
     rule!(b'#', B, After::LineEnd, bit(HeadingAtx), 0),
-    rule!(b'&', B, After::Entity, PHRASING | FENCE_INFO, 0),
+    rule!(b'&', B, After::Entity, PHRASING | FENCE_INFO, 0, reference),
     rule!(b'\'', B, A, bit(TitleApostrophe), 0),
     rule!(b'(', B, A, bit(DestinationRaw), 0),
-    rule!(b'(', Previous(b']'), A, PHRASING, FULL_SPANS),
-    rule!(b')', Digits, A, 0, bit(TableCell)),
-    rule!(b')', EncodedDigits, A, 0, bit(TableCell)),
+    rule!(b'(', Previous(b']'), A, PHRASING, FULL_SPANS, resource),
+    rule!(b')', Digits, A, 0, bit(TableCell), ordered),
+    rule!(b')', EncodedDigits, A, 0, bit(TableCell), ordered),
     rule!(b')', B, A, bit(DestinationRaw), 0),
-    rule!(b'*', Line, Set(b" \t\r\n*"), 0, bit(TableCell)),
-    rule!(b'*', EncodedLine, Set(b" \t\r\n*"), 0, bit(TableCell)),
-    rule!(b'*', B, A, PHRASING, FULL_SPANS),
-    rule!(b'+', Line, Set(b" \t\r\n"), 0, bit(TableCell)),
-    rule!(b'+', EncodedLine, Set(b" \t\r\n"), 0, bit(TableCell)),
-    rule!(b'-', Line, Set(b" \t\r\n-"), 0, bit(TableCell)),
-    rule!(b'-', EncodedLine, Set(b" \t\r\n-"), 0, bit(TableCell)),
-    rule!(b'.', Digits, After::SpaceOrEnd, 0, bit(TableCell)),
-    rule!(b'.', EncodedDigits, After::SpaceOrEnd, 0, bit(TableCell)),
-    rule!(b'<', Line, After::Html, 0, bit(TableCell)),
-    rule!(b'<', EncodedLine, After::Html, 0, bit(TableCell)),
-    rule!(b'<', B, After::Html, PHRASING, FULL_SPANS),
-    rule!(b'<', B, After::Email, PHRASING, FULL_SPANS),
+    rule!(b'*', Line, Set(b" \t\r\n*"), 0, bit(TableCell), bullet),
+    rule!(
+        b'*',
+        EncodedLine,
+        Set(b" \t\r\n*"),
+        0,
+        bit(TableCell),
+        bullet
+    ),
+    rule!(b'*', B, A, PHRASING, FULL_SPANS, attention),
+    rule!(b'+', Line, Set(b" \t\r\n"), 0, bit(TableCell), ordered),
+    rule!(
+        b'+',
+        EncodedLine,
+        Set(b" \t\r\n"),
+        0,
+        bit(TableCell),
+        ordered
+    ),
+    rule!(b'-', Line, Set(b" \t\r\n-"), 0, bit(TableCell), dash),
+    rule!(b'-', EncodedLine, Set(b" \t\r\n-"), 0, bit(TableCell), dash),
+    rule!(b'.', Digits, After::SpaceOrEnd, 0, bit(TableCell), ordered),
+    rule!(
+        b'.',
+        EncodedDigits,
+        After::SpaceOrEnd,
+        0,
+        bit(TableCell),
+        ordered
+    ),
+    rule!(b'<', Line, After::Html, 0, bit(TableCell), html_line),
+    rule!(b'<', EncodedLine, After::Html, 0, bit(TableCell), html_line),
+    rule!(b'<', B, After::Html, PHRASING, FULL_SPANS, html),
+    rule!(b'<', B, After::Email, PHRASING, FULL_SPANS, email),
     rule!(b'<', B, A, bit(DestinationLiteral), 0),
-    rule!(b'=', Line, A, 0, bit(TableCell)),
-    rule!(b'=', EncodedLine, A, 0, bit(TableCell)),
-    rule!(b'>', Line, A, 0, bit(TableCell)),
-    rule!(b'>', EncodedLine, A, 0, bit(TableCell)),
+    rule!(b'=', Line, A, 0, bit(TableCell), setext),
+    rule!(b'=', EncodedLine, A, 0, bit(TableCell), setext),
+    rule!(b'>', Line, A, 0, bit(TableCell), quote),
+    rule!(b'>', EncodedLine, A, 0, bit(TableCell), quote),
     rule!(b'>', B, A, bit(DestinationLiteral), 0),
-    rule!(b'[', Line, A, 0, bit(TableCell)),
-    rule!(b'[', EncodedLine, A, 0, bit(TableCell)),
-    rule!(b'[', B, A, PHRASING, FULL_SPANS),
+    rule!(b'[', Line, A, 0, bit(TableCell), label_line),
+    rule!(b'[', EncodedLine, A, 0, bit(TableCell), label_line),
+    rule!(b'[', B, A, PHRASING, FULL_SPANS, label),
     rule!(b'[', B, A, bit(Label) | bit(Reference), 0),
-    rule!(b'\\', B, Set(b"\n"), PHRASING, 0),
+    rule!(b'\\', B, Set(b"\n"), PHRASING, 0, hard_break),
     rule!(b']', B, A, bit(ImageLabel) | bit(Label) | bit(Reference), 0),
     rule!(b'|', B, A, bit(TableCell), 0),
-    rule!(b'_', Line, A, 0, bit(TableCell)),
-    rule!(b'_', EncodedLine, A, 0, bit(TableCell)),
-    rule!(b'_', B, A, PHRASING, FULL_SPANS),
+    rule!(b'_', Line, A, 0, bit(TableCell), underscore_line),
+    rule!(b'_', EncodedLine, A, 0, bit(TableCell), underscore_line),
+    rule!(b'_', B, A, PHRASING, FULL_SPANS, attention),
     // A tilde fence's info string holds backticks, and starts no line.
-    rule!(b'`', Line, A, 0, bit(TableCell) | bit(CodeFencedInfoTilde)),
+    rule!(
+        b'`',
+        Line,
+        A,
+        0,
+        bit(TableCell) | bit(CodeFencedInfoTilde),
+        grave_line
+    ),
     rule!(
         b'`',
         EncodedLine,
         A,
         0,
-        bit(TableCell) | bit(CodeFencedInfoTilde)
+        bit(TableCell) | bit(CodeFencedInfoTilde),
+        grave_line
     ),
     rule!(b'`', B, A, bit(CodeFencedInfoGraveAccent), 0),
-    rule!(b'`', B, A, PHRASING, FULL_SPANS),
-    rule!(b'~', Line, A, 0, bit(TableCell)),
-    rule!(b'~', EncodedLine, A, 0, bit(TableCell)),
+    rule!(b'`', B, A, PHRASING, FULL_SPANS, code),
+    rule!(b'~', Line, A, 0, bit(TableCell), fence),
+    rule!(b'~', EncodedLine, A, 0, bit(TableCell), fence),
     // A `~` at the start of the info string of a tilde fence would lengthen the fence.
     rule!(b'~', Before::Start, A, bit(CodeFencedInfoTilde), 0),
 ];
@@ -404,6 +515,7 @@ pub(super) fn collect(
     input: &str,
     after: &str,
     stack: &[ConstructName],
+    constructs: &Constructs,
     output: &mut Vec<(usize, EscapeInfos)>,
 ) {
     let value = Context([
@@ -419,7 +531,9 @@ pub(super) fn collect(
     // The rules for spaces and tabs after a line ending apply in phrasing, outside table cells,
     // where no rule judges the start of a line.
     let indented = scopes & PHRASING == 0;
-    for rule in RULES.iter().filter(|rule| rule.active(scopes)) {
+    for rule in RULES.iter().filter(|rule| {
+        rule.active(scopes) && (constructs.character_escape || (rule.need)(constructs))
+    }) {
         // Only input escapes and the immediately preceding escape can affect output.
         // Find the first match from there, then walk on from a point where the matches
         // before it no longer change which neighbours later matches consume.
@@ -592,6 +706,7 @@ mod tests {
                             &value[start..end],
                             &value[end..],
                             &[scope],
+                            &Constructs::default(),
                             &mut actual,
                         );
                         let mut expected = Vec::new();

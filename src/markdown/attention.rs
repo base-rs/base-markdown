@@ -4,9 +4,9 @@
 //! Attention sequence selection.
 //!
 //! Adjacent emphasis, strong or strikethrough of the same kind is written as one node, as its sequences would otherwise join into one run. Each other attention node chooses its sequence from the characters immediately around it, in constant time, so that its sequences open and close: a marker that would join a neighbouring run is avoided, and characters that would keep a sequence from flanking are encoded as character references, as `encodeInfo` in `mdast-util-to-markdown` does. Where neither marker works locally, the configured marker is used.
+use super::util::safe::Literal;
 use crate::util::char::{classify, Kind};
 use alloc::string::String;
-use core::fmt::Write;
 
 /// Sequences for emphasis, strong and strikethrough, in order of preference.
 pub(super) static EMPHASIS_ASTERISK: &[&str] = &["*", "_"];
@@ -14,6 +14,9 @@ pub(super) static EMPHASIS_UNDERSCORE: &[&str] = &["_", "*"];
 pub(super) static STRONG_ASTERISK: &[&str] = &["**", "__"];
 pub(super) static STRONG_UNDERSCORE: &[&str] = &["__", "**"];
 pub(super) static STRIKETHROUGH: &[&str] = &["~~"];
+/// Where `ParseOptions::strikethrough_single_tilde` reads one tilde and the text holds a run of
+/// two tildes, which no escape keeps from closing two, and none of one.
+pub(super) static STRIKETHROUGH_SINGLE: &[&str] = &["~", "~~"];
 
 /// The characters around attention, as far as they are known before it is written.
 pub(super) struct Surroundings {
@@ -142,14 +145,23 @@ pub(super) struct Choice {
 /// An opening sequence that joins the closing sequence of attention before it does not form, and attention after it chooses its sequence to fit this one. One that joins the opening sequence of enclosing attention forms one run with it, which splits as intended unless the closing sequences join too, where only strong splits: `****a****` is strong in strong, but `**a**` is strong rather than emphasis in emphasis. Any other opening sequence must not be able to close enclosing attention.
 ///
 /// Where a sequence joins a run of enclosing attention at one edge only, the rule of 3, which compares the lengths of whole runs, must still let the runs at both edges pair: `**a*.**` is emphasis in emphasis, but written as `**a*.*\*` its outer closing sequence can also open, and cannot close the run of 2, so it is written as `*_a_.*\*`. Attention the content starts or ends with may join the same run, so the check is skipped where that would change the run.
-pub(super) fn choose(sequences: &'static [&'static str], surroundings: &Surroundings) -> Choice {
+///
+/// The choice is `None` where a language next to the attention rules out every sequence, such as
+/// emphasis that ends in punctuation before a language, which `_` would join and `*` cannot close
+/// (#185).
+pub(super) fn choose(
+    sequences: &'static [&'static str],
+    surroundings: &Surroundings,
+) -> Option<Choice> {
     let mut fallback = None;
+    let mut languages = 0;
     for &sequence in sequences {
         let marker = sequence.chars().next().expect("sequences are not empty");
         let choice = encoding(sequence, marker, surroundings);
         if (marker == '_' || choice.encode_first) && surroundings.first_language
             || (marker == '_' || choice.encode_after) && surroundings.after_language
         {
+            languages += 1;
             continue;
         }
         let joins_before = surroundings.before == Some(marker);
@@ -173,17 +185,21 @@ pub(super) fn choose(sequences: &'static [&'static str], surroundings: &Surround
             || choice.encode_last
             || choice.encode_after)
         {
-            return choice;
+            return Some(choice);
         }
         fallback.get_or_insert(choice);
     }
-    fallback.unwrap_or_else(|| {
+    // Where a language rules out every sequence, none forms. Otherwise the preferred one is
+    // written, as the checks above are cautious.
+    fallback.or_else(|| {
         let sequence = sequences[0];
-        encoding(
-            sequence,
-            sequence.chars().next().expect("sequences are not empty"),
-            surroundings,
-        )
+        (languages < sequences.len()).then(|| {
+            encoding(
+                sequence,
+                sequence.chars().next().expect("sequences are not empty"),
+                surroundings,
+            )
+        })
     })
 }
 
@@ -284,7 +300,11 @@ fn inside(character: Option<char>) -> Kind {
     character.map_or(Kind::Other, classify)
 }
 
-fn encoding(sequence: &'static str, marker: char, surroundings: &Surroundings) -> Choice {
+pub(super) fn encoding(
+    sequence: &'static str,
+    marker: char,
+    surroundings: &Surroundings,
+) -> Choice {
     let (encode_first, encode_before) = encode_info(
         kind(surroundings.before),
         inside(surroundings.first),
@@ -318,11 +338,6 @@ fn kind(character: Option<char>) -> Kind {
     character.map_or(Kind::Whitespace, classify)
 }
 
-/// Whether `text` ends with an odd number of backslashes, which escape the next character.
-pub(super) fn escapes_next(text: &str) -> bool {
-    text.bytes().rev().take_while(|&byte| byte == b'\\').count() % 2 == 1
-}
-
 /// Whether `text` ends with a domain that a literal `www.`, `http://` or `https://` would turn into a link.
 fn literal_domain(text: &str) -> bool {
     let domain = text
@@ -338,8 +353,20 @@ fn literal_domain(text: &str) -> bool {
         || prefix.ends_with("https://")
 }
 
-fn write_reference(output: &mut String, character: char) {
-    write!(output, "&#x{:X};", u32::from(character)).expect("String writing is infallible");
+/// Write `character` as a character reference, or as it is, returning `false`, where the options
+/// decode none.
+fn write_reference(output: &mut String, character: char, literal: Literal) -> bool {
+    literal.write(output, character, false)
+}
+
+/// Write `run` copies of `character` so that each reads back as text, returning `false` where the
+/// options read no escape.
+fn write_run(output: &mut String, character: char, run: usize, literal: Literal) -> bool {
+    let mut written = true;
+    for _ in 0..run {
+        written &= literal.write(output, character, true);
+    }
+    written
 }
 
 /// Edits for the start of the text written after an attention sequence.
@@ -351,72 +378,82 @@ pub(super) struct Edge {
     pub tilde: bool,
 }
 
-/// Apply `edge` to text written at `output[start..]`.
+/// Apply `edge` to text written at `output[start..]`, returning `false` where the options read
+/// no spelling that the edit needs.
 ///
 /// Underscores between letters are written unescaped, but next to a reference they can form attention, so they are escaped here.
-pub(super) fn edit_start(output: &mut String, start: usize, edge: &Edge) {
+pub(super) fn edit_start(output: &mut String, start: usize, edge: &Edge, literal: Literal) -> bool {
     let text = &output[start..];
     let mut result = String::new();
+    let written;
     if edge.tilde && text.starts_with('~') {
         let run = text.bytes().take_while(|&byte| byte == b'~').count();
-        result.extend(core::iter::repeat_n("\\~", run));
+        written = write_run(&mut result, '~', run, literal);
         result.push_str(&text[run..]);
     } else if let Some(character) = edge.encode.filter(|&character| text.starts_with(character)) {
-        write_reference(&mut result, character);
+        let encoded = write_reference(&mut result, character, literal);
         let rest = &text[character.len_utf8()..];
         let run = rest.bytes().take_while(|&byte| byte == b'_').count();
-        result.extend(core::iter::repeat_n("\\_", run));
+        written = write_run(&mut result, '_', run, literal) && encoded;
         result.push_str(&rest[run..]);
     } else {
-        return;
+        return true;
     }
     output.truncate(start);
     output.push_str(&result);
+    written
 }
 
-/// Escape tildes at the end of text written at `output[start..]`, as a sequence follows it.
+/// Escape tildes at the end of text written at `output[start..]`, as a sequence follows it,
+/// returning `false` where the options read no escape.
 ///
 /// The whole run is escaped, as part of a run would still pair.
-pub(super) fn escape_tilde_end(output: &mut String, start: usize) {
+pub(super) fn escape_tilde_end(output: &mut String, start: usize, literal: Literal) -> bool {
     let text = &output[start..];
     let run = text.bytes().rev().take_while(|&byte| byte == b'~').count();
     let before = &text[..text.len() - run];
     // An odd number of backslashes escapes the first tilde, which ends the run.
-    let run = if escapes_next(before) {
+    let run = if literal.escapes_next(before) {
         run.saturating_sub(1)
     } else {
         run
     };
     if run == 0 {
-        return;
+        return true;
     }
     output.truncate(output.len() - run);
-    output.extend(core::iter::repeat_n("\\~", run));
+    write_run(output, '~', run, literal)
 }
 
-/// Encode the last character of text written at `output[start..]` if it is `character`, as a sequence follows it.
+/// Encode the last character of text written at `output[start..]` if it is `character`, as a
+/// sequence follows it, returning `false` where the options read no spelling the edit needs.
 ///
 /// It is not if it was encoded already, as the first character of the same text.
-pub(super) fn encode_end(output: &mut String, start: usize, character: char) {
+pub(super) fn encode_end(
+    output: &mut String,
+    start: usize,
+    character: char,
+    literal: Literal,
+) -> bool {
     let text = &output[start..];
     let Some(rest) = text.strip_suffix(character) else {
-        return;
+        return true;
     };
     let run = rest.bytes().rev().take_while(|&byte| byte == b'_').count();
     let before = &rest[..rest.len() - run];
     // Escaped underscores alternate with backslashes, so an escaped one ends any run.
     // An underscore can also be what keeps a literal `www.` or `http://` domain from linking.
-    let run = if escapes_next(before) || literal_domain(before) {
+    let run = if literal.escapes_next(before) || literal_domain(before) {
         0
     } else {
         run
     };
     // An odd number of backslashes would escape the `&`.
-    let backslash = run == 0 && escapes_next(rest);
+    let backslash = run == 0 && literal.escapes_next(rest);
     output.truncate(output.len() - character.len_utf8() - run);
     if backslash {
         output.push('\\');
     }
-    output.extend(core::iter::repeat_n("\\_", run));
-    write_reference(output, character);
+    let escaped = write_run(output, '_', run, literal);
+    write_reference(output, character, literal) && escaped
 }

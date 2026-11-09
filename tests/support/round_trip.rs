@@ -16,6 +16,9 @@ pub struct Failure {
 pub enum Outcome {
     Pass,
     Rejected,
+    /// A parsed document that the writer returns `unwritable-node` for, as some shape in it has no
+    /// spelling that reads back under its options (contract 3.3).
+    Unwritable(base_markdown::message::Message),
     Fail(Failure),
 }
 
@@ -56,6 +59,7 @@ pub fn round_trip<S: AsRef<str>>(
     let output = match to_markdown_with_options(&document, options) {
         Ok(output) => output,
         Err(_) if built => return Outcome::Rejected,
+        Err(error) if error.rule_id == "unwritable-node" => return Outcome::Unwritable(error),
         Err(error) => return fail("error", error.to_string(), before, String::new()),
     };
     // The output reads back under the document's own options (contract 3.3).

@@ -16,6 +16,9 @@ use crate::{
 pub enum WrittenLink<'a> {
     /// The link's text, as a GFM literal autolink.
     Bare(&'a str),
+    /// The link's text, as a GFM literal autolink next to what may change where it ends, which is
+    /// written only where no explicit link is read, and is checked once its block is written.
+    Loose(&'a str),
     /// The text between angle brackets.
     Angle(&'a str),
     /// `[text](destination)`.
@@ -34,8 +37,9 @@ pub enum WrittenLink<'a> {
 /// Only forms whose constructs the document's options turn on are written (contract 3.3): without
 /// `Constructs::autolink` no `<…>`, without `Constructs::autolink_literal` no bare link, and
 /// without a label start and `Constructs::label_end` no explicit link, for which a link is written
-/// as `<…>` when that reads back as it, and bare otherwise, where a bare link would be. Any other
-/// link has no spelling there, and is written explicitly.
+/// as `<…>` when that reads back as it, and bare otherwise, also next to text, where the writer
+/// checks once the block is written that it reads back as the same link. Any other link has no
+/// spelling there, and is written explicitly, for `unwritable-node`.
 pub fn written_link<'a, S: AsRef<str>>(
     document: &'a Document<S>,
     id: NodeId,
@@ -45,16 +49,16 @@ pub fn written_link<'a, S: AsRef<str>>(
     state: &State,
 ) -> WrittenLink<'a> {
     let constructs = &state.parse.constructs;
-    let bare = || {
+    let literal = || {
         link_text(document, id).filter(|text| {
             constructs.autolink_literal
+                && !has_title
                 && reads_back_bare(text, destination)
-                && after_boundary
                 && !state.stack.contains(&ConstructName::Label)
-                && boundary_after(document, id)
                 && !(text.contains('|') && state.stack.contains(&ConstructName::TableCell))
         })
     };
+    let bare = || literal().filter(|_| after_boundary && boundary_after(document, id));
     let angle = || {
         auto_link_text(document, id, destination, has_title, state)
             .filter(|_| constructs.autolink && !state.options.resource_link)
@@ -79,6 +83,7 @@ pub fn written_link<'a, S: AsRef<str>>(
                 .filter(|_| constructs.autolink)
                 .map(WrittenLink::Angle)
                 .or_else(|| bare().map(WrittenLink::Bare))
+                .or_else(|| literal().map(WrittenLink::Loose))
         })
         .unwrap_or(WrittenLink::Explicit)
 }

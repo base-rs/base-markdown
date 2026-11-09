@@ -852,6 +852,16 @@ fn random_document(random: &mut Random) -> Document<String> {
     build_blocks(events)
 }
 
+/// The Markdown for `result`, or `None` where it has a node with no spelling that reads back,
+/// which is an answer too.
+fn written(result: Result<String, base_markdown::message::Message>) -> Option<String> {
+    match result {
+        Ok(markdown) => Some(markdown),
+        Err(error) if error.rule_id == "unwritable-node" => None,
+        Err(error) => panic!("{}", error),
+    }
+}
+
 #[test]
 fn normalize_makes_any_tree_normalized_and_is_idempotent() {
     let mut random = Random(0x9E37_79B9_7F4A_7C15);
@@ -862,17 +872,17 @@ fn normalize_makes_any_tree_normalized_and_is_idempotent() {
         let normal = document.is_normalized();
         unnormalized += usize::from(!normal);
         // Serializing a tree that is not normalized may be wrong, but it must not panic.
-        to_markdown(&document).unwrap();
+        written(to_markdown(&document));
         let before = describe(&document, document.root());
         document.normalize();
         assert!(document.is_normalized(), "{}", before);
         let once = describe(&document, document.root());
         // A tree is reported as normalized exactly when normalizing changes nothing.
         assert_eq!(normal, once == before, "{before}");
-        let markdown = to_markdown(&document).unwrap();
+        let markdown = written(to_markdown(&document));
         document.normalize();
         assert_eq!(describe(&document, document.root()), once);
-        assert_eq!(to_markdown(&document).unwrap(), markdown);
+        assert_eq!(written(to_markdown(&document)), markdown);
     }
     assert!(unnormalized > 250, "{}", unnormalized);
 }
@@ -902,7 +912,7 @@ fn serializing_unnormalized_trees_does_not_panic() {
         }
         let document = build_blocks(events);
         for options in &options {
-            base_markdown::to_markdown_with_options(&document, options).unwrap();
+            written(base_markdown::to_markdown_with_options(&document, options));
         }
     }
 }

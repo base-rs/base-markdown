@@ -427,6 +427,12 @@ fn run(corpus: &Corpus, count: usize, record: bool) -> Tally {
                 continue;
             }
             Ok(Outcome::Fail(failure)) => failure,
+            Ok(Outcome::Unwritable(error)) => Failure {
+                kind: "unwritable",
+                output: error.to_string(),
+                before: String::new(),
+                after: String::new(),
+            },
             Err(_) => {
                 tally.panics.push(input.describe());
                 continue;

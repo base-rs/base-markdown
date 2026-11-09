@@ -1250,6 +1250,30 @@ pub(crate) fn html_block_unclosed(value: &str) -> bool {
             .is_some_and(|kind| !kind.blank_terminated() && !kind.closed(&bytes[last..]))
 }
 
+/// The end condition that closes an HTML block whose value is `value`, when it is one of kinds
+/// 1–5 that its last line does not close: `</pre>`, with the name of the tag it opens, for kind 1,
+/// and `-->`, `?>`, `>` or `]]>` for kinds 2–5.
+pub(crate) fn html_block_end(value: &str) -> Option<alloc::string::String> {
+    if !html_block_unclosed(value) {
+        return None;
+    }
+    let bytes = value.trim_start_matches([' ', '\t']).as_bytes();
+    let kind = html::Html::start(bytes, false, true).expect("an unclosed HTML block starts one");
+    Some(match kind {
+        html::Html::Comment => "-->".into(),
+        html::Html::Instruction => "?>".into(),
+        html::Html::Declaration => ">".into(),
+        html::Html::Cdata => "]]>".into(),
+        _ => {
+            let name = &value.trim_start_matches([' ', '\t'])[1..];
+            let end = name
+                .find(|character: char| !character.is_ascii_alphanumeric())
+                .unwrap_or(name.len());
+            alloc::format!("</{}>", &name[..end])
+        }
+    })
+}
+
 /// Whether `value`, an HTML block's, ends in an empty line whose line ending is not in it: one of
 /// kinds 1–5 that ends in a blank line it took. One of kind 6 or 7 ends in a line feed only where
 /// `ParseOptions::html_block_blank_lines` keeps its final line ending in it.

@@ -1274,7 +1274,8 @@ fn reference_syntax_distinguishes_escaped_brackets_after_backslash_runs() {
 }
 
 /// A code block stores its info string as the parser decoded it with its own options, and the
-/// serializer writes it so a parser with escapes and references on reads it back exactly (#188).
+/// serializer writes it so the same options read it back exactly (#188): with backslash escapes
+/// where they are read, and otherwise with references, or as it is.
 #[test]
 fn code_info_is_decoded_with_the_parse_options() {
     let mut references = ParseOptions::default();
@@ -1297,13 +1298,13 @@ fn code_info_is_decoded_with_the_parse_options() {
             "```x \\*y\nv\n```\n",
             &escapes,
             "x \\*y",
-            "```x \\\\*y\nv\n```\n",
+            "```x \\*y\nv\n```\n",
         ),
         (
             "```\\* &amp; \\*\nv\n```\n",
             &escapes,
             "\\* & \\*",
-            "```\\\\* & \\\\*\nv\n```\n",
+            "```\\* & \\*\nv\n```\n",
         ),
         (
             "```&amp; y\nv\n```\n",
@@ -1315,7 +1316,7 @@ fn code_info_is_decoded_with_the_parse_options() {
             "```\\~x y\nv\n```\n",
             &escapes,
             "\\~x y",
-            "```\\\\~x y\nv\n```\n",
+            "```\\~x y\nv\n```\n",
         ),
         (
             "```\\~&amp; y\nv\n```\n",
@@ -1327,13 +1328,13 @@ fn code_info_is_decoded_with_the_parse_options() {
             "```\\~&amp; y\nv\n```\n",
             &escapes,
             "\\~& y",
-            "```\\\\~& y\nv\n```\n",
+            "```\\~& y\nv\n```\n",
         ),
         (
             "```\\~&amp; y\nv\n```\n",
             &neither,
             "\\~&amp; y",
-            "```\\\\~\\&amp; y\nv\n```\n",
+            "```\\~&amp; y\nv\n```\n",
         ),
         (
             "```\\~&amp; y\nv\n```\n",
@@ -1353,7 +1354,7 @@ fn code_info_is_decoded_with_the_parse_options() {
         assert_eq!(parsed.resolve(source).unwrap(), info, "{:?}", source);
         let written = base_markdown::markdown::to_markdown(&document).unwrap();
         assert_eq!(written, markdown, "{:?}", source);
-        let reread = Document::parse(written.as_str(), &default).unwrap();
+        let reread = Document::parse(written.as_str(), options).unwrap();
         let id = reread.children(reread.root()).next().unwrap();
         let EventKind::CodeBlock {
             info: Some(reread_info),

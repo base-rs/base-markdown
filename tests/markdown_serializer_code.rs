@@ -700,8 +700,7 @@ fn parsed_code_blocks_are_valid_and_read_back() {
     let mut neither = ParseOptions::default();
     neither.constructs.character_escape = false;
     neither.constructs.character_reference = false;
-    // Each block reads back under the options it was read with, which the copy records, though
-    // with escapes on: the writer escapes with backslashes where they are off.
+    // Each block reads back under the options it was read with, which the copy records.
     let parses = [
         ParseOptions::default(),
         ParseOptions::gfm(),
@@ -709,7 +708,7 @@ fn parsed_code_blocks_are_valid_and_read_back() {
         escapes,
         neither,
     ];
-    let (mut blocks, mut written) = (0, 0);
+    let (mut blocks, mut written, mut unwritable) = (0, 0, 0);
     for _ in 0..3000 {
         let mut source = String::from(PREFIXES[next(PREFIXES.len())]);
         source.push_str(OPENERS[next(OPENERS.len())]);
@@ -750,11 +749,23 @@ fn parsed_code_blocks_are_valid_and_read_back() {
             }) {
                 continue;
             }
+            // An info string that needs an escape where the options read none, such as one
+            // with a space at its end, has no spelling.
+            let markdown = match to_markdown(&document) {
+                Ok(markdown) => markdown,
+                Err(error) if error.rule_id == "unwritable-node" => {
+                    assert!(
+                        !parse.constructs.character_escape,
+                        "{:?}: {}",
+                        source, error
+                    );
+                    unwritable += 1;
+                    continue;
+                }
+                Err(error) => panic!("{:?}: {}", source, error),
+            };
             written += 1;
-            let markdown = to_markdown(&document).unwrap();
-            let mut read = parse.clone();
-            read.constructs.character_escape = true;
-            let reparsed = Document::parse(markdown.clone(), &read).unwrap();
+            let reparsed = Document::parse(markdown.clone(), parse).unwrap();
             assert_eq!(
                 infos(&reparsed),
                 infos(&document),
@@ -765,5 +776,11 @@ fn parsed_code_blocks_are_valid_and_read_back() {
             assert_eq!(to_markdown(&reparsed).unwrap(), markdown, "{:?}", source);
         }
     }
-    assert!(blocks > 10_000 && written > 3000, "{} {}", blocks, written);
+    assert!(
+        blocks > 10_000 && written > 3000 && unwritable < written / 10,
+        "{} {} {}",
+        blocks,
+        written,
+        unwritable
+    );
 }
