@@ -1166,15 +1166,25 @@ pub(crate) fn html_block_ends_on_last_line(value: &str) -> bool {
             .is_some_and(|kind| !kind.blank_terminated() && kind.closed(&bytes[last..]))
 }
 
+/// Whether an HTML block whose value is `value` is one of kinds 1–5 that its last line does not
+/// close, so that it takes every line after it in its container, blank or not, until one does.
+pub(crate) fn html_block_unclosed(value: &str) -> bool {
+    let bytes = value.trim_start_matches([' ', '\t']).as_bytes();
+    let last = memchr::memrchr(b'\n', bytes).map_or(0, |at| at + 1);
+    // Namespaces change only which tags start a block of kind 7, which takes no such lines.
+    bytes.first() == Some(&b'<')
+        && html::Html::start(bytes, false, true)
+            .is_some_and(|kind| !kind.blank_terminated() && !kind.closed(&bytes[last..]))
+}
+
 /// Whether `value`, an HTML block's, ends in an empty line whose line ending is not in it: one of
 /// kinds 1–5 that ends in a blank line it took. One of kind 6 or 7 ends in a line feed only where
 /// `ParseOptions::html_block_blank_lines` keeps its final line ending in it.
 pub(crate) fn html_block_ends_in_empty_line(value: &str) -> bool {
     let bytes = value.trim_start_matches([' ', '\t']).as_bytes();
+    // Namespaces change only which tags start a block of kind 7.
     value.ends_with('\n')
-        && html::Html::start(bytes, false, true)
-            .or_else(|| html::Html::start(bytes, true, true))
-            .is_some_and(|kind| !kind.blank_terminated())
+        && html::Html::start(bytes, false, true).is_some_and(|kind| !kind.blank_terminated())
 }
 
 /// The width of the spaces and tabs that start `bytes` after `spaces` spaces, with a tab to the

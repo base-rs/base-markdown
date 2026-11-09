@@ -1130,11 +1130,22 @@ impl<'a> State<'a> {
     ) -> &'static str {
         let left_kind = &document.node(left).unwrap().kind;
         let right_kind = &document.node(right).unwrap().kind;
+        // A list or footnote definition whose last block is an HTML block of kinds 1–5 that no
+        // line closes would take a blank line after it as more of that block, which an
+        // unindented line ends instead, as the parser reads it: `- <pre>\nx` (#191).
+        let unclosed = !in_list(document, parent) && ends_in_unclosed_html(document, left);
         if self.indented_code(document, parent, spread, Some(left), right)
             && (matches!(left_kind, EventKind::Start(Tag::List { .. }))
                 || self.indented_code(document, parent, spread, before, left))
         {
-            return "\n\n<!---->\n\n";
+            return if unclosed {
+                "\n<!---->\n\n"
+            } else {
+                "\n\n<!---->\n\n"
+            };
+        }
+        if unclosed {
+            return "\n";
         }
         // A paragraph or setext heading whose first line would start an HTML block has no other
         // spelling than on the line after a definition, which leaves the parser's paragraph open
@@ -1860,6 +1871,37 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
         }
         EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition { .. }) => lazy(),
         _ => false,
+    }
+}
+
+/// Whether `node` is a list or footnote definition whose last block, through the last blocks of
+/// the items, lists and footnote definitions in it, is an HTML block of kinds 1–5 that no line
+/// closes. Such a block takes the blank lines after it that its containers continue over, but not
+/// an unindented line, which ends them. A block quote ends at a line without `>`, blank or not,
+/// so one in the way ends the search.
+fn ends_in_unclosed_html<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> bool {
+    if !matches!(
+        document.node(node).unwrap().kind,
+        EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition { .. })
+    ) {
+        return false;
+    }
+    let mut node = node;
+    loop {
+        match &document.node(node).unwrap().kind {
+            EventKind::Start(
+                Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition { .. },
+            ) => match flow_children(document, node).last() {
+                Some(last) => node = last,
+                None => return false,
+            },
+            EventKind::Html { value, block: true } => {
+                return crate::block_parser::html_block_unclosed(
+                    value.resolve(document.source()).unwrap(),
+                )
+            }
+            _ => return false,
+        }
     }
 }
 

@@ -195,7 +195,9 @@ pub fn html(random: &mut Random) -> String {
 }
 
 /// Container starts, including those that take part of a tab, for HTML block lines.
-const HTML_BLOCK_CONTAINERS: &[&str] = &["", "", "> ", ">", ">\t", "- ", "-\t", "1. ", "  ", "   "];
+const HTML_BLOCK_CONTAINERS: &[&str] = &[
+    "", "", "> ", ">", ">\t", "- ", "-\t", "1. ", "1.\t", "  ", "   ",
+];
 
 /// Indentation, of spaces and tabs, before an HTML block line.
 const HTML_BLOCK_INDENTS: &[&str] = &[
@@ -223,6 +225,19 @@ const HTML_BLOCK_CONTENT: &[&str] = &[
     "a b",
     "",
     "",
+    "<script>",
+    "</script>",
+    "<style>",
+    "</style>",
+    "<textarea>",
+    "</textarea>",
+    "<PRE>",
+    "</SCRIPT>",
+    "<DIV>",
+    "<div class=\"a\">",
+    "<pre lang='x'>",
+    "<b c=d>",
+    "<a:b c=\"d\">",
 ];
 
 /// Lines of HTML blocks, whole and partial, in and out of containers, with blank lines and tabs
