@@ -4,7 +4,10 @@
 //! The round trip that the fuzz and the contract tests check: normalize, serialize, parse, normalize, compare.
 
 use super::fixture::canonical;
-use base_markdown::{to_markdown_with_options, CompileOptions, Document, MarkdownOptions};
+use base_markdown::stream::EventKind;
+use base_markdown::{
+    render_events, to_markdown_with_options, CompileOptions, Document, MarkdownOptions,
+};
 
 pub struct Failure {
     pub kind: &'static str,
@@ -22,18 +25,32 @@ pub enum Outcome {
     Fail(Failure),
 }
 
-/// The HTML of `document`, without what depends only on where line endings were in the source: the line ending at the end of the document, which a hand-built tree has no source for, and, in a parsed document, the one after a hard break, which is part of the break when parsed. A hand-built tree has no line ending there, so a line ending after its hard break is text and stays.
-pub fn html<S: AsRef<str>>(document: &Document<S>, built: bool) -> String {
+/// The HTML of `document`, without what depends only on where line endings were in the source: the line ending at the end of the document, which a hand-built tree has no source for, and the soft break directly after a hard break, which is the line ending the parser keeps as part of the break (contract 3.3). A hand-built tree may have that soft break or not, and both are written as one break, so it is left out of either rendering, as `canonical` leaves it out of the tree. A text that starts with a line ending after a hard break is no soft break and stays.
+pub fn html<S: AsRef<str>>(document: &Document<S>) -> String {
+    let mut after_hard_break = false;
+    let events = document.events().filter(|event| {
+        let Ok(event) = event else { return true };
+        match event.kind {
+            EventKind::Separator { .. } => true,
+            EventKind::SoftBreak(_) if after_hard_break => {
+                after_hard_break = false;
+                false
+            }
+            _ => {
+                after_hard_break = matches!(event.kind, EventKind::HardBreak);
+                true
+            }
+        }
+    });
     let mut output = String::new();
-    document
-        .render_html(&CompileOptions::default(), &mut output)
-        .unwrap();
-    let output = output.trim_end();
-    if built {
-        output.into()
-    } else {
-        output.replace("<br />\n", "<br />")
-    }
+    render_events(
+        document.source(),
+        events,
+        &CompileOptions::default(),
+        &mut output,
+    )
+    .unwrap();
+    output.trim_end().into()
 }
 
 pub fn fail(kind: &'static str, output: String, before: String, after: String) -> Outcome {
@@ -52,7 +69,7 @@ pub fn round_trip<S: AsRef<str>>(
     built: bool,
 ) -> Outcome {
     document.normalize();
-    let before = html(&document, built);
+    let before = html(&document);
     if !document.is_normalized() {
         return fail("normalized", String::new(), before, String::new());
     }
@@ -65,7 +82,7 @@ pub fn round_trip<S: AsRef<str>>(
     // The output reads back under the document's own options (contract 3.3).
     let mut reparsed = Document::parse(output.as_str(), document.parse_options()).unwrap();
     reparsed.normalize();
-    let after = html(&reparsed, false);
+    let after = html(&reparsed);
     if !reparsed.is_normalized() {
         return fail("normalized", output, before, after);
     }
