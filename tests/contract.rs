@@ -450,8 +450,9 @@ fn clause_3_3_a_block_after_a_list_ending_in_an_unclosed_html_block_round_trips(
     ] {
         assert_round_trips(source);
         let document = normalized(source);
+        // A blank line the item itself holds after the block is written as a blank line.
         assert!(
-            !to_markdown(&document).unwrap().contains("<pre>\n\n"),
+            source.contains("<pre>\n\n") || !to_markdown(&document).unwrap().contains("<pre>\n\n"),
             "{:?}",
             source
         );

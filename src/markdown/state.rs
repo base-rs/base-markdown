@@ -123,7 +123,7 @@ pub struct State<'a> {
     pub(super) task_item: Option<(NodeId, Option<NodeId>)>,
     /// How many nodes are open, which is the depth of the next node written: the serialized node
     /// is at depth 0. See `MAX_NESTING`.
-    depth: usize,
+    pub(super) depth: usize,
     /// The node being written, which a spelling that does not read back is reported for.
     current: Option<NodeId>,
     /// The first node written with a spelling that does not read back under the document's
@@ -155,6 +155,8 @@ pub struct State<'a> {
     /// by where they are in the output, with the spaces to write before their `>` so that the
     /// block's first line starts at a column where it is no indented code, innermost last.
     pub(super) quote_lines: Vec<(usize, usize)>,
+    /// What the plan of containers' columns has worked out (`plan.rs`).
+    pub(super) plans: super::plan::Plans,
     /// For each list being written, whether one of its joins, or one of its items', is written
     /// as a blank line, and whether one that would be is not, as an HTML block of kinds 1–5 that
     /// no line closes before it would take it.
@@ -163,15 +165,39 @@ pub struct State<'a> {
 
 /// Where a flow child starts: the absolute columns of its content on its first line and on its
 /// other lines, as the prefixes of the containers it is in reach them, and what is before it on
-/// its first line.
+/// its first line. The writer and its plan (`plan.rs`) derive each child's from its container's
+/// the same way, and a block's fit depends on its columns only by their remainder mod 4.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct Position {
     pub(super) first: usize,
     pub(super) rest: usize,
     pub(super) after: After,
-    /// The flow child before it, or for the first item of a list, the one before the list, whose
-    /// last item a line indented as wide as its content would continue.
+    /// The flow child before it, or for the first item of a list, the one before the list.
     pub(super) before: Option<NodeId>,
+    /// The width of the item that `before` is or ends in, which a line indented that far would
+    /// continue, or `None` where there is none, or it is empty and a blank line ended it.
+    pub(super) prev: Option<usize>,
+    /// Whether its first line can take up to three spaces before the `>` of the block quote it
+    /// is in, as a line of a block quote other than its first can.
+    pub(super) shift: bool,
+    /// Whether a block quote holds it, so that its other lines can take those spaces.
+    pub(super) quoted: bool,
+}
+
+impl Position {
+    /// Where the flow child after `before`, which starts at `position`, starts, where `prev` is
+    /// what `before` leaves for it.
+    pub(super) fn after(position: Position, before: NodeId, prev: Option<usize>) -> Self {
+        Position {
+            first: position.rest,
+            rest: position.rest,
+            after: After::Line,
+            before: Some(before),
+            prev,
+            shift: position.quoted,
+            quoted: position.quoted,
+        }
+    }
 }
 
 /// What a flow child follows on its first line.
@@ -217,7 +243,11 @@ impl<'a> State<'a> {
     /// Whether `parent`, if it is a list or item, records a blank line between its blocks. An
     /// item's spread is read from its syntax, which scans its blocks, so it is read once for all
     /// its joins (#161). Other parents give `false`, which their joins do not read.
-    fn records_spread<S: AsRef<str>>(&self, document: &Document<S>, parent: NodeId) -> bool {
+    pub(super) fn records_spread<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        parent: NodeId,
+    ) -> bool {
         match document.node(parent).unwrap().kind {
             EventKind::Start(Tag::List { tight, .. }) => !tight,
             EventKind::Start(Tag::Item { .. }) => self.item_spread(document, parent),
@@ -247,7 +277,7 @@ impl<'a> State<'a> {
     /// between its blocks. Nothing else can show the list is loose.
     ///
     /// `spread` is what `records_spread` gives for `item`.
-    fn spreads_item<S: AsRef<str>>(
+    pub(super) fn spreads_item<S: AsRef<str>>(
         &self,
         document: &Document<S>,
         item: NodeId,
@@ -313,15 +343,11 @@ impl<'a> State<'a> {
         let mut children = flow_children(document, parent).peekable();
         let records_spread = self.records_spread(document, parent);
         let spread = self.spreads_item(document, parent, records_spread);
-        // With `tight_definitions`, adjacent definitions are joined by a line ending, and other
-        // blocks as without it. In an item written spread, the other joins are blank lines, which
-        // show its spread. When definitions are its only blocks, nothing else would, so they are
-        // written spread too.
-        let tight_definitions = self.options.tight_definitions
-            && !((records_spread || spread)
-                && flow_children(document, parent).all(|child| is_definition(document, child)));
+        let tight_definitions = self.tight_definitions(document, parent, records_spread || spread);
         self.index_stack.push(0);
         let mut before = None;
+        // Whether the join before the child is a blank line, which ends an empty item.
+        let mut blank = false;
         for index in 0.. {
             let Some(child) = children.next() else { break };
             *self.index_stack.last_mut().unwrap() = index;
@@ -363,14 +389,11 @@ impl<'a> State<'a> {
             let frame = self.frames.last().copied().unwrap_or_default();
             // The first child starts on its container's first line, after what is before it there,
             // and the first item of a list where the list does.
-            self.position = if index == 0 {
-                frame
-            } else {
-                Position {
-                    first: frame.rest,
-                    rest: frame.rest,
-                    after: After::Line,
-                    before,
+            self.position = match before {
+                None => frame,
+                Some(before) => {
+                    let width = self.last_item.map(|(_, width)| width);
+                    Position::after(frame, before, left_width(document, before, width, blank))
                 }
             };
             self.write_node(document, child, &Info::new("\n", "\n"))?;
@@ -392,34 +415,23 @@ impl<'a> State<'a> {
                         self.no_spelling_of(child);
                     }
                 }
-                let separator = if self.caret_definition(document, next)
-                    && is_definition(document, child)
-                    && self.parse.constructs.code_indented
-                {
-                    "\n    "
-                } else if tight_definitions
-                    && is_definition(document, child)
-                    && is_definition(document, next)
-                {
-                    "\n"
-                } else {
-                    // In an item written spread, each of these joins is a blank line.
-                    self.default_separator(
-                        document,
-                        before,
-                        child,
-                        next,
-                        parent,
-                        records_spread || spread,
-                    )
-                };
+                let separator = self.join(
+                    document,
+                    parent,
+                    before,
+                    child,
+                    next,
+                    records_spread || spread,
+                    tight_definitions,
+                );
                 self.output.push_str(separator);
+                blank = writes_blank_line(separator);
                 if let (true, Some(looseness)) =
                     (in_list(document, parent), self.looseness.last_mut())
                 {
                     if writes_blank_line(separator) {
                         looseness.0 = true;
-                    } else if (records_spread || spread) && ends_unclosed(document, child) {
+                    } else if (records_spread || spread) && takes_blank_line(document, child) {
                         looseness.1 = true;
                     }
                 }
@@ -462,6 +474,52 @@ impl<'a> State<'a> {
         }
         self.index_stack.pop();
         Ok(())
+    }
+
+    /// Whether adjacent definitions in `parent`, whose joins are blank lines where `spread`, are
+    /// joined by a line ending. With `tight_definitions`, they are, and other blocks are joined as
+    /// without it. In an item written spread, the other joins are blank lines, which show its
+    /// spread. When definitions are its only blocks, nothing else would, so they are written
+    /// spread too.
+    pub(super) fn tight_definitions<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        parent: NodeId,
+        spread: bool,
+    ) -> bool {
+        self.options.tight_definitions
+            && !(spread
+                && flow_children(document, parent).all(|child| is_definition(document, child)))
+    }
+
+    /// The join between flow children `child` and `next` of `parent`, after `before`, where its
+    /// joins are blank lines when `spread`, and adjacent definitions are joined by a line ending
+    /// when `tight_definitions` (`tight_definitions`).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn join<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        parent: NodeId,
+        before: Option<NodeId>,
+        child: NodeId,
+        next: NodeId,
+        spread: bool,
+        tight_definitions: bool,
+    ) -> &'static str {
+        if self.caret_definition(document, next)
+            && is_definition(document, child)
+            && self.parse.constructs.code_indented
+        {
+            "\n    "
+        } else if tight_definitions
+            && is_definition(document, child)
+            && is_definition(document, next)
+        {
+            "\n"
+        } else {
+            // In an item written spread, each of these joins is a blank line.
+            self.default_separator(document, before, child, next, parent, spread)
+        }
     }
 
     pub fn container_phrasing<S: AsRef<str>>(
@@ -1456,23 +1514,12 @@ impl<'a> State<'a> {
                     self.output.push_str("[^");
                     self.output.push_str(label);
                     self.output.push_str("]:");
-                    if let Some(first) = flow_children(document, id).next() {
-                        // Indented code cannot start on the label's line, where it would read back as a paragraph, so it starts on the next line, indented like the lines after it.
-                        // Nor can an HTML block with indentation, which the label takes, or one
-                        // that is indented code at the column after the label.
+                    if flow_children(document, id).next().is_some() {
                         let position = self.position;
-                        let column = position.first + label.len() + 5;
-                        let next_line = self.indented_code(document, id, false, None, first)
-                            || matches!(&document.node(first).unwrap().kind,
-                                EventKind::Html { value, block: true }
-                                    if value.resolve(source).unwrap().starts_with([' ', '\t']))
-                            || html_shape(document, first).is_some_and(|shape| !shape.fits(column));
-                        self.frames.push(Position {
-                            first: if next_line { position.rest + 4 } else { column },
-                            rest: position.rest + 4,
-                            after: if next_line { After::Line } else { After::Label },
-                            before: None,
-                        });
+                        let width = label.len() + 5;
+                        let next_line = self.footnote_plan(document, id, position, width);
+                        self.frames
+                            .push(super::plan::footnote_frame(position, width, next_line));
                         self.output.push(if next_line { '\n' } else { ' ' });
                         let start = self.output.len();
                         let prefix = if next_line {
@@ -1585,63 +1632,13 @@ impl<'a> State<'a> {
         result
     }
 
-    /// Check that HTML block `id` starts where it is written at a column it fits (`HtmlFit`), where
-    /// its first line is no indented code (#266) and continues no block before it. After the first line of a block quote,
-    /// its line is written with the spaces before `>` that put it at the first such column,
-    /// which `blockquote` writes, so only one that starts its container, after what is before
-    /// it there, can have none.
+    /// Check that HTML block `id` starts where it is written at a column it fits, and record the
+    /// spaces before `>` that its line takes for that, which `blockquote` writes (`html_spaces`).
     fn html_block<S: AsRef<str>>(&mut self, document: &Document<S>, id: NodeId) {
-        let fit = html_fit(document, id, self.position.before)
-            .expect("a document's HTML block starts one");
-        let mut column = self.position.first;
-        let quoted = document.node(id).unwrap().parent().is_some_and(|parent| {
-            matches!(
-                document.node(parent).unwrap().kind,
-                EventKind::Start(Tag::BlockQuote)
-            )
-        });
-        if quoted && self.position.before.is_some() {
-            let spaces = quote_spaces(fit, column, 3);
-            if spaces > 0 {
-                self.quote_lines.push((self.output.len(), spaces));
-            }
-            column += spaces;
-        }
-        if !fit.fits(column) {
-            self.no_spelling_of(id);
-        }
-    }
-
-    /// The most spaces that an item or block quote starting at `position` can be written with
-    /// before its marker: up to three, but none after an item's marker, whose padding would take
-    /// them, or after a footnote definition's label for an item, which would not count them in
-    /// its width (`After`), and fewer than the width of the item before it, which a line indented
-    /// that far would continue, or than the indentation from which an HTML block before it that
-    /// keeps its blank lines would continue over its line.
-    pub(super) fn marker_spaces<S: AsRef<str>>(
-        &self,
-        document: &Document<S>,
-        position: Position,
-        item: bool,
-    ) -> usize {
-        match position.after {
-            After::Marker => return 0,
-            After::Label if item => return 0,
-            _ => {}
-        }
-        let before = position
-            .before
-            .and_then(|before| match document.node(before).unwrap().kind {
-                EventKind::Start(Tag::Item { .. }) => Some(before),
-                EventKind::Start(Tag::List { .. }) => flow_children(document, before).last(),
-                _ => None,
-            });
-        let most = continued_from(document, position.before).map_or(3, |from| (from - 1).min(3));
-        match (before, self.last_item) {
-            (Some(before), Some((item, width))) if item == before => {
-                width.saturating_sub(1).min(most)
-            }
-            _ => most,
+        match html_spaces(document, id, self.position) {
+            Some(0) => {}
+            Some(spaces) => self.quote_lines.push((self.output.len(), spaces)),
+            None => self.no_spelling_of(id),
         }
     }
 
@@ -1742,22 +1739,38 @@ impl<'a> State<'a> {
         self.scratch = scratch;
     }
 
+    /// Rewrite each line of the output from `start` with `map`, which is given the line, its
+    /// index, and whether it is empty, and writes the line last. The lines that a block quote
+    /// being written records spaces for (`quote_lines`) are moved with their lines, so that it
+    /// counts them where they end up.
     pub fn indent_lines(&mut self, start: usize, map: impl Fn(&str, usize, bool, &mut String)) {
+        let moved = self
+            .quote_lines
+            .partition_point(|&(offset, _)| offset < start);
+        let mut lines = core::mem::take(&mut self.quote_lines);
+        let mut pending = lines[moved..].iter_mut().peekable();
         self.rewrite(start, |value, output| {
-            let mut start = 0;
+            let mut from = 0;
             let mut line = 0;
-            for ending in line_endings(value) {
-                let slice = &value[start..ending.start];
+            let mut write = |slice: &str, end: usize, line: usize, output: &mut String| {
                 map(slice, line, slice.is_empty(), output);
+                let content = output.len() - slice.len();
+                while let Some(entry) = pending.next_if(|&&mut (offset, _)| offset - start <= end) {
+                    entry.0 = content + (entry.0 - start - (end - slice.len()));
+                }
+            };
+            for ending in line_endings(value) {
+                write(&value[from..ending.start], ending.start, line, output);
                 output.push_str(&value[ending.clone()]);
-                start = ending.end;
+                from = ending.end;
                 line += 1;
             }
-            map(&value[start..], line, value.is_empty(), output);
+            write(&value[from..], value.len(), line, output);
         });
+        self.quote_lines = lines;
     }
 
-    fn default_separator<S: AsRef<str>>(
+    pub(super) fn default_separator<S: AsRef<str>>(
         &self,
         document: &Document<S>,
         before: Option<NodeId>,
@@ -1778,7 +1791,7 @@ impl<'a> State<'a> {
         if trailing.is_some_and(|shape| shape.keeps_line_ending) {
             return "\n";
         }
-        let unclosed = ends_unclosed(document, left);
+        let unclosed = takes_blank_line(document, left);
         if self.indented_code(document, parent, spread, Some(left), right)
             && (matches!(left_kind, EventKind::Start(Tag::List { .. }))
                 || self.indented_code(document, parent, spread, before, left))
@@ -1897,7 +1910,7 @@ impl<'a> State<'a> {
     /// Whether flow child `id` of `parent`, after flow child `before`, if any, is code written
     /// indented. `spread` is whether `parent`'s blocks are joined by blank lines, as for
     /// `fences_code`.
-    fn indented_code<S: AsRef<str>>(
+    pub(super) fn indented_code<S: AsRef<str>>(
         &self,
         document: &Document<S>,
         parent: NodeId,
@@ -1962,6 +1975,7 @@ impl<'a> State<'a> {
             frames: Vec::new(),
             last_item: None,
             quote_lines: Vec::new(),
+            plans: super::plan::Plans::default(),
             looseness: Vec::new(),
         }
     }
@@ -2443,49 +2457,25 @@ fn list_interrupts_paragraph<S: AsRef<str>>(document: &Document<S>, id: NodeId) 
         })
 }
 
-/// How an item's first line starts after its marker.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum ItemStart {
-    /// With a blank line: the item is empty, or starts with an HTML block with indentation that
-    /// the marker's padding would take. Its content then starts one column after the marker.
-    Blank,
-    /// With an HTML block indented 4 columns or more at the column it is written at, which only
-    /// options without indented code allow: the parser reads a padding of one after a marker
-    /// and whitespace of 5 columns or more, so the block is written after the marker at such a
-    /// column (`HtmlFit::inline`).
-    Indented,
-    /// With code, after the preferred padding.
-    Code,
-    /// With any other block, after any padding.
-    Other,
-}
-
-/// How item `item` starts.
-pub(super) fn item_start<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> ItemStart {
+/// Whether item `item` must start with a blank line: it is empty, or starts with an HTML block
+/// with indentation that the marker's padding would take, which the parser reads after a padding
+/// of one only where it is 4 columns or more, which only options without indented code allow. Its
+/// content then starts one column after the marker. An item that starts with an HTML block
+/// indented 4 columns or more at some column can start after its marker (`html_spaces`), or with
+/// a blank line where that fits no column it can be written at (`plan.rs`).
+pub(super) fn item_starts_blank<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> bool {
     let Some(first) = flow_children(document, item).next() else {
-        return ItemStart::Blank;
+        return true;
     };
     match &document.node(first).unwrap().kind {
-        EventKind::CodeBlock { .. } => ItemStart::Code,
         EventKind::Html { value, block: true } => {
             let value = value.resolve(document.source()).unwrap().as_bytes();
-            if !matches!(value.first(), Some(b' ' | b'\t')) {
-                ItemStart::Other
-            } else if document.parse_options().constructs.code_indented
-                || (0..4).all(|column| indentation_width(value, column) < 4)
-            {
-                ItemStart::Blank
-            } else {
-                ItemStart::Indented
-            }
+            matches!(value.first(), Some(b' ' | b'\t'))
+                && (document.parse_options().constructs.code_indented
+                    || (0..4).all(|column| indentation_width(value, column) < 4))
         }
-        _ => ItemStart::Other,
+        _ => false,
     }
-}
-
-/// Whether item `item` is written with a blank line after its marker (`ItemStart::Blank`).
-pub(super) fn item_starts_blank<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> bool {
-    item_start(document, item) == ItemStart::Blank
 }
 
 /// Whether code as a flow child of `parent` after flow child `before`, if any, needs a fence
@@ -2586,7 +2576,7 @@ const QUOTE_END: &str = "\n>\n";
 
 /// Whether a join between flow children writes a blank line, which an item records as spread.
 /// `QUOTE_END` does not: its line of `>` is inside the block quote.
-fn writes_blank_line(separator: &str) -> bool {
+pub(super) fn writes_blank_line(separator: &str) -> bool {
     separator.starts_with("\n\n")
 }
 
@@ -2740,18 +2730,16 @@ pub(super) fn html_shape<S: AsRef<str>>(
 
 /// The content columns an HTML block can start at where it is written: those its shape fits,
 /// and, after a block that a line indented as far as its first line would continue, those where
-/// that indentation is narrower. A footnote definition takes a line indented 4 columns or more
-/// after a blank line, which only options without indented code give an HTML block (#275), and
-/// an HTML block that keeps its blank lines one indented as far as its own lines are, at least
-/// one column. One that starts an item after its marker, where the padding of one leaves it
-/// indented, must be indented 4 columns or more (`item_start`).
+/// that indentation is narrower (`below`). A footnote definition takes a line indented 4 columns
+/// or more after a blank line, which only options without indented code give an HTML block
+/// (#275), an HTML block that keeps its blank lines one indented as far as its own lines are, at
+/// least one column, and an item one indented as wide as it is (`Position::prev`, #229, #262).
 #[derive(Clone, Copy)]
 pub(super) struct HtmlFit<'a> {
     pub(super) shape: HtmlBlockShape,
     value: &'a [u8],
     /// The indentation from which the block before it would continue over its first line.
     below: Option<usize>,
-    pub(super) inline: bool,
 }
 
 impl HtmlFit<'_> {
@@ -2761,31 +2749,80 @@ impl HtmlFit<'_> {
     }
 
     pub(super) fn fits(self, column: usize) -> bool {
-        let width = self.indentation(column);
         self.shape.fits(column)
-            && self.below.is_none_or(|below| width < below)
-            && (!self.inline || width >= 4)
+            && self
+                .below
+                .is_none_or(|below| self.indentation(column) < below)
     }
 }
 
-/// Where HTML block `id`, after flow child `before` if any, can start, or `None` where it is no
-/// HTML block.
+/// Where HTML block `id`, starting at `position`, can start, or `None` where it is no HTML block.
 pub(super) fn html_fit<S: AsRef<str>>(
     document: &Document<S>,
     id: NodeId,
-    before: Option<NodeId>,
+    position: Position,
 ) -> Option<HtmlFit<'_>> {
-    let (value, shape) = html_block_parts(document, id)?;
-    let below = before.and_then(|before| match document.node(before).unwrap().kind {
-        EventKind::Start(Tag::FootnoteDefinition { .. }) => Some(4),
-        _ => html_shape(document, before)?.continued_from,
-    });
-    Some(HtmlFit {
-        shape,
-        value: value.as_bytes(),
-        below,
-        inline: false,
+    html_block_parts(document, id).map(|(value, shape)| {
+        let continued =
+            position
+                .before
+                .and_then(|before| match document.node(before).unwrap().kind {
+                    EventKind::Start(Tag::FootnoteDefinition { .. }) => Some(4),
+                    _ => html_shape(document, before)?.continued_from,
+                });
+        // Only a list or item before leaves a width, and neither continues from an indentation.
+        HtmlFit {
+            shape,
+            value: value.as_bytes(),
+            below: continued.or(position.prev),
+        }
     })
+}
+
+/// The spaces before the `>` of the block quote it is in that HTML block `id` takes to start at a
+/// column it fits from `position` (`HtmlFit`), as few as can, or `None` where none does. Only a
+/// line that `Position::shift` says can take them has any. After a footnote definition's label,
+/// which would take the indentation, a block with indentation fits no column, nor after an
+/// item's marker, whose padding would take it, unless it is 4 columns or more, after which the
+/// parser reads a padding of one, which the item then has (`plan.rs`).
+pub(super) fn html_spaces<S: AsRef<str>>(
+    document: &Document<S>,
+    id: NodeId,
+    position: Position,
+) -> Option<usize> {
+    html_fit(document, id, position).and_then(|fit| {
+        let indented = matches!(fit.value.first(), Some(b' ' | b'\t'));
+        if indented && position.after == After::Label {
+            return None;
+        }
+        (0..=if position.shift { 3 } else { 0 }).find(|&spaces| {
+            let column = position.first + spaces;
+            fit.fits(column)
+                && !(indented && position.after == After::Marker && fit.indentation(column) < 4)
+        })
+    })
+}
+
+/// The most spaces that an item or block quote starting at `position` can be written with
+/// before its marker: up to three, but none after an item's marker, whose padding would take
+/// them, or after a footnote definition's label for an item, which would not count them in its
+/// width (`After`), and fewer than the width of the item before it, which a line indented that
+/// far would continue (`Position::prev`), or than the indentation from which an HTML block before
+/// it that keeps its blank lines would continue over its line.
+pub(super) fn marker_spaces<S: AsRef<str>>(
+    document: &Document<S>,
+    position: Position,
+    item: bool,
+) -> usize {
+    match position.after {
+        After::Marker => return 0,
+        After::Label if item => return 0,
+        _ => {}
+    }
+    let most = continued_from(document, position.before).map_or(3, |from| (from - 1).min(3));
+    position
+        .prev
+        .map_or(most, |width| width.saturating_sub(1).min(most))
 }
 
 /// The indentation from which HTML block `before`, if it is one that keeps its blank lines,
@@ -2818,26 +2855,36 @@ pub(super) fn trailing_html<S: AsRef<str>>(
     html_shape(document, node).map(|shape| (shape, quoted))
 }
 
-/// The fewest spaces, at most `most`, before a block quote's `>` that put an HTML block that can
-/// start as `fit` says, whose line it starts at `column` without them, at a column it fits, or
-/// none where no such count does.
-pub(super) fn quote_spaces(fit: HtmlFit<'_>, column: usize, most: usize) -> usize {
-    (0..=most)
-        .find(|&spaces| fit.fits(column + spaces))
-        .unwrap_or(0)
-}
-
 /// Whether `node` is a list, item or footnote definition whose last block, outside any block
-/// quote, is an HTML block of kinds 1–5 that no line closes. It would take a blank line after it as
-/// more of that block, which a line indented less than that item ends instead, as the parser reads
-/// it: `- <pre>\nx`, `- - <pre>\n  x` in an item (#191), and `1. <!--x\n2. a` between items
-/// (#273). So the join after it is a single line ending, and a list it is in shows that it is
-/// loose only by another join.
-fn ends_unclosed<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> bool {
+/// quote, is an HTML block that takes a blank line after it: one of kinds 1–5 that no line closes,
+/// as more of that block, which a line indented less than that item ends instead, as the parser
+/// reads it: `- <pre>\nx`, `- - <pre>\n  x` in an item (#191), and `1. <!--x\n2. a` between items
+/// (#273); and, under `ParseOptions::html_block_blank_lines`, one of kind 6 or 7 that keeps its
+/// blank lines, `1. <div>\n\n2. a`. So the join after it is a single line ending, and a list it
+/// is in shows that it is loose only by another join.
+fn takes_blank_line<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> bool {
     matches!(
         document.node(node).unwrap().kind,
         EventKind::Start(Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition { .. })
-    ) && trailing_html(document, node).is_some_and(|(shape, quoted)| shape.unclosed && !quoted)
+    ) && trailing_html(document, node)
+        .is_some_and(|(shape, quoted)| (shape.unclosed || shape.keeps_line_ending) && !quoted)
+}
+
+/// What flow child `before`, whose last item, if it is or ends in one, is `width` wide, leaves
+/// for the line after it (`Position::prev`): that width, unless that item is empty and the join
+/// after it is a `blank` line, which ends it.
+pub(super) fn left_width<S: AsRef<str>>(
+    document: &Document<S>,
+    before: NodeId,
+    width: Option<usize>,
+    blank: bool,
+) -> Option<usize> {
+    let last = match document.node(before).unwrap().kind {
+        EventKind::Start(Tag::Item { .. }) => before,
+        EventKind::Start(Tag::List { .. }) => flow_children(document, before).last()?,
+        _ => return None,
+    };
+    width.filter(|_| !(blank && flow_children(document, last).next().is_none()))
 }
 
 /// Whether flow child `right` is a paragraph, link reference definition or a heading written as a
@@ -2974,7 +3021,7 @@ fn links<'d, S: AsRef<str>>(
 /// How deep the serializer nests: a node more than this many levels below the serialized node,
 /// counting every block and inline node between them, is an error rather than a deeper recursion
 /// that could overflow the stack.
-const MAX_NESTING: usize = 128;
+pub(super) const MAX_NESTING: usize = 128;
 
 fn nesting_too_deep() -> Message {
     Message {
