@@ -1853,11 +1853,12 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
                 ))
         }
         // A definition is read from the front of a paragraph, which the next line continues
-        // unless it interrupts it. An HTML block of kind 7 written there does not, and a table's
-        // head would be that paragraph's last line, or its delimiter row, read under the
-        // definition's line.
+        // unless it interrupts it. An HTML block of kind 7 written there does not, and a table
+        // whose head row is shaped like a delimiter row would take the definition's last line
+        // as its head.
         EventKind::Definition { .. } => {
-            matches!(right_kind, EventKind::Start(Tag::Table))
+            (matches!(right_kind, EventKind::Start(Tag::Table))
+                && head_reads_as_delimiter_row(document, left, right))
                 || matches!(right_kind, EventKind::Html { value, block: true }
                 if !crate::block_parser::html_interrupts_paragraph(
                     value.resolve(document.source()).unwrap()
@@ -1884,6 +1885,55 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
 
 /// Whether flow child `right` is a paragraph, link reference definition or a heading written as a
 /// setext heading, as `setext` says, none of which can interrupt a paragraph.
+/// Whether the head row of `table`, written on the line after definition `definition`, could
+/// read back as a delimiter row under the definition's last line: each head cell holds only text
+/// of `-` with an optional `:` at either end. Without a `|` in the definition, its last line is
+/// one cell, so a head of more than one cell cannot be its delimiter row.
+fn head_reads_as_delimiter_row<S: AsRef<str>>(
+    document: &Document<S>,
+    definition: NodeId,
+    table: NodeId,
+) -> bool {
+    let source = document.source();
+    let EventKind::Definition {
+        label,
+        destination,
+        title,
+    } = &document.node(definition).unwrap().kind
+    else {
+        return false;
+    };
+    let pipe = core::iter::once(label)
+        .chain(core::iter::once(destination))
+        .chain(title)
+        .any(|value| value.resolve(source).unwrap().contains('|'));
+    let Some(row) = document
+        .children(table)
+        .next()
+        .and_then(|head| document.children(head).next())
+    else {
+        return false;
+    };
+    let mut cells = 0;
+    for cell in document.children(row) {
+        cells += 1;
+        let mut children = document.children(cell);
+        let (Some(text), None) = (children.next(), children.next()) else {
+            return false;
+        };
+        let EventKind::Text(value) = &document.node(text).unwrap().kind else {
+            return false;
+        };
+        let value = value.resolve(source).unwrap().trim_matches([' ', '\t']);
+        let inner = value.strip_prefix(':').unwrap_or(value);
+        let inner = inner.strip_suffix(':').unwrap_or(inner);
+        if inner.is_empty() || !inner.bytes().all(|byte| byte == b'-') {
+            return false;
+        }
+    }
+    cells > 0 && (cells == 1 || pipe)
+}
+
 fn continues_text<S: AsRef<str>>(
     document: &Document<S>,
     right: NodeId,

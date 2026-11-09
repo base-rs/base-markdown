@@ -2002,6 +2002,23 @@ fn clause_3_4_tight_items_loosen_where_a_block_needs_a_blank_line() {
         assert!(document.is_normalized(), "{:?}", input);
         assert_eq!(to_markdown(&document).unwrap(), input);
     }
+    // A table after a definition stays tight unless its head row is shaped like a delimiter
+    // row, which would make the definition's last line the table's head.
+    for input in [
+        "- [a]: /u\n  | a |\n  | --- |\n- z\n",
+        "- [h]: /h\n  | 'h |\n  | --- |\n- z\n",
+        "- [a]: /u\n  | - | - |\n  | --- | --- |\n- z\n",
+    ] {
+        let document = parse(input);
+        assert!(document.is_normalized(), "{:?}", input);
+        assert_eq!(to_markdown(&document).unwrap(), input);
+    }
+    let (mut document, _) = tight_item("- p\n- q\n", &["[a]: /u", "| - |\n| - |"]);
+    document.normalize();
+    assert_eq!(
+        to_markdown(&document).unwrap(),
+        "- [a]: /u\n\n  | - |\n  | --- |\n\n- q\n"
+    );
     // Two tables, which would read back as one.
     let (mut document, _) = tight_item("- p\n- q\n", &["| a |\n| - |", "| b |\n| - |"]);
     document.normalize();
