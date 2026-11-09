@@ -7,7 +7,7 @@
 Each input is parsed with `ParseOptions::default()`, the syntax `normalize_markdown` reads, or built by hand as a tree. It is normalized, serialized with the default Markdown options, parsed with the same options and normalized again. An input fails as:
 
 - `normalized`: either document is not normalized after `Document::normalize`.
-- `html`: the HTML of the two documents differs. The final line ending is ignored, since a hand-built tree has no source for it, and so is the line ending after a hard break in a parsed document, which is part of the break. A hand-built hard break has no line ending after it, so a line ending there in its tree is text and is compared.
+- `html`: the HTML of the two documents differs. The final line ending is ignored, since a hand-built tree has no source for it, and so is a soft break directly after a hard break, in either document, as contract 3.3 compares them: it is the line ending the parser keeps as part of the break, and a hand-built hard break, with that soft break or without, is written as one break. A text that starts with a line ending after a hard break is no soft break, so it is compared.
 - `tree`: the HTML is the same, but the canonical trees of `support::fixture::canonical` differ. These count line endings that the HTML comparison ignores, so dropping one is not a fix, and structure the HTML flattens, such as links in image text. Code block values are compared exactly, except that the last node of the document, when it is a block without a final line ending, counts as having one: the parser stores it so for an unclosed fence or indented code that ends the source, which normalizing keeps, and the serializer closes the fence.
 - `unstable`: serializing the second document gives different Markdown.
 - `error`: serializing a parsed document returns an error. A hand-built tree that the serializer rejects is counted as rejected instead.
@@ -46,7 +46,7 @@ FUZZ_INPUTS=1000000 cargo test --release --test roundtrip_fuzz round_trip_fuzz -
 FUZZ_BLESS=1 cargo test --test roundtrip_fuzz round_trip_fuzz
 ```
 
-`FUZZ_OUTPUT=directory` writes, for each corpus, `<corpus>.txt`, its sorted and deduplicated failing inputs as one Rust string literal per line, and `<corpus>-details.txt`, each failure with its kind, bucket, output and both HTML renderings, separated by tabs. The files are largest for the tree corpora at 1,000,000 inputs, about 45 MB of details and 30 MB of inputs each, mostly soft breaks after hard breaks (#112), against at most about 11 MB for the other corpora.
+`FUZZ_OUTPUT=directory` writes, for each corpus, `<corpus>.txt`, its sorted and deduplicated failing inputs as one Rust string literal per line, and `<corpus>-details.txt`, each failure with its kind, bucket, output and both HTML renderings, separated by tabs. The files are largest for the tree corpora, about 350 KB of details and 240 KB of inputs each at 200,000 inputs.
 
 ## Comparing a branch with main
 

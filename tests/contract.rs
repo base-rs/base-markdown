@@ -1845,6 +1845,94 @@ fn clause_3_3_normalize_round_trips() {
     }
 }
 
+/// A paragraph of `kinds`, built rather than parsed.
+fn built_paragraph(kinds: Vec<EventKind<'static>>) -> Document<&'static str> {
+    let mut events = vec![
+        EventKind::Start(Tag::Document {
+            line_ending: None,
+            frontmatter: None,
+        }),
+        EventKind::Start(Tag::Paragraph { tight: false }),
+    ];
+    events.extend(kinds);
+    events.extend([
+        EventKind::End(TagKind::Paragraph),
+        EventKind::End(TagKind::Document),
+    ]);
+    let mut builder = base_markdown::AstBuilder::new();
+    builder
+        .consume(
+            &mut events
+                .into_iter()
+                .map(|kind| Ok(Event { kind, span: 0..0 })),
+            usize::MAX,
+        )
+        .unwrap();
+    builder.finish("").unwrap()
+}
+
+/// A built hard break may be followed by a soft break, which is the line ending the parser keeps after one, or not, and both are written as one break and compare equal; the HTML of each but that line ending is the same as what it reads back as. A text that starts with a line ending after a hard break is no soft break, is encoded and stays.
+#[test]
+fn clause_3_3_a_soft_break_after_a_built_hard_break_is_its_line_ending() {
+    let soft = || EventKind::SoftBreak(Text::Literal("\n"));
+    let shapes = [
+        (vec![EventKind::HardBreak, soft(), text("~")], "\\\n\\~\n"),
+        (vec![EventKind::HardBreak, text("~")], "\\\n\\~\n"),
+        (
+            vec![
+                EventKind::Start(Tag::Delete),
+                EventKind::HardBreak,
+                EventKind::End(TagKind::Delete),
+                soft(),
+                text("~"),
+            ],
+            "\\\n\\~\n",
+        ),
+        (
+            vec![
+                EventKind::HardBreak,
+                EventKind::Start(Tag::Strong),
+                soft(),
+                EventKind::End(TagKind::Strong),
+                text("&*"),
+            ],
+            "\\\n&\\*\n",
+        ),
+        (
+            vec![
+                EventKind::HardBreak,
+                EventKind::Start(Tag::Emphasis),
+                soft(),
+                text("~"),
+                EventKind::End(TagKind::Emphasis),
+            ],
+            "\\\n*\\~*\n",
+        ),
+        (vec![EventKind::HardBreak, text("\n~")], "\\\n&#xA;\\~\n"),
+    ];
+    for (kinds, written) in shapes {
+        let document = built_paragraph(kinds);
+        let mut normalized = document.clone();
+        normalized.normalize();
+        assert_eq!(to_markdown(&normalized).unwrap(), written);
+        let read = parse(written);
+        assert_eq!(round_trip::html(&normalized), round_trip::html(&read));
+        assert!(
+            matches!(
+                round_trip(document, &MarkdownOptions::default(), true),
+                Outcome::Pass
+            ),
+            "{:?}",
+            written
+        );
+    }
+    // Only the soft break is left out, not a line ending that text holds.
+    assert_eq!(
+        round_trip::html(&built_paragraph(vec![EventKind::HardBreak, text("\n~")])),
+        "<p><br />\n~</p>"
+    );
+}
+
 #[test]
 fn clause_3_3_a_dash_rule_round_trips() {
     let options = MarkdownOptions {
@@ -1958,8 +2046,8 @@ fn clause_3_3_unwrap_writes_soft_breaks_and_line_endings_in_text_as_spaces() {
         let output = to_markdown_with_options(&document, &options).unwrap();
         let read = normalized(&output);
         assert_eq!(
-            round_trip::html(&read, false),
-            round_trip::html(&expected, false),
+            round_trip::html(&read),
+            round_trip::html(&expected),
             "{:?}: {:?}",
             source,
             output
@@ -2033,8 +2121,8 @@ fn clause_3_3_inline_html_that_could_start_a_block_is_indented() {
         let written = to_markdown_with_options(&document, &unwrap).unwrap();
         let read = normalized(&written);
         assert_eq!(
-            round_trip::html(&read, false),
-            round_trip::html(&unwrapped(&document), false),
+            round_trip::html(&read),
+            round_trip::html(&unwrapped(&document)),
             "{:?}: {:?}",
             source,
             written
@@ -2235,7 +2323,7 @@ fn clause_3_3_blocky_round_trip_failures_are_known_gaps() {
         }
         // The rules attribute no other failure of the same document.
         let output = to_markdown(&document).unwrap();
-        let before = round_trip::html(&document, false);
+        let before = round_trip::html(&document);
         for (kind, after) in [
             ("html", format!("{}\n<p>BUG</p>", before)),
             ("error", String::new()),
