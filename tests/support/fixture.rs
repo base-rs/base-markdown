@@ -333,6 +333,12 @@ fn block_value(value: &str) -> EventText<'static> {
     }
 }
 
+// An mdast inline code value keeps its line endings, which the parser reads as spaces and stores
+// as such, so each becomes one.
+fn code_value(value: &str) -> EventText<'static> {
+    value.replace("\r\n", " ").replace(['\r', '\n'], " ").into()
+}
+
 fn value(value: &str) -> EventText<'static> {
     value.to_string().into()
 }
@@ -482,7 +488,7 @@ fn append(
         Node::Strong(_) => EventKind::Start(Tag::Strong),
         Node::Delete(_) => EventKind::Start(Tag::Delete),
         Node::InlineCode(n) => EventKind::Code {
-            value: value(&n.value),
+            value: code_value(&n.value),
             language: title(&n.lang),
         },
         Node::Break(_) => EventKind::HardBreak,

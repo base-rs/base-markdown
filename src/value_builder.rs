@@ -9,8 +9,10 @@ use crate::{
 use alloc::{borrow::Cow, string::String};
 use core::ops::Range;
 
-static STRING_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\\&\0");
-static UNPADDED_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\\&\0\r\n");
+// NUL is not decoded here: the event parser gives every value the form the parser stores, with
+// NUL as U+FFFD, once (`Text::normalized`).
+static STRING_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\\&");
+static UNPADDED_MARKERS: crate::byte_scan::AsciiSet = crate::byte_scan::AsciiSet::new(b"\\&\r\n");
 
 /// Keep a contiguous source range until normalization actually requires an owned string.
 ///
@@ -80,7 +82,6 @@ pub(crate) fn decode_string_with_options(
         range,
         options.constructs.character_escape,
         options.constructs.character_reference,
-        true,
     )
 }
 
@@ -96,7 +97,6 @@ pub(crate) fn decode_unpadded(
         range,
         options.is_some_and(|options| options.constructs.character_escape),
         options.is_some_and(|options| options.constructs.character_reference),
-        true,
     )
 }
 
@@ -105,7 +105,6 @@ fn decode<const UNPAD: bool>(
     range: Range<usize>,
     escapes: bool,
     references: bool,
-    replace_nulls: bool,
 ) -> Text<'static> {
     use crate::util::character_reference::{scan, Reference};
     let bytes = source.as_bytes();
@@ -142,13 +141,6 @@ fn decode<const UNPAD: bool>(
             index += 1;
             start = index;
             index += 1;
-            continue;
-        }
-        if replace_nulls && bytes[index] == 0 {
-            value.append(Text::Source(start..index));
-            value.append(Text::Literal("�"));
-            index += 1;
-            start = index;
             continue;
         }
         if references && bytes[index] == b'&' {
@@ -320,7 +312,6 @@ mod tests {
             (r"a\*b", "a*b"),
             ("&amp;", "&"),
             ("&#42;", "*"),
-            ("\0", "�"),
         ] {
             assert_eq!(
                 decode_string_with_options(source, 0..source.len(), &ParseOptions::default()),

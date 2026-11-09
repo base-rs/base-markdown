@@ -549,33 +549,6 @@ fn structured_image_alt_and_link_text_use_their_semantic_content() {
 }
 
 #[test]
-fn multiline_inline_literals_write_line_endings_as_spaces_in_atx_headings() {
-    for (kind, expected) in [
-        (
-            EventKind::Code {
-                value: Text::Literal("one\ntwo"),
-                language: None,
-            },
-            "# `one two`\n",
-        ),
-        (
-            EventKind::Code {
-                value: Text::Literal("one\r\ntwo"),
-                language: None,
-            },
-            "# `one two`\n",
-        ),
-    ] {
-        let mut document = empty();
-        let heading = document
-            .append_child(document.root(), EventKind::Start(Tag::Heading(1)))
-            .unwrap();
-        document.append_child(heading, kind).unwrap();
-        assert_eq!(to_markdown(&document).unwrap(), expected);
-    }
-}
-
-#[test]
 fn block_leaves_inside_a_heading_are_rejected() {
     let mut document = empty();
     let heading = document

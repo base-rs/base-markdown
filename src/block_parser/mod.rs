@@ -559,7 +559,9 @@ impl Builder<'_> {
                 html::Html::start(&bytes[at..], self.options.html_tag_namespaces, true)
             {
                 self.finish_list(start);
-                let html_start = if bytes.get(definition_start) == Some(&b'\t') {
+                // The block keeps the spaces before it, but not indentation with a tab, which is
+                // as wide as its column makes it, so that its value starts with at most three.
+                let html_start = if bytes[definition_start..at].contains(&b'\t') {
                     at
                 } else {
                     definition_start
@@ -834,6 +836,10 @@ impl Builder<'_> {
         let mut minimum_indent = 0;
         let mut at = start;
         let mut spaces = 0;
+        // The last fragment of a line that is not blank. A block of kinds 1–5 takes blank lines
+        // until a line closes it, but those at its end are not part of its value, which holds no
+        // line ending after its last line (#213).
+        let mut kept = 0;
         loop {
             let next = at + scan_nextline(&bytes[at..]);
             if retain_blanks {
@@ -847,15 +853,24 @@ impl Builder<'_> {
                 }
             }
             self.fragment(at, next, spaces);
+            if !bytes[at..next]
+                .iter()
+                .all(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
+            {
+                kept = self.current;
+            }
             let closed = kind.closed(&bytes[at..next]);
             let mut line = LineStart::new(&bytes[next..]);
             let continued = self.containers(&mut line) == self.open.len();
             let content = next + line.bytes_scanned();
             if closed || next == bytes.len() || !continued {
-                return self.finish_html(
-                    next,
-                    retain_blanks || next == bytes.len() && !closed && !kind.blank_terminated(),
-                );
+                if !retain_blanks && kept != self.current {
+                    // The fragments after `kept` are the last ones appended.
+                    self.blocks.nodes.truncate(kept + 1);
+                    self.blocks.nodes[kept].next = 0;
+                    self.current = kept;
+                }
+                return self.finish_html(next, retain_blanks);
             }
             if kind.blank_terminated() && scan_blank_line(&bytes[content..]).is_some() {
                 if !retain_blanks {
@@ -1162,6 +1177,46 @@ pub(crate) fn html_block_ends_on_last_line(value: &str) -> bool {
     bytes.first() == Some(&b'<')
         && html::Html::start(bytes, false, true)
             .is_some_and(|kind| !kind.blank_terminated() && kind.closed(&bytes[last..]))
+}
+
+/// Whether `value`, which holds no CR, is the value of one HTML block as the parser stores it: at
+/// most three spaces, which the parser keeps before a block, then HTML that starts a block, and
+/// the lines the block takes, with no line ending after the last. A block of kinds 1–5 ends at the
+/// first line that holds its end condition, so no line before its last holds it; one that no line
+/// closes takes every line to the end of its container, but the blank lines at its end are not
+/// part of its value, so its last line is not blank. A block of kind 6 or 7 ends before a blank
+/// line, so it holds none, except where `ParseOptions::html_block_blank_lines` continues it: a run
+/// of blank lines before a line indented with a space or tab, or at its end, which that option
+/// keeps with the line ending after it. Namespace prefixes in tag names are allowed, as
+/// `ParseOptions::html_tag_namespaces` reads them, so that every parsed value passes whatever the
+/// options.
+pub(crate) fn html_block_value(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let indent = bytes.iter().take_while(|&&byte| byte == b' ').count();
+    let html = &bytes[indent..];
+    if indent > 3 || html.first() != Some(&b'<') {
+        return false;
+    }
+    let Some(kind) =
+        html::Html::start(html, false, true).or_else(|| html::Html::start(html, true, true))
+    else {
+        return false;
+    };
+    let mut lines = bytes.split(|&byte| byte == b'\n').peekable();
+    let mut blank = false;
+    while let Some(line) = lines.next() {
+        let after_blank = blank;
+        blank = line.iter().all(|byte| matches!(byte, b' ' | b'\t'));
+        let last = lines.peek().is_none();
+        if kind.blank_terminated() {
+            if after_blank && !blank && !matches!(line.first(), Some(b' ' | b'\t')) {
+                return false;
+            }
+        } else if (!last && kind.closed(line)) || (last && blank) {
+            return false;
+        }
+    }
+    true
 }
 
 /// Definition-looking table headers take precedence over definitions; other headers follow ordinary paragraph indentation rules.

@@ -448,22 +448,55 @@ fn frontmatter_belongs_to_the_root() {
         base_markdown::to_markdown(&document).unwrap(),
         "--- json title=x\n{}\n---\n"
     );
-    // A document without frontmatter has none to edit.
-    *document.frontmatter_mut().unwrap() = "a: 1\n".into();
+    set_frontmatter(&mut document, "a: 1\n").unwrap();
     assert_eq!(document.frontmatter(), Some("a: 1\n"));
-    let mut plain = parse_document("# x", &parse_options());
-    assert_eq!(plain.frontmatter_mut(), None);
+    // A body is its lines, each with its line ending, as the parser stores them, so one without a
+    // final line ending, or with a carriage return, is rejected.
+    for body in ["a: 1", "a: 1\r\n", "a\rb\n", "a\0\n"] {
+        assert!(
+            matches!(
+                set_frontmatter(&mut document, body),
+                Err(base_markdown::stream::StreamError::InvalidValue)
+            ),
+            "{:?}",
+            body
+        );
+    }
+    assert_eq!(document.frontmatter(), Some("a: 1\n"));
+}
+
+// Give the root of `document` the frontmatter body `body`, keeping its line ending.
+fn set_frontmatter<S: AsRef<str>>(
+    document: &mut Document<S>,
+    body: &str,
+) -> Result<(), base_markdown::stream::StreamError> {
+    let root = document.root();
+    let base_markdown::stream::EventKind::Start(base_markdown::stream::Tag::Document {
+        line_ending,
+        ..
+    }) = &document.node(root).unwrap().kind
+    else {
+        panic!("the root is a document");
+    };
+    let line_ending = line_ending.clone();
+    document.set_kind(
+        root,
+        base_markdown::stream::EventKind::Start(base_markdown::stream::Tag::Document {
+            line_ending,
+            frontmatter: Some(body.to_owned().into()),
+        }),
+    )
 }
 
 #[test]
 fn an_edited_lf_body_equal_to_the_whole_block_stays_an_edit_after_rebuilding() {
     let source = "---\na: 1\n---\n\n# x\n";
     let mut document = Document::parse(source.to_string(), &ParseOptions::default()).unwrap();
-    *document.frontmatter_mut().unwrap() = "---\na: 1\n---".into();
+    set_frontmatter(&mut document, "---\na: 1\n---\n").unwrap();
     let mut builder = base_markdown::AstBuilder::new();
     builder.consume(&mut document.events(), usize::MAX).unwrap();
     let rebuilt = builder.finish(document.source().to_string()).unwrap();
-    assert_eq!(rebuilt.frontmatter(), Some("---\na: 1\n---"));
+    assert_eq!(rebuilt.frontmatter(), Some("---\na: 1\n---\n"));
     assert_eq!(
         base_markdown::to_markdown(&rebuilt).unwrap(),
         "+++ yaml\n---\na: 1\n---\n+++\n\n# x\n"
@@ -476,8 +509,8 @@ fn an_edited_body_equal_to_the_whole_block_stays_an_edit() {
         let source = "---\na\n---\n\nx\n".replace('\n', ending);
         let mut document = parse_document(source.as_str(), &parse_options());
         assert_eq!(document.frontmatter(), Some("a\n"), "{source:?}");
-        *document.frontmatter_mut().unwrap() = "---\na\n---".into();
-        assert_eq!(document.frontmatter(), Some("---\na\n---"), "{source:?}");
+        set_frontmatter(&mut document, "---\na\n---\n").unwrap();
+        assert_eq!(document.frontmatter(), Some("---\na\n---\n"), "{source:?}");
         assert_eq!(
             base_markdown::to_markdown(&document).unwrap(),
             "+++ yaml\n---\na\n---\n+++\n\nx\n",
@@ -507,7 +540,7 @@ fn an_edited_body_equal_to_the_whole_block_stays_an_edit() {
                 base_markdown::stream::EventKind::Start(base_markdown::stream::Tag::Document {
                     line_ending,
                     frontmatter: Some(base_markdown::stream::Text::Value(
-                        "---\na\n---".to_string().into(),
+                        "---\na\n---\n".to_string().into(),
                     )),
                 }),
             )
@@ -522,7 +555,7 @@ fn an_edited_body_equal_to_the_whole_block_stays_an_edit() {
                 }),
             )
             .unwrap();
-        assert_eq!(document.frontmatter(), Some("---\na\n---"), "{source:?}");
+        assert_eq!(document.frontmatter(), Some("---\na\n---\n"), "{source:?}");
         assert_eq!(
             base_markdown::to_markdown(&document).unwrap(),
             "+++ yaml\n---\na\n---\n+++\n\nx\n",
@@ -536,7 +569,7 @@ fn serialization_protects_edited_frontmatter_bodies() {
     for (source, body, expected) in [
         ("--- json\n---", "--- \t\n", "+++ json\n--- \t\n+++\n"),
         ("+++ json\n+++", "+++\nbody\n", "--- json\n+++\nbody\n---\n"),
-        ("--- json\n---", "value", "--- json\nvalue\n---\n"),
+        ("--- json\n---", "value\n", "--- json\nvalue\n---\n"),
         (
             "--- json\n---",
             "----\n+++ x\n --- \n",
@@ -544,8 +577,8 @@ fn serialization_protects_edited_frontmatter_bodies() {
         ),
         ("---\n---", "---\n", "+++ yaml\n---\n+++\n"),
         ("+++\n+++", "+++\n", "--- toml\n+++\n---\n"),
-        ("---\n---", "value", "---\nvalue\n---\n"),
-        ("+++\n+++", "value", "+++\nvalue\n+++\n"),
+        ("---\n---", "value\n", "---\nvalue\n---\n"),
+        ("+++\n+++", "value\n", "+++\nvalue\n+++\n"),
         ("+++\n+++", "", "+++\n+++\n"),
         ("---\u{c}\n---", "---\n", "+++ yaml\n---\n+++\n"),
     ] {
@@ -555,59 +588,7 @@ fn serialization_protects_edited_frontmatter_bodies() {
         let output = Node::Frontmatter(frontmatter).to_markdown();
         assert_eq!(output, expected);
         assert_eq!(parse_frontmatter(&output).language(), language.as_deref());
-        assert_eq!(
-            parse_frontmatter(&output).value,
-            if body.is_empty() || body.ends_with('\n') {
-                body.to_string()
-            } else {
-                format!("{body}\n")
-            }
-        );
-    }
-}
-
-#[test]
-fn serialization_finds_closing_lines_at_every_line_ending() {
-    // Normalizing writes the body's line endings as LF, as the parser reads them, so a line that would close the fence after a CR or CRLF is found.
-    for (source, body, expected, value) in [
-        (
-            "---\n---",
-            "a\r---\rb",
-            "+++ yaml\na\n---\nb\n+++\n",
-            "a\n---\nb\n",
-        ),
-        (
-            "---\n---",
-            "a\r\n--- \t\r\nb\r\n",
-            "+++ yaml\na\n--- \t\nb\n+++\n",
-            "a\n--- \t\nb\n",
-        ),
-        ("+++\n+++", "+++\r", "--- toml\n+++\n---\n", "+++\n"),
-        (
-            "--- json\n---",
-            "a\r----\r",
-            "--- json\na\n----\n---\n",
-            "a\n----\n",
-        ),
-    ] {
-        let mut frontmatter = parse_frontmatter(source);
-        let language = frontmatter.language().map(str::to_owned);
-        frontmatter.value = body.into();
-        let output = Node::Frontmatter(frontmatter).to_markdown();
-        assert_eq!(output, expected);
-        let document = parse_document(&output, &parse_options());
-        let blocks = document.children(document.root()).filter(|&child| {
-            !matches!(
-                document.node(child).unwrap().kind,
-                base_markdown::stream::EventKind::Separator { .. }
-            )
-        });
-        // The frontmatter belongs to the root, and nothing after it is a block.
-        assert_eq!(blocks.count(), 0, "{output:?}");
-        assert!(document.frontmatter().is_some(), "{:?}", output);
-        let reparsed = parse_frontmatter(&output);
-        assert_eq!(reparsed.language(), language.as_deref());
-        assert_eq!(reparsed.value, value);
+        assert_eq!(parse_frontmatter(&output).value, body);
     }
 }
 
@@ -619,7 +600,7 @@ fn code_fence_frontmatter_syntax_is_written_with_delimiters() {
         (
             '~',
             "toml title=x",
-            "a = 1",
+            "a = 1\n",
             "--- toml title=x\na = 1\n---\n",
             "toml",
         ),
@@ -658,12 +639,12 @@ fn serialization_rejects_invalid_edited_frontmatter_metadata() {
         ('~', "json\rother", "a\n"),
         ('-', "json", "---\n+++\n"),
         ('`', "", "+++ \n---\t\n"),
-        ('-', "", "a\r---\r+++\rb"),
-        ('+', "toml", "---\r\n+++ \r\n"),
+        ('-', "", "a\n---\n+++\nb\n"),
+        ('+', "toml", "---\n+++ \n"),
     ] {
         let mut document = parse_document("--- json\n---", &parse_options());
         let id = document.root();
-        *document.frontmatter_mut().unwrap() = body.into();
+        set_frontmatter(&mut document, body).unwrap();
         let result = document.set_syntax(
             id,
             Some(NodeSyntax::Frontmatter {

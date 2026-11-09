@@ -274,7 +274,7 @@ fn clause_1_2_inline_html_is_one_construct() {
         "<b>",
         "</b>",
         "</b\n>",
-        "<b\nc=\"d\"\r\ne='f'\n/>",
+        "<b\nc=\"d\"\ne='f'\n/>",
         "<!-- c -->",
         "<?p?>",
         "<!X y>",
@@ -303,6 +303,14 @@ fn clause_1_2_inline_html_is_one_construct() {
         "<!--\n \t\n-->",
         "<a\r\n\r\nb>",
         "<a\r\rb>",
+        // The parser stores each line ending as LF and NUL as U+FFFD, and a paragraph's continuation
+        // line without its leading whitespace (#256).
+        "<b\r\nc>",
+        "<b\rc>",
+        "<b c=\"\0\">",
+        "<a\n  b>",
+        "<a\n\tb>",
+        "<!-- a\n b -->",
     ];
     let mut document = parse("[r] <b>\n\n[r]: /u\n");
     let root = document.root();
@@ -377,14 +385,15 @@ fn clause_1_2_inline_html_is_one_construct() {
         builder.finish(document.source()),
         Err(StreamError::InvalidValue)
     ));
-    // A `String` cannot be checked, so `text_mut` does not edit inline HTML; HTML blocks have no
-    // such rule.
+    // A `String` cannot be checked, so `text_mut` edits no HTML.
     assert_rejected(&mut document, StreamError::InvalidRange, |document| {
         document.text_mut(tag).map(|_| ())
     });
     let mut block = parse("<div>\n");
     let block_id = first(&block, block.root());
-    block.text_mut(block_id).unwrap().push_str("x\n");
+    assert_rejected(&mut block, StreamError::InvalidRange, |document| {
+        document.text_mut(block_id).map(|_| ())
+    });
     // The empty value is valid, not normalized: normalizing removes it.
     let mut empty = document.clone();
     empty.set_kind(tag, inline_html("")).unwrap();
@@ -393,16 +402,299 @@ fn clause_1_2_inline_html_is_one_construct() {
     assert!(all(&empty, |kind| matches!(kind, EventKind::Html { .. })).is_empty());
 }
 
-/// Every inline HTML value the parser gives is valid, under the options that change what it reads as HTML, in any container, so a parsed document always rebuilds.
+fn html_block(value: &'static str) -> EventKind<'static> {
+    EventKind::Html {
+        value: Text::Literal(value),
+        block: true,
+    }
+}
+
+/// A document of `blocks`, as events.
+fn document_of(blocks: Vec<EventKind<'static>>) -> Vec<Event<'static>> {
+    let mut events = vec![EventKind::Start(Tag::Document {
+        line_ending: None,
+        frontmatter: None,
+    })];
+    events.extend(blocks);
+    events.push(EventKind::End(TagKind::Document));
+    events
+        .into_iter()
+        .map(|kind| Event { kind, span: 0..0 })
+        .collect()
+}
+
 #[test]
-fn clause_1_2_parsed_inline_html_is_valid() {
+fn clause_1_2_an_html_block_is_one_block_construct() {
+    // One block, by the start and end conditions the block parser reads it with, without its
+    // final line ending (#213), indented at most three spaces, and with no blank line where its
+    // kind ends at one.
+    let valid = [
+        "<div>",
+        "<div>\na",
+        "   <div>",
+        "<b>",
+        "</b>",
+        "<!-- a -->",
+        "<!-- a\n\nb -->",
+        "<!-- a",
+        "<pre>\n\nx\n</pre>",
+        "<script>",
+        "<?p?>",
+        "<!X>",
+        "<![CDATA[\n\n]]>",
+        "<div>\t<&>",
+    ];
+    // Text, a tag the block parser does not start a block with, code-block indentation, a blank
+    // line that ends the block, a line after the one that closes it, and what the parser does not
+    // store: CR, which it stores as LF, and NUL, which it stores as U+FFFD.
+    let invalid = [
+        "",
+        " ",
+        "\n",
+        "abc",
+        "<b> x",
+        "<b>x</b>",
+        "    <div>",
+        "\t<div>",
+        "<div>\n\nb",
+        "<!-- a -->\nb",
+        "<pre></pre>\nb",
+        "<!-- a\n",
+        "<!-- a\n\n",
+        "<div>\r\na",
+        "<div>\ra",
+        "<div>\0",
+    ];
+    // The parser gives no block a final line ending or trailing blank lines, which are separators,
+    // so an unclosed block at the end of an item or quote reads back as itself (#213).
+    for source in [
+        "<!-- a\n\n\n",
+        "- <!-- a\n\nb\n",
+        "> <!-- a\n>\n\nb\n",
+        "- <div>\n\n  b\n",
+        "<div>\n",
+    ] {
+        let document = parse(source);
+        for id in all(&document, |kind| {
+            matches!(kind, EventKind::Html { block: true, .. })
+        }) {
+            let EventKind::Html { value, .. } = &document.node(id).unwrap().kind else {
+                unreachable!("the node is HTML");
+            };
+            assert!(
+                !value.resolve(document.source()).unwrap().ends_with('\n'),
+                "{:?}",
+                source
+            );
+        }
+        assert_round_trips(source);
+    }
+    let mut document = parse("<div>\n");
+    let root = document.root();
+    let block = first(&document, root);
+    for value in valid {
+        let mut edited = document.clone();
+        edited.set_kind(block, html_block(value)).unwrap();
+        edited.append_child(root, html_block(value)).unwrap();
+        let mut builder = base_markdown::AstBuilder::new();
+        builder
+            .consume(
+                &mut document_of(vec![html_block(value)]).into_iter().map(Ok),
+                usize::MAX,
+            )
+            .and_then(|_| builder.finish("").map(|_| ()))
+            .unwrap_or_else(|error| panic!("{:?}: {:?}", value, error));
+    }
+    for value in invalid {
+        assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+            document.set_kind(block, html_block(value))
+        });
+        assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+            document.append_child(root, html_block(value))
+        });
+        let mut builder = base_markdown::AstBuilder::new();
+        assert!(
+            matches!(
+                builder
+                    .consume(
+                        &mut document_of(vec![html_block(value)]).into_iter().map(Ok),
+                        usize::MAX
+                    )
+                    .and_then(|_| builder.finish("").map(|_| ())),
+                Err(StreamError::InvalidValue)
+            ),
+            "{:?}",
+            value
+        );
+        let mut output = String::new();
+        assert!(matches!(
+            render_events(
+                "",
+                document_of(vec![html_block(value)]).into_iter().map(Ok),
+                &CompileOptions::default(),
+                &mut output,
+            ),
+            Err(StreamError::InvalidValue)
+        ));
+    }
+}
+
+#[test]
+fn clause_1_2_values_have_the_form_the_parser_stores() {
+    // No value holds NUL, which the parser stores as U+FFFD, and a raw value, written as it is,
+    // holds no CR, which it stores as LF; normalizing rewrites neither, so both are rejected.
+    let code_block = |value: &'static str, info: Option<&'static str>| EventKind::CodeBlock {
+        value: Text::Literal(value),
+        info: info.map(Text::Literal),
+        fence: None,
+        unclosed: false,
+    };
+    let code = |value: &'static str| EventKind::Code {
+        value: Text::Literal(value),
+        language: None,
+    };
+    let mut document = parse("a\n\n```\nb\n```\n");
+    let root = document.root();
+    let paragraph_id = first(&document, root);
+    let text_id = first(&document, paragraph_id);
+    let block = all(&document, |kind| {
+        matches!(kind, EventKind::CodeBlock { .. })
+    })[0];
+    for (id, kind) in [
+        (text_id, text("a\0")),
+        (text_id, code("a\r")),
+        (text_id, code("a\nb")),
+        (text_id, code("\0")),
+        (block, code_block("a\r\n", None)),
+        (block, code_block("a\0\n", None)),
+        (block, code_block("a\n", Some("x\0"))),
+        (block, definition("a\0", "/u")),
+        (block, definition("a", "/u\0")),
+    ] {
+        assert_rejected(&mut document, StreamError::InvalidValue, |document| {
+            document.set_kind(id, kind)
+        });
+    }
+    // A decoded value, which the writer encodes, holds CR, which reads back from `&#xD;`.
+    let mut document = parse("a\n\n```x\nb\n```\n\n[l](/u \"t\")\n");
+    let text_id = first(&document, first(&document, document.root()));
+    document.set_kind(text_id, text("a\rb")).unwrap();
+    let block = all(&document, |kind| {
+        matches!(kind, EventKind::CodeBlock { .. })
+    })[0];
+    document
+        .set_kind(block, code_block("b\n", Some("x\ry")))
+        .unwrap();
+    let link = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::Link(_)))
+    });
+    document
+        .set_kind(
+            link,
+            EventKind::Start(Tag::Link(Target::Resource {
+                destination: Text::Literal("/u\r"),
+                title: Some(Text::Literal("t\r")),
+            })),
+        )
+        .unwrap();
+    document.normalize();
+    let output = to_markdown(&document).unwrap();
+    assert_eq!(
+        output,
+        "a&#xD;b\n\n```x&#xD;y\nb\n```\n\n[l](</u&#xD;> \"t&#xD;\")\n"
+    );
+    assert!(matches!(
+        round_trip(document, &MarkdownOptions::default(), false),
+        Outcome::Pass
+    ));
+}
+
+#[test]
+fn clause_1_2_nul_in_a_label_still_binds() {
+    // The parser stores NUL as U+FFFD in labels too, so a reference and its definition agree.
+    let document = parse("[a\0b]\n\n[a\0b]: /u\n");
+    assert_eq!(html(&document), "<p><a href=\"/u\">a\u{FFFD}b</a></p>\n");
+    assert_round_trips("[a\0b]\n\n[a\0b]: /u\n");
+}
+
+#[test]
+fn clause_3_3_titles_and_destinations_round_trip() {
+    // A blank line, or whitespace after a line ending, in a title would end the paragraph or be
+    // stripped, so it is encoded, and a destination starting with `<` is written in the `<…>`
+    // form, as written raw it would be read as that form.
+    let document = parse("[l](/u)\n\n[d]: /v\n\n[d]\n");
+    let link = find(&document, |kind| {
+        matches!(kind, EventKind::Start(Tag::Link(Target::Resource { .. })))
+    });
+    let definition_id = find(&document, is_definition);
+    for (destination, title) in [
+        ("/u", Some("a\n\nb")),
+        ("/u", Some("a\n b")),
+        ("/u", Some("a\n\tb")),
+        ("<a>", None),
+        ("<a", Some("t")),
+    ] {
+        let mut edited = document.clone();
+        edited
+            .set_kind(
+                link,
+                EventKind::Start(Tag::Link(Target::Resource {
+                    destination: Text::Literal(destination),
+                    title: title.map(Text::Literal),
+                })),
+            )
+            .unwrap();
+        edited
+            .set_kind(
+                definition_id,
+                EventKind::Definition {
+                    label: Text::Literal("d"),
+                    destination: Text::Literal(destination),
+                    title: title.map(Text::Literal),
+                },
+            )
+            .unwrap();
+        edited.normalize();
+        let output = to_markdown(&edited).unwrap();
+        assert!(
+            matches!(
+                round_trip(edited, &MarkdownOptions::default(), false),
+                Outcome::Pass
+            ),
+            "{:?}",
+            output
+        );
+    }
+}
+
+/// Every value the parser gives is valid, in the form it stores, under the options that change what it reads, in any container, with any line endings and with NUL, so a parsed document always rebuilds, and its values need no rewriting: a value holds no NUL, a raw value no CR, inline HTML no whitespace after a line ending, and an HTML block is one block construct (#257).
+#[test]
+fn clause_1_2_parsed_values_are_valid() {
     let options = [
         ParseOptions::default(),
         ParseOptions {
             html_tag_namespaces: true,
             ..ParseOptions::default()
         },
-        Options::gfm().parse,
+        ParseOptions {
+            html_block_blank_lines: true,
+            ..ParseOptions::default()
+        },
+        ParseOptions {
+            inline_code_info: true,
+            ..ParseOptions::default()
+        },
+        {
+            let mut options = Options::gfm().parse;
+            options.constructs.frontmatter = true;
+            options
+        },
+        {
+            let mut options = ParseOptions::default();
+            options.constructs.character_reference = false;
+            options.constructs.character_escape = false;
+            options
+        },
         Options::commonmark().parse,
     ];
     let samples = std::env::var("FUZZ_INPUTS")
@@ -418,14 +710,30 @@ fn clause_1_2_parsed_inline_html_is_valid() {
         let mut random = Random(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
         for _ in 0..samples {
             let source = generate(&mut random);
-            for options in &options {
-                let document = Document::parse(source.as_str(), options)
-                    .unwrap_or_else(|error| panic!("{} {:?}: {}", name, source, error));
-                let mut builder = base_markdown::AstBuilder::new();
-                builder
-                    .consume(&mut document.events(), usize::MAX)
-                    .and_then(|_| builder.finish(document.source()).map(|_| ()))
-                    .unwrap_or_else(|error| panic!("{} {:?}: {}", name, source, error));
+            // NUL after each `<`, `` ` ``, `[` and space reaches HTML, code, labels and text.
+            let mut nul = String::with_capacity(source.len() * 2);
+            for character in source.chars() {
+                nul.push(character);
+                if matches!(character, '<' | '`' | '[' | ' ') {
+                    nul.push('\0');
+                }
+            }
+            let variants = [
+                source.replace('\n', "\r\n"),
+                source.replace('\n', "\r"),
+                nul,
+                source,
+            ];
+            for source in &variants {
+                for options in &options {
+                    let document = Document::parse(source.as_str(), options)
+                        .unwrap_or_else(|error| panic!("{} {:?}: {}", name, source, error));
+                    let mut builder = base_markdown::AstBuilder::new();
+                    builder
+                        .consume(&mut document.events(), usize::MAX)
+                        .and_then(|_| builder.finish(document.source()).map(|_| ()))
+                        .unwrap_or_else(|error| panic!("{} {:?}: {}", name, source, error));
+                }
             }
         }
     }
@@ -2075,7 +2383,7 @@ fn clause_4_1_settled_is_not_normalized() {
 fn clause_4_2_what_keeps_and_clears_settled() {
     let source = parse("Para[^n]\n\n[^n]: note\n");
     let fresh = || parse("a\n\n- b\n");
-    // Kept: insert_from, failed edits, text_mut, set_syntax, cloning and frontmatter_mut.
+    // Kept: insert_from, failed edits, text_mut, set_syntax and cloning.
     let mut document = fresh();
     let root = document.root();
     document
@@ -2099,12 +2407,6 @@ fn clause_4_2_what_keeps_and_clears_settled() {
         .unwrap();
     assert!(settled(&document));
     assert!(settled(&document.clone()));
-    let mut with_frontmatter = parse("---\na: b\n---\n\nx\n");
-    with_frontmatter
-        .frontmatter_mut()
-        .unwrap()
-        .push_str("\nc: d");
-    assert!(settled(&with_frontmatter));
     // Cleared by every other successful edit.
     type Edit = fn(&mut Document<&'static str>);
     let edits: [(&str, Edit); 7] = [

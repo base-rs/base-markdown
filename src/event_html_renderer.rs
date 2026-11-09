@@ -127,17 +127,21 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
     }
 
     fn escaped(&mut self, value: &str, encode: bool) -> Result<(), StreamError> {
-        let index = find_escape(value.as_bytes(), encode);
+        let index = if encode {
+            find_escape(value.as_bytes())
+        } else {
+            value.len()
+        };
         // Ordinary spans need only one write; select a destination for the replacement loop only when an escape is present.
         if index == value.len() {
             return self.write(value);
         }
         if let Some(heading) = self.heading.as_mut() {
-            write_escaped(&mut heading.output, &mut self.last, value, encode, index)
+            write_escaped(&mut heading.output, &mut self.last, value, index)
         } else if let Some(capture) = self.captures.last_mut() {
-            write_escaped(&mut capture.output, &mut self.last, value, encode, index)
+            write_escaped(&mut capture.output, &mut self.last, value, index)
         } else {
-            write_escaped(self.output, &mut self.last, value, encode, index)
+            write_escaped(self.output, &mut self.last, value, index)
         }
         .map_err(StreamError::Write)
     }
@@ -959,16 +963,10 @@ mod tests {
             tagfilter: true,
             ..CompileOptions::default()
         };
-        for (remaining, expected) in [
-            "",
-            "prefix",
-            "prefix&lt;",
-            "prefix&lt;script>",
-            "prefix&lt;script>�",
-        ]
-        .iter()
-        .copied()
-        .enumerate()
+        for (remaining, expected) in ["", "<div>prefix", "<div>prefix&lt;"]
+            .iter()
+            .copied()
+            .enumerate()
         {
             let mut writer = Writer {
                 remaining,
@@ -987,7 +985,7 @@ mod tests {
             renderer
                 .event(Event {
                     kind: EventKind::Html {
-                        value: Text::Literal("prefix<script>\0tail"),
+                        value: Text::Literal("<div>prefix<script>tail"),
                         block: true,
                     },
                     span: 0..0,

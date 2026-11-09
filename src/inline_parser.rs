@@ -981,7 +981,7 @@ impl InlineParser {
     #[inline]
     fn raw_text(&self, source: &str, mut range: Range<usize>) -> Text<'static> {
         let bytes = source.as_bytes();
-        let needs_normalization = memchr::memchr3(0, b'\r', b'\n', &bytes[range.clone()]).is_some()
+        let needs_normalization = memchr::memchr2(b'\r', b'\n', &bytes[range.clone()]).is_some()
             || (self.table && source[range.clone()].contains("\\|"));
         if needs_normalization {
             return self.normalized_raw_text(source, range);
@@ -1002,7 +1002,6 @@ impl InlineParser {
         let mut start = at;
         while at < range.end {
             let replacement = match bytes[at] {
-                0 => Some("�"),
                 b'\r' | b'\n' => Some(" "),
                 b'\\' if self.table && bytes.get(at + 1) == Some(&b'|') => Some(""),
                 _ => None,

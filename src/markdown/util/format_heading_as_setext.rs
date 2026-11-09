@@ -45,7 +45,7 @@ pub(crate) fn heading_as_setext<S: AsRef<str>>(
     }
     let mut nonempty = false;
     let mut setext = false;
-    // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading. Line endings in inline code are always written as spaces, in image text too, and a code block cannot be written in a heading.
+    // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading. Inline code holds no line ending ([`EventKind::Code`]), and a code block cannot be written in a heading.
     // Walk the descendants in document order.
     let mut current = document.node(id).unwrap().first_child();
     while let Some(child) = current {
@@ -73,12 +73,10 @@ pub(crate) fn heading_as_setext<S: AsRef<str>>(
         if let Some(value) = crate::headings::semantic_text::<false>(kind, document.source()) {
             nonempty |= !value.is_empty();
             let unwrapped = unwrap && matches!(kind, EventKind::Text(_) | EventKind::SoftBreak(_));
-            let literal = matches!(kind, EventKind::CodeBlock { .. } | EventKind::Code { .. });
             setext = setext
                 || matches!(kind, EventKind::HardBreak)
                 || !unwrapped && matches!(kind, EventKind::SoftBreak(_))
                 || !unwrapped
-                    && !literal
                     && !(encode && matches!(kind, EventKind::Text(_)))
                     && value.contains('\n');
         }
@@ -158,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn inline_breaks_require_setext_but_code_breaks_do_not() {
+    fn inline_breaks_require_setext() {
         for kind in [
             EventKind::Text(Text::Literal("first\nsecond")),
             EventKind::Html {
@@ -170,15 +168,6 @@ mod tests {
         ] {
             assert!(eligible(2, &[kind]));
         }
-        // Code writes each line ending as a space.
-        assert!(!eligible(
-            2,
-            &[EventKind::Code {
-                value: Text::Literal("first\r\nsecond"),
-                language: None,
-            }]
-        ));
-
         // Synthetic soft breaks still request setext, but their text may be empty.
         let empty_break = EventKind::SoftBreak(Text::Literal(""));
         assert!(!eligible(2, core::slice::from_ref(&empty_break)));

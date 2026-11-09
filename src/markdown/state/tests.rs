@@ -107,7 +107,8 @@ fn literal_lookahead_matches_rendering_across_scopes_and_wrapping_modes() {
             ..Options::default()
         };
         for scope in scopes {
-            for first in (0..=127).map(char::from).chain(['é', 'α', '\u{a0}', '世']) {
+            // Text holds no NUL, which the parser stores as U+FFFD.
+            for first in (1..=127).map(char::from).chain(['é', 'α', '\u{a0}', '世']) {
                 for after in ["", "ordinary", "*", "\\!", "\r\n# two", "\n12. two"] {
                     document
                         .set_kind(
@@ -213,23 +214,15 @@ fn joins_code_and_spread_items_consistently() {
 }
 
 #[test]
-fn inline_literals_write_each_line_ending_as_a_space() {
+fn inline_code_is_padded_where_the_parser_strips_spaces() {
     let options = Options::default();
     let mut state = State::new(&options);
-    state.inline_code("one\r\n# two", None).unwrap();
-    assert_eq!(core::mem::take(&mut state.output), "`one # two`");
-    state.inline_code("one\r\n> two", None).unwrap();
-    assert_eq!(core::mem::take(&mut state.output), "`one > two`");
-    state.inline_code("one\r\ntwo\rthree\n|-|", None).unwrap();
-    assert_eq!(core::mem::take(&mut state.output), "`one two three |-|`");
-    state.inline_code("\r\none\n", None).unwrap();
+    state.inline_code(" one ", None).unwrap();
     assert_eq!(core::mem::take(&mut state.output), "`  one  `");
-    state.inline_code("\r\n\r", None).unwrap();
-    assert_eq!(core::mem::take(&mut state.output), "`  `");
+    state.inline_code(" ", None).unwrap();
+    assert_eq!(core::mem::take(&mut state.output), "` `");
     // A tab is not a space, so content of spaces and a tab is padded.
     state.inline_code(" \t ", None).unwrap();
-    assert_eq!(core::mem::take(&mut state.output), "`  \t  `");
-    state.inline_code("\n\t\n", None).unwrap();
     assert_eq!(core::mem::take(&mut state.output), "`  \t  `");
     state.inline_code("  ", None).unwrap();
     assert_eq!(core::mem::take(&mut state.output), "`  `");
@@ -237,8 +230,6 @@ fn inline_literals_write_each_line_ending_as_a_space() {
     assert_eq!(core::mem::take(&mut state.output), "``é ` α``");
     state.inline_code(" `α` ", None).unwrap();
     assert_eq!(core::mem::take(&mut state.output), "``  `α`  ``");
-    state.inline_code("one\n12. two", None).unwrap();
-    assert_eq!(core::mem::take(&mut state.output), "`one 12. two`");
 }
 
 #[test]

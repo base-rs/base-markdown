@@ -569,28 +569,11 @@ fn builder_links_siblings_across_nested_and_empty_containers() {
 fn edits_detach_every_supported_leaf_and_preserve_arena_links() {
     use std::borrow::Cow;
     // Phrasing and flow cannot share a parent, so each group is a document of its own.
-    let groups = vec![
-        vec![
-            EventKind::Text(Text::Source(0..1)),
-            EventKind::SoftBreak(Text::Literal("\n")),
-            EventKind::Code {
-                value: Text::Value(Cow::Borrowed("x")),
-                language: None,
-            },
-        ],
-        vec![
-            EventKind::CodeBlock {
-                value: Text::Literal("x"),
-                info: None,
-                fence: None,
-                unclosed: false,
-            },
-            EventKind::Html {
-                value: Text::Literal("x"),
-                block: true,
-            },
-        ],
-    ];
+    let groups = vec![vec![
+        EventKind::Text(Text::Source(0..1)),
+        EventKind::SoftBreak(Text::Literal("\n")),
+        EventKind::Text(Text::Value(Cow::Borrowed("x"))),
+    ]];
     for kinds in groups {
         let mut builder = AstBuilder::new();
         builder
@@ -609,14 +592,21 @@ fn edits_detach_every_supported_leaf_and_preserve_arena_links() {
             ast.text_mut(current).unwrap().push('?');
         }
         for event in ast.events() {
-            if let EventKind::Text(value)
-            | EventKind::SoftBreak(value)
-            | EventKind::Code { value, .. }
-            | EventKind::CodeBlock { value, .. }
-            | EventKind::Html { value, .. } = event.unwrap().kind
-            {
+            if let EventKind::Text(value) | EventKind::SoftBreak(value) = event.unwrap().kind {
                 assert!(value.resolve(ast.source()).unwrap().ends_with("!?"));
             }
+        }
+    }
+    // Other values keep the form the parser stores, which an edit through a `String` could not
+    // check, so they are not edited here.
+    let mut ast =
+        Document::parse("`x`\n\n```\nx\n```\n\n<div>\n", &Options::default().parse).unwrap();
+    for id in ast.descendants(ast.root()).collect::<Vec<_>>() {
+        if matches!(
+            ast.node(id).unwrap().kind,
+            EventKind::Code { .. } | EventKind::CodeBlock { .. } | EventKind::Html { .. }
+        ) {
+            assert!(matches!(ast.text_mut(id), Err(StreamError::InvalidRange)));
         }
     }
     // IDs from another arena are checked before indexing.
@@ -746,8 +736,8 @@ fn document_completion_yields_one_terminal_separator_and_end() {
         ("```\ncode\n", None),
         ("> ```\n> code\n", Some(("\n", false))),
         ("    code\n ", None),
-        ("<!--\nbody\n", None),
-        ("> <!--\n> body\n", None),
+        ("<!--\nbody\n", Some(("\n", false))),
+        ("> <!--\n> body\n", Some(("\n", false))),
         ("<!-- closed -->\r\n", Some(("\n", false))),
     ] {
         let mut parser = base_markdown::EventParser::new(source, &options.parse);
@@ -1021,7 +1011,7 @@ fn synthetic_consumers_terminate_blocks_and_propagate_write_errors() {
             ],
         ),
         vec![EventKind::Html {
-            value: Text::Literal("<&>"),
+            value: Text::Literal("<div><&>"),
             block: true,
         }],
         wrap(
@@ -1174,11 +1164,11 @@ fn individual_event_delivery_matches_whole_stream_rendering() {
 #[test]
 fn deferred_image_titles_retain_values_until_the_image_closes() {
     use std::borrow::Cow;
-    let source = "<&\"\0é";
+    let source = "<&\"\u{FFFD}é";
     let options = Options::default();
     for title in [
         Text::Source(0..source.len()),
-        Text::Literal("<&\"\0é"),
+        Text::Literal("<&\"\u{FFFD}é"),
         Text::from(source.to_string()),
     ] {
         let body = vec![

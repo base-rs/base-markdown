@@ -551,11 +551,20 @@ fn code_info_edges_round_trip() {
         let document = Document::parse(source.to_string(), &parse).unwrap();
         assert_written(&document, &options, expected);
     }
-    // NUL cannot be written, and is written as U+FFFD, as the parser reads it.
-    assert_eq!(
-        to_markdown(&hand_built("a\0 b\0")).unwrap(),
-        "```a\u{FFFD} b\u{FFFD}\n```\n"
-    );
+    // The parser stores NUL as U+FFFD, so an info string with NUL is rejected (#257).
+    let mut document = Document::parse(String::new(), &ParseOptions::default()).unwrap();
+    assert!(matches!(
+        document.append_child(
+            document.root(),
+            EventKind::CodeBlock {
+                value: base_markdown::stream::Text::Literal(""),
+                info: Some(base_markdown::stream::Text::Literal("a\0 b")),
+                fence: None,
+                unclosed: false,
+            },
+        ),
+        Err(base_markdown::stream::StreamError::InvalidValue)
+    ));
     // With character references off, the info string is raw, and is written for a parser with
     // references.
     let mut raw = ParseOptions::default();

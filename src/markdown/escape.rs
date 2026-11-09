@@ -84,7 +84,7 @@ static RULES: &[Rule] = &[
     // A space or tab next to a line ending is trimmed. In a table cell every line ending is a
     // reference, which reads back as one, so none of these applies there.
     rule!(b'\t', B, Set(b"\n"), PHRASING, bit(TableCell)),
-    rule!(b'\t', Previous(b'\n'), A, PHRASING, bit(TableCell)),
+    rule!(b'\t', Previous(b'\n'), A, PHRASING | TITLES, bit(TableCell)),
     rule!(b'\t', Encoded, A, PHRASING, bit(TableCell)),
     // The parser trims spaces and tabs at the edges of a table cell and of a code info string.
     rule!(b'\t', Before::Start, A, TRIMMED, 0),
@@ -95,12 +95,12 @@ static RULES: &[Rule] = &[
     rule!(b'\n', B, A, NEWLINES, 0),
     // A line ending after another one is a blank line, which ends the paragraph, and one before
     // the line ending that ends a block is trimmed or makes a blank line.
-    rule!(b'\n', Previous(b'\n'), A, PHRASING, 0),
+    rule!(b'\n', Previous(b'\n'), A, PHRASING | TITLES, 0),
     rule!(b'\n', B, After::Closing, PHRASING, 0),
     // A table row is one line.
     rule!(b'\n', B, A, bit(TableCell), 0),
     rule!(b' ', B, Set(b"\n"), PHRASING, bit(TableCell)),
-    rule!(b' ', Previous(b'\n'), A, PHRASING, bit(TableCell)),
+    rule!(b' ', Previous(b'\n'), A, PHRASING | TITLES, bit(TableCell)),
     rule!(b' ', Encoded, A, PHRASING, bit(TableCell)),
     rule!(b' ', Before::Start, A, TRIMMED, 0),
     rule!(b' ', B, After::End, TRIMMED, 0),

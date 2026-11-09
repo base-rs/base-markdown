@@ -17,7 +17,7 @@ use super::{
 use crate::{
     message::Message,
     stream::{EventKind, Tag},
-    util::line_ending::{push_spaced, trim_terminal_ending},
+    util::line_ending::trim_terminal_ending,
     CodeFence, Document, NodeId, NodeSyntax, ReferenceKind,
 };
 use alloc::{borrow::Cow, string::String};
@@ -117,7 +117,7 @@ impl State<'_> {
             destination,
             title,
             quote,
-            destination.is_empty() || contains_control_or_whitespace(destination),
+            destination.is_empty() || raw_destination_unsafe(destination),
         );
         Ok(())
     }
@@ -253,10 +253,9 @@ impl State<'_> {
         }
         let size = super::util::scan::delimiter_size(content, b'`');
         self.output.extend(core::iter::repeat('`').take(size));
-        // The parser reads a line ending here as a space, and strips one space from each side when the content starts and ends with one and is not only spaces, so a tab is not a space here. Other content with whitespace at both edges is padded too, which reads back the same.
-        let space = |character: char| matches!(character, ' ' | '\r' | '\n');
-        let pad = !content.chars().all(space)
-            && (content.starts_with(space) && content.ends_with(space)
+        // The parser strips one space from each side when the content starts and ends with one and is not only spaces, so a tab is not a space here. Other content with whitespace at both edges is padded too, which reads back the same. The content holds no line ending, which the parser would read as a space ([`EventKind::Code`][crate::stream::EventKind::Code]).
+        let pad = !content.chars().all(|character| character == ' ')
+            && (content.starts_with(' ') && content.ends_with(' ')
                 || !content.chars().all(char::is_whitespace)
                     && content.starts_with(char::is_whitespace)
                     && content.ends_with(char::is_whitespace)
@@ -265,17 +264,16 @@ impl State<'_> {
         if pad {
             self.output.push(' ');
         }
-        // The parser reads each line ending in code as a space, so it is written as one, which is stable and starts no line (#135, #136).
         // GFM splits table cells before parsing code, so its pipes need escapes too.
         if self.stack.contains(&ConstructName::TableCell) {
             for (index, part) in content.split('|').enumerate() {
                 if index > 0 {
                     self.output.push_str("\\|");
                 }
-                push_spaced(&mut self.output, part);
+                self.output.push_str(part);
             }
         } else {
-            push_spaced(&mut self.output, content);
+            self.output.push_str(content);
         }
         if pad {
             self.output.push(' ');
@@ -341,8 +339,7 @@ impl State<'_> {
             destination,
             title,
             quote,
-            destination.is_empty() && title.is_some()
-                || contains_control_or_whitespace(destination),
+            destination.is_empty() && title.is_some() || raw_destination_unsafe(destination),
         );
         self.output.push(')');
         Ok(())
@@ -757,6 +754,11 @@ fn escape_table_pipes(output: &mut String, start: usize) {
             position = pipe + 1;
         }
     }
+}
+
+/// Whether a destination needs the `<…>` form: a raw destination cannot hold whitespace or controls, and one starting with `<` is read as the bracketed form, so `<a>` written raw reads back as `a`.
+fn raw_destination_unsafe(destination: &str) -> bool {
+    destination.starts_with('<') || contains_control_or_whitespace(destination)
 }
 
 #[cfg(test)]

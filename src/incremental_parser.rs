@@ -59,8 +59,8 @@ pub struct IncrementalParser<'a> {
     stable: usize,
     events: Vec<Event<'static>>,
     finished: bool,
-    // Whether the accumulated source has a CR, tracked per push so that preparation does not rescan the source.
-    carriage_returns: bool,
+    // Whether the accumulated source has a CR or NUL, tracked per push so that preparation does not rescan the source.
+    raw: bool,
     // The body of the document's frontmatter, once it has closed.
     frontmatter: Option<Text<'static>>,
 }
@@ -78,7 +78,7 @@ impl<'a> IncrementalParser<'a> {
             stable: 0,
             events: Vec::new(),
             finished: false,
-            carriage_returns: false,
+            raw: false,
             frontmatter: None,
         }
     }
@@ -120,7 +120,7 @@ impl<'a> IncrementalParser<'a> {
         // Earlier text has no line ending after `complete`, except perhaps a final carriage return.
         let from = self.source.len().saturating_sub(1).max(self.complete);
         self.source.push_str(text);
-        self.carriage_returns |= memchr::memchr(b'\r', text.as_bytes()).is_some();
+        self.raw |= crate::util::line_ending::needs_normalizing(text);
         let complete = complete_lines(&self.source, from);
         if complete > self.complete {
             self.complete = complete;
@@ -143,13 +143,8 @@ impl<'a> IncrementalParser<'a> {
             self.options,
             Definitions::seeded(&self.seed),
         );
-        let parser = EventParser::from_blocks(
-            &self.source,
-            self.options,
-            blocks,
-            definitions,
-            self.carriage_returns,
-        );
+        let parser =
+            EventParser::from_blocks(&self.source, self.options, blocks, definitions, self.raw);
         deliver(
             parser,
             &outline.blocks,
@@ -195,13 +190,7 @@ impl<'a> IncrementalParser<'a> {
             .find(|&index| tops[index].clean)
             .unwrap_or(0);
         let authored = definitions.before(tops[anchor].line);
-        let parser = EventParser::from_blocks(
-            source,
-            self.options,
-            blocks,
-            definitions,
-            self.carriage_returns,
-        );
+        let parser = EventParser::from_blocks(source, self.options, blocks, definitions, self.raw);
         deliver(
             parser,
             tops,
@@ -305,9 +294,8 @@ mod tests {
     fn scoped(source: &str, options: &ParseOptions) -> Vec<Event<'static>> {
         let (blocks, definitions, outline) =
             Blocks::parse_from(source, 0, options, Definitions::default());
-        let carriage_returns = memchr::memchr(b'\r', source.as_bytes()).is_some();
-        let parser =
-            EventParser::from_blocks(source, options, blocks, definitions, carriage_returns);
+        let raw = crate::util::line_ending::needs_normalizing(source);
+        let parser = EventParser::from_blocks(source, options, blocks, definitions, raw);
         let mut events = Vec::new();
         deliver(parser, &outline.blocks, 0, None, &mut events, &mut None);
         events

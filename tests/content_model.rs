@@ -275,7 +275,7 @@ fn frontmatter_without_recorded_fences_is_written_with_dashes() {
     let events = vec![
         EventKind::Start(Tag::Document {
             line_ending: None,
-            frontmatter: Some(Text::Literal("a: 1")),
+            frontmatter: Some(Text::Literal("a: 1\n")),
         }),
         EventKind::Start(Tag::Paragraph { tight: false }),
         EventKind::Text(Text::Literal("b")),
@@ -429,7 +429,7 @@ fn a_serialized_inline_root_holds_no_block() {
 #[test]
 fn an_inline_root_takes_no_frontmatter() {
     let (built, rendered) = build_and_render(&[
-        document_start(Some("x")),
+        document_start(Some("x\n")),
         EventKind::Text(Text::Literal("a")),
         EventKind::End(TagKind::Document),
     ]);
@@ -442,14 +442,16 @@ fn an_inline_root_takes_no_frontmatter() {
         .append_child(root, EventKind::Text(Text::Literal("a")))
         .unwrap();
     assert!(matches!(
-        document.set_kind(root, document_start(Some("x"))),
+        document.set_kind(root, document_start(Some("x\n"))),
         Err(StreamError::InvalidNesting)
     ));
     assert_eq!(document.frontmatter(), None);
     // Nor is phrasing appended to a root with frontmatter, though a block is.
     let mut document = empty();
     let root = document.root();
-    document.set_kind(root, document_start(Some("x"))).unwrap();
+    document
+        .set_kind(root, document_start(Some("x\n")))
+        .unwrap();
     assert!(matches!(
         document.append_child(root, EventKind::Text(Text::Literal("a"))),
         Err(StreamError::InvalidNesting)
@@ -463,7 +465,7 @@ fn an_inline_root_takes_no_frontmatter() {
 #[test]
 fn a_serialized_root_with_frontmatter_holds_no_phrasing() {
     deserialize_fails_nesting(serde_json::json!([
-        {"kind": {"Start": {"Document": {"line_ending": null, "frontmatter": {"Value": "x"}}}}, "span": {"start": 0, "end": 0}, "parent": null, "first_child": 2, "next_sibling": null},
+        {"kind": {"Start": {"Document": {"line_ending": null, "frontmatter": {"Value": "x\n"}}}}, "span": {"start": 0, "end": 0}, "parent": null, "first_child": 2, "next_sibling": null},
         {"kind": {"Text": {"Value": "a"}}, "span": {"start": 0, "end": 0}, "parent": 1, "first_child": null, "next_sibling": null},
     ]));
 }
@@ -508,14 +510,14 @@ fn a_serialized_document_starts_inside_no_other() {
 }
 
 #[test]
-fn normalizing_ends_frontmatter_with_a_line_ending() {
-    // The parser stores each line of the body with its line ending, so a body without a final one
-    // gets one, and an empty body stays.
-    for (body, normal, written) in [
-        ("a", "a\n", "---\na\n---\n\nb\n"),
-        ("a\n", "a\n", "---\na\n---\n\nb\n"),
-        ("\n", "\n", "---\n\n---\n\nb\n"),
-        ("", "", "---\n---\n\nb\n"),
+fn frontmatter_values_have_the_form_the_parser_stores() {
+    // The parser stores each line of the body with its line ending, as LF, so a body is empty or
+    // ends in LF, and holds no CR or NUL; normalizing rewrites none of them, so others are
+    // rejected.
+    for (body, written) in [
+        ("a\n", "---\na\n---\n\nb\n"),
+        ("\n", "---\n\n---\n\nb\n"),
+        ("", "---\n---\n\nb\n"),
     ] {
         let mut document = empty();
         let root = document.root();
@@ -526,32 +528,24 @@ fn normalizing_ends_frontmatter_with_a_line_ending() {
         document
             .append_child(paragraph, EventKind::Text(Text::Literal("b")))
             .unwrap();
-        assert_eq!(document.is_normalized(), body == normal, "{:?}", body);
-        document.normalize();
-        assert!(document.is_normalized());
-        assert_eq!(document.frontmatter(), Some(normal));
+        assert!(document.is_normalized(), "{:?}", body);
         let markdown = to_markdown(&document).unwrap();
         assert_eq!(markdown, written);
         let reparsed = Document::parse(markdown, &ParseOptions::default()).unwrap();
-        assert_eq!(reparsed.frontmatter(), Some(normal));
+        assert_eq!(reparsed.frontmatter(), Some(body));
     }
-}
-
-#[test]
-fn frontmatter_line_endings_are_normalized_to_line_feeds() {
-    for (body, normal) in [("a\rb", "a\nb\n"), ("a\r\nb", "a\nb\n"), ("a\r", "a\n")] {
+    for body in ["a", "a\rb\n", "a\r\nb\n", "a\r", "a\0\n"] {
         let mut document = empty();
         let root = document.root();
-        document.set_kind(root, document_start(Some(body))).unwrap();
-        assert!(!document.is_normalized());
-        document.normalize();
-        assert!(document.is_normalized());
-        assert_eq!(document.frontmatter(), Some(normal));
-        document.normalize();
-        assert_eq!(document.frontmatter(), Some(normal));
-        let reparsed =
-            Document::parse(to_markdown(&document).unwrap(), &ParseOptions::default()).unwrap();
-        assert_eq!(reparsed.frontmatter(), Some(normal));
+        assert!(
+            matches!(
+                document.set_kind(root, document_start(Some(body))),
+                Err(StreamError::InvalidValue)
+            ),
+            "{:?}",
+            body
+        );
+        assert_eq!(document.frontmatter(), None);
     }
 }
 

@@ -37,7 +37,7 @@ fn tagfilter(value: &str) -> String {
 }
 
 /// Emit source runs and escaped tag openers without constructing filtered HTML.
-/// NUL replacement and any further escaping remain the caller's responsibility.
+/// Any further escaping remains the caller's responsibility.
 pub(crate) fn write_filtered<E>(
     value: &str,
     mut write: impl FnMut(&str) -> Result<(), E>,

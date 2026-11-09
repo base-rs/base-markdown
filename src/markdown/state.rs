@@ -24,7 +24,7 @@ use crate::{
     util::line_ending::{line_endings, trim_terminal_ending},
     AlignKind, Document, NodeId, NodeSyntax, ReferenceKind,
 };
-use alloc::{borrow::Cow, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 
 pub struct Info<'a> {
     pub after: &'a str,
@@ -979,11 +979,9 @@ impl<'a> State<'a> {
             ),
             EventKind::CodeBlock { value, info, .. } => {
                 let value = value.resolve(source).unwrap();
-                let info = info
-                    .as_ref()
-                    .map(|info| normalize_nul(info.resolve(source).unwrap()));
+                let info = info.as_ref().map(|info| info.resolve(source).unwrap());
                 let fence = core::mem::take(&mut self.fence_code);
-                self.code(value, info.as_deref(), fence)
+                self.code(value, info, fence)
             }
             EventKind::Html { value, .. } => {
                 self.output.push_str(value.resolve(source).unwrap());
@@ -1889,14 +1887,6 @@ pub(super) fn flow_children<S: AsRef<str>>(
             EventKind::Separator { .. }
         )
     })
-}
-
-fn normalize_nul(value: &str) -> Cow<'_, str> {
-    if value.contains('\0') {
-        Cow::Owned(value.replace('\0', "�"))
-    } else {
-        Cow::Borrowed(value)
-    }
 }
 
 /// How deep the serializer nests: a node more than this many levels below the serialized node,

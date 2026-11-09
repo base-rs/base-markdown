@@ -2067,48 +2067,29 @@ fn removing_break_chains_is_linear() {
 }
 
 #[test]
-fn serializing_code_with_many_line_endings_is_linear() {
-    // Each line ending in code is written as a space, and normalizing replaces it with one. Writing them once flattened only those before a block marker, rescanning the content from its start for each (#115). Runs of line endings, CRLF, CR and ordered-list digits each took a different path; a line ending before `-` after a blank line was never quadratic. The trees are serialized without normalizing too, which must stay linear.
-    let content = |unit: &str, size: usize| Text::from(unit.repeat(size) + "#");
-    let check = |label: &str, tree: &dyn Fn(usize) -> Document<String>| {
-        assert_normalize_linear(label, 1 << 10, tree);
-        assert_linear(label, 1 << 10, |size| {
-            let document = tree(size);
-            timed(|| {
-                to_markdown(&document).unwrap();
-            })
-        });
-    };
-    for unit in ["a\n#", "\n", "a\r\n#", "a\n1. ", "\r"] {
-        check(unit, &|size| {
-            build(vec![event(
-                EventKind::Code {
-                    value: content(unit, size),
-                    language: None,
-                },
-                0..0,
-            )])
-        });
+fn line_endings_in_code_are_rejected() {
+    // The parser reads each line ending in inline code as one space, so a value with one is not one the parser stores, and normalizing rewrites no characters, so it is rejected where it is given (#257).
+    for value in ["a\nb", "a\r\nb", "a\rb", "\n", "a\0b"] {
+        let mut builder = AstBuilder::new();
+        let events = vec![
+            start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            }),
+            start(Tag::Paragraph { tight: false }),
+            code(value, None),
+            end(TagKind::Paragraph),
+            end(TagKind::Document),
+        ];
+        assert!(
+            matches!(
+                builder.consume(&mut events.into_iter(), usize::MAX),
+                Err(StreamError::InvalidValue)
+            ),
+            "{:?}",
+            value
+        );
     }
-}
-
-#[test]
-fn line_endings_in_code_become_spaces() {
-    // The parser reads each line ending in inline code as one space, CRLF too, so one in the value cannot be written.
-    assert_eq!(
-        settled(build(vec![
-            text("x "),
-            code("a\r\nb\rc\nd", Some("rust")),
-            text(" "),
-            code("\na\n", None),
-        ])),
-        r#"paragraph("x " code "a b c d" "rust" " " code " a ")"#
-    );
-    // Code joined from parts is spaced once it is joined.
-    assert_eq!(
-        settled(build(vec![code("a\r", None), code("\nb", None)])),
-        r#"paragraph(code "a b")"#
-    );
     // Flow code keeps its line endings.
     let mut document = build_blocks(vec![event(
         EventKind::CodeBlock {
@@ -2125,35 +2106,22 @@ fn line_endings_in_code_become_spaces() {
 }
 
 #[test]
-fn code_with_line_endings_reads_back_and_is_stable() {
+fn empty_code_is_removed() {
+    // A run of backticks with nothing between them is not code, so empty code cannot be written: it is valid, not normalized, and normalizing removes it, as it does inline HTML without a value, and what was on either side meets.
+    assert_eq!(
+        settled(build(vec![text("a"), code("", Some("rust")), text("b")])),
+        r#"paragraph("ab")"#
+    );
+    assert_eq!(settled(build(vec![code("", None)])), "");
+}
+
+#[test]
+fn code_reads_back_and_is_stable() {
     let values = [
-        // #136: a line ending read back as a space.
-        "a\nb",
-        "a\r\nb",
-        "a\rb",
-        // #135: a line that reads as a table delimiter row.
-        "a\n|-|\nb",
-        "a\n:-\nb",
-        "a\n-|-\nb",
-        // A block marker, an indented line and a blank line.
-        "a\n# b",
-        "a\n    b",
-        "a\n\nb",
-        "a\r\n\r\nb",
-        // Line endings at the edges, and nothing else.
-        "\na\n",
-        "\r\na\r",
-        "\n",
-        "\r\n",
-        "\n\r\n\r",
-        " \n ",
-        "\n`\n",
-        "\n$\n",
+        // Spaces at the edges, which the parser strips one of when the value is not only spaces.
+        " a ", "  ", " ", " `", "`", "$",
         // A tab is not a space, so the parser strips the spaces around it.
-        " \t ",
-        "\n\t\n",
-        "\t",
-        " \u{a0} ",
+        " \t ", "\t", " \u{a0} ",
     ];
     let mut trees = Vec::new();
     for value in values {
@@ -2170,7 +2138,6 @@ fn code_with_line_endings_reads_back_and_is_stable() {
         normal.normalize();
         assert!(normal.is_normalized());
         let markdown = to_markdown(&normal).unwrap();
-        // The serializer writes each line ending as the space normalizing replaces it with.
         assert_eq!(unnormalized, markdown);
         let mut reparsed = Document::parse(markdown.as_str(), &ParseOptions::default()).unwrap();
         assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
@@ -2184,63 +2151,6 @@ fn code_with_line_endings_reads_back_and_is_stable() {
             "{markdown:?}"
         );
         assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
-    }
-}
-
-fn image(
-    children: Vec<Result<Event<'static>, StreamError>>,
-) -> Vec<Result<Event<'static>, StreamError>> {
-    attention(
-        Tag::Image(Target::Resource {
-            destination: Text::Literal("u"),
-            title: None,
-        }),
-        TagKind::Image,
-        children,
-    )
-}
-
-#[test]
-fn code_in_image_text_gets_spaces() {
-    // Image text is written as phrasing, like link text, so a line ending in code there cannot be written either: it becomes a space, as elsewhere, and no heading is setext for it.
-    let literals: [fn() -> Result<Event<'static>, StreamError>; 2] =
-        [|| code("a\nb", None), || code("a\r\nb", None)];
-    for literal in literals {
-        let shapes = vec![
-            build_blocks(paragraph(image(vec![literal()]))),
-            build_blocks(heading(image(vec![literal()]))),
-            build_blocks(attention(
-                Tag::Heading(3),
-                TagKind::Heading,
-                image(vec![literal()]),
-            )),
-            build_blocks(table(image(vec![literal()]))),
-            build_blocks(heading(concat([
-                image(vec![literal()]),
-                vec![text(" "), literal()],
-            ]))),
-        ];
-        let expected = [
-            "![`a b`](u)\n",
-            "# ![`a b`](u)\n",
-            "### ![`a b`](u)\n",
-            "| ![`a b`](u) |\n| --- |\n",
-            "# ![`a b`](u) `a b`\n",
-        ];
-        for (index, mut tree) in shapes.into_iter().enumerate() {
-            assert!(!tree.is_normalized());
-            tree.normalize();
-            assert!(tree.is_normalized());
-            let markdown = to_markdown(&tree).unwrap();
-            assert_eq!(markdown, expected[index]);
-            let described = describe(&tree, tree.root());
-            assert!(described.contains(r#"code "a b""#), "{}", described);
-            assert!(!described.contains(r#"code "a\n"#), "{}", described);
-            let mut reparsed =
-                Document::parse(markdown.as_str(), &ParseOptions::default()).unwrap();
-            reparsed.normalize();
-            assert_eq!(to_markdown(&reparsed).unwrap(), markdown);
-        }
     }
 }
 
@@ -4625,17 +4535,13 @@ fn canonical_ignores_a_missing_final_line_ending_only_on_the_last_node() {
 fn code_block_values_get_the_line_endings_the_parser_stores() {
     let parse = ParseOptions::default();
     let options = base_markdown::MarkdownOptions::default();
-    // The value, then what it normalizes to before another block, and as the last node of the document. A closed fence stores its last line with a line ending, and the parser stores every line ending as LF.
+    // The value, then what it normalizes to before another block, and as the last node of the document. A closed fence stores its last line with a line ending.
     let values = [
         ("a", "a\n", "a"),
         ("\na", "\na\n", "\na"),
         (" ", " \n", " "),
         ("```", "```\n", "```"),
-        ("\r", "\n", "\n"),
-        ("\r\n", "\n", "\n"),
-        ("a\r\n", "a\n", "a\n"),
-        ("\n\r", "\n\n", "\n\n"),
-        ("a\rb\r\nc", "a\nb\nc\n", "a\nb\nc"),
+        ("a\nb", "a\nb\n", "a\nb"),
         // An empty value is written as a fence with no lines, and one blank line as a fence with one.
         ("", "", ""),
         ("\n", "\n", "\n"),
@@ -4665,6 +4571,19 @@ fn code_block_values_get_the_line_endings_the_parser_stores() {
             assert_eq!(code_block_value(&document, code), last, "{value:?} last");
             assert!(document.is_normalized());
         }
+    }
+    // The parser stores every line ending as LF, and NUL as U+FFFD, so a value with a CR or NUL is rejected rather than rewritten (#257).
+    for value in ["\r", "\r\n", "a\rb\n", "a\0\n"] {
+        let mut document = Document::parse(String::new(), &parse).unwrap();
+        let root = document.root();
+        assert!(
+            matches!(
+                document.append_child(root, code_block(value)),
+                Err(StreamError::InvalidValue)
+            ),
+            "{:?}",
+            value
+        );
     }
 }
 
@@ -4776,25 +4695,31 @@ fn removes_html_that_cannot_be_written() {
         .unwrap();
     assert!(!document.is_normalized());
     assert_eq!(reads_back(document), "[r]\\: /u\n\n[r]: /u\n");
-    // An HTML block of only spaces, tabs and line endings is written as blank lines, so it is removed with one separator beside it, like an empty paragraph.
-    for value in ["", "\n", " ", "\t", "\r\n", " \n\t\n"] {
-        assert_eq!(
-            settled(build_blocks(concat([
-                vec![html_block(value), separator()],
-                paragraph(vec![text("a")]),
-                vec![separator(), html_block(value), separator()],
-                paragraph(vec![text("b")]),
-                vec![separator(), html_block(value)],
-            ]))),
-            r#"paragraph("a") separator paragraph("b")"#,
-            "{value:?}"
+    // An HTML block is one HTML block construct, so one of only spaces, tabs and line endings, which would be written as blank lines, is rejected rather than removed (#257).
+    for value in ["", "\n", " ", "\t", "\r\n", " \n\t\n", "x"] {
+        let mut builder = AstBuilder::new();
+        let events = concat([
+            vec![start(Tag::Document {
+                line_ending: None,
+                frontmatter: None,
+            })],
+            vec![html_block(value)],
+            vec![end(TagKind::Document)],
+        ]);
+        assert!(
+            matches!(
+                builder.consume(&mut events.into_iter(), usize::MAX),
+                Err(StreamError::InvalidValue)
+            ),
+            "{:?}",
+            value
         );
     }
-    // HTML that can be written stays: an HTML block that is not blank, and inline HTML with a value, which is one HTML construct (#193).
+    // HTML that can be written stays: an HTML block, and inline HTML with a value, which is one HTML construct (#193).
     for document in [
         build_blocks(concat([
-            vec![html_block("<div>"), separator(), html_block(" <b>\n")],
-            vec![separator(), html_block("x")],
+            vec![html_block("<div>"), separator(), html_block(" <b>")],
+            vec![separator(), html_block("<!-- x -->")],
         ])),
         build(vec![
             text("a"),
@@ -4822,12 +4747,6 @@ fn removes_lists_without_items() {
         )
     };
     let empty = || List(None, true, vec![]);
-    let blank = || {
-        Block::Leaf(EventKind::Html {
-            value: Text::Literal(""),
-            block: true,
-        })
-    };
     // A list without items is written as nothing, or as a lone `-` in an item, so it is removed, and the rules for what that leaves apply in turn: `- p\n  -` read back as a heading (#149).
     for (block, expected) in [
         (empty(), ""),
@@ -4839,10 +4758,6 @@ fn removes_lists_without_items() {
         (tight(vec![vec![empty()]]), "-\n"),
         (
             tight(vec![vec![p("p"), tight(vec![vec![empty()]])]]),
-            "- p\n",
-        ),
-        (
-            tight(vec![vec![p("p"), tight(vec![vec![blank()]])]]),
             "- p\n",
         ),
         (
@@ -4859,7 +4774,6 @@ fn removes_lists_without_items() {
         (tight(vec![vec![p("p"), Separator, empty()]]), "- p\n"),
         // Paragraphs that meet where it was are joined, and blocks that can be written apart only with a blank line make the list loose.
         (tight(vec![vec![p("a"), empty(), p("b")]]), "- a\n  b\n"),
-        (tight(vec![vec![p("a"), blank(), p("b")]]), "- a\n  b\n"),
         (
             tight(vec![vec![
                 Quote(vec![p("a")]),
@@ -4874,7 +4788,7 @@ fn removes_lists_without_items() {
             "- a\n",
         ),
         (
-            List(None, false, vec![(true, vec![blank(), Separator, p("a")])]),
+            List(None, false, vec![(true, vec![empty(), Separator, p("a")])]),
             "- a\n",
         ),
     ] {
@@ -4900,7 +4814,7 @@ fn removes_lists_without_items() {
     assert!(document.node(detached).unwrap().first_child().is_none());
 }
 
-/// The tree of `block` with what normalizing removes as unwritable taken out by hand: inline HTML without a value, and blank HTML blocks and lists without items.
+/// The tree of `block` with what normalizing removes as unwritable taken out by hand: inline HTML without a value, and lists without items.
 fn without_unwritable(block: &Block) -> Option<Block> {
     let blocks = |blocks: &[Block]| blocks.iter().filter_map(without_unwritable).collect();
     Some(match block {
@@ -4927,11 +4841,6 @@ fn without_unwritable(block: &Block) -> Option<Block> {
         Block::Footnote(children) => Block::Footnote(blocks(children)),
         Block::Heading(phrasing) => Block::Heading(phrasing.clone()),
         Block::Table => Block::Table,
-        Block::Leaf(EventKind::Html { value, .. })
-            if value.resolve("").unwrap().trim_matches([' ', '\t', '\r', '\n']).is_empty() =>
-        {
-            return None
-        }
         Block::Leaf(kind) => Block::Leaf(kind.clone()),
         Block::Code => Block::Code,
         Block::Separator => Block::Separator,
@@ -4939,10 +4848,10 @@ fn without_unwritable(block: &Block) -> Option<Block> {
 }
 
 fn random_flow(random: &mut Random, depth: u32) -> Vec<Block> {
-    // Inline HTML is empty or one construct (#193); an HTML block can be anything.
+    // Inline HTML is empty or one construct (#193), and an HTML block one block construct (#257).
     let html = |random: &mut Random, block: bool| EventKind::Html {
         value: Text::Literal(if block {
-            ["", "", " ", "\n", "<b>", "x"][random.below(6) as usize]
+            ["<b>", "<div>", "<!-- x -->"][random.below(3) as usize]
         } else {
             ["", "", "<b>", "</b>", "<!---->", "<?x?>"][random.below(6) as usize]
         }),
@@ -5016,7 +4925,6 @@ fn removing_unwritable_html_and_lists_is_linear() {
     assert_linear("unwritable blocks", 1 << 10, |size| {
         let mut events = Vec::new();
         for _ in 0..size / 4 {
-            events.extend([html_block(" \n"), separator()]);
             events.extend(attention(
                 Tag::List {
                     start: None,

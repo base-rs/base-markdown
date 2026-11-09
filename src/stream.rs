@@ -84,16 +84,21 @@ impl Text<'_> {
         }
     }
 
-    /// Write the source line endings of a source slice as LF. Other values are kept: a CR in a
-    /// decoded value comes from a character reference, and a constructed one is the caller's.
+    /// Give a parsed value the form the parser stores: a source slice that holds a CR or NUL is
+    /// copied with its line endings as LF and each NUL as U+FFFD, and a decoded value with each NUL
+    /// as U+FFFD. A CR in a decoded value comes from a character reference and stays. So a value
+    /// points into the source exactly when the source there holds neither.
     pub(crate) fn normalized(self, source: &str) -> Self {
         match self {
             Self::Source(range)
-                if memchr::memchr(b'\r', &source.as_bytes()[range.clone()]).is_some() =>
+                if crate::util::line_ending::needs_normalizing(&source[range.clone()]) =>
             {
-                let mut value = String::with_capacity(range.len());
+                let mut value = String::with_capacity(range.len() + 2);
                 crate::util::line_ending::push_normalized(&mut value, &source[range]);
                 Self::Value(Cow::Owned(value))
+            }
+            Self::Value(value) if memchr::memchr(0, value.as_bytes()).is_some() => {
+                Self::Value(Cow::Owned(value.replace('\0', "\u{FFFD}")))
             }
             text => text,
         }
@@ -332,8 +337,9 @@ pub enum Tag<'a> {
         /// store every line ending as LF, or `None` when it has none.
         line_ending: Option<LineEnding>,
         /// The body of the document's frontmatter, the lines between its fences, each with its
-        /// line ending, or `None` when it has none. A root with frontmatter holds blocks, so an
-        /// inline root has none. It is omitted from HTML. See [`Constructs::frontmatter`][crate::Constructs::frontmatter].
+        /// line ending, or `None` when it has none, so a body is empty or ends in LF, and, being
+        /// raw, holds no CR; any other body is rejected with [`StreamError::InvalidValue`]. A root
+        /// with frontmatter holds blocks, so an inline root has none. It is omitted from HTML. See [`Constructs::frontmatter`][crate::Constructs::frontmatter].
         frontmatter: Option<Text<'a>>,
     },
     /// Whether the containing list suppresses paragraph tags.
@@ -619,6 +625,14 @@ impl<'s> Tag<'s> {
 }
 
 /// A resolved leaf, or a start/end of a semantic container.
+///
+/// Each value has the form the parser stores, and only that form is valid, so that normalizing
+/// never rewrites a character and the writer only encodes ([the contract](crate::contract),
+/// clause 1.2). No value holds NUL, which the parser stores as U+FFFD. A decoded value, text, a
+/// destination, a title or an info string, holds any other character, CR included, which the
+/// writer encodes as `&#xD;`; a raw value, which is written as it is, holds no CR, which the
+/// parser stores as LF. A value that breaks a rule is rejected with
+/// [`StreamError::InvalidValue`] wherever an event enters a document or renderer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum EventKind<'a> {
@@ -626,7 +640,7 @@ pub enum EventKind<'a> {
     Start(Tag<'a>),
     /// Close the matching container.
     End(TagKind),
-    /// Ordinary decoded text.
+    /// Ordinary decoded text, which holds anything but NUL.
     Text(Text<'a>),
     /// A soft source line break within inline content.
     SoftBreak(Text<'a>),
@@ -638,6 +652,11 @@ pub enum EventKind<'a> {
     Rule,
     /// An inline code span; optional language metadata is an extension.
     ///
+    /// The value is raw, so it holds no CR, and no LF either, as the parser reads each line ending
+    /// in a code span as a space. It may be empty, which is valid but not normalized, as a run of
+    /// backticks with nothing between them is not code: normalizing removes it. Any other value can
+    /// be written, as the writer pads one whose edge spaces the parser would strip.
+    ///
     /// The language is what [`ParseOptions::inline_code_info`][crate::ParseOptions::inline_code_info]
     /// reads before the span: a nonempty ASCII token whose first character is a letter or digit
     /// and whose other characters are letters, digits, `_`, `-`, `+`, `#` or `.`. Any other
@@ -648,6 +667,11 @@ pub enum EventKind<'a> {
         language: Option<Text<'a>>,
     },
     /// A code block, including source fence provenance where available.
+    ///
+    /// The value is raw, so it holds no CR. One that is not empty ends in a line ending, as the
+    /// parser stores each line with its own, except in a block that ends the document, which the
+    /// parser gives without one for an unclosed fence or indented code at the end of the source;
+    /// normalizing adds one to a value without it anywhere else.
     ///
     /// `info` is the whole info string of a fenced block, as the parser decoded it: trimmed of the
     /// spaces and tabs at its edges, with backslash escapes and character references decoded when
@@ -675,14 +699,28 @@ pub enum EventKind<'a> {
     /// `<a\nhref="x">` or `<!-- c -->`. Tag names may have namespace prefixes, as
     /// [`ParseOptions::html_tag_namespaces`][crate::ParseOptions::html_tag_namespaces] reads them,
     /// and it holds no blank line, which would end its paragraph. An empty value is valid and
-    /// writes nothing; normalizing removes it. Any other value, such as text, `<b>x</b>`, `<b> `
-    /// or `<a\n\nb>`, is rejected with [`StreamError::InvalidValue`]
-    /// wherever an event enters a document or renderer.
+    /// writes nothing; normalizing removes it. Any other value, such as text, `<b>x</b>`, `<b> `,
+    /// `<a\n\nb>`, or `<a\n  b>`, whose continuation line a paragraph would strip, is rejected
+    /// with [`StreamError::InvalidValue`] wherever an event enters a document or renderer.
+    ///
+    /// An HTML block, with `block` true, is one block as the block parser reads it, by its start
+    /// and end conditions: at most three spaces, then HTML that starts a block, and the lines the
+    /// block takes, without a line ending after the last, as `<div>`, `<div>\na` or
+    /// `<!-- a\n\nb -->`. A block of kinds 1–5 holds no line after the one that holds its end
+    /// condition, and does not end in a blank line, and one of kind 6 or 7 holds no blank line,
+    /// which ends it; but blank lines before an indented line, and a final line ending, are valid
+    /// in one of kind 6 or 7 too, as
+    /// [`ParseOptions::html_block_blank_lines`][crate::ParseOptions::html_block_blank_lines]
+    /// keeps them. So `abc`, `<b> x`, `    <div>` and `<div>\n\nb` are rejected, as is an empty
+    /// value, which no block is.
+    ///
+    /// Both are raw, so they hold no CR.
     Html { value: Text<'a>, block: bool },
     /// A resolved definition, retained in the AST but omitted from HTML.
     ///
     /// Its label follows the rules of a full [`Reference`]'s, and one that does not is rejected
-    /// with [`StreamError::InvalidValue`] wherever an event enters a document or renderer.
+    /// with [`StreamError::InvalidValue`] wherever an event enters a document or renderer. Its
+    /// destination and title are decoded, so they hold anything but NUL.
     Definition {
         label: Text<'a>,
         destination: Text<'a>,
@@ -705,42 +743,47 @@ pub enum EventKind<'a> {
 
 impl<'s> EventKind<'s> {
     pub(crate) fn validate(&self, source: Option<&str>) -> Result<(), StreamError> {
-        // A value, unless it is source-backed and its source is not known yet.
+        // A raw value, which the writer writes as it is, holds no CR, which the parser reads as a
+        // line ending and stores as LF.
+        fn raw(value: &str) -> bool {
+            memchr::memchr(b'\r', value.as_bytes()).is_none()
+        }
+        // A value, unless it is source-backed and its source is not known yet, though an empty
+        // range is empty in any source.
         fn resolved<'v>(
             value: &'v Text<'_>,
             source: Option<&'v str>,
         ) -> Result<Option<&'v str>, StreamError> {
             match (value, source) {
+                (Text::Source(range), None) if range.is_empty() => Ok(Some("")),
                 (Text::Source(_), None) => Ok(None),
                 (value, source) => value.resolve(source.unwrap_or("")).map(Some),
             }
         }
-        let text = |value: &Text<'_>| {
-            if let Some(source) = source {
-                value.resolve(source)?;
-            }
-            Ok::<(), StreamError>(())
-        };
-        let optional = |value: &Option<Text<'_>>| {
-            if let Some(value) = value {
-                text(value)?;
-            }
-            Ok::<(), StreamError>(())
-        };
-        // A source-backed value is checked once its source is known.
-        let check = |value: &Text<'s>, valid: &dyn Fn(&str) -> bool| match resolved(value, source)?
+        // A value is valid only in the form the parser stores, so no value holds NUL, which it
+        // stores as U+FFFD, and each kind has its own rule beyond that. A source-backed value is
+        // checked once its source is known.
+        let check = |value: &Text<'_>, valid: &dyn Fn(&str) -> bool| match resolved(value, source)?
         {
-            Some(value) if !valid(value) => Err(StreamError::InvalidValue),
+            Some(value) if memchr::memchr(0, value.as_bytes()).is_some() || !valid(value) => {
+                Err(StreamError::InvalidValue)
+            }
             _ => Ok(()),
+        };
+        // A decoded value, which the writer encodes, holds any other character, CR included, as
+        // the parser decodes `&#xD;` to one.
+        let text = |value: &Text<'_>| check(value, &|_| true);
+        let optional = |value: &Option<Text<'_>>| match value {
+            Some(value) => text(value),
+            None => Ok(()),
         };
         // A footnote's label, or its identifier without one, is written, and its identifier is
         // what the label normalizes to, as the parser gives it.
         let footnote =
             |identifier: &Text<'s>, label: Option<&Text<'s>>, valid: &dyn Fn(&str) -> bool| {
                 let written = label.unwrap_or(identifier);
-                let identifier = resolved(identifier, source)?;
-                match (identifier, resolved(written, source)?) {
-                    (_, Some(written)) if !valid(written) => Err(StreamError::InvalidValue),
+                check(written, valid)?;
+                match (resolved(identifier, source)?, resolved(written, source)?) {
                     (Some(identifier), Some(written))
                         if crate::util::normalize_identifier::normalize_identifier(written)
                             != identifier =>
@@ -781,57 +824,46 @@ impl<'s> EventKind<'s> {
                     crate::node_syntax::valid_label(label, true)
                 })
             }
-            Self::Code {
-                value,
-                language: Some(language),
-            } => {
-                text(value)?;
-                // A source-backed language is checked once its source is known.
-                if source.is_none() && matches!(language, Text::Source(_)) {
-                    return Ok(());
-                }
-                if crate::util::inline_code_info::is_valid(language.resolve(source.unwrap_or(""))?)
-                {
-                    Ok(())
-                } else {
-                    Err(StreamError::InvalidValue)
+            // The parser reads each line ending in inline code as a space.
+            Self::Code { value, language } => {
+                check(value, &|value| {
+                    raw(value) && memchr::memchr(b'\n', value.as_bytes()).is_none()
+                })?;
+                match language {
+                    Some(language) => check(language, &crate::util::inline_code_info::is_valid),
+                    None => Ok(()),
                 }
             }
-            Self::CodeBlock {
-                value,
-                info: Some(info),
-                ..
-            } => {
-                text(value)?;
-                text(info)?;
-                let empty = match info {
-                    Text::Source(range) => range.is_empty(),
-                    Text::Literal(value) => value.is_empty(),
-                    Text::Value(value) => value.is_empty(),
-                };
-                if empty {
-                    Err(StreamError::InvalidValue)
-                } else {
-                    Ok(())
+            // An empty info string is code without one, which is `None`.
+            Self::CodeBlock { value, info, .. } => {
+                check(value, &raw)?;
+                match info {
+                    Some(info) => check(info, &|info| !info.is_empty()),
+                    None => Ok(()),
                 }
             }
-            // Inline HTML is written as it is, so it reads back as itself only when it is one
-            // construct the inline parser reads, or empty, which writes nothing and which
-            // normalizing removes.
-            Self::Html {
-                value,
-                block: false,
-            } => check(value, &crate::util::html_text::HtmlText::is_inline),
+            // HTML is written as it is, so it reads back as itself only when it is one construct
+            // the parser reads: inline HTML is one the inline parser reads, or empty, which writes
+            // nothing and which normalizing removes, and an HTML block one block the block parser
+            // reads.
+            Self::Html { value, block } => check(value, &|value| {
+                raw(value)
+                    && if *block {
+                        crate::block_parser::html_block_value(value)
+                    } else {
+                        crate::util::html_text::HtmlText::is_inline(value)
+                    }
+            }),
+            // The parser stores each line of frontmatter with its line ending.
             Self::Start(Tag::Document {
                 frontmatter: Some(value),
                 ..
-            })
-            | Self::Text(value)
-            | Self::SoftBreak(value)
-            | Self::Separator { value, .. }
-            | Self::Html { value, .. }
-            | Self::Code { value, .. }
-            | Self::CodeBlock { value, .. } => text(value),
+            }) => check(value, &|value| {
+                raw(value) && (value.is_empty() || value.ends_with('\n'))
+            }),
+            Self::Text(value) | Self::SoftBreak(value) | Self::Separator { value, .. } => {
+                text(value)
+            }
             Self::Definition {
                 label,
                 destination,
