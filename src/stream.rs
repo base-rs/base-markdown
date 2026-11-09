@@ -704,15 +704,17 @@ pub enum EventKind<'a> {
     /// with [`StreamError::InvalidValue`] wherever an event enters a document or renderer.
     ///
     /// An HTML block, with `block` true, is one block as the block parser reads it, by its start
-    /// and end conditions: at most three spaces, then HTML that starts a block, and the lines the
-    /// block takes, without a line ending after the last, as `<div>`, `<div>\na` or
-    /// `<!-- a\n\nb -->`. A block of kinds 1–5 holds no line after the one that holds its end
-    /// condition, and does not end in a blank line, and one of kind 6 or 7 holds no blank line,
-    /// which ends it; but blank lines before an indented line, and a final line ending, are valid
-    /// in one of kind 6 or 7 too, as
+    /// and end conditions: the indentation the parser keeps before a block, at most three spaces,
+    /// or one to three spaces then a tab and spaces where the tab is at least one column wide,
+    /// then HTML that starts a block, and the lines the block takes, without the final line
+    /// ending, as `<div>`, `<div>\na` or `<!-- a\n\nb -->`. A block of kinds 1–5 holds no line
+    /// after the one that holds its end condition; one that no line closes may end in the blank
+    /// lines it takes, as `<!-- a\n\n` holds `<!-- a\n`. One of kind 6 or 7 holds no blank line,
+    /// which ends it; but blank lines before a line indented at least as far as the least indented
+    /// line before it, and a final line ending, are valid in one of kind 6 or 7 too, as
     /// [`ParseOptions::html_block_blank_lines`][crate::ParseOptions::html_block_blank_lines]
-    /// keeps them. So `abc`, `<b> x`, `    <div>` and `<div>\n\nb` are rejected, as is an empty
-    /// value, which no block is.
+    /// keeps them. So `abc`, `<b> x`, `    <div>`, `<div>\n\nb` and `<div>\n    a\n\n  b` are
+    /// rejected, as is an empty value, which no block is.
     ///
     /// Both are raw, so they hold no CR.
     Html { value: Text<'a>, block: bool },

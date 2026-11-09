@@ -194,6 +194,58 @@ pub fn html(random: &mut Random) -> String {
     random.concatenate(HTML, 16)
 }
 
+/// Container starts, including those that take part of a tab, for HTML block lines.
+const HTML_BLOCK_CONTAINERS: &[&str] = &["", "", "> ", ">", ">\t", "- ", "-\t", "1. ", "  ", "   "];
+
+/// Indentation, of spaces and tabs, before an HTML block line.
+const HTML_BLOCK_INDENTS: &[&str] = &[
+    "", "", " ", "  ", "   ", "\t", " \t", "  \t", "   \t", "\t\t", "    ", "      ",
+];
+
+/// What follows the indentation: block starts of each kind, their end conditions, and text.
+const HTML_BLOCK_CONTENT: &[&str] = &[
+    "<div>",
+    "</div>",
+    "<pre>",
+    "</pre>",
+    "<!--",
+    "-->",
+    "<?",
+    "?>",
+    "<!X",
+    ">",
+    "<![CDATA[",
+    "]]>",
+    "<b>",
+    "<a:b>",
+    "<b> x",
+    "x",
+    "a b",
+    "",
+    "",
+];
+
+/// Lines of HTML blocks, whole and partial, in and out of containers, with blank lines and tabs
+/// that a container takes part of, for HTML block values under every parse option.
+pub fn html_blocks(random: &mut Random) -> String {
+    let mut source = String::new();
+    for _ in 0..=random.below(8) {
+        for _ in 0..random.below(3) {
+            source.push_str(random.pick(HTML_BLOCK_CONTAINERS));
+        }
+        source.push_str(random.pick(HTML_BLOCK_INDENTS));
+        source.push_str(random.pick(HTML_BLOCK_CONTENT));
+        if random.below(3) == 0 {
+            source.push_str(random.pick(HTML_BLOCK_CONTENT));
+        }
+        source.push('\n');
+    }
+    if random.below(2) == 0 {
+        source.pop();
+    }
+    source
+}
+
 /// Prose-like Markdown of one to twelve realistic pieces.
 pub fn realistic(random: &mut Random) -> String {
     random.concatenate(REALISTIC, 12)

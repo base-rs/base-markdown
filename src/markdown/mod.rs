@@ -113,9 +113,36 @@ pub fn to_markdown_node<S: AsRef<str>>(
     let mut state = State::new(options);
     state.serialization_root = Some(node);
     let mut result = state.handle(document, node, &Info::new("\n", "\n"))?;
-    // Only block output is line-terminated, matching cmark's renderer.
-    if !inline && !result.is_empty() && !result.ends_with('\n') {
+    // Only block output is line-terminated, matching cmark's renderer. An HTML block whose last
+    // line is empty ends with that line's line ending, which is not the final one.
+    if !inline
+        && !result.is_empty()
+        && (!result.ends_with('\n') || ends_in_empty_line(document, node))
+    {
         result.push('\n');
     }
     Ok(result)
+}
+
+/// Whether the last node written for `node`, its last descendant but for separators, is an HTML block whose last line
+/// is empty, which an unclosed block of kinds 1–5 that takes a blank line at its end has.
+fn ends_in_empty_line<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> bool {
+    let mut last = node;
+    while let Some(child) = document
+        .children(last)
+        .filter(|&child| {
+            !matches!(
+                document.node(child).unwrap().kind,
+                crate::stream::EventKind::Separator { .. }
+            )
+        })
+        .last()
+    {
+        last = child;
+    }
+    matches!(
+        &document.node(last).unwrap().kind,
+        crate::stream::EventKind::Html { value, block: true }
+            if value.resolve(document.source()).is_ok_and(crate::block_parser::html_block_ends_in_empty_line)
+    )
 }

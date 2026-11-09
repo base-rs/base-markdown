@@ -60,12 +60,17 @@ struct Capture {
 /// Render semantic events directly into a caller-owned writer.
 ///
 /// Parser output and [`crate::Document::events`] use exactly this renderer. The renderer retains nesting state and footnote bodies, never the full event stream.
+// The flags are independent states of one stream, not options.
+#[allow(clippy::struct_excessive_bools)]
 pub struct EventHtmlRenderer<'a, W> {
     output: &'a mut W,
     source: &'a str,
     options: &'a CompileOptions,
     line_ending: LineEnding,
     last: Option<u8>,
+    // Whether the HTML block just written ends in an empty line, whose line ending the block's
+    // final one, a separator where the parser gives one, follows.
+    html_ending: bool,
     stack: Vec<Frame>,
     // The frames of `stack` that restrict what is below them at any depth.
     reach: crate::stream::Reach,
@@ -93,6 +98,7 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
             options,
             line_ending: options.default_line_ending.clone(),
             last: None,
+            html_ending: false,
             stack: Vec::new(),
             reach: crate::stream::Reach::default(),
             images: 0,
@@ -549,6 +555,17 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         if let Some(heading) = &mut self.heading {
             crate::headings::append_text::<true>(&event.kind, self.source, &mut heading.text);
         }
+        if core::mem::take(&mut self.html_ending)
+            && !matches!(
+                event.kind,
+                EventKind::Separator {
+                    conditional: false,
+                    ..
+                }
+            )
+        {
+            self.newline()?;
+        }
         match &event.kind {
             EventKind::Start(tag) => self.start(tag, event.span.end),
             EventKind::End(kind) => self.end(*kind, event.span.end),
@@ -652,6 +669,8 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
                         let value = value
                             .resolve(self.source)
                             .expect("event values are source-valid");
+                        self.html_ending =
+                            *block && crate::block_parser::html_block_ends_in_empty_line(value);
                         if self.options.allow_dangerous_html && self.options.tagfilter {
                             crate::util::tagfilter::write_filtered(value, |part| {
                                 self.escaped(part, false)

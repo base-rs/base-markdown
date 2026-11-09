@@ -424,11 +424,102 @@ fn document_of(blocks: Vec<EventKind<'static>>) -> Vec<Event<'static>> {
 }
 
 #[test]
+fn clause_1_2_html_block_values_keep_what_the_parser_reads() {
+    for (source, blank_lines, values, html) in [
+        // The blank lines an unclosed block of kinds 1–5 takes are its content, as in cmark, and
+        // its final line ending follows them, as a separator or the end of its container.
+        ("<!-- c\n\n", false, vec!["<!-- c\n"], "<!-- c\n\n"),
+        ("<pre>\n\n", false, vec!["<pre>\n"], "<pre>\n\n"),
+        ("<!X\n  \n", false, vec!["<!X\n  "], "<!X\n  \n"),
+        (
+            "- <!-- c\n\n",
+            false,
+            vec!["<!-- c\n"],
+            "<ul>\n<li>\n<!-- c\n\n</li>\n</ul>\n",
+        ),
+        (
+            "- <pre>\n  a\n\n  \n- b",
+            false,
+            vec!["<pre>\na\n\n"],
+            "<ul>\n<li>\n<pre>\na\n\n\n</li>\n<li>b</li>\n</ul>",
+        ),
+        // The spaces and tab before a block that does not start with a tab are kept.
+        (
+            "- a\n\n   \t<div>",
+            false,
+            vec![" \t<div>"],
+            "<ul>\n<li>\n<p>a</p>\n \t<div>\n</li>\n</ul>",
+        ),
+        // A line after blank lines keeps what is left of a tab its containers took part of.
+        (
+            "- <div>\n\n\tb",
+            true,
+            vec!["<div>\n\n  b"],
+            "<ul>\n<li>\n<div>\n\n  b\n</li>\n</ul>",
+        ),
+        (
+            "> <div>\n>\n>\tb",
+            true,
+            vec!["<div>\n\n  b"],
+            "<blockquote>\n<div>\n\n  b\n</blockquote>",
+        ),
+        // A line after blank lines indented less than the least indented line before them ends
+        // the block.
+        (
+            "<div>\n    a\n\n  b",
+            true,
+            vec!["<div>\n    a\n\n"],
+            "<div>\n    a\n\n<p>b</p>",
+        ),
+    ] {
+        let mut options = Options::default();
+        options.parse.html_block_blank_lines = blank_lines;
+        options.compile.allow_dangerous_html = true;
+        let document = Document::parse(source, &options.parse)
+            .unwrap_or_else(|error| panic!("{:?}: {}", source, error));
+        let found: Vec<_> = all(&document, |kind| {
+            matches!(kind, EventKind::Html { block: true, .. })
+        })
+        .into_iter()
+        .map(|id| {
+            let EventKind::Html { value, .. } = &document.node(id).unwrap().kind else {
+                unreachable!("the node is HTML");
+            };
+            value.resolve(document.source()).unwrap().to_owned()
+        })
+        .collect();
+        assert_eq!(found, values, "{:?}", source);
+        assert_eq!(to_html_with_options(source, &options), html, "{:?}", source);
+        // Every byte of the source is in an event.
+        let mut covered = vec![false; source.len()];
+        for event in base_markdown::EventParser::new(source, &options.parse) {
+            let event = event.unwrap();
+            for byte in &mut covered[event.span.start..event.span.end] {
+                *byte = true;
+            }
+        }
+        assert!(
+            covered.iter().all(|&byte| byte),
+            "{:?}: {:?}",
+            source,
+            covered
+        );
+    }
+}
+
+#[test]
 fn clause_1_2_an_html_block_is_one_block_construct() {
     // One block, by the start and end conditions the block parser reads it with, without its
-    // final line ending (#213), indented at most three spaces, and with no blank line where its
-    // kind ends at one.
+    // final line ending (#213), with the indentation the parser keeps before it, and with no blank
+    // line where its kind ends at one, or, as `html_block_blank_lines` continues it, a blank line
+    // only before a line indented at least as far as the least indented line before it.
     let valid = [
+        "<!-- a\n",
+        "<!-- a\n\n",
+        " \t<div>",
+        "  \t<div>",
+        "<div>\n    a\n\n      b",
+        "<div>\n\n",
         "<div>",
         "<div>\na",
         "   <div>",
@@ -459,34 +550,38 @@ fn clause_1_2_an_html_block_is_one_block_construct() {
         "<div>\n\nb",
         "<!-- a -->\nb",
         "<pre></pre>\nb",
-        "<!-- a\n",
-        "<!-- a\n\n",
+        "   \t<div>",
+        " \t  <div>",
+        "<div>\n    a\n\n  b",
+        "<div>\n  a\n\nb",
         "<div>\r\na",
         "<div>\ra",
         "<div>\0",
     ];
-    // The parser gives no block a final line ending or trailing blank lines, which are separators,
-    // so an unclosed block at the end of an item or quote reads back as itself (#213).
-    for source in [
-        "<!-- a\n\n\n",
-        "- <!-- a\n\nb\n",
-        "> <!-- a\n>\n\nb\n",
-        "- <div>\n\n  b\n",
-        "<div>\n",
+    // The parser gives no block its final line ending, which is a separator, so an unclosed block
+    // at the end of a quote reads back as itself (#213). The blank lines an unclosed block of kinds
+    // 1–5 takes are its content, and stay in its value; at the end of an item, the blank line
+    // written before what follows the list is one more (#191).
+    for (source, expected) in [
+        ("<!-- a\n\n\n", vec!["<!-- a\n\n"]),
+        ("> <!-- a\n>\n\nb\n", vec!["<!-- a\n"]),
+        ("- <div>\n\n  b\n", vec!["<div>"]),
+        ("<div>\n", vec!["<div>"]),
+        ("- a\n\n   \t<div>", vec![" \t<div>"]),
     ] {
         let document = parse(source);
-        for id in all(&document, |kind| {
+        let values: Vec<_> = all(&document, |kind| {
             matches!(kind, EventKind::Html { block: true, .. })
-        }) {
+        })
+        .into_iter()
+        .map(|id| {
             let EventKind::Html { value, .. } = &document.node(id).unwrap().kind else {
                 unreachable!("the node is HTML");
             };
-            assert!(
-                !value.resolve(document.source()).unwrap().ends_with('\n'),
-                "{:?}",
-                source
-            );
-        }
+            value.resolve(document.source()).unwrap().to_owned()
+        })
+        .collect();
+        assert_eq!(values, expected, "{:?}", source);
         assert_round_trips(source);
     }
     let mut document = parse("<div>\n");
@@ -701,11 +796,10 @@ fn clause_1_2_parsed_values_are_valid() {
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(SAMPLES);
-    let generators = IntoIterator::into_iter(CORPORA).chain(IntoIterator::into_iter([(
-        "html",
-        6,
-        corpus::html as Generator,
-    )]));
+    let generators = IntoIterator::into_iter(CORPORA).chain(IntoIterator::into_iter([
+        ("html", 6, corpus::html as Generator),
+        ("html blocks", 7, corpus::html_blocks as Generator),
+    ]));
     for (name, seed, generate) in generators {
         let mut random = Random(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
         for _ in 0..samples {

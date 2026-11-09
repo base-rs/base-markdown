@@ -617,8 +617,8 @@ impl State<'_> {
     /// frontmatter was removed, is written with `---`, keeping its info as the format hint. A body
     /// with a line that would close the fence switches to the other one, naming the format the
     /// fence implied when there is no hint, and a body that would close both cannot be written.
-    /// Lines end at LF, CRLF or a lone CR, as the parser reads them; the body's own line endings
-    /// are written unchanged, so they read back as LF, which [`Document::normalize`] gives them.
+    /// The body is written as it is: a valid body holds no CR and, unless it is empty, ends in a
+    /// line feed, as the parser stores it, so its last line ends before the closing fence.
     pub(super) fn frontmatter(
         &mut self,
         body: &str,
@@ -635,7 +635,7 @@ impl State<'_> {
         }
         let mut info = authored_info.trim_matches([' ', '\t']);
         let closes = |marker: char| {
-            body.split(['\r', '\n']).any(|line| {
+            body.split('\n').any(|line| {
                 let line = line.trim_end_matches([' ', '\t']);
                 line.len() == 3 && line.chars().all(|character| character == marker)
             })
@@ -664,15 +664,8 @@ impl State<'_> {
             self.output.push_str(info);
         }
         self.output.push('\n');
-        // A parsed body ends each of its lines with a line ending, so one is written before the
-        // closing fence only after a body that is not empty and has none, which normalizing adds.
-        let needs_line_ending = !body.is_empty() && !body.ends_with(['\r', '\n']);
-        self.output
-            .reserve(body.len() + fence.len() + usize::from(needs_line_ending) + 1);
+        self.output.reserve(body.len() + fence.len() + 1);
         self.output.push_str(body);
-        if needs_line_ending {
-            self.output.push('\n');
-        }
         self.output.push_str(fence);
         Ok(())
     }
