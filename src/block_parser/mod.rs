@@ -1264,21 +1264,31 @@ fn html_indent_width(spaces: usize, bytes: &[u8]) -> usize {
 ///
 /// It starts with the indentation the parser keeps before a block: up to three spaces, or one or
 /// two spaces then a tab and spaces, where those spaces and the tab, counted as one column, are at
-/// most three, as a tab first is not kept. HTML that starts a block follows, then the lines the block takes, with no line
+/// most three, as a tab first is not kept, or, without `Constructs::code_indented`, which makes
+/// more indentation code, any spaces and tabs. HTML that starts a block follows, then the lines the block takes, with no line
 /// ending after the last. A block of kinds 1–5 ends at the first line that holds its end
 /// condition, so no line before its last holds it; one that no line closes takes every line to
 /// the end of its container, blank or not, so its last line may be blank. A block of kind 6 or 7
-/// ends before a blank line, so it holds none, except where `ParseOptions::html_block_blank_lines`
-/// continues it: a run of blank lines before a line indented by at least one column, and by at
-/// least the least positive indentation of the lines before it that are not blank, or at its end,
-/// which that option keeps with the line ending after it. Namespace prefixes in tag names are
-/// allowed, as `ParseOptions::html_tag_namespaces` reads them, so that every parsed value passes
-/// whatever the options.
-pub(crate) fn html_block_value(value: &str) -> bool {
+/// ends before a blank line, so it holds none, except where `blank_lines`, as
+/// `ParseOptions::html_block_blank_lines` continues it: a run of blank lines before a line
+/// indented by at least one column, and by at least the least positive indentation of the lines
+/// before it that are not blank, or at its end, which that option keeps with the line ending
+/// after it. Namespace prefixes in tag names start a block of kind 7 when `namespaces`, as
+/// `ParseOptions::html_tag_namespaces` reads them. Without `options`, each of these is read as
+/// some options read it.
+pub(crate) fn html_block_value(value: &str, options: Option<&crate::ParseOptions>) -> bool {
+    let namespaces = options.map_or(true, |options| options.html_tag_namespaces);
+    let blank_lines = options.map_or(true, |options| options.html_block_blank_lines);
+    let limited = options.is_some_and(|options| options.constructs.code_indented);
     let bytes = value.as_bytes();
     let spaces = bytes.iter().take_while(|&&byte| byte == b' ').count();
     let mut indent = spaces;
-    if spaces > 0 && bytes.get(spaces) == Some(&b'\t') {
+    if !limited {
+        indent = bytes
+            .iter()
+            .take_while(|&&byte| matches!(byte, b' ' | b'\t'))
+            .count();
+    } else if spaces > 0 && bytes.get(spaces) == Some(&b'\t') {
         indent += 1;
         let after = bytes[indent..]
             .iter()
@@ -1290,12 +1300,10 @@ pub(crate) fn html_block_value(value: &str) -> bool {
         indent += after;
     }
     let html = &bytes[indent..];
-    if spaces > 3 || html.first() != Some(&b'<') {
+    if (limited && spaces > 3) || html.first() != Some(&b'<') {
         return false;
     }
-    let Some(kind) =
-        html::Html::start(html, false, true).or_else(|| html::Html::start(html, true, true))
-    else {
+    let Some(kind) = html::Html::start(html, namespaces, true) else {
         return false;
     };
     let mut lines = bytes.split(|&byte| byte == b'\n').peekable();
@@ -1307,6 +1315,9 @@ pub(crate) fn html_block_value(value: &str) -> bool {
         let last = lines.peek().is_none();
         if kind.blank_terminated() {
             if blank {
+                if !blank_lines {
+                    return false;
+                }
                 continue;
             }
             let width = html_indent_width(0, line);
@@ -1321,6 +1332,14 @@ pub(crate) fn html_block_value(value: &str) -> bool {
         }
     }
     true
+}
+
+/// Whether `value`, a code block's, is one that indented code gives: not empty, and starting and
+/// ending with a line that is not blank, as the blank lines around indented code are not in it.
+pub(crate) fn indented_code_value(value: &str) -> bool {
+    let content = |line: &str| !line.trim_matches([' ', '\t']).is_empty();
+    let lines = value.strip_suffix('\n').unwrap_or(value);
+    lines.split('\n').next().is_some_and(content) && lines.rsplit('\n').next().is_some_and(content)
 }
 
 pub(crate) fn footnote_prefix(bytes: &[u8], start: usize) -> Option<(Range<usize>, usize)> {

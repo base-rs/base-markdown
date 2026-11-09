@@ -896,8 +896,9 @@ fn custom_heading_helpers_capture_the_same_leaf_set_and_line_endings_as_html() {
             .append_child(heading, EventKind::Text(Text::Literal(ending)))
             .unwrap();
     }
+    // A heading of level 3 to 6 holds no break, which only a setext heading has.
     let heading = document
-        .append_child(root, EventKind::Start(Tag::Heading(3)))
+        .append_child(root, EventKind::Start(Tag::Heading(2)))
         .unwrap();
     document
         .append_child(

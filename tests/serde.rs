@@ -254,10 +254,24 @@ fn invalid_serialized_arena_links_ranges_and_metadata_are_rejected() {
         "kind",
         json!({"Start":{"FootnoteDefinition":{"identifier":out_of_range,"label":{"Value":"x"}}}}),
     );
+    // A language is read only under options that read one, which the document records (#257).
     let mut valid = base.clone();
     valid["nodes"][text]["kind"] =
         json!({"Code":{"value":{"Value":"v"},"language":{"Value":"c++"}}});
-    serde_json::from_value::<Document>(valid).unwrap();
+    assert!(serde_json::from_value::<Document>(valid.clone()).is_err());
+    valid["options"]["inlineCodeInfo"] = json!(true);
+    let document = serde_json::from_value::<Document>(valid.clone()).unwrap();
+    assert!(document.parse_options().inline_code_info);
+    // Without options, a document is valid under the default ones.
+    valid.as_object_mut().unwrap().remove("options");
+    assert!(serde_json::from_value::<Document>(valid).is_err());
+    let mut plain = base.clone();
+    plain.as_object_mut().unwrap().remove("options");
+    let document = serde_json::from_value::<Document>(plain).unwrap();
+    assert_eq!(
+        document.parse_options(),
+        &base_markdown::ParseOptions::default()
+    );
     for value in [json!({"Value":"<b\nc=\"d\">"}), json!({"Value":""})] {
         let mut valid = base.clone();
         valid["nodes"][text]["kind"] = json!({"Html":{"value":value,"block":false}});

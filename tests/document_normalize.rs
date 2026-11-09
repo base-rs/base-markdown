@@ -42,6 +42,14 @@ fn separator() -> Result<Event<'static>, StreamError> {
     )
 }
 
+/// The default options, with inline code languages, which the built trees have.
+fn code_info() -> ParseOptions {
+    ParseOptions {
+        inline_code_info: true,
+        ..ParseOptions::default()
+    }
+}
+
 /// Wrap phrasing events in a document and paragraph, and build a document over `source`.
 fn build_in(source: &str, phrasing: Vec<Result<Event<'static>, StreamError>>) -> Document<String> {
     let mut events = vec![
@@ -54,7 +62,7 @@ fn build_in(source: &str, phrasing: Vec<Result<Event<'static>, StreamError>>) ->
     events.extend(phrasing);
     events.push(end(TagKind::Paragraph));
     events.push(end(TagKind::Document));
-    let mut builder = AstBuilder::new();
+    let mut builder = AstBuilder::with_options(code_info());
     builder
         .consume(&mut events.into_iter(), usize::MAX)
         .unwrap();
@@ -1237,7 +1245,7 @@ fn build_blocks(blocks: Vec<Result<Event<'static>, StreamError>>) -> Document<St
     })];
     events.extend(blocks);
     events.push(end(TagKind::Document));
-    let mut builder = AstBuilder::new();
+    let mut builder = AstBuilder::with_options(code_info());
     builder
         .consume(&mut events.into_iter(), usize::MAX)
         .unwrap();

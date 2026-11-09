@@ -43,15 +43,12 @@ impl State<'_> {
         Ok(())
     }
 
-    pub(super) fn hard_break(&mut self, info: &Info) -> Result<(), Message> {
-        if super::escape::unsafe_newline(&self.stack) {
-            if !info.before(&self.output)[1].contains(['\t', ' ']) {
-                self.output.push(' ');
-            }
-        } else {
-            self.output.push_str("\\\n");
-        }
-        Ok(())
+    /// A break is written as a backslash and a line ending. Of the headings, only a setext one
+    /// holds a break ([`crate::stream::Tag::Heading`]), and a heading of rank 1 or 2 that holds one
+    /// is written setext (`format_heading_as_setext`), so a break is never written in an ATX
+    /// heading, where a line ending would end it.
+    pub(super) fn hard_break(&mut self) {
+        self.output.push_str("\\\n");
     }
 
     /// `value` is the stored value, whose lines each end in a line ending except perhaps the last, so a body of one blank line is `"\n"` and an empty body is `""`.
