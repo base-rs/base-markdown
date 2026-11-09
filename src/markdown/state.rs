@@ -1548,7 +1548,7 @@ impl<'a> State<'a> {
         crate::inline_parser::literal_markers(
             &self.output[run..],
             start - run,
-            before.map_or(true, |character| {
+            before.is_none_or(|character| {
                 character.is_ascii() && crate::inline_parser::www_previous(character as u8)
             }),
             &mut markers,
@@ -1675,8 +1675,8 @@ fn list_interrupts_paragraph<S: AsRef<str>>(document: &Document<S>, id: NodeId) 
     let EventKind::Start(Tag::List { start, .. }) = document.node(id).unwrap().kind else {
         return true;
     };
-    start.map_or(true, |start| start == 1)
-        && flow_children(document, id).next().map_or(true, |item| {
+    start.is_none_or(|start| start == 1)
+        && flow_children(document, id).next().is_none_or(|item| {
             flow_children(document, item).any(|block| {
                 !matches!(
                     document.node(block).unwrap().kind,

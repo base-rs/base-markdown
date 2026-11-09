@@ -1621,7 +1621,7 @@ impl<S: AsRef<str>> Document<S> {
         self.node(id).ok_or(StreamError::InvalidRange)?;
         if before.is_some_and(|before| {
             self.node(before)
-                .map_or(true, |node| node.parent != Some(parent))
+                .is_none_or(|node| node.parent != Some(parent))
         }) {
             return Err(StreamError::InvalidRange);
         }

@@ -14,7 +14,7 @@ Socketry's documentation tooling needs to inspect, edit, and render Markdown sec
 cargo add base-markdown
 ```
 
-The library supports Rust 1.73 and later.
+The library supports Rust 1.87 and later.
 
 For direct conversion from Markdown source to HTML:
 

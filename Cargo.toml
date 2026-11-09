@@ -30,12 +30,12 @@ license = "MIT"
 name = "base-markdown"
 readme = "readme.md"
 repository = "https://github.com/base-rs/base-markdown"
-rust-version = "1.73"
+rust-version = "1.87"
 version = "0.2.0"
 
 [workspace]
 members = ["generate", "bake"]
-resolver = "2"
+resolver = "3"
 
 [workspace.metadata.bake]
 manifest = "bake/Cargo.toml"
