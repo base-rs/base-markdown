@@ -296,9 +296,6 @@ impl State<'_> {
         self.container_phrasing(document, node, &Info::new("# ", "\n"))?;
         if self.output.len() == content_start {
             self.output.pop();
-        } else if self.output[content_start..].starts_with([' ', '\t']) {
-            // The parser strips the space or tab, so it is a reference, which nothing replaces.
-            self.escape_at(content_start);
         }
         if self.options.close_atx {
             self.output.push(' ');
@@ -1249,7 +1246,7 @@ fn item_task<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> Option<(Nod
 }
 
 // Line endings in values are LF, and a CR is a character reference, so it is kept.
-fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
+pub(super) fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
     if !value.contains('\n') {
         return Cow::Borrowed(value);
     }

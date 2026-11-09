@@ -917,9 +917,11 @@ fn serializing_unnormalized_trees_does_not_panic() {
     }
 }
 
-/// Time normalizing the document from `build` and serializing the result, with `size` against eight times as many units. Serializing a small tree before normalizing checks that it does not panic; that need not be linear, so it is not timed.
+/// Time normalizing the document from `build` and serializing the result, with `size` against eight times as many units. Serializing a small tree before normalizing checks that it does not panic, though it may return `unwritable-node`, as empty attention next to attention reads back as text (contract 5.3); that need not be linear, so it is not timed.
 fn assert_normalize_linear(label: &str, size: usize, build: impl Fn(usize) -> Document<String>) {
-    to_markdown(&build(size)).unwrap();
+    if let Err(error) = to_markdown(&build(size)) {
+        assert_eq!(error.rule_id, "unwritable-node");
+    }
     assert_linear(label, size, |size| {
         let mut document = build(size);
         timed(|| {
