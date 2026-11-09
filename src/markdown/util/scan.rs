@@ -82,7 +82,7 @@ mod tests {
         let marker = b'`';
         let mut value = String::new();
         for length in 1..=2 * usize::BITS as usize + 1 {
-            value.extend(core::iter::repeat(char::from(marker)).take(length));
+            value.extend(core::iter::repeat_n(char::from(marker), length));
             value.push(' ');
             assert_eq!(delimiter_size(&value, marker), length + 1);
         }
@@ -90,7 +90,7 @@ mod tests {
             let mut value = String::new();
             for length in (1..=2 * usize::BITS as usize + 1).rev() {
                 if length != gap {
-                    value.extend(core::iter::repeat(char::from(marker)).take(length));
+                    value.extend(core::iter::repeat_n(char::from(marker), length));
                     value.push(' ');
                 }
             }

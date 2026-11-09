@@ -691,7 +691,7 @@ impl Index {
             movable &= self
                 .keys
                 .entry(footnote, key)
-                .map_or(true, |entry| entry.more.is_empty());
+                .is_none_or(|entry| entry.more.is_empty());
         });
         movable
     }

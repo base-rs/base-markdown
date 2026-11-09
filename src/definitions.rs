@@ -102,7 +102,7 @@ impl<'a> Definitions<'a> {
     // Whether no reference can be bound, so that none need be looked up.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
-            && self.seed.map_or(true, |seed| seed.entries.is_empty())
+            && self.seed.is_none_or(|seed| seed.entries.is_empty())
             && self.outside.is_none()
     }
 
@@ -204,7 +204,7 @@ impl<'a> Definitions<'a> {
 
     #[inline]
     fn visible(&self, start: usize) -> bool {
-        self.limit.map_or(true, |limit| start < limit)
+        self.limit.is_none_or(|limit| start < limit)
     }
 
     /// Restrict lookups to definitions starting before `limit`, or remove the restriction.

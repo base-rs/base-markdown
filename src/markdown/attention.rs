@@ -252,7 +252,9 @@ fn opening_unpaired(choice: &Choice, marker: char, surroundings: &Surroundings) 
 
 /// Whether the rule of 3 keeps an opening and a closing run of these sizes from pairing, where it `applies` as one of them can both open and close.
 fn rule_of_three(opening: usize, closing: usize, applies: bool) -> bool {
-    applies && (opening + closing) % 3 == 0 && !(opening % 3 == 0 && closing % 3 == 0)
+    applies
+        && (opening + closing).is_multiple_of(3)
+        && !(opening.is_multiple_of(3) && closing.is_multiple_of(3))
 }
 
 /// Whether an opening sequence can open and close.
@@ -346,13 +348,13 @@ pub(super) fn edit_start(output: &mut String, start: usize, edge: &Edge) {
     let mut result = String::new();
     if edge.tilde && text.starts_with('~') {
         let run = text.bytes().take_while(|&byte| byte == b'~').count();
-        result.extend(core::iter::repeat("\\~").take(run));
+        result.extend(core::iter::repeat_n("\\~", run));
         result.push_str(&text[run..]);
     } else if let Some(character) = edge.encode.filter(|&character| text.starts_with(character)) {
         write_reference(&mut result, character);
         let rest = &text[character.len_utf8()..];
         let run = rest.bytes().take_while(|&byte| byte == b'_').count();
-        result.extend(core::iter::repeat("\\_").take(run));
+        result.extend(core::iter::repeat_n("\\_", run));
         result.push_str(&rest[run..]);
     } else {
         return;
@@ -378,7 +380,7 @@ pub(super) fn escape_tilde_end(output: &mut String, start: usize) {
         return;
     }
     output.truncate(output.len() - run);
-    output.extend(core::iter::repeat("\\~").take(run));
+    output.extend(core::iter::repeat_n("\\~", run));
 }
 
 /// Encode the last character of text written at `output[start..]` if it is `character`, as a sequence follows it.
@@ -404,6 +406,6 @@ pub(super) fn encode_end(output: &mut String, start: usize, character: char) {
     if backslash {
         output.push('\\');
     }
-    output.extend(core::iter::repeat("\\_").take(run));
+    output.extend(core::iter::repeat_n("\\_", run));
     write_reference(output, character);
 }

@@ -712,13 +712,11 @@ impl Builder<'_> {
         self.current = before;
         let mut first_line = None;
         if let Some(recorder) = &mut self.recorder {
-            if recorder
+            if let Some(block) = recorder
                 .outline
                 .blocks
-                .last()
-                .is_some_and(|block| block.node == paragraph)
+                .pop_if(|block| block.node == paragraph)
             {
-                let block = recorder.outline.blocks.pop().expect("checked above");
                 first_line = Some((block.line, block.clean));
             }
         }

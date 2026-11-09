@@ -24,7 +24,7 @@ enum Piece {
 }
 
 fn whitespace(character: Option<char>) -> bool {
-    character.map_or(true, char::is_whitespace)
+    character.is_none_or(char::is_whitespace)
 }
 
 fn punctuation(character: Option<char>) -> bool {
@@ -99,8 +99,8 @@ fn reference(source: &str) -> String {
                 } else {
                     // The rule of 3 uses the lengths of the original delimiter runs.
                     !((opener.can_close || closer.can_open)
-                        && (opener.length + closer.length) % 3 == 0
-                        && !(opener.length % 3 == 0 && closer.length % 3 == 0))
+                        && (opener.length + closer.length).is_multiple_of(3)
+                        && !(opener.length.is_multiple_of(3) && closer.length.is_multiple_of(3)))
                 }
         });
         let Some(opener_position) = opener else {
@@ -143,7 +143,7 @@ fn reference(source: &str) -> String {
                 for tag in &run.closing_tags {
                     html.push_str(&format!("</{tag}>"));
                 }
-                html.extend(std::iter::repeat(run.marker).take(run.remaining));
+                html.extend(std::iter::repeat_n(run.marker, run.remaining));
                 for tag in &run.opening_tags {
                     html.push_str(&format!("<{tag}>"));
                 }

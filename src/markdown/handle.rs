@@ -77,7 +77,7 @@ impl State<'_> {
             return Ok(());
         }
         let size = (longest_run(content, marker as u8) + 1).max(3);
-        self.output.extend(core::iter::repeat(marker).take(size));
+        self.output.extend(core::iter::repeat_n(marker, size));
         if let Some(info) = info {
             self.enter(if marker == '`' {
                 ConstructName::CodeFencedInfoGraveAccent
@@ -97,7 +97,7 @@ impl State<'_> {
             self.output.push_str(content);
             self.output.push('\n');
         }
-        self.output.extend(core::iter::repeat(marker).take(size));
+        self.output.extend(core::iter::repeat_n(marker, size));
         Ok(())
     }
 
@@ -183,14 +183,16 @@ impl State<'_> {
             let last_line = content.rfind('\n').map_or(0, |index| index + 1);
             let size = content.len() - last_line;
             self.output.push('\n');
-            self.output
-                .extend(core::iter::repeat(if rank == 1 { '=' } else { '-' }).take(size));
+            self.output.extend(core::iter::repeat_n(
+                if rank == 1 { '=' } else { '-' },
+                size,
+            ));
             return Ok(());
         }
         self.enter(ConstructName::HeadingAtx);
         self.enter(ConstructName::Phrasing);
         self.output
-            .extend(core::iter::repeat('#').take(usize::from(rank)));
+            .extend(core::iter::repeat_n('#', usize::from(rank)));
         self.output.push(' ');
         let content_start = self.output.len();
         self.container_phrasing(document, node, &Info::new("# ", "\n"))?;
@@ -209,7 +211,7 @@ impl State<'_> {
         if self.options.close_atx {
             self.output.push(' ');
             self.output
-                .extend(core::iter::repeat('#').take(usize::from(rank)));
+                .extend(core::iter::repeat_n('#', usize::from(rank)));
         }
         self.exit();
         self.exit();
@@ -252,7 +254,7 @@ impl State<'_> {
             self.output.push(':');
         }
         let size = super::util::scan::delimiter_size(content, b'`');
-        self.output.extend(core::iter::repeat('`').take(size));
+        self.output.extend(core::iter::repeat_n('`', size));
         // The parser strips one space from each side when the content starts and ends with one and is not only spaces, so a tab is not a space here. Other content with whitespace at both edges is padded too, which reads back the same. The content holds no line ending, which the parser would read as a space ([`EventKind::Code`][crate::stream::EventKind::Code]).
         let pad = !content.chars().all(|character| character == ' ')
             && (content.starts_with(' ') && content.ends_with(' ')
@@ -278,7 +280,7 @@ impl State<'_> {
         if pad {
             self.output.push(' ');
         }
-        self.output.extend(core::iter::repeat('`').take(size));
+        self.output.extend(core::iter::repeat_n('`', size));
         Ok(())
     }
 
@@ -304,7 +306,7 @@ impl State<'_> {
         if !image {
             let after_boundary = self.output.len() == self.line_start
                 || self.alt_start == Some(self.output.len())
-                || self.output.chars().next_back().map_or(true, boundary);
+                || self.output.chars().next_back().is_none_or(boundary);
             match written_link(
                 document,
                 node,
@@ -569,7 +571,7 @@ impl State<'_> {
         self.indent_lines(start, |line, index, blank, output| {
             if index == 0 {
                 if let Some((task, separator)) = task {
-                    output.extend(core::iter::repeat(' ').take(size - prefix_size));
+                    output.extend(core::iter::repeat_n(' ', size - prefix_size));
                     // A task item's first line holds its paragraph, so it is never blank.
                     output.push_str(task);
                     output.push(separator);
@@ -579,7 +581,7 @@ impl State<'_> {
             }
             if !blank {
                 let indent = if index == 0 { size - prefix_size } else { size };
-                output.extend(core::iter::repeat(' ').take(indent));
+                output.extend(core::iter::repeat_n(' ', indent));
             }
             output.push_str(line);
         });
