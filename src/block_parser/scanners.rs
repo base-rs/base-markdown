@@ -93,7 +93,7 @@ impl LineStart<'_> {
     pub(crate) fn is_at_eol(&self) -> bool {
         self.bytes
             .get(self.ix)
-            .map_or(true, |&c| c == b'\r' || c == b'\n')
+            .is_none_or(|&c| c == b'\r' || c == b'\n')
     }
 
     fn scan_ch(&mut self, c: u8) -> bool {
@@ -285,7 +285,7 @@ pub(crate) fn scan_hrule(bytes: &[u8]) -> Result<usize, usize> {
 
 pub(crate) fn scan_atx_heading(data: &[u8]) -> Option<u8> {
     let level = scan_ch_repeat(data, b'#');
-    if data.get(level).copied().map_or(true, is_ascii_whitespace) {
+    if data.get(level).copied().is_none_or(is_ascii_whitespace) {
         (1..=6)
             .contains(&level)
             .then(|| u8::try_from(level).expect("heading levels are at most six"))

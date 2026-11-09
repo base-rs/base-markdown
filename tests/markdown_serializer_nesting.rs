@@ -62,7 +62,7 @@ fn levels(
 ) -> Vec<Tag<'static>> {
     let fill = depth - 1 - outer.len() - inner.len();
     let mut tags = outer.to_vec();
-    tags.extend(core::iter::repeat(pad.clone()).take(fill % unit.len()));
+    tags.extend(std::iter::repeat_n(pad.clone(), fill % unit.len()));
     tags.extend(unit.iter().cycle().take(fill - fill % unit.len()).cloned());
     tags.extend_from_slice(inner);
     tags
@@ -313,7 +313,7 @@ fn levels_count_from_the_serialized_node() {
 
 #[test]
 fn deeply_nested_parsed_documents_are_an_error() {
-    let marker = |level: usize| if level % 2 == 0 { "*" } else { "_" };
+    let marker = |level: usize| if level.is_multiple_of(2) { "*" } else { "_" };
     let mut attention: String = (0..16_000)
         .map(|level| format!("{}a ", marker(level)))
         .collect();

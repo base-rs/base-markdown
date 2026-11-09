@@ -104,7 +104,7 @@ fn prune<T: AsRef<str>>(
             continue;
         }
         let separator = source.separator(child);
-        if separator && removed && kept.last().map_or(true, |&last| source.separator(last)) {
+        if separator && removed && kept.last().is_none_or(|&last| source.separator(last)) {
             continue;
         }
         trailing &= separator;

@@ -159,7 +159,7 @@ fn check_divisions(
         let mut cuts: Vec<usize> = points
             .iter()
             .copied()
-            .filter(|_| random.next() % 4 == 0)
+            .filter(|_| random.next().is_multiple_of(4))
             .collect();
         cuts.insert(0, 0);
         cuts.push(source.len());
@@ -514,7 +514,7 @@ fn random_documents_are_independent_of_division() {
             source.push_str(LINES[(random.next() % LINES.len() as u64) as usize]);
             source.push_str(endings[(random.next() % endings.len() as u64) as usize]);
         }
-        if random.next() % 3 == 0 {
+        if random.next().is_multiple_of(3) {
             source.push_str(LINES[(random.next() % LINES.len() as u64) as usize]);
         }
         let options = &options[(random.next() % options.len() as u64) as usize];

@@ -211,7 +211,7 @@ impl InlineParser {
                                     == size)
                             && ((EXTENSIONS && marker == b'~')
                                 || !((candidate.close || self.delimiters[close].open)
-                                    && (candidate.run_modulo + closer_modulo) % 3 == 0
+                                    && (candidate.run_modulo + closer_modulo).is_multiple_of(3)
                                     && (candidate.run_modulo != 0 || closer_modulo != 0)))
                         {
                             found = Some((slot, open));
