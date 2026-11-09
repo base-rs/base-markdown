@@ -506,8 +506,8 @@ impl State<'_> {
         };
         let mut first_empty = false;
         let mut has_rule = false;
-        // The first line of code that an item starts with, which written indented is on the
-        // marker's line.
+        // The first line of code that an item starts with and that is written indented, which is
+        // then on the marker's line.
         let mut code_lines = Vec::new();
         // The content model holds only items in a list.
         for (index, child) in flow_children(document, node).enumerate() {
@@ -518,26 +518,48 @@ impl State<'_> {
             if let Some(first) = first {
                 match &document.node(first).unwrap().kind {
                     EventKind::Rule => has_rule = true,
-                    EventKind::CodeBlock { value, .. } => {
-                        let value = value.resolve(document.source()).unwrap();
-                        code_lines.push(value.split('\n').next().unwrap_or_default());
+                    EventKind::CodeBlock { value, info, .. } => {
+                        let value = trim_terminal_ending(value.resolve(document.source()).unwrap());
+                        if format_code_as_indented(value, info.is_none(), self) {
+                            code_lines
+                                .push((index == 0, value.split('\n').next().unwrap_or_default()));
+                        }
                     }
                     _ => {}
                 }
             }
         }
-        // Indented code of `--` after a `-` marker would make the line a thematic break.
-        let breaks = |marker: char| {
-            code_lines.iter().any(|line| {
-                line.chars().all(|c| c == marker || c == ' ' || c == '\t')
-                    && line.chars().filter(|&c| c == marker).count() >= 2
-            })
-        };
-        let mut different = self.bullet_last_used == Some(bullet);
-        if !ordered {
+        if ordered {
+            if self.bullet_last_used == Some(bullet) {
+                bullet = bullet_other;
+            }
+        } else {
+            // The markers of the items this list starts, which are written but not yet followed
+            // by their spaces, are on the line of the first item's marker too.
+            let line = &self.output[self.output.rfind('\n').map_or(0, |index| index + 1)..];
+            // A `-` or `*` marker would make a line of indented code such as `--` a thematic
+            // break with it.
+            let breaks = |marker: char| {
+                marker != '+'
+                    && code_lines.iter().any(|&(first, code)| {
+                        let mut count = 1;
+                        // A thematic break is read in any of the containers whose markers are on
+                        // the line, so the markers count back to the first that is not `marker`.
+                        let before = if first { line } else { "" };
+                        let before = before
+                            .char_indices()
+                            .rfind(|&(_, c)| c != marker && c != ' ' && c != '\t')
+                            .map_or(before, |(index, c)| &before[index + c.len_utf8()..]);
+                        before.chars().chain(code.chars()).all(|c| {
+                            count += usize::from(c == marker);
+                            c == marker || c == ' ' || c == '\t'
+                        }) && count >= 3
+                    })
+            };
             let depth = self.stack.len();
             let positions = self.index_stack.len();
-            if matches!(bullet, '*' | '-')
+            // An empty first item in an empty first item would read as a thematic break.
+            let nested_empty = matches!(bullet, '*' | '-')
                 && depth >= 4
                 && positions >= 3
                 && first_empty
@@ -547,16 +569,38 @@ impl State<'_> {
                 && self.stack[depth - 4] == ConstructName::ListItem
                 && self.index_stack[positions - 1] == 0
                 && self.index_stack[positions - 2] == 0
-                && self.index_stack[positions - 3] == 0
-            {
-                different = true;
-            }
-            if self.options.check_rule()? == bullet && has_rule || breaks(bullet) {
-                different = true;
-            }
-        }
-        if different {
-            bullet = bullet_other;
+                && self.index_stack[positions - 3] == 0;
+            let rule = self.options.check_rule()?;
+            let preferred = bullet;
+            // The preferred bullet is ruled out where it would join the list before, or start a
+            // thematic break of empty items or of a rule as the item's first child.
+            let different = self.bullet_last_used == Some(preferred)
+                || nested_empty
+                || rule == preferred && has_rule;
+            // Each bullet is ruled out where it would join the list before or make a line a
+            // thematic break; the preferred one is tried first, then the one that alternates
+            // with it, then the third.
+            let excluded = |marker: char| {
+                breaks(marker)
+                    || if marker == preferred {
+                        different
+                    } else {
+                        self.bullet_last_used == Some(marker) || rule == marker && has_rule
+                    }
+            };
+            let third = ['-', '*', '+']
+                .iter()
+                .copied()
+                .find(|&marker| marker != preferred && marker != bullet_other)
+                .unwrap_or(bullet_other);
+            // Where every bullet is ruled out, the choice ignores the thematic breaks that
+            // indented code would make, as #257 step 4 leaves to `unwritable-node`.
+            let fallback = if different { bullet_other } else { preferred };
+            bullet = [preferred, bullet_other, third]
+                .iter()
+                .copied()
+                .find(|&marker| !excluded(marker))
+                .unwrap_or(fallback);
         }
         self.bullet_current = Some(bullet);
         self.container_flow(document, node)?;

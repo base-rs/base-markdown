@@ -2,11 +2,12 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! The writer follows the dialect a document was parsed with, `Document::parse_options` (#257):
-//! it writes what those options read, and its escapes are the ones they need.
+//! it writes what those options read, and leaves out the escapes that only constructs they turn
+//! off need.
 
 mod support;
 
-use base_markdown::{to_markdown, Document, MarkdownOptions, ParseOptions};
+use base_markdown::{to_markdown_with_options, Document, MarkdownOptions, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::round_trip::{round_trip, Outcome};
 
@@ -44,22 +45,24 @@ fn options(changes: &[&str]) -> ParseOptions {
 /// Each source, parsed under its options and normalized, is written as expected, and reads back
 /// under the same options as the same document.
 fn check(cases: &[(&[&str], &str, &str)]) {
+    check_with(&MarkdownOptions::default(), cases);
+}
+
+/// As [`check`], writing with `markdown`.
+fn check_with(markdown: &MarkdownOptions, cases: &[(&[&str], &str, &str)]) {
     for &(changes, source, expected) in cases {
         let options = options(changes);
         let mut document = Document::parse(source, &options).unwrap();
         document.normalize();
         assert_eq!(
-            to_markdown(&document).unwrap(),
+            to_markdown_with_options(&document, markdown).unwrap(),
             expected,
             "{:?} {:?}",
             changes,
             source
         );
         assert!(
-            matches!(
-                round_trip(document, &MarkdownOptions::default(), false),
-                Outcome::Pass
-            ),
+            matches!(round_trip(document, markdown, false), Outcome::Pass),
             "{:?} {:?} does not round trip",
             changes,
             source
@@ -107,9 +110,6 @@ fn code() {
     check(&[
         (&[], "    x\n", "```\nx\n```\n"),
         (&["!code_fenced"], "    x\n", "    x\n"),
-        // An item's indented code that a dash marker would turn into a rule keeps its marker.
-        (&["!code_fenced"], "*     --\n", "*     --\n"),
-        (&["!code_fenced"], "*     - -\n", "*     - -\n"),
         // A backtick in the info string makes the fence tildes where references are off.
         (
             &["!character_reference"],
@@ -280,4 +280,135 @@ fn code_after_html_block_blank_lines() {
         round_trip(document, &markdown, false),
         Outcome::Pass
     ));
+}
+
+/// A list's bullet neither joins it to the list before nor makes a line of an item's indented
+/// code, with the markers before it, a thematic break: it is the preferred bullet, else the one
+/// that alternates with it, else the third.
+#[test]
+fn bullets_around_indented_code() {
+    check(&[
+        (&["!code_fenced"], "*     --\n", "*     --\n"),
+        (&["!code_fenced"], "*     - -\n", "*     - -\n"),
+        (&["!code_fenced"], "+     -\t-\n", "*     -\t-\n"),
+        (
+            &["!code_fenced"],
+            "+     ++\n+     **\n",
+            "-     ++\n-     **\n",
+        ),
+        (
+            &["!code_fenced"],
+            "+     **\n+     --\n",
+            "+     **\n+     --\n",
+        ),
+        (
+            &["!code_fenced"],
+            "+     --\n+     **\n",
+            "+     --\n+     **\n",
+        ),
+        (&["!code_fenced"], "* a\n+     **\n", "- a\n\n+     **\n"),
+        (
+            &["!code_fenced"],
+            "+     **\n\n\n-     **\n",
+            "-     **\n\n+     **\n",
+        ),
+        (&["!code_fenced"], "- *     -\n", "- *     -\n"),
+        // The marker of an ordered item before is not part of a thematic break.
+        (&["!code_fenced"], "1. +     --\n", "1. *     --\n"),
+        (&["!code_fenced"], "1. +     **\n", "1. -     **\n"),
+        // A list after one of `-` whose item starts with a rule of `*` takes the third, as `*`
+        // would make the item a rule (#227).
+        (&[], "- a\n+ ***\n", "- a\n\n+ ***\n"),
+        // Fenced code makes no thematic break, so adjacent lists alternate as before.
+        (
+            &[],
+            "- ```\n  --\n  ```\n* ```\n  --\n  ```\n",
+            "- ```\n  --\n  ```\n\n* ```\n  --\n  ```\n",
+        ),
+        (
+            &[],
+            "- ```\n  ++\n  ```\n* ```\n  ++\n  ```\n",
+            "- ```\n  ++\n  ```\n\n* ```\n  ++\n  ```\n",
+        ),
+        (
+            &[],
+            "- ```\n  - -\n  ```\n* ```\n  - -\n  ```\n",
+            "- ```\n  - -\n  ```\n\n* ```\n  - -\n  ```\n",
+        ),
+    ]);
+    let tildes = MarkdownOptions {
+        fence: '~',
+        ..MarkdownOptions::default()
+    };
+    check_with(
+        &tildes,
+        &[(
+            &[],
+            "- ```\n  --\n  ```\n* ```\n  --\n  ```\n",
+            "- ~~~\n  --\n  ~~~\n\n* ~~~\n  --\n  ~~~\n",
+        )],
+    );
+    // Without fences, the code is indented under the defaults too.
+    let indented = MarkdownOptions {
+        fences: false,
+        ..MarkdownOptions::default()
+    };
+    check_with(
+        &indented,
+        &[(
+            &[],
+            "- ```\n  --\n  ```\n* ```\n  --\n  ```\n",
+            "*     --\n\n+     --\n",
+        )],
+    );
+    // A list whose item starts with a rule of its bullet's character, after a list of the bullet
+    // that alternates with it, takes the third (#227).
+    let dash_rule = MarkdownOptions {
+        rule: '-',
+        ..MarkdownOptions::default()
+    };
+    check_with(
+        &dash_rule,
+        &[(&[], "- a\n+ b\n- ***\n", "- a\n\n* b\n\n+ ---\n")],
+    );
+    let plus = MarkdownOptions {
+        bullet: '+',
+        ..MarkdownOptions::default()
+    };
+    check_with(
+        &plus,
+        &[
+            (
+                &["!code_fenced"],
+                "+     ++\n+     **\n",
+                "+     ++\n+     **\n",
+            ),
+            (
+                &[],
+                "- ```\n  ++\n  ```\n* ```\n  ++\n  ```\n",
+                "+ ```\n  ++\n  ```\n\n* ```\n  ++\n  ```\n",
+            ),
+        ],
+    );
+}
+
+/// Where every bullet would join the list before or make a line of indented code a thematic
+/// break, the bullet is chosen as if the code made none, which #257 step 4 leaves to
+/// `unwritable-node`.
+#[test]
+fn bullets_all_ruled_out() {
+    let indented = MarkdownOptions {
+        fences: false,
+        ..MarkdownOptions::default()
+    };
+    let mut document = Document::parse(
+        "- ```\n  --\n  ```\n- ```\n  **\n  ```\n* ```\n  --\n  ```\n* ```\n  **\n  ```\n",
+        &ParseOptions::default(),
+    )
+    .unwrap();
+    document.normalize();
+    assert_eq!(
+        to_markdown_with_options(&document, &indented).unwrap(),
+        "+     --\n+     **\n\n-     --\n-     **\n"
+    );
 }

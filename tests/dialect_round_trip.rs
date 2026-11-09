@@ -84,7 +84,8 @@ const DIALECT: &[&str] = &[
 
 /// A source from one of the shared corpora or the dialect pieces.
 fn source(random: &mut Random) -> String {
-    match random.below(9) {
+    match random.below(10) {
+        7 => adjacent_lists(random),
         0 => corpus::realistic(random),
         1 => corpus::soup(random),
         2 => corpus::edge(random),
@@ -101,6 +102,55 @@ fn source(random: &mut Random) -> String {
             source
         }
     }
+}
+
+/// Adjacent lists, each of different bullet from the one before, whose items start with code of
+/// a line that a bullet could make a thematic break, fenced or indented, perhaps in an item.
+fn adjacent_lists(random: &mut Random) -> String {
+    let outer = random.pick(&["", "", "- ", "* ", "+ ", "1. "]);
+    let indent = " ".repeat(outer.len());
+    let mut source = String::new();
+    let mut last = "";
+    for list in 0..1 + random.below(3) {
+        let marker = loop {
+            let marker = random.pick(&["-", "*", "+"]);
+            if marker != last {
+                break marker;
+            }
+        };
+        last = marker;
+        for item in 0..1 + random.below(2) {
+            source.push_str(if list == 0 && item == 0 {
+                outer
+            } else {
+                &indent
+            });
+            source.push_str(marker);
+            let line = random.pick(&["--", "- -", "**", "* *", "++", "__", "a"]);
+            match random.below(3) {
+                0 => {
+                    source.push_str(" ```\n");
+                    for part in [line, "```"] {
+                        source.push_str(&indent);
+                        source.push_str("  ");
+                        source.push_str(part);
+                        source.push('\n');
+                    }
+                }
+                1 => {
+                    source.push_str("     ");
+                    source.push_str(line);
+                    source.push('\n');
+                }
+                _ => {
+                    source.push(' ');
+                    source.push_str(line);
+                    source.push('\n');
+                }
+            }
+        }
+    }
+    source
 }
 
 /// Random options: each construct and option is on or off with even odds, so every combination is
@@ -266,15 +316,6 @@ fn nested_attention(html: &str) -> bool {
     deepest > 1
 }
 
-/// Whether `output` has an item marked `*` whose content is a thematic break of `*`, which reads
-/// back as a break under any options (#227).
-fn star_rule(output: &str) -> bool {
-    output.lines().any(|line| {
-        line.trim_start_matches(['>', ' ', '-', '+'])
-            .starts_with("* ***")
-    })
-}
-
 fn inputs() -> usize {
     std::env::var("DIALECT_INPUTS")
         .ok()
@@ -304,8 +345,7 @@ fn round_trip_under_every_dialect() {
             Outcome::Fail(failure)
                 if unwritable(&options, &failure.output)
                     || known
-                    || nested_attention(&failure.before)
-                    || star_rule(&failure.output) => {}
+                    || nested_attention(&failure.before) => {}
             Outcome::Fail(failure) => failures.push((source, options, failure)),
         }
     }
