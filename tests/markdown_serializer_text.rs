@@ -13,7 +13,6 @@ use support::fixture::to_markdown_with_options as to_with_options;
 use support::fixture::{
     Blockquote, Delete, Emphasis, List, ListItem, Node, Paragraph, Root, Strong, Text,
 };
-use support::linear::{assert_linear, timed};
 
 #[test]
 fn text() {
@@ -844,20 +843,5 @@ fn a_tilde_in_constructed_text_that_could_pair_is_escaped() {
             "{expected:?}"
         );
         assert_eq!(base_markdown::to_markdown(&reparsed).unwrap(), output);
-    }
-}
-
-#[test]
-fn escaping_tildes_is_linear() {
-    let options = base_markdown::ParseOptions::gfm();
-    // Escaped tildes are added to the list of escapes, and each run is checked against the list without searching it from the start: `\~` adds many escapes, and in `\* ~~a` escapes of `*` are already in the list. Runs of `~`, `a~` and `~~a ` take no path that rescans (a run of `~` is a code fence), so they are not timed.
-    for unit in ["\\~", "\\* ~~a"] {
-        assert_linear(unit, 1 << 9, |count| {
-            let mut document = Document::parse(unit.repeat(count) + "\n", &options).unwrap();
-            document.normalize();
-            timed(|| {
-                base_markdown::to_markdown(&document).unwrap();
-            })
-        });
     }
 }

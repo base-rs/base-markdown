@@ -171,6 +171,7 @@ fn suffixed(value: &Text<'_>, source: &str, suffix: &str) -> Text<'static> {
 fn fresh_suffix(identifier: &str, mut taken: impl FnMut(&str) -> bool) -> String {
     let mut candidate = String::new();
     let mut free = |j: u64| {
+        crate::work::step(1);
         candidate.clear();
         write!(candidate, "{identifier}-{j}").expect("a string takes any text");
         !taken(&candidate)
@@ -961,3 +962,6 @@ impl<S: AsRef<str>> Document<S> {
         (copied_root, last)
     }
 }
+
+#[cfg(test)]
+mod linear_tests;

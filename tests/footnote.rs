@@ -5,13 +5,12 @@
 
 mod support;
 use base_markdown::{
-    message, to_html, to_html_with_options, CompileOptions, Document, Options, ParseOptions,
+    message, to_html, to_html_with_options, CompileOptions, Options, ParseOptions,
 };
 use pretty_assertions::assert_eq;
 use support::fixture::parse_fixture;
 use support::fixture::Position;
 use support::fixture::{FootnoteDefinition, FootnoteReference, Node, Paragraph, Root, Text};
-use support::linear::{assert_linear, timed};
 
 #[test]
 fn footnote() -> Result<(), message::Message> {
@@ -1111,27 +1110,19 @@ indented delta <a href="#user-content-fnref-2" data-footnote-backref="" aria-lab
 
 [^1]: Paragraph
 
-
 # Heading
-
 
 [^2]: Paragraph
 
-
     “code”, which is paragraphs…
-
 
     …because of the indent!
 
-
 [^3]: Paragraph
-
 
 > block quote
 
-
 [^4]: Paragraph
-
 
 - list
 "###,
@@ -1173,27 +1164,19 @@ indented delta <a href="#user-content-fnref-2" data-footnote-backref="" aria-lab
 
 [^1]: Paragraph
 
-
     # Heading
-
 
 [^2]: Paragraph
 
-
         code
-
 
         more code
 
-
 [^3]: Paragraph
-
 
     > block quote
 
-
 [^4]: Paragraph
-
 
     - list
 "###,
@@ -1210,7 +1193,6 @@ indented delta <a href="#user-content-fnref-2" data-footnote-backref="" aria-lab
 <li id="user-content-fn-2">
 <p>Paragraph</p>
 <pre><code>code
-
 
 more code
 </code></pre>
@@ -1677,19 +1659,17 @@ multi-paragraph list items. <a href="#user-content-fnref-longnote" data-footnote
     Ok(())
 }
 
+/// A deep nest of footnote definitions renders. Whether it renders in linear time is measured by
+/// the `nested footnote definitions` benchmark in `benches/bench.rs`, as the HTML renderer keeps no
+/// count of its work that a test could read, and `Document::parse` of the nest counts its work in
+/// `src/event_parser/linear_tests.rs`. The watchdog only turns a hang into a failure.
 #[test]
-fn nesting_footnote_definitions_is_linear() {
-    // A footnote definition cannot start in a heading or an image. The HTML renderer and the document builder count the open headings and images rather than looking through every open container at each start, which made a deep nest of footnote definitions quadratic (#171).
-    assert_linear("to_html", 1 << 9, |size| {
-        let source = "- [^1]: ".repeat(size);
-        timed(|| {
-            to_html(&source);
-        })
-    });
-    assert_linear("Document::parse", 1 << 9, |size| {
-        let source = "- [^1]: ".repeat(size);
-        timed(|| {
-            Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
-        })
-    });
+fn rendering_nested_footnote_definitions_finishes() {
+    let source = "- [^1]: ".repeat(1 << 12);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || sender.send(to_html(&source)).unwrap());
+    let html = receiver
+        .recv_timeout(std::time::Duration::from_secs(60))
+        .expect("rendering finishes within the watchdog");
+    assert!(html.starts_with("<ul>\n<li>"));
 }

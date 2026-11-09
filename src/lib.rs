@@ -77,6 +77,7 @@ mod reference_kind;
 pub mod stream;
 mod util;
 mod value_builder;
+mod work;
 
 pub mod message; // To do: externalize.
 

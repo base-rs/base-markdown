@@ -13,6 +13,8 @@ use alloc::{borrow::Cow, collections::BTreeMap, string::String, vec, vec::Vec};
 use core::{num::NonZeroUsize, ops::Range};
 
 mod insert;
+#[cfg(test)]
+mod linear_tests;
 pub use insert::{FootnotePolicy, InsertOptions, Inserted};
 
 /// A stable index into a document's contiguous node arena.
@@ -25,6 +27,7 @@ impl NodeId {
         Self(NonZeroUsize::new(index + 1).expect("an arena index cannot reach usize::MAX"))
     }
     pub(crate) fn index(self) -> usize {
+        crate::work::read();
         self.0.get() - 1
     }
 }

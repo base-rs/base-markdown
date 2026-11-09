@@ -201,6 +201,7 @@ impl InlineParser {
                     let bound = lower[marker_index][bucket].min(self.attention_stack.len());
                     let mut found = None;
                     for slot in (bound..self.attention_stack.len()).rev() {
+                        crate::work::step(1);
                         let open = self.attention_stack[slot];
                         let candidate = &self.delimiters[open];
                         if candidate.marker == marker

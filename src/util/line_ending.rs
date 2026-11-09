@@ -41,6 +41,7 @@ pub(crate) fn push_normalized(output: &mut String, value: &str) {
 /// Whether source text holds a CR or NUL, which the parser does not store as they are, so that a
 /// value pointing into it may need copying into the form it stores ([`push_normalized`]).
 pub(crate) fn needs_normalizing(value: &str) -> bool {
+    crate::work::step(value.len());
     memchr::memchr2(b'\r', 0, value.as_bytes()).is_some()
 }
 

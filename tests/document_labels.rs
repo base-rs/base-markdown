@@ -11,7 +11,6 @@ use base_markdown::{
     stream::{EventKind, Reference, Tag, Text},
     to_html, Document, LineWrapping, MarkdownOptions, NodeId, ParseOptions, ReferenceKind,
 };
-use support::linear::timed;
 
 /// The label a node is written with, if it has one.
 fn label_of<'a>(document: &'a Document<String>, kind: &'a EventKind<'_>) -> Option<&'a str> {
@@ -679,50 +678,4 @@ fn footnote_calls_too_long_on_one_line_are_written_as_their_identifier() {
         );
         assert_eq!(labels(&parse(&markdown)), [upper.clone(), upper, a.clone()]);
     }
-}
-
-/// Writing the labels of a line of many footnote calls takes time linear in the line, however
-/// long the line is before each (#192). The line is timed against the same text with a line
-/// ending for the space after each call, a control of the same size whose lines are short, so the
-/// ratio of the two growths shows only work that depends on the length of the line: scanning
-/// back over the line for each call grew 1.7 times the control's growth here.
-#[test]
-fn writing_many_labels_on_a_line_is_linear() {
-    let _timing = support::linear::TIMING
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let text = "a".repeat(64);
-    let document = |count: usize, end: char| {
-        parse(&format!(
-            "{}\n\n[^a]: x\n",
-            format!("[^a] {text}{end}").repeat(count)
-        ))
-    };
-    let documents = [
-        document(1 << 12, ' '),
-        document(1 << 14, ' '),
-        document(1 << 12, '\n'),
-        document(1 << 14, '\n'),
-    ];
-    let mut ratios = Vec::new();
-    // Noise makes linear work look slower only now and then, so a ratio over the bound is
-    // measured again up to twice.
-    for _ in 0..3 {
-        let times: Vec<f64> = documents
-            .iter()
-            .map(|document| {
-                timed(|| {
-                    to_markdown(document).unwrap();
-                })
-                .as_secs_f64()
-            })
-            .collect();
-        let ratio = (times[1] / times[0]) / (times[3] / times[2]);
-        eprintln!("linear: {times:?}, {ratio:.2}x the control's growth");
-        if ratio < 1.4 {
-            return;
-        }
-        ratios.push(ratio);
-    }
-    panic!("the line grew {:?} times the control's growth", ratios);
 }

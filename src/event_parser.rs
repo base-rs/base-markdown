@@ -528,3 +528,6 @@ impl EventParser<'_> {
         }))
     }
 }
+
+#[cfg(test)]
+mod linear_tests;

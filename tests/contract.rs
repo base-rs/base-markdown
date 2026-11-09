@@ -1,7 +1,7 @@
 // Released under the MIT License.
 // Copyright, 2026, by Samuel Williams.
 
-//! The clauses of `context/normalize-serialize.md`, the `base_markdown::contract` module, one or more tests each, named `clause_<section>_<clause>_…`. The known gaps of section 8 have ignored repros, named after their issue, with the issue in the reason.
+//! The clauses of `context/normalize-serialize.md`, the `base_markdown::contract` module, one or more tests each, named `clause_<section>_<clause>_…`, but for the linearity tests, which count work and so are in `src/contract/linear_tests.rs`. The known gaps of section 8 have ignored repros, named after their issue, with the issue in the reason.
 
 mod support;
 
@@ -16,7 +16,6 @@ use base_markdown::{
 use regex::Regex;
 use support::corpus::{self, Random};
 use support::fixture::canonical;
-use support::linear::{assert_linear, timed};
 use support::round_trip::{self, round_trip, Failure, Outcome};
 
 /// How many inputs each corpus test takes from each corpus; the fuzz in `roundtrip_fuzz.rs` takes many more.
@@ -1718,15 +1717,6 @@ fn clause_3_1_a_reference_that_roots_a_detached_tree_stays_a_reference() {
         document.node(call).unwrap().kind,
         EventKind::FootnoteReference { .. }
     ));
-}
-
-#[test]
-fn clause_3_1_normalize_is_linear() {
-    assert_linear("normalize", 400, |size| {
-        let source = "a\\*b *c* _d_ [e][f] [^g]\n\n- h\n\n  [f]: /i\n".repeat(size);
-        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
-        timed(|| document.normalize())
-    });
 }
 
 #[test]
@@ -3620,55 +3610,6 @@ fn clause_6_3_same_document_moves_keep_names() {
 }
 
 // 7. Costs.
-
-#[test]
-fn clause_7_1_write_and_render_are_linear() {
-    assert_linear("write and render", 300, |size| {
-        let source = "# h\n\na *b* [c][d] `e`\n\n- f\n  > g\n\n[d]: /u\n".repeat(size);
-        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
-        document.normalize();
-        timed(|| {
-            to_markdown(&document).unwrap();
-            html(&document);
-        })
-    });
-}
-
-#[test]
-#[ignore = "#226: lookups in a detached tree build a table each time"]
-fn clause_7_2_issue_226_detached_lookups() {
-    assert_linear("text_content in a detached tree", 500, |size| {
-        let source = "> [a]\n>\n".repeat(size) + "\n[a]: /u\n";
-        let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
-        let quote = first(&document, document.root());
-        document.detach(quote).unwrap();
-        let paragraphs: Vec<NodeId> = document.children(quote).collect();
-        timed(|| {
-            for &paragraph_id in &paragraphs {
-                document.text_content(paragraph_id);
-            }
-        })
-    });
-}
-
-#[test]
-#[ignore = "#233: edits deep in a phrasing nest walk every ancestor"]
-fn clause_7_2_issue_233_phrasing_depth() {
-    assert_linear("append_child deep in phrasing", 200, |size| {
-        let mut document = parse("a\n");
-        let mut parent = first(&document, document.root());
-        for _ in 0..size {
-            parent = document
-                .append_child(parent, EventKind::Start(Tag::Emphasis))
-                .unwrap();
-        }
-        timed(|| {
-            for _ in 0..size {
-                document.append_child(parent, EventKind::HardBreak).unwrap();
-            }
-        })
-    });
-}
 
 // 8. Known gaps.
 

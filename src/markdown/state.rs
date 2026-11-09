@@ -404,8 +404,10 @@ impl<'a> State<'a> {
                 .find('\n')
                 .map_or(self.output.len(), |index| at + index);
             let line = &self.output[at..end];
+            crate::work::step(line.len() + 1);
             header_escaped = header.is_some_and(|header| {
                 let header = &self.output[header];
+                crate::work::step(header.len());
                 if header_escaped {
                     let mut written = String::with_capacity(header.len() + 1);
                     written.push('\\');
@@ -1608,6 +1610,7 @@ impl<'a> State<'a> {
 fn starts_email(rest: &str, position: usize, applied: &[usize]) -> bool {
     let mut link = crate::util::autolink::Autolink::default();
     for (offset, &byte) in rest.as_bytes().iter().enumerate().skip(1) {
+        crate::work::step(1);
         if applied.binary_search(&(position + offset)).is_ok() {
             return false;
         }

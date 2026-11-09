@@ -209,25 +209,6 @@ fn definitions_are_read_from_a_paragraph_when_it_closes() {
 }
 
 #[test]
-fn definitions_read_at_paragraph_close_scale_linearly() {
-    use support::linear::{assert_linear, timed};
-
-    for (label, unit) in [
-        ("definitions", "[a]: /u\n"),
-        ("failing titles", "[a]: /u\n'x\n"),
-        ("unclosed labels", "[a\n"),
-        ("lists that cannot interrupt", "[a]: /u\n2. c\n"),
-    ] {
-        assert_linear(label, 1 << 11, |size| {
-            let source = unit.repeat(size);
-            timed(|| {
-                to_html(&source);
-            })
-        });
-    }
-}
-
-#[test]
 fn definitions_preserve_values_across_parser_options() {
     use base_markdown::{render_events, stream::EventKind, Document, EventParser};
 

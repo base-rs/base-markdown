@@ -1,6 +1,6 @@
 # Normalize and serialize contract
 
-This is what a `Document` holds and what `Document::normalize`, `Document::is_normalized`, `to_markdown` and HTML rendering guarantee. It is the one statement of those guarantees: the rustdoc of each function says how it does its part, and where the two seem to disagree, this contract is what is meant and the other text is a bug. Each clause has tests named after it in `tests/contract.rs`, `clause_<section>_<clause>_…`, and the known gaps, where the implementation falls short of a clause today, are listed in section 8, each with its issue.
+This is what a `Document` holds and what `Document::normalize`, `Document::is_normalized`, `to_markdown` and HTML rendering guarantee. It is the one statement of those guarantees: the rustdoc of each function says how it does its part, and where the two seem to disagree, this contract is what is meant and the other text is a bug. Each clause has tests named after it in `tests/contract.rs`, `clause_<section>_<clause>_…`, but for the linearity tests of sections 3.1 and 7, which count work and so are in `src/contract/linear_tests.rs`, and the known gaps, where the implementation falls short of a clause today, are listed in section 8, each with its issue.
 
 Throughout, "the HTML" of a document is `Document::render_html` with the given `CompileOptions`, "written" is `to_markdown_with_options`, and "read back" is `Document::parse` with `ParseOptions::default()`, the syntax `normalize_markdown` reads.
 

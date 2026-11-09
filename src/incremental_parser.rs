@@ -210,6 +210,7 @@ impl<'a> IncrementalParser<'a> {
 fn complete_lines(source: &str, from: usize) -> usize {
     let bytes = source.as_bytes();
     let end = bytes.len() - usize::from(bytes.last() == Some(&b'\r'));
+    crate::work::step(end - from.min(end));
     bytes[from.min(end)..end]
         .iter()
         .rposition(|&byte| matches!(byte, b'\n' | b'\r'))

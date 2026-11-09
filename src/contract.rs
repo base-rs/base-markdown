@@ -2,3 +2,6 @@
 // Copyright, 2026, by Samuel Williams.
 
 #![doc = include_str!("../context/normalize-serialize.md")]
+
+#[cfg(test)]
+mod linear_tests;
