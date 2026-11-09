@@ -8,7 +8,7 @@
 //! JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L195>.
 use crate::block_parser::{indentation_width, HtmlBlockShape};
 use crate::markdown::{
-    attention::{self, Edge, Parent, Surroundings},
+    attention::{self, Edge, Surroundings},
     construct_name::ConstructName,
     util::{
         format_code_as_indented::format_code_as_indented,
@@ -21,7 +21,7 @@ use crate::markdown::{
 use crate::{
     bindings::{Lookup, Scratch},
     message::Message,
-    stream::{EventKind, Tag, Target},
+    stream::{EventKind, Tag, TagKind, Target},
     util::line_ending::{line_endings, trim_terminal_ending},
     AlignKind, Document, NodeId, NodeSyntax, ParseOptions, ReferenceKind,
 };
@@ -68,10 +68,9 @@ pub struct State<'a> {
     /// Whether the text being written leaves literal autolinks to its caller, which edits its
     /// start first.
     defer_literals: bool,
-    /// How many attention nodes are open, by marker (`*`, `_`) and sequence size (1, 2).
-    attention_open: [[usize; 2]; 2],
-    /// The attention whose children are being written.
-    parent: Parent,
+    /// The attention nodes of the block being written again that are written in a variant other
+    /// than the first (`respell`), and the variant.
+    variants: Vec<(NodeId, u8)>,
     pub bullet_current: Option<char>,
     pub bullet_last_used: Option<char>,
     /// The bullets that each list of a run of adjacent lists can take, worked out at the run's
@@ -593,9 +592,6 @@ impl<'a> State<'a> {
         } else {
             None
         };
-        if block {
-            self.definition_colon = None;
-        }
         let children: Vec<NodeId> = flow_children(document, parent).collect();
         // Phrasing directly in the document, which only a built tree has, is not read back.
         let checked = matches!(
@@ -612,7 +608,59 @@ impl<'a> State<'a> {
         };
         let verifying = self.verifying;
         self.verifying |= checked;
-        self.phrasing(document, &children, info, &Edge::default())?;
+        let marks = self.marks();
+        let spelling = BlockSpelling {
+            block: parent,
+            children: &children,
+            info,
+            start,
+            joined_definition,
+            written: block,
+        };
+        self.block_phrasing(document, &spelling)?;
+        // The block is read back as it is written, with the escapes above that keep it from
+        // reading as another block. One with nested or adjacent attention is read back
+        // whatever it holds, as which runs of markers pair depends on the whole block.
+        if checked {
+            let attention = nested_attention(document, parent) && !bound(document, parent);
+            let raw = core::mem::replace(&mut self.raw_literals, raw);
+            let loose = core::mem::replace(&mut self.loose_links, loose);
+            if attention || loose || raw {
+                let read = match self.divergence(document, parent, start, raw) {
+                    Some(divergence) => {
+                        attention && self.respell(document, &spelling, &marks, divergence)
+                    }
+                    None => true,
+                };
+                if !read {
+                    self.no_spelling_of(parent);
+                }
+                self.variants.clear();
+            }
+        }
+        self.verifying = verifying;
+        Ok(())
+    }
+
+    /// Write the phrasing of `spelling.block`, with the escapes that keep it from reading as
+    /// another block.
+    fn block_phrasing<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        spelling: &BlockSpelling<'_, '_>,
+    ) -> Result<(), Message> {
+        let BlockSpelling {
+            block: parent,
+            children,
+            info,
+            start,
+            joined_definition,
+            written: block,
+        } = *spelling;
+        if block {
+            self.definition_colon = None;
+        }
+        self.phrasing(document, children, info, &Edge::default())?;
         if block {
             if let Some(colon) = self.definition_colon.take() {
                 if crate::block_parser::starts_definition(&self.output[start..], &self.parse) {
@@ -648,34 +696,171 @@ impl<'a> State<'a> {
                     self.separate_html_start(document, first, start);
                 }
                 self.escape_delimiter_rows(start, joined_definition.is_some());
-            }
-        }
-        // The block is read back as it is written, with the escapes above that keep it from
-        // reading as another block.
-        self.verifying = verifying;
-        if checked {
-            let raw = core::mem::replace(&mut self.raw_literals, raw);
-            if core::mem::replace(&mut self.loose_links, loose) || raw {
-                self.check_block(document, parent, start, raw);
+            } else if self.output[start..].starts_with([' ', '\t']) {
+                // The parser strips the space or tab after an ATX heading's `#`, so it is a
+                // reference, which nothing replaces.
+                self.escape_at(start);
             }
         }
         Ok(())
     }
 
-    /// Check that `block`, whose phrasing is written at `output[start..]` with characters written
-    /// as they are where the options read no escape for them, or with links written bare next to
-    /// what may change where they end, reads back as written: the phrasing is read back alone, as
-    /// a paragraph or a table's cell, which forms the same inline nodes as the block does. A block
-    /// with references or footnote calls, which need definitions read with them, is read back
-    /// for its links alone, and has no spelling where a character has none. The block is checked
-    /// once the escapes that keep it from reading as another block are written.
-    fn check_block<S: AsRef<str>>(
+    /// What the writer records while writing a block, which it restores to write the block
+    /// again.
+    fn marks(&self) -> Marks {
+        Marks {
+            unwritable: self.unwritable,
+            misfit: self.misfit,
+            loose_links: self.loose_links,
+            raw_literals: self.raw_literals,
+            loose_end: self.loose_end,
+            label_end: self.label_end,
+            definition_colon: self.definition_colon,
+        }
+    }
+
+    fn restore(&mut self, marks: &Marks) {
+        self.unwritable = marks.unwritable;
+        self.misfit = marks.misfit;
+        self.loose_links = marks.loose_links;
+        self.raw_literals = marks.raw_literals;
+        self.loose_end = marks.loose_end;
+        self.label_end = marks.label_end;
+        self.definition_colon = marks.definition_colon;
+    }
+
+    /// Write the block of `spelling` again, where it does not read back, with other spellings
+    /// of the attention in it, returning whether one reads back, which is then the output.
+    ///
+    /// Each attention node can be written in a few variants (`attention::vary`): with the other
+    /// marker, with the characters outside its sequences encoded, with those inside encoded, or
+    /// a combination. The search starts from the spelling the rules of `attention::choose` give
+    /// and goes in rounds: each tries changing one node, nearest first to where the block first
+    /// reads back differently, and stops at a spelling that reads back; failing that, it keeps
+    /// the change that reads back furthest, if any reads back further, for the next round. It
+    /// stops after a fixed number of tries. Where none reads back, the first spelling is
+    /// written again, for `unwritable-node`.
+    fn respell<S: AsRef<str>>(
         &mut self,
+        document: &Document<S>,
+        spelling: &BlockSpelling<'_, '_>,
+        marks: &Marks,
+        mut reached: usize,
+    ) -> bool {
+        let block = spelling.block;
+        let cell = matches!(
+            document.node(block).unwrap().kind,
+            EventKind::Start(Tag::TableCell { .. })
+        );
+        let nodes: Vec<NodeId> = document
+            .descendants(block)
+            .filter(|&id| is_attention(document, id))
+            .collect();
+        // Where each node starts and ends among the inline events the block should read back as.
+        let mut spans = Vec::with_capacity(nodes.len());
+        let mut open = Vec::new();
+        for (index, kind) in inline_events(document, document.subtree_events(block), cell)
+            .unwrap_or_default()
+            .iter()
+            .enumerate()
+        {
+            match kind {
+                EventKind::Start(Tag::Emphasis | Tag::Strong | Tag::Delete) => {
+                    open.push(spans.len());
+                    spans.push((index, index));
+                }
+                EventKind::End(TagKind::Emphasis | TagKind::Strong | TagKind::Delete) => {
+                    let node = open.pop().expect("the tree's events are balanced");
+                    spans[node].1 = index;
+                }
+                _ => {}
+            }
+        }
+        spans.resize(nodes.len(), (0, 0));
+        let mut variants = alloc::vec![0u8; nodes.len()];
+        let mut order: Vec<usize> = (0..nodes.len()).collect();
+        let mut tries = 0;
+        let found = 'search: loop {
+            let distance = |node: usize| {
+                let (start, end) = spans[node];
+                start.abs_diff(reached).min(end.abs_diff(reached))
+            };
+            order.sort_by_key(|&node| distance(node));
+            let mut best = None;
+            for &node in &order {
+                let current = variants[node];
+                for variant in (0..attention::VARIANTS).filter(|&variant| variant != current) {
+                    if tries == RESPELL_TRIES {
+                        break 'search false;
+                    }
+                    tries += 1;
+                    variants[node] = variant;
+                    self.variants = nodes
+                        .iter()
+                        .zip(&variants)
+                        .filter(|(_, &variant)| variant != 0)
+                        .map(|(&id, &variant)| (id, variant))
+                        .collect();
+                    match self.spell_again(document, spelling, marks) {
+                        None => break 'search true,
+                        Some(divergence) if divergence > reached => {
+                            reached = divergence;
+                            best = Some((node, variant));
+                        }
+                        Some(_) => {}
+                    }
+                }
+                variants[node] = current;
+            }
+            match best {
+                Some((node, variant)) => variants[node] = variant,
+                None => break false,
+            }
+        };
+        if !found {
+            self.variants.clear();
+            self.spell_again(document, spelling, marks);
+        }
+        found
+    }
+
+    /// Write the block of `spelling` again from `marks`, returning where it first reads back
+    /// differently, or `None` where it reads back. The block was written once without an error,
+    /// and another spelling meets the same checks, so an error here counts as reading back
+    /// differently from the start.
+    fn spell_again<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        spelling: &BlockSpelling<'_, '_>,
+        marks: &Marks,
+    ) -> Option<usize> {
+        let (loose, raw) = (self.loose_links, self.raw_literals);
+        self.restore(marks);
+        self.output.truncate(spelling.start);
+        let phrased = self.block_phrasing(document, spelling);
+        let written = core::mem::replace(&mut self.raw_literals, raw);
+        self.loose_links = loose;
+        phrased.map_or(Some(0), |()| {
+            self.divergence(document, spelling.block, spelling.start, written)
+        })
+    }
+
+    /// Where `block`, whose phrasing is written at `output[start..]`, first reads back
+    /// differently from the tree, as an index into its inline events, or `None` where it reads
+    /// back as written. It may have characters written as they are where the options read no
+    /// escape for them (`raw`), or links written bare next to what may change where they end:
+    /// the phrasing is read back alone, as a paragraph or a table's cell, which forms the same
+    /// inline nodes as the block does. A block with references or footnote calls, which need
+    /// definitions read with them, is read back for its links alone, and has no spelling where
+    /// a character has none. The block is checked once the escapes that keep it from reading as
+    /// another block are written.
+    fn divergence<S: AsRef<str>>(
+        &self,
         document: &Document<S>,
         block: NodeId,
         start: usize,
         raw: bool,
-    ) {
+    ) -> Option<usize> {
         let cell = matches!(
             document.node(block).unwrap().kind,
             EventKind::Start(Tag::TableCell { .. })
@@ -716,48 +901,69 @@ impl<'a> State<'a> {
             }
         }
         let written = self.output[start..].trim_start_matches([' ', '\t']);
-        let bound = document.subtree_events(block).any(|event| {
-            matches!(
-                event.map(|event| event.kind),
-                Ok(EventKind::FootnoteReference { .. }
-                    | EventKind::Start(
-                        Tag::Link(Target::Resolved(_) | Target::Reference(_))
-                            | Tag::Image(Target::Resolved(_) | Target::Reference(_))
-                    ))
-            )
-        });
-        let same = if bound {
+        let bound = bound(document, block);
+        if bound {
             // Only links are written bare, and none is a reference here, as without a link start
             // and end none is read.
-            !raw && {
+            let same = !raw && {
                 let read = Document::parse(written, &self.parse).ok();
                 read.is_some_and(|read| {
                     links(document, document.subtree_events(block)).eq(links(&read, read.events()))
                 })
-            }
+            };
+            return (!same).then_some(0);
+        }
+        let mut source = prefix;
+        if cell {
+            source.push_str("| ");
+            source.push_str(written);
+            source.push_str(" |\n| - |\n");
         } else {
-            let mut source = prefix;
-            if cell {
-                source.push_str("| ");
-                source.push_str(written);
-                source.push_str(" |\n| - |\n");
-            } else {
-                for (index, line) in written.split('\n').enumerate() {
-                    if index > 0 {
-                        source.push('\n');
-                        source.push_str(&continuation);
+            for (index, line) in written.split('\n').enumerate() {
+                if index > 0 {
+                    source.push('\n');
+                    source.push_str(&continuation);
+                }
+                source.push_str(line);
+            }
+        }
+        let unwrap = |events: Option<Vec<EventKind<'static>>>| {
+            let mut events = events?;
+            // Unwrapped, each line ending is written as a space.
+            if self.options.line_wrapping == LineWrapping::Unwrap {
+                for event in &mut events {
+                    if let EventKind::Text(text) = event {
+                        let value = text.resolve("").unwrap_or_default();
+                        if let alloc::borrow::Cow::Owned(value) =
+                            super::handle::unwrap_soft_line_breaks(value)
+                        {
+                            *text = crate::stream::Text::Value(alloc::borrow::Cow::Owned(value));
+                        }
                     }
-                    source.push_str(line);
                 }
             }
-            Document::parse(source.as_str(), &self.parse).is_ok_and(|read| {
-                let expected = inline_events(document, document.subtree_events(block), cell);
-                let actual = inline_events(&read, read.events(), cell);
-                expected.is_some() && expected == actual
-            })
+            Some(events)
         };
-        if !same {
-            self.no_spelling_of(block);
+        let expected = unwrap(inline_events(
+            document,
+            document.subtree_events(block),
+            cell,
+        ));
+        let actual = unwrap(
+            Document::parse(source.as_str(), &self.parse)
+                .ok()
+                .and_then(|read| inline_events(&read, read.events(), cell)),
+        );
+        match (expected, actual) {
+            (Some(expected), Some(actual)) if expected == actual => None,
+            (Some(expected), Some(actual)) => Some(
+                expected
+                    .iter()
+                    .zip(&actual)
+                    .take_while(|(expected, actual)| expected == actual)
+                    .count(),
+            ),
+            _ => Some(0),
         }
     }
 
@@ -942,34 +1148,30 @@ impl<'a> State<'a> {
             before_closes: matches!(previous, Previous::Attention),
             before_opens: matches!(previous, Previous::Start),
             first,
-            first_size: children
-                .first()
-                .map_or(0, |&child| sequence_size(document, child)),
             last,
-            last_size: children
-                .last()
-                .map_or(0, |&child| sequence_size(document, child)),
             after,
             after_closes: next.is_none(),
             first_language: children
                 .first()
                 .is_some_and(|&child| language(document, child)),
             after_language: next.is_some_and(|next| language(document, next)),
-            parent: self.parent,
-            enclosing: [
-                [self.attention_open[0][0] > 0, self.attention_open[0][1] > 0],
-                [self.attention_open[1][0] > 0, self.attention_open[1][1] > 0],
-            ],
         };
-        let choice = attention::choose(sequences, &surroundings).unwrap_or_else(|| {
-            self.no_spelling_of(id);
-            let sequence = sequences[0];
-            attention::encoding(
-                sequence,
-                sequence.chars().next().expect("sequences are not empty"),
-                &surroundings,
-            )
-        });
+        let variant = self
+            .variants
+            .iter()
+            .find(|&&(node, _)| node == id)
+            .map_or(0, |&(_, variant)| variant);
+        let choice = attention::choose(sequences, &surroundings)
+            .map(|choice| attention::vary(choice, variant, sequences, &surroundings))
+            .unwrap_or_else(|| {
+                self.no_spelling_of(id);
+                let sequence = sequences[0];
+                attention::encoding(
+                    sequence,
+                    sequence.chars().next().expect("sequences are not empty"),
+                    &surroundings,
+                )
+            });
         let sequence = choice.sequence;
         let tilde = sequence.starts_with('~');
         if let (Previous::Text(start), Some(character)) = (previous, before) {
@@ -982,23 +1184,12 @@ impl<'a> State<'a> {
             }
         }
         self.output.push_str(sequence);
-        // Strikethrough has one sequence, so enclosing strikethrough is not tracked.
-        let open = (!tilde).then(|| usize::from(sequence.starts_with('_')));
-        if let Some(open) = open {
-            self.attention_open[open][sequence.len() - 1] += 1;
-        }
         let edge = Edge {
             encode: first.filter(|_| choice.encode_first),
             tilde: true,
         };
-        let parent = core::mem::replace(&mut self.parent, Parent::new(&choice, &surroundings));
         let last_text =
             self.phrasing(document, &children, &Info::new(sequence, sequence), &edge)?;
-        let child = core::mem::replace(&mut self.parent, parent);
-        self.parent.extend(&child);
-        if let Some(open) = open {
-            self.attention_open[open][sequence.len() - 1] -= 1;
-        }
         if let Some(start) = last_text {
             self.escape_tilde_end(start);
             if let Some(character) = last.filter(|_| choice.encode_last) {
@@ -1998,8 +2189,7 @@ impl<'a> State<'a> {
             literal_markers: Vec::new(),
             alt_start: None,
             defer_literals: false,
-            attention_open: [[0; 2]; 2],
-            parent: Parent::NONE,
+            variants: Vec::new(),
             bullet_current: None,
             bullet_last_used: None,
             bullet_plan: Vec::new(),
@@ -2433,6 +2623,71 @@ fn starts_email(rest: &str, position: usize, applied: &[usize]) -> bool {
     false
 }
 
+/// How many times `State::respell` writes a block again at most, which keeps writing linear.
+const RESPELL_TRIES: usize = 64;
+
+/// A paragraph, heading or table cell being written, as `State::block_phrasing` writes it.
+#[derive(Clone, Copy)]
+struct BlockSpelling<'n, 'i> {
+    block: NodeId,
+    children: &'n [NodeId],
+    info: &'i Info<'i>,
+    /// Where its phrasing starts in the output.
+    start: usize,
+    joined_definition: Option<(usize, bool)>,
+    /// Whether it is a paragraph or heading, which escapes what would start another block.
+    written: bool,
+}
+
+/// What `State::marks` records.
+struct Marks {
+    unwritable: Option<NodeId>,
+    misfit: bool,
+    loose_links: bool,
+    raw_literals: bool,
+    loose_end: Option<usize>,
+    label_end: Option<(usize, bool)>,
+    definition_colon: Option<usize>,
+}
+
+/// Whether `id` is emphasis, strong or strikethrough.
+fn is_attention<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
+    matches!(
+        document.node(id).unwrap().kind,
+        EventKind::Start(Tag::Emphasis | Tag::Strong | Tag::Delete)
+    )
+}
+
+/// Whether `block` holds attention in attention, or attention directly before other attention,
+/// whose runs of markers can pair otherwise than the tree's, so that it is read back once
+/// written.
+fn nested_attention<S: AsRef<str>>(document: &Document<S>, block: NodeId) -> bool {
+    document.descendants(block).any(|id| {
+        is_attention(document, id)
+            && (flow_children(document, id).any(|child| is_attention(document, child))
+                || document
+                    .node(id)
+                    .unwrap()
+                    .next_sibling()
+                    .is_some_and(|next| is_attention(document, next)))
+    })
+}
+
+/// Whether `block` holds a reference or footnote call, which reads back only with the
+/// definitions it is bound to.
+fn bound<S: AsRef<str>>(document: &Document<S>, block: NodeId) -> bool {
+    document.subtree_events(block).any(|event| {
+        matches!(
+            event.map(|event| event.kind),
+            Ok(EventKind::FootnoteReference { .. }
+                | EventKind::Start(
+                    Tag::Link(Target::Resolved(_) | Target::Reference(_))
+                        | Tag::Image(Target::Resolved(_) | Target::Reference(_))
+                ))
+        )
+    })
+}
+
 /// What a phrasing child was written after.
 enum Previous {
     /// Attention, whose closing sequence ends the output.
@@ -2443,15 +2698,6 @@ enum Previous {
     Start,
     /// Anything else.
     Other,
-}
-
-/// The sequence size of emphasis (1) or strong (2), or 0 for other nodes.
-fn sequence_size<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> usize {
-    match document.node(id).unwrap().kind {
-        EventKind::Start(Tag::Emphasis) => 1,
-        EventKind::Start(Tag::Strong) => 2,
-        _ => 0,
-    }
 }
 
 /// The first or last character a phrasing node is written with, as far as attention next to it needs: text is approximated by its value and other nodes by punctuation.
@@ -2803,8 +3049,9 @@ pub(super) fn flow_children<S: AsRef<str>>(
 
 /// The inline events of the first block in `events` that is a paragraph, or a table cell when
 /// `cell`, with their values as strings and adjacent text joined, when it is the only block or
-/// cell. Separators, and the value of soft breaks, which is a line ending however written, are
-/// left out.
+/// cell. Separators are left out, and a soft break is text of a line ending, as text holding
+/// one renders the same, however the line ending is written, but for a soft break after a hard
+/// break, which is the line ending the parser keeps after one, and which the writer leaves out.
 fn inline_events<'d, S: AsRef<str>>(
     document: &'d Document<S>,
     events: impl Iterator<Item = Result<crate::stream::Event<'d>, crate::stream::StreamError>>,
@@ -2815,6 +3062,7 @@ fn inline_events<'d, S: AsRef<str>>(
     let mut inner = Vec::new();
     let mut depth = 0usize;
     let mut blocks = 0;
+    let mut after_hard_break = false;
     for event in events {
         let kind = event.expect("a document's events are read").kind;
         let outer = match &kind {
@@ -2853,8 +3101,16 @@ fn inline_events<'d, S: AsRef<str>>(
             }
             _ => {}
         }
+        // The writer writes no soft break after a hard break, whose line ending it is.
+        let soft = matches!(kind, EventKind::SoftBreak(_));
+        if core::mem::replace(&mut after_hard_break, matches!(kind, EventKind::HardBreak)) && soft {
+            continue;
+        }
         let kind = match kind {
-            EventKind::SoftBreak(_) => EventKind::SoftBreak(Text::Literal("\n")),
+            // A soft break renders as the line ending it is, which text can hold too.
+            EventKind::SoftBreak(_) => {
+                EventKind::Text(Text::Value(alloc::borrow::Cow::Borrowed("\n")))
+            }
             kind => kind.map_text(|text| {
                 Text::Value(alloc::borrow::Cow::Owned(String::from(
                     text.resolve(source).unwrap_or_default(),

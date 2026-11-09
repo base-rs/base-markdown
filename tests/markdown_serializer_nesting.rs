@@ -171,6 +171,17 @@ fn shapes(depth: usize) -> Vec<(&'static str, Vec<Tag<'static>>)> {
     ]
 }
 
+/// Assert that `result` is not `nesting-too-deep`. Some shapes have no spelling at this depth,
+/// where they nest attention directly in attention, such as strikethrough in emphasis in
+/// strikethrough, whose inner `~~` is between two markers and closes the outer, or nest links in
+/// links, which normalizing would unwrap, so their block reads back differently and they are
+/// `unwritable-node` (contract 3.3).
+fn assert_within_limit(result: Result<String, Message>, label: &str) {
+    if let Err(error) = result {
+        assert_eq!(error.rule_id, "unwritable-node", "{}", label);
+    }
+}
+
 fn assert_too_deep(result: Result<String, Message>, label: &str) {
     let error = result.expect_err(label);
     assert_eq!(error.rule_id, "nesting-too-deep", "{label}");
@@ -193,7 +204,7 @@ fn content_at_the_limit_serializes_and_deeper_content_is_an_error() {
         .map(|(label, tags)| (label, nest(&tags)))
         .collect();
     for (label, document) in &at_limit {
-        assert!(to_markdown(document).is_ok(), "{}", label);
+        assert_within_limit(to_markdown(document), label);
     }
     for (label, document) in &deeper {
         assert_too_deep(to_markdown(document), label);
@@ -301,7 +312,10 @@ fn levels_count_from_the_serialized_node() {
     let attention = nest(&tags);
     assert_too_deep(to_markdown(&quotes), "document");
     // The last quote, with the text `LIMIT` levels below it, and the one around it.
-    assert!(to_markdown_node(&quotes, descend(&quotes, LIMIT), &options).is_ok());
+    assert_within_limit(
+        to_markdown_node(&quotes, descend(&quotes, LIMIT), &options),
+        "last quote, of emphasis and strong",
+    );
     let quote = descend(&quotes, LIMIT - 1);
     assert_too_deep(to_markdown_node(&quotes, quote, &options), "quote");
     // Attention, which is written on its own outside phrasing, counts once.
