@@ -1,10 +1,10 @@
-#![no_main]
-
 // Released under the MIT License.
 // Copyright, 2022, by Bernhard Berger.
 // Copyright, 2022, by Titus Wormer.
 // Copyright, 2022-2023, by Christian Murphy.
 // Copyright, 2026, by Samuel Williams.
+
+#![no_main]
 
 use libfuzzer_sys::fuzz_target;
 
