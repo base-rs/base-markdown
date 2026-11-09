@@ -1282,6 +1282,11 @@ pub(crate) fn html_block_value(value: &str, options: Option<&crate::ParseOptions
     let spaces = bytes.iter().take_while(|&&byte| byte == b' ').count();
     let mut indent = spaces;
     if !limited {
+        // Without indented code, a line that starts with a tab gives the block all its indentation
+        // and none of it reaches the value.
+        if bytes.first() == Some(&b'\t') {
+            return false;
+        }
         indent = bytes
             .iter()
             .take_while(|&&byte| matches!(byte, b' ' | b'\t'))

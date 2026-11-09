@@ -625,7 +625,7 @@ fn clause_1_2_an_html_block_is_one_block_construct() {
         "<div>\t<&>",
     ];
     // Code-block indentation, which only options without indented code read as the HTML's.
-    let indented = ["    <div>", "\t<div>", "   \t<div>", " \t  <div>"];
+    let indented = ["    <div>", "   \t<div>", " \t  <div>"];
     // Text, a tag the block parser does not start a block with, a blank
     // line that ends the block, a line after the one that closes it, and what the parser does not
     // store: CR, which it stores as LF, and NUL, which it stores as U+FFFD.
@@ -644,6 +644,9 @@ fn clause_1_2_an_html_block_is_one_block_construct() {
         "<div>\r\na",
         "<div>\ra",
         "<div>\0",
+        // A line that starts with a tab gives the block its indentation under any options.
+        "\t<div>",
+        "\t <div>",
     ];
     // The parser gives no block its final line ending, which is a separator, so an unclosed block
     // at the end of a quote reads back as itself (#213). The blank lines an unclosed block of kinds
@@ -740,6 +743,11 @@ fn clause_1_2_an_html_block_is_one_block_construct() {
             &mut output,
         )
         .unwrap();
+    }
+    for value in ["\t<div>", "\t <div>", "\t\t<div>"] {
+        assert_rejected(&mut other, StreamError::InvalidValue, |document| {
+            document.set_kind(block, html_block(value))
+        });
     }
 }
 
