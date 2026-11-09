@@ -294,16 +294,10 @@ pub(crate) fn scan_atx_heading(data: &[u8]) -> Option<u8> {
     }
 }
 
+// Callers dispatch on the opening byte: data is nonempty and starts with `=` or `-`.
 pub(crate) fn scan_setext_heading(data: &[u8]) -> Option<(usize, u8)> {
-    // Block classifiers only probe nonempty content.
     let c = data[0];
-    let level = if c == b'=' {
-        1
-    } else if c == b'-' {
-        2
-    } else {
-        return None;
-    };
+    let level = if c == b'=' { 1 } else { 2 };
     let mut i = 1 + scan_ch_repeat(&data[1..], c);
     i += scan_blank_line(&data[i..])?;
     Some((i, level))

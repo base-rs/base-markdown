@@ -100,7 +100,10 @@ struct Builder<'a> {
     empty_item: Option<usize>,
     definitions: Definitions<'a>,
     alignments: Vec<AlignKind>,
-    definition_context: bool,
+    /// The lines of a paragraph whose definitions are being read, reused between paragraphs.
+    lines: Vec<(Range<usize>, usize)>,
+    /// Whether the paragraph before this line closed because this line heads a table, which then continues that paragraph's containers.
+    table_header: bool,
     recorder: Option<Recorder>,
 }
 
@@ -215,7 +218,8 @@ impl Blocks {
             empty_item: None,
             definitions: seed,
             alignments: Vec::new(),
-            definition_context: false,
+            lines: Vec::new(),
+            table_header: false,
             recorder: record.then(|| Recorder {
                 line: start,
                 clean: true,
@@ -410,28 +414,18 @@ impl Builder<'_> {
     fn block(&mut self, start: usize) -> usize {
         let bytes = self.source.as_bytes();
         let mut line = LineStart::new(&bytes[start..]);
-        // Whether this line can continue the content of a definition on the line before. A container opened on this line closes that content, so its first line is read afresh.
-        let mut content_context = self.definition_context;
+        let header = core::mem::take(&mut self.table_header);
         if let Some(recorder) = &mut self.recorder {
             recorder.line = start;
             // A line that interrupted a paragraph was classified before the following line, which can still make it a table header.
-            recorder.clean = !content_context && !core::mem::take(&mut recorder.interrupted);
+            recorder.clean = !header && !core::mem::take(&mut recorder.interrupted);
             recorder.outline.closed = false;
         }
         let mut continued = self.containers(&mut line);
-        if content_context && continued < self.open.len() {
-            let mut probe = line.clone();
-            probe.scan_all_space();
-            if !probe.is_at_eol()
-                && !self.interrupts(&bytes[start + probe.bytes_scanned()..], false)
-            {
-                continued = self.open.len();
-            }
+        // The paragraph before found that this line would continue it, lazily or not.
+        if header {
+            continued = self.open.len();
         }
-        // An underline-shaped line belongs to the preceding content only within the same containers, closing or opening none.
-        let underline_depth =
-            (content_context && continued == self.open.len()).then_some(continued);
-        self.definition_context = false;
         while self.open.len() > continued {
             self.pop(start);
         }
@@ -443,9 +437,6 @@ impl Builder<'_> {
                 indent += line.scan_space_upto(usize::MAX);
             }
             if indent == 4 && self.options.constructs.code_indented {
-                if content_context {
-                    line.scan_all_space();
-                }
                 break (definition_start, indent);
             }
             let at = start + line.bytes_scanned();
@@ -460,7 +451,6 @@ impl Builder<'_> {
                             .push_footnote(self.source, at, &Text::Source(label));
                     self.append(at, content, Body::Footnote(index));
                     self.push();
-                    content_context = false;
                     if let Some(length) = scan_blank_line(&bytes[content..]) {
                         return content + length;
                     }
@@ -480,7 +470,6 @@ impl Builder<'_> {
                 self.list(definition_start, marker, number, start);
                 self.append(definition_start, content, Body::Item(width));
                 self.push();
-                content_context = false;
                 if let Some(length) = scan_blank_line(&bytes[content..]) {
                     self.empty_item = Some(content + length);
                     return content + length;
@@ -489,7 +478,6 @@ impl Builder<'_> {
                 self.finish_list(start);
                 self.append(at, at, Body::Quote);
                 self.push();
-                content_context = false;
             } else {
                 // Failed marker scans leave the cursor after indentation. Keep that work for the block classifiers below.
                 break (definition_start, indent);
@@ -511,48 +499,9 @@ impl Builder<'_> {
             }
             return at + length;
         }
-        if indent == 4 && self.options.constructs.code_indented && !content_context {
+        if indent == 4 && self.options.constructs.code_indented {
             self.finish_list(start);
             return self.indented(at, line.remaining_space());
-        }
-        if underline_depth == Some(self.open.len())
-            && self.options.constructs.heading_setext
-            && scan_setext_heading(&bytes[at..]).is_some()
-        {
-            // An underline-shaped line after a paragraph or definition is a table header when a delimiter row follows, and paragraph text otherwise.
-            if self.options.constructs.table {
-                if let Some(end) = self.table_head(definition_start) {
-                    self.finish_list(start);
-                    return self.table(definition_start, end);
-                }
-            }
-            return self.paragraph(at, start);
-        }
-        if bytes[at] == b'[' && self.options.constructs.definition {
-            if self.options.constructs.table && table_definition_header(&bytes[at..]) {
-                if let Some(end) = self.table_head(definition_start) {
-                    self.finish_list(start);
-                    return self.table(definition_start, end);
-                }
-            }
-            let metadata =
-                definition::scan(self.source, self.definition_fragments(at), self.options);
-            if let Some(metadata) = metadata {
-                self.finish_list(start);
-                let index = self.definitions.push(
-                    self.source,
-                    definition_start,
-                    metadata.label,
-                    metadata.destination,
-                    metadata.title,
-                );
-                self.append(definition_start, metadata.end, Body::Definition(index));
-                self.definition_context = true;
-                return metadata.end;
-            }
-        }
-        if indent == 4 && self.options.constructs.code_indented && content_context {
-            return self.paragraph(at, start);
         }
         if bytes[at] == b'<' && self.options.constructs.html_flow {
             if let Some(html) =
@@ -598,57 +547,22 @@ impl Builder<'_> {
                 return self.table(definition_start, delimiter_end);
             }
         }
-        self.paragraph(at, start)
+        self.paragraph(at, start, definition_start)
     }
-    fn definition_fragments(
-        &self,
-        start: usize,
-    ) -> impl Iterator<Item = (Range<usize>, usize)> + Clone + '_ {
-        let mut at = Some((start, false));
-        core::iter::from_fn(move || {
-            let bytes = self.source.as_bytes();
-            let (start, continuation) = at.take()?;
-            let mut spaces = 0;
-            let current = if continuation {
-                let mut line = LineStart::new(&bytes[start..]);
-                self.containers(&mut line);
-                let candidate = start + line.bytes_scanned();
-                spaces = line.remaining_space();
-                let indented = line.scan_space(4) && self.options.constructs.code_indented;
-                line.scan_all_space();
-                if line.is_at_eol() {
-                    return None;
-                }
-                let content = start + line.bytes_scanned();
-                let interrupted = !indented
-                    && ((self.options.constructs.heading_setext
-                        && scan_setext_heading(&bytes[content..]).is_some())
-                        || self.interrupts(&bytes[content..], false)
-                        || (self.options.constructs.table
-                            && self.table_delimiter(candidate).is_some()));
-                if interrupted {
-                    return None;
-                }
-                candidate
-            } else {
-                start
-            };
-            let end = current + scan_nextline(&bytes[current..]);
-            if end < bytes.len() {
-                at = Some((end, true));
-            }
-            Some((current..end, spaces))
-        })
-    }
-
     fn interrupts(&self, bytes: &[u8], current_container: bool) -> bool {
         interrupts(self.options, bytes, current_container)
     }
-    fn paragraph(&mut self, start: usize, line_start: usize) -> usize {
+    /// Prepare the paragraph whose first line has its text at `start`, after indentation that
+    /// starts at `indent`. A paragraph that starts with `[` may start with link reference
+    /// definitions, which are read from the front of its text when it closes, or when an underline
+    /// would make it a heading, as in `CommonMark`: its lines are judged as paragraph lines first.
+    fn paragraph(&mut self, start: usize, line_start: usize, indent: usize) -> usize {
         self.finish_list(line_start);
-        let paragraph = self.append(start, start, Body::Paragraph);
-        self.push();
         let bytes = self.source.as_bytes();
+        let mut definitions = (bytes[start] == b'[' && self.options.constructs.definition)
+            .then_some((self.current, indent));
+        let mut paragraph = self.append(start, start, Body::Paragraph);
+        self.push();
         let mut at = start;
         // The columns of a tab that a container prefix only partly consumed, before `at`.
         let mut spaces = 0;
@@ -662,8 +576,7 @@ impl Builder<'_> {
             let indented = line.scan_space(4) && self.options.constructs.code_indented;
             line.scan_all_space();
             if line.is_at_eol() {
-                self.trim_fragment();
-                self.pop(next);
+                self.close_paragraph(paragraph, definitions, next);
                 return next;
             }
             if !indented {
@@ -673,6 +586,28 @@ impl Builder<'_> {
                     && self.options.constructs.heading_setext
                 {
                     if let Some((length, level)) = scan_setext_heading(&bytes[content..]) {
+                        if let Some((before, indent)) = definitions.take() {
+                            if let Some(rest) = self.definitions(paragraph, before, indent) {
+                                paragraph = rest;
+                            } else {
+                                // With no text left, the underline is not one: it heads a table or starts the paragraph's text.
+                                if let Some(recorder) = &mut self.recorder {
+                                    recorder.line = next;
+                                    recorder.clean = false;
+                                }
+                                let header = content_start - usize::from(spaces > 0);
+                                if self.options.constructs.table {
+                                    if let Some(end) = self.table_head(header) {
+                                        return self.table(header, end);
+                                    }
+                                }
+                                paragraph = self.append(content, content, Body::Paragraph);
+                                self.push();
+                                at = content;
+                                spaces = 0;
+                                continue;
+                            }
+                        }
                         self.trim_fragment();
                         self.blocks.nodes[paragraph].body = Body::Heading(level);
                         self.pop(content + length);
@@ -693,19 +628,143 @@ impl Builder<'_> {
                     if let Some(recorder) = &mut self.recorder {
                         recorder.interrupted = true;
                     }
-                    self.trim_fragment();
-                    self.pop(next);
+                    self.close_paragraph(paragraph, definitions, next);
                     return next;
                 }
                 // As in cmark-gfm, a delimiter row only claims a line that would otherwise continue the paragraph.
                 if self.options.constructs.table && self.table_delimiter(content_start).is_some() {
-                    self.definition_context = true;
-                    self.trim_fragment();
-                    self.pop(next);
+                    self.table_header = true;
+                    self.close_paragraph(paragraph, definitions, next);
                     return next;
                 }
             }
             at = content_start;
+        }
+    }
+    /// Close `paragraph` before the line at `next`, after reading the definitions it starts with
+    /// when `definitions` holds its previous sibling and the start of its indentation.
+    fn close_paragraph(
+        &mut self,
+        paragraph: usize,
+        definitions: Option<(usize, usize)>,
+        next: usize,
+    ) {
+        let paragraph = match definitions {
+            Some((before, indent)) => self.definitions(paragraph, before, indent),
+            None => Some(paragraph),
+        };
+        if paragraph.is_some() {
+            self.trim_fragment();
+            self.pop(next);
+        }
+    }
+    /// Read the link reference definitions at the front of `paragraph`, the open block whose
+    /// fragments are the last nodes, whose previous sibling is `before`, and whose first line's
+    /// indentation starts at `indent`. Each definition becomes a block before the paragraph, which
+    /// keeps the lines after them: the paragraph, rebuilt when any definition was read, stays open,
+    /// unless no line is left, when it is removed.
+    fn definitions(&mut self, paragraph: usize, before: usize, indent: usize) -> Option<usize> {
+        let source = self.source;
+        let bytes = source.as_bytes();
+        let mut lines = core::mem::take(&mut self.lines);
+        lines.clear();
+        lines.extend(self.blocks.nodes[paragraph + 1..].iter().map(|node| {
+            let Body::Fragment(spaces) = node.body else {
+                unreachable!("a paragraph holds only fragments")
+            };
+            (node.start..node.end, spaces)
+        }));
+        let mut first = 0;
+        let mut found = Vec::new();
+        while first < lines.len() {
+            let range = &lines[first].0;
+            let text = range.start
+                + bytes[range.clone()]
+                    .iter()
+                    .take_while(|&&byte| matches!(byte, b' ' | b'\t'))
+                    .count();
+            if bytes.get(text) != Some(&b'[') {
+                break;
+            }
+            let Some(metadata) =
+                definition::scan(source, lines[first..].iter().cloned(), self.options)
+            else {
+                break;
+            };
+            let start = if first == 0 {
+                indent
+            } else {
+                range.start - usize::from(lines[first].1 > 0)
+            };
+            let line = range.start;
+            while first < lines.len() && lines[first].0.end <= metadata.end {
+                first += 1;
+            }
+            found.push((start, line, metadata));
+        }
+        if found.is_empty() {
+            self.lines = lines;
+            return Some(paragraph);
+        }
+        // Rebuild the blocks from the paragraph's place: its first block keeps the paragraph's outline entry.
+        self.blocks.nodes.truncate(paragraph);
+        self.open.pop();
+        self.current = before;
+        let mut first_line = None;
+        if let Some(recorder) = &mut self.recorder {
+            if recorder
+                .outline
+                .blocks
+                .last()
+                .is_some_and(|block| block.node == paragraph)
+            {
+                let block = recorder.outline.blocks.pop().expect("checked above");
+                first_line = Some((block.line, block.clean));
+            }
+        }
+        for (count, (start, line, metadata)) in found.into_iter().enumerate() {
+            self.record(count == 0, first_line, line);
+            let index = self.definitions.push(
+                source,
+                start,
+                metadata.label,
+                metadata.destination,
+                metadata.title,
+            );
+            self.append(start, metadata.end, Body::Definition(index));
+        }
+        let rest = (first < lines.len()).then(|| {
+            let (range, _) = lines[first].clone();
+            self.record(false, first_line, range.start);
+            let text = range.start
+                + bytes[range.clone()]
+                    .iter()
+                    .take_while(|&&byte| matches!(byte, b' ' | b'\t'))
+                    .count();
+            let paragraph = self.append(text, text, Body::Paragraph);
+            self.push();
+            self.fragment(text, range.end, 0);
+            for (range, spaces) in &lines[first + 1..] {
+                self.fragment(range.start, range.end, *spaces);
+            }
+            paragraph
+        });
+        self.lines = lines;
+        rest
+    }
+    /// Set the outline line of the next document-level block that rebuilding a paragraph appends: the paragraph's own for its first block, and otherwise that of `line`, after the first, which is not clean.
+    fn record(&mut self, first: bool, paragraph: Option<(usize, bool)>, line: usize) {
+        if let Some(recorder) = &mut self.recorder {
+            match paragraph {
+                Some((start, clean)) if first => {
+                    recorder.line = start;
+                    recorder.clean = clean;
+                }
+                _ => {
+                    recorder.line = line;
+                    recorder.clean = false;
+                }
+            }
         }
     }
     fn trim_fragment(&mut self) {
@@ -1264,22 +1323,6 @@ pub(crate) fn html_block_value(value: &str) -> bool {
     true
 }
 
-/// Definition-looking table headers take precedence over definitions; other headers follow ordinary paragraph indentation rules.
-fn table_definition_header(bytes: &[u8]) -> bool {
-    let mut at = 1;
-    while at < bytes.len() {
-        match bytes[at] {
-            b'\\' if bytes.get(at + 1).is_some_and(u8::is_ascii_punctuation) => at += 1,
-            b'[' => return false,
-            b']' => return bytes.get(at + 1) == Some(&b':'),
-            b'\r' | b'\n' => return true,
-            _ => {}
-        }
-        at += 1;
-    }
-    false
-}
-
 pub(crate) fn footnote_prefix(bytes: &[u8], start: usize) -> Option<(Range<usize>, usize)> {
     if !bytes[start..].starts_with(b"[^") {
         return None;
@@ -1334,8 +1377,10 @@ fn list_interrupts(options: &ParseOptions, bytes: &[u8], current_container: bool
 /// Whether a line that continues a paragraph in the same containers, from its first byte other
 /// than a space or tab, starts a block instead, as `paragraph` decides with the default
 /// constructs: a setext underline, or a block that interrupts a paragraph. A line that continues
-/// a `definition` is read as `definition_fragments` reads one, where any list item interrupts it.
-/// Indentation, which keeps any of these from starting, is not counted here.
+/// a `definition` counts any list item as interrupting it. The parser reads a definition from a
+/// paragraph's text, where only a list item that may interrupt a paragraph does (#249), so this
+/// is the stricter reading, which rejects a label that either would end. Indentation, which keeps
+/// any of these from starting, is not counted here.
 pub(crate) fn continuation_starts_block(bytes: &[u8], definition: bool) -> bool {
     let options = ParseOptions::default();
     (matches!(bytes.first(), Some(b'=' | b'-')) && scan_setext_heading(bytes).is_some())

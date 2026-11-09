@@ -3167,7 +3167,7 @@ fn a_footnote_definition_in_the_only_item_of_a_loose_list_keeps_the_item_spread(
     // Parsed, these are written as they were.
     for source in [
         "- [^2]: q\n\n  [^1]: a\n\n  b\n",
-        "- [^x]: q\n\n  a\n\n  | - |\n  | --- |\n",
+        "- [^x]: q\n\n  a\n\n  | \\- |\n  | --- |\n",
         "- [^1]: a\n\n  b\n\n  3. c\n",
     ] {
         let document = Document::parse(source, &ParseOptions::default()).unwrap();
@@ -3179,7 +3179,7 @@ fn a_footnote_definition_in_the_only_item_of_a_loose_list_keeps_the_item_spread(
     let document = Document::parse(source, &ParseOptions::default()).unwrap();
     assert_eq!(
         reads_back(document),
-        "- [^x]: q\n\n  a\n\n  | - |\n  | --- |\n"
+        "- [^x]: q\n\n  a\n\n  | \\- |\n  | --- |\n"
     );
 }
 
