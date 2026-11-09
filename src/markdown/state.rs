@@ -381,11 +381,7 @@ impl<'a> State<'a> {
                 // `html_block_blank_lines`, one of kind 6 or 7 takes them too, and keeps the blank
                 // line before them, so one that keeps a final line ending without a blank line,
                 // which only the end of the document gives, has none either.
-                if let Some(shape) = html_shape(document, child) {
-                    let EventKind::Html { value, .. } = &document.node(child).unwrap().kind else {
-                        unreachable!("only an HTML block has a shape")
-                    };
-                    let value = value.resolve(document.source()).unwrap();
+                if let Some((value, shape)) = html_block_parts(document, child) {
                     let last_line = value.trim_end_matches('\n').rsplit('\n').next();
                     if shape.unclosed
                         || shape.keeps_line_ending
@@ -1549,7 +1545,7 @@ impl<'a> State<'a> {
             EventKind::Html { value, block: true } => {
                 let value = value.resolve(source).unwrap();
                 let shape = html_shape(document, id).expect("a document's HTML block starts one");
-                self.html_block(document, id, shape);
+                self.html_block(document, id);
                 self.output.push_str(if shape.keeps_line_ending {
                     &value[..value.len() - 1]
                 } else {
@@ -1589,17 +1585,14 @@ impl<'a> State<'a> {
         result
     }
 
-    /// Check that HTML block `id`, of shape `shape`, starts where it is written at a column
-    /// where its first line is no indented code (#266). After the first line of a block quote,
+    /// Check that HTML block `id` starts where it is written at a column it fits (`HtmlFit`), where
+    /// its first line is no indented code (#266) and continues no block before it. After the first line of a block quote,
     /// its line is written with the spaces before `>` that put it at the first such column,
     /// which `blockquote` writes, so only one that starts its container, after what is before
     /// it there, can have none.
-    fn html_block<S: AsRef<str>>(
-        &mut self,
-        document: &Document<S>,
-        id: NodeId,
-        shape: HtmlBlockShape,
-    ) {
+    fn html_block<S: AsRef<str>>(&mut self, document: &Document<S>, id: NodeId) {
+        let fit = html_fit(document, id, self.position.before)
+            .expect("a document's HTML block starts one");
         let mut column = self.position.first;
         let quoted = document.node(id).unwrap().parent().is_some_and(|parent| {
             matches!(
@@ -1608,13 +1601,13 @@ impl<'a> State<'a> {
             )
         });
         if quoted && self.position.before.is_some() {
-            let spaces = quote_spaces(shape, column, 3);
+            let spaces = quote_spaces(fit, column, 3);
             if spaces > 0 {
                 self.quote_lines.push((self.output.len(), spaces));
             }
             column += spaces;
         }
-        if !shape.fits(column) {
+        if !fit.fits(column) {
             self.no_spelling_of(id);
         }
     }
@@ -1623,7 +1616,8 @@ impl<'a> State<'a> {
     /// before its marker: up to three, but none after an item's marker, whose padding would take
     /// them, or after a footnote definition's label for an item, which would not count them in
     /// its width (`After`), and fewer than the width of the item before it, which a line indented
-    /// that far would continue.
+    /// that far would continue, or than the indentation from which an HTML block before it that
+    /// keeps its blank lines would continue over its line.
     pub(super) fn marker_spaces<S: AsRef<str>>(
         &self,
         document: &Document<S>,
@@ -1642,9 +1636,12 @@ impl<'a> State<'a> {
                 EventKind::Start(Tag::List { .. }) => flow_children(document, before).last(),
                 _ => None,
             });
+        let most = continued_from(document, position.before).map_or(3, |from| (from - 1).min(3));
         match (before, self.last_item) {
-            (Some(before), Some((item, width))) if item == before => width.saturating_sub(1).min(3),
-            _ => 3,
+            (Some(before), Some((item, width))) if item == before => {
+                width.saturating_sub(1).min(most)
+            }
+            _ => most,
         }
     }
 
@@ -2446,22 +2443,49 @@ fn list_interrupts_paragraph<S: AsRef<str>>(document: &Document<S>, id: NodeId) 
         })
 }
 
-/// Whether item `item` is written with a blank line after its marker: it is empty, or starts with
-/// an HTML block with indentation that the marker's padding would take. Without indented code,
-/// the parser reads a padding of one after a marker and whitespace of 5 columns or more, so an
-/// HTML block indented 4 columns or more at some column is written after the marker, at such a
-/// column (`State::plan_item`). Its content then starts one column after the marker.
-pub(super) fn item_starts_blank<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> bool {
+/// How an item's first line starts after its marker.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ItemStart {
+    /// With a blank line: the item is empty, or starts with an HTML block with indentation that
+    /// the marker's padding would take. Its content then starts one column after the marker.
+    Blank,
+    /// With an HTML block indented 4 columns or more at the column it is written at, which only
+    /// options without indented code allow: the parser reads a padding of one after a marker
+    /// and whitespace of 5 columns or more, so the block is written after the marker at such a
+    /// column (`HtmlFit::inline`).
+    Indented,
+    /// With code, after the preferred padding.
+    Code,
+    /// With any other block, after any padding.
+    Other,
+}
+
+/// How item `item` starts.
+pub(super) fn item_start<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> ItemStart {
     let Some(first) = flow_children(document, item).next() else {
-        return true;
+        return ItemStart::Blank;
     };
-    let EventKind::Html { value, block: true } = &document.node(first).unwrap().kind else {
-        return false;
-    };
-    let value = value.resolve(document.source()).unwrap().as_bytes();
-    matches!(value.first(), Some(b' ' | b'\t'))
-        && (document.parse_options().constructs.code_indented
-            || (0..4).all(|column| indentation_width(value, column) < 4))
+    match &document.node(first).unwrap().kind {
+        EventKind::CodeBlock { .. } => ItemStart::Code,
+        EventKind::Html { value, block: true } => {
+            let value = value.resolve(document.source()).unwrap().as_bytes();
+            if !matches!(value.first(), Some(b' ' | b'\t')) {
+                ItemStart::Other
+            } else if document.parse_options().constructs.code_indented
+                || (0..4).all(|column| indentation_width(value, column) < 4)
+            {
+                ItemStart::Blank
+            } else {
+                ItemStart::Indented
+            }
+        }
+        _ => ItemStart::Other,
+    }
+}
+
+/// Whether item `item` is written with a blank line after its marker (`ItemStart::Blank`).
+pub(super) fn item_starts_blank<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> bool {
+    item_start(document, item) == ItemStart::Blank
 }
 
 /// Whether code as a flow child of `parent` after flow child `before`, if any, needs a fence
@@ -2501,7 +2525,7 @@ fn fences_code<S: AsRef<str>>(
 
 /// Whether `parent`, whose flow children are being joined, is a list or item, whose joins are a
 /// single line ending when it records no blank line between its blocks.
-fn in_list<S: AsRef<str>>(document: &Document<S>, parent: NodeId) -> bool {
+pub(super) fn in_list<S: AsRef<str>>(document: &Document<S>, parent: NodeId) -> bool {
     matches!(
         document.node(parent).unwrap().kind,
         EventKind::Start(Tag::Item { .. } | Tag::List { .. })
@@ -2691,19 +2715,86 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
     }
 }
 
-/// The shape of HTML block `id`'s value under the options of `document`, or `None` where `id` is
-/// no HTML block or its value starts none, which only a hand-built tree has.
+/// The value of HTML block `id` and its shape under the options of `document`, or `None` where
+/// `id` is no HTML block or its value starts none, which only a hand-built tree has.
+pub(super) fn html_block_parts<S: AsRef<str>>(
+    document: &Document<S>,
+    id: NodeId,
+) -> Option<(&str, HtmlBlockShape)> {
+    match &document.node(id).unwrap().kind {
+        EventKind::Html { value, block: true } => {
+            let value = value.resolve(document.source()).unwrap();
+            HtmlBlockShape::of(value, document.parse_options()).map(|shape| (value, shape))
+        }
+        _ => None,
+    }
+}
+
+/// The shape of HTML block `id`'s value, as `html_block_parts` gives it.
 pub(super) fn html_shape<S: AsRef<str>>(
     document: &Document<S>,
     id: NodeId,
 ) -> Option<HtmlBlockShape> {
-    match &document.node(id).unwrap().kind {
-        EventKind::Html { value, block: true } => HtmlBlockShape::of(
-            value.resolve(document.source()).unwrap(),
-            document.parse_options(),
-        ),
-        _ => None,
+    html_block_parts(document, id).map(|(_, shape)| shape)
+}
+
+/// The content columns an HTML block can start at where it is written: those its shape fits,
+/// and, after a block that a line indented as far as its first line would continue, those where
+/// that indentation is narrower. A footnote definition takes a line indented 4 columns or more
+/// after a blank line, which only options without indented code give an HTML block (#275), and
+/// an HTML block that keeps its blank lines one indented as far as its own lines are, at least
+/// one column. One that starts an item after its marker, where the padding of one leaves it
+/// indented, must be indented 4 columns or more (`item_start`).
+#[derive(Clone, Copy)]
+pub(super) struct HtmlFit<'a> {
+    pub(super) shape: HtmlBlockShape,
+    value: &'a [u8],
+    /// The indentation from which the block before it would continue over its first line.
+    below: Option<usize>,
+    pub(super) inline: bool,
+}
+
+impl HtmlFit<'_> {
+    /// The width of its first line's indentation at `column`.
+    pub(super) fn indentation(self, column: usize) -> usize {
+        indentation_width(self.value, column)
     }
+
+    pub(super) fn fits(self, column: usize) -> bool {
+        let width = self.indentation(column);
+        self.shape.fits(column)
+            && self.below.is_none_or(|below| width < below)
+            && (!self.inline || width >= 4)
+    }
+}
+
+/// Where HTML block `id`, after flow child `before` if any, can start, or `None` where it is no
+/// HTML block.
+pub(super) fn html_fit<S: AsRef<str>>(
+    document: &Document<S>,
+    id: NodeId,
+    before: Option<NodeId>,
+) -> Option<HtmlFit<'_>> {
+    let (value, shape) = html_block_parts(document, id)?;
+    let below = before.and_then(|before| match document.node(before).unwrap().kind {
+        EventKind::Start(Tag::FootnoteDefinition { .. }) => Some(4),
+        _ => html_shape(document, before)?.continued_from,
+    });
+    Some(HtmlFit {
+        shape,
+        value: value.as_bytes(),
+        below,
+        inline: false,
+    })
+}
+
+/// The indentation from which HTML block `before`, if it is one that keeps its blank lines,
+/// would continue over the line after it: the spaces before a marker or `>` there must be fewer.
+pub(super) fn continued_from<S: AsRef<str>>(
+    document: &Document<S>,
+    before: Option<NodeId>,
+) -> Option<usize> {
+    html_shape(document, before?)?.continued_from
 }
 
 /// The shape of the HTML block that `node` is or ends in, through the last blocks of the
@@ -2727,12 +2818,12 @@ pub(super) fn trailing_html<S: AsRef<str>>(
     html_shape(document, node).map(|shape| (shape, quoted))
 }
 
-/// The fewest spaces, at most `most`, before a block quote's `>` that put HTML block of shape
-/// `shape`, whose line it starts at `column` without them, at a column where its first line is
-/// no indented code, or none where no such count does.
-pub(super) fn quote_spaces(shape: HtmlBlockShape, column: usize, most: usize) -> usize {
+/// The fewest spaces, at most `most`, before a block quote's `>` that put an HTML block that can
+/// start as `fit` says, whose line it starts at `column` without them, at a column it fits, or
+/// none where no such count does.
+pub(super) fn quote_spaces(fit: HtmlFit<'_>, column: usize, most: usize) -> usize {
     (0..=most)
-        .find(|&spaces| shape.fits(column + spaces))
+        .find(|&spaces| fit.fits(column + spaces))
         .unwrap_or(0)
 }
 

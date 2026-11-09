@@ -6,8 +6,8 @@ use super::{
     configure::IndentOptions,
     construct_name::ConstructName,
     state::{
-        flow_children, html_shape, item_starts_blank, list_number_too_long, quote_spaces, After,
-        Info, Position, State, MAX_LIST_NUMBER,
+        continued_from, flow_children, html_fit, in_list, item_start, list_number_too_long,
+        quote_spaces, After, HtmlFit, Info, ItemStart, Position, State, MAX_LIST_NUMBER,
     },
     util::{
         contains_control_or_whitespace::contains_control_or_whitespace,
@@ -18,7 +18,6 @@ use super::{
     },
 };
 use crate::{
-    block_parser::indentation_width,
     message::Message,
     stream::{EventKind, Tag},
     util::line_ending::trim_terminal_ending,
@@ -44,15 +43,15 @@ impl State<'_> {
         // as far would continue, the quote starts with a line of `>` alone, and the block is
         // written on the next.
         let most = self.marker_spaces(document, position, false);
-        let shape = flow_children(document, node)
+        let fit = flow_children(document, node)
             .next()
-            .and_then(|first| html_shape(document, first));
-        let mut first = shape.map_or(0, |shape| quote_spaces(shape, position.first + 2, most));
+            .and_then(|first| html_fit(document, first, None));
+        let mut first = fit.map_or(0, |fit| quote_spaces(fit, position.first + 2, most));
         let lines = self.quote_lines.len();
         let mut column = position.first + first + 2;
         // Three spaces reach every column, one of which a block fits.
-        if let Some(shape) = shape.filter(|&shape| !shape.fits(column)) {
-            let spaces = quote_spaces(shape, position.rest + 2, 3);
+        if let Some(fit) = fit.filter(|&fit| !fit.fits(column)) {
+            let spaces = quote_spaces(fit, position.rest + 2, 3);
             first = 0;
             column = position.rest + spaces + 2;
             self.output.push('\n');
@@ -966,46 +965,137 @@ impl State<'_> {
         }
     }
 
-    /// Whether item `node`, with a marker of width `marker`, starts with a blank line, and the
-    /// padding it must have, if any: one where it starts with a blank line, as `item_starts_blank`
-    /// says, or with an HTML block with indentation, which the parser reads with a padding of one
-    /// after a marker and whitespace of 5 columns or more, and the preferred one where it starts
-    /// with code.
-    fn item_start<S: AsRef<str>>(
+    /// How item `node`, with a marker of width `marker`, starts (`item_start`), and the padding it
+    /// must have, if any: one where it starts with a blank line or with an HTML block with
+    /// indentation, and the preferred one where it starts with code.
+    fn item_padding<S: AsRef<str>>(
         &self,
         document: &Document<S>,
         node: NodeId,
         marker: usize,
-    ) -> (bool, Option<usize>) {
-        if item_starts_blank(document, node) {
-            return (true, Some(1));
-        }
-        let padding = match flow_children(document, node)
-            .next()
-            .map(|first| &document.node(first).unwrap().kind)
-        {
-            Some(EventKind::Html { value, block: true })
-                if value
-                    .resolve(document.source())
-                    .unwrap()
-                    .starts_with([' ', '\t']) =>
-            {
-                Some(1)
-            }
-            Some(EventKind::CodeBlock { .. }) => {
-                Some(self.preferred_padding(document, node, marker))
-            }
-            _ => None,
+    ) -> (ItemStart, Option<usize>) {
+        let start = item_start(document, node);
+        let padding = match start {
+            ItemStart::Blank | ItemStart::Indented => Some(1),
+            ItemStart::Code => Some(self.preferred_padding(document, node, marker)),
+            ItemStart::Other => None,
         };
-        (false, padding)
+        (start, padding)
+    }
+
+    /// The HTML blocks whose first lines start at the content column of item `node`, which starts
+    /// as `start` says, with where each can start, whether its line is the item's first, and how
+    /// far after that column it starts: its own; the first of a block quote that starts it,
+    /// which can have no spaces before its `>` after the marker; and those of the first item of
+    /// a list that starts it, which can have none before its marker either, where its padding is
+    /// fixed. One that starts an item after its marker with indentation must stay indented 4
+    /// columns or more (`HtmlFit::inline`).
+    fn item_blocks<'d, S: AsRef<str>>(
+        &self,
+        document: &'d Document<S>,
+        node: NodeId,
+        start: ItemStart,
+    ) -> Vec<(NodeId, HtmlFit<'d>, bool, usize)> {
+        let mut blocks = Vec::new();
+        let push = |blocks: &mut Vec<_>, id, before, first_line, offset, inline| {
+            if let Some(mut fit) = html_fit(document, id, before) {
+                fit.inline = inline;
+                blocks.push((id, fit, first_line, offset));
+            }
+        };
+        let mut before = None;
+        for (index, child) in flow_children(document, node).enumerate() {
+            let starts = index == 0 && start != ItemStart::Blank;
+            push(
+                &mut blocks,
+                child,
+                before,
+                starts,
+                0,
+                index == 0 && start == ItemStart::Indented,
+            );
+            // A list after an HTML block that would continue over a line indented at all has no
+            // spaces before its marker either.
+            let flush = starts || continued_from(document, before) == Some(1);
+            before = Some(child);
+            match document.node(child).unwrap().kind {
+                EventKind::Start(Tag::BlockQuote) if starts => {
+                    if let Some(quoted) = flow_children(document, child).next() {
+                        push(&mut blocks, quoted, None, true, 2, false);
+                    }
+                }
+                EventKind::Start(Tag::List { start, .. }) if flush => {
+                    let Some(item) = flow_children(document, child).next() else {
+                        continue;
+                    };
+                    let marker =
+                        start.map_or(1, |start| start.checked_ilog10().unwrap_or(0) as usize + 2);
+                    let (start, Some(padding)) = self.item_padding(document, item, marker) else {
+                        continue;
+                    };
+                    let mut before = None;
+                    for (index, quoted) in flow_children(document, item).enumerate() {
+                        push(
+                            &mut blocks,
+                            quoted,
+                            before,
+                            starts && index == 0 && start != ItemStart::Blank,
+                            marker + padding,
+                            index == 0 && start == ItemStart::Indented,
+                        );
+                        before = Some(quoted);
+                    }
+                }
+                _ => {}
+            }
+        }
+        blocks
+    }
+
+    /// The HTML block after the list that item `node` ends, if it is the last, with the width of
+    /// its indentation where it is written, at the item's `position`: a line indented as wide as
+    /// the item's content would continue it. An empty item outside another item is ended by
+    /// the blank line after its list, so it takes no line after it.
+    fn following_html<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        node: NodeId,
+        position: Position,
+    ) -> Option<(NodeId, usize)> {
+        let item = document.node(node).unwrap();
+        let list = item.parent().filter(|_| item.next_sibling().is_none())?;
+        let parent = document.node(list).unwrap().parent();
+        if flow_children(document, node).next().is_none()
+            && !parent.is_some_and(|parent| in_list(document, parent))
+        {
+            return None;
+        }
+        let next = core::iter::successors(document.node(list).unwrap().next_sibling(), |&id| {
+            document.node(id).unwrap().next_sibling()
+        })
+        .find(|&id| !matches!(document.node(id).unwrap().kind, EventKind::Separator { .. }))?;
+        let fit = html_fit(document, next, Some(list))?;
+        // In a block quote, its line is written with the spaces before `>` that fit it.
+        let quoted = parent.is_some_and(|parent| {
+            matches!(
+                document.node(parent).unwrap().kind,
+                EventKind::Start(Tag::BlockQuote)
+            )
+        });
+        let mut column = position.rest;
+        if quoted {
+            column += quote_spaces(fit, column, 3);
+        }
+        Some((next, fit.indentation(column)))
     }
 
     /// The spaces before the marker of item `node`, starting at `position`, the padding after
-    /// its marker of width `marker`, and whether it starts with a blank line, for its content to
-    /// start at columns where its HTML blocks are no indented code (#266), and to be wider than
-    /// the indentation of an HTML block after its list, which it would otherwise take (#229,
-    /// #262). Within those, `padding` is preferred, then the least padding, and then the fewest
-    /// spaces, so the plan depends only on the tree and a second write gives the same output.
+    /// its marker of width `marker`, and whether it starts with a blank line, for its HTML blocks
+    /// to start at columns they fit (`item_blocks`), where they are no indented code (#266), and
+    /// for it to be wider than the indentation of an HTML block after its list, which it would
+    /// otherwise take (#229, #262). Within those, `padding` is preferred, then the least
+    /// padding, and then the fewest spaces, so the plan depends only on the tree and a second
+    /// write gives the same output.
     ///
     /// An item that starts with an HTML block with indentation starts with a blank line, as the
     /// padding would take it, and its content then starts one column after the marker; so does an
@@ -1020,104 +1110,21 @@ impl State<'_> {
         marker: usize,
         padding: usize,
     ) -> (usize, usize, bool) {
-        let first = flow_children(document, node).next();
-        let (blank, fixed) = self.item_start(document, node, marker);
-        // The HTML blocks whose first lines start at the item's content column, on its first line
-        // or not, by how far after it: its own; the first of a block quote that starts it, which
-        // can have no spaces before its `>` after the marker; and those of the first item of a
-        // list that starts it, which can have none before its marker either, where its padding
-        // is fixed.
-        let mut blocks = Vec::new();
-        // Each is pushed with whether its line starts on the item's first line, how far after its
-        // content column, and, where it starts an item after its marker with indentation, which
-        // only options without indented code allow, its value, which the padding of one must
-        // leave indented 4 columns or more (`item_starts_blank`).
-        let push = |blocks: &mut Vec<_>, id, first_line: bool, offset, starts: bool| {
-            let Some(shape) = html_shape(document, id) else {
-                return;
-            };
-            let EventKind::Html { value, .. } = &document.node(id).unwrap().kind else {
-                unreachable!("only an HTML block has a shape")
-            };
-            let value = value.resolve(document.source()).unwrap().as_bytes();
-            let inline = starts && matches!(value.first(), Some(b' ' | b'\t'));
-            blocks.push((id, shape, first_line, offset, inline.then_some(value)));
-        };
-        for (index, child) in flow_children(document, node).enumerate() {
-            let starts = index == 0 && !blank;
-            push(&mut blocks, child, starts, 0, starts);
-            if starts {
-                match document.node(child).unwrap().kind {
-                    EventKind::Start(Tag::BlockQuote) => {
-                        if let Some(quoted) = flow_children(document, child).next() {
-                            push(&mut blocks, quoted, true, 2, false);
-                        }
-                    }
-                    EventKind::Start(Tag::List { start, .. }) => {
-                        let Some(item) = flow_children(document, child).next() else {
-                            continue;
-                        };
-                        let marker = start
-                            .map_or(1, |start| start.checked_ilog10().unwrap_or(0) as usize + 2);
-                        let (blank, Some(padding)) = self.item_start(document, item, marker) else {
-                            continue;
-                        };
-                        for (index, quoted) in flow_children(document, item).enumerate() {
-                            let starts = index == 0 && !blank;
-                            push(&mut blocks, quoted, starts, marker + padding, starts);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        // An HTML block after the list, which a line indented as wide as the content of its last
-        // item would continue.
-        let after = document
-            .node(node)
-            .unwrap()
-            .next_sibling()
-            .is_none()
-            .then(|| document.node(node).unwrap().parent())
-            .flatten()
-            .and_then(|list| {
-                core::iter::successors(document.node(list).unwrap().next_sibling(), |&id| {
-                    document.node(id).unwrap().next_sibling()
-                })
-                .find(|&id| !matches!(document.node(id).unwrap().kind, EventKind::Separator { .. }))
-                .and_then(|next| {
-                    let shape = html_shape(document, next)?;
-                    let EventKind::Html { value, .. } = &document.node(next).unwrap().kind else {
-                        unreachable!("only an HTML block has a shape")
-                    };
-                    // In a block quote, its line is written with the spaces before `>` that fit it.
-                    let quoted = document.node(list).unwrap().parent().is_some_and(|parent| {
-                        matches!(
-                            document.node(parent).unwrap().kind,
-                            EventKind::Start(Tag::BlockQuote)
-                        )
-                    });
-                    let mut column = position.rest;
-                    if quoted {
-                        column += quote_spaces(shape, column, 3);
-                    }
-                    let value = value.resolve(document.source()).unwrap();
-                    Some((next, indentation_width(value.as_bytes(), column)))
-                })
-            });
+        let (start, fixed) = self.item_padding(document, node, marker);
+        let blank = start == ItemStart::Blank && flow_children(document, node).next().is_some();
+        let blocks = self.item_blocks(document, node, start);
+        let after = self.following_html(document, node, position);
         let fails = |spaces: usize, padding: usize| {
             let width = spaces + marker + padding;
             blocks
                 .iter()
-                .find(|&&(_, shape, first_line, offset, inline)| {
+                .find(|&&(_, fit, first_line, offset)| {
                     let column = if first_line {
                         position.first
                     } else {
                         position.rest
-                    } + width
-                        + offset;
-                    !shape.fits(column)
-                        || inline.is_some_and(|value| indentation_width(value, column) < 4)
+                    };
+                    !fit.fits(column + width + offset)
                 })
                 .map(|&(id, ..)| id)
                 .or_else(|| {
@@ -1134,11 +1141,11 @@ impl State<'_> {
                 .iter()
                 .find(|&&padding| fails(spaces, padding).is_none())
             {
-                return (spaces, padding, blank && first.is_some());
+                return (spaces, padding, blank);
             }
         }
         self.no_spelling_of(fails(0, padding).expect("the first plan is tried"));
-        (0, padding, blank && first.is_some())
+        (0, padding, blank)
     }
 
     /// Whether `node` is the paragraph that a task item's checkbox is written before. Finding an

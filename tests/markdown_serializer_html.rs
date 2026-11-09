@@ -287,6 +287,115 @@ fn html_block_indentation_keeps_its_columns() {
     }
 }
 
+/// Parses `source` under `options`, and checks that it round trips when written with `markdown`
+/// and renders `html`.
+fn assert_round_trips(
+    source: &str,
+    options: &ParseOptions,
+    markdown: &MarkdownOptions,
+    html: &str,
+) {
+    let document = Document::parse(source, options).unwrap();
+    let compile = CompileOptions {
+        allow_dangerous_html: true,
+        ..CompileOptions::default()
+    };
+    let mut output = String::new();
+    document.render_html(&compile, &mut output).unwrap();
+    assert_eq!(output, html, "{:?}", source);
+    match round_trip(document, markdown, false) {
+        Outcome::Pass => {}
+        Outcome::Fail(failure) => panic!(
+            "{} {:?}: {:?}\n{}\n{}",
+            failure.kind, source, failure.output, failure.before, failure.after
+        ),
+        Outcome::Rejected | Outcome::Unwritable(_) => panic!("rejected {:?}", source),
+    }
+}
+
+#[test]
+fn html_blocks_continue_no_block_before_them() {
+    let unindented = ParseOptions {
+        constructs: base_markdown::Constructs {
+            code_indented: false,
+            ..base_markdown::Constructs::default()
+        },
+        ..ParseOptions::default()
+    };
+    // A footnote definition takes a line indented 4 columns or more after a blank line, so the
+    // item keeps the block indented less, whatever its preferred padding.
+    for indent in [
+        base_markdown::IndentOptions::One,
+        base_markdown::IndentOptions::Tab,
+        base_markdown::IndentOptions::Mixed,
+    ] {
+        let markdown = MarkdownOptions {
+            list_item_indent: indent,
+            ..MarkdownOptions::default()
+        };
+        assert_round_trips(
+            "- [^ab]: a\n\n  \t<div>\n",
+            &unindented,
+            &markdown,
+            "<ul>\n<li>\n\t<div>\n</li>\n</ul>\n",
+        );
+        assert_round_trips(
+            " 10. [^a]: a\n\n     \t<div>\n",
+            &unindented,
+            &markdown,
+            "<ol start=\"10\">\n<li>\n\t<div>\n</li>\n</ol>\n",
+        );
+    }
+    // An empty item takes no line after the blank line after it.
+    for (source, html) in [
+        (
+            "-\n\n      <div>\n",
+            "<ul>\n<li></li>\n</ul>\n      <div>\n",
+        ),
+        (
+            "- a\n-\n\n      <div>\n",
+            "<ul>\n<li>a</li>\n<li></li>\n</ul>\n      <div>\n",
+        ),
+        (
+            "2)\n\n        <pre>x</pre>\n",
+            "<ol start=\"2\">\n<li></li>\n</ol>\n        <pre>x</pre>\n",
+        ),
+    ] {
+        assert_round_trips(source, &unindented, &MarkdownOptions::default(), html);
+    }
+    // An HTML block that keeps its blank lines takes a line indented at all after them, so the
+    // block quote or list after it has no spaces before its `>` or marker.
+    let blank_lines = ParseOptions {
+        html_block_blank_lines: true,
+        ..ParseOptions::default()
+    };
+    for (source, html) in [
+        (
+            "  > <div>\n  >\n  > > \t<p>\n",
+            "<blockquote>\n<div>\n\n<blockquote>\n\t<p>\n</blockquote>\n</blockquote>",
+        ),
+        (
+            "-  <div>\n\n   -\n     \t<p>\n",
+            "<ul>\n<li>\n<div>\n\n<ul>\n<li>\n\t<p>\n</li>\n</ul>\n</li>\n</ul>",
+        ),
+        (
+            "- <div>\n    x\n\n   - a\n",
+            "<ul>\n<li>\n<div>\n  x\n\n<ul>\n<li>a</li>\n</ul>\n</li>\n</ul>\n",
+        ),
+    ] {
+        assert_round_trips(source, &blank_lines, &MarkdownOptions::default(), html);
+    }
+    // At the root, a block after a footnote definition indented 4 columns has no other column.
+    let mut document =
+        Document::parse("[^ab]: x\n\n<p>\n\n    <a href=\"x\">\n", &unindented).unwrap();
+    let block = document.children(document.root()).nth(1).unwrap();
+    document.detach(block).unwrap();
+    assert_eq!(
+        to_markdown(&document).unwrap_err().rule_id,
+        "unwritable-node"
+    );
+}
+
 #[test]
 fn html_blocks_with_no_column_are_unwritable() {
     let options = ParseOptions::default();

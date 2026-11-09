@@ -1250,6 +1250,10 @@ pub(crate) struct HtmlBlockShape {
     /// or where `Constructs::code_indented` is off, and only some where it holds a tab, which
     /// reaches the next multiple of four.
     pub(crate) residues: u8,
+    /// Under `ParseOptions::html_block_blank_lines`, for one of kind 6 or 7, the least
+    /// indentation of a line after blank lines that continues it: one column, and the least
+    /// positive indentation of its lines (`html_block_value`).
+    pub(crate) continued_from: Option<usize>,
 }
 
 impl HtmlBlockShape {
@@ -1289,6 +1293,15 @@ impl HtmlBlockShape {
                 && value.ends_with('\n'),
             ends_in_empty_line: !blank_terminated && value.ends_with('\n'),
             residues,
+            continued_from: (blank_terminated && options.html_block_blank_lines).then(|| {
+                bytes
+                    .split(|&byte| byte == b'\n')
+                    .filter(|line| !line.iter().all(|byte| matches!(byte, b' ' | b'\t')))
+                    .map(|line| indentation_width(line, 0))
+                    .filter(|&width| width > 0)
+                    .min()
+                    .unwrap_or(1)
+            }),
         })
     }
 
@@ -1316,13 +1329,6 @@ impl HtmlBlockShape {
     pub(crate) fn ends_on_last_line(self) -> bool {
         !self.blank_terminated && !self.unclosed
     }
-}
-
-/// Whether `value`, an HTML block's, ends in an empty line whose line ending is not in it, as
-/// [`HtmlBlockShape::ends_in_empty_line`] reads it under any options.
-pub(crate) fn html_block_ends_in_empty_line(value: &str) -> bool {
-    HtmlBlockShape::of(value, &HtmlBlockShape::any_options())
-        .is_some_and(|shape| shape.ends_in_empty_line)
 }
 
 /// The end condition that closes an HTML block whose value is `value`, when it is one of kinds
