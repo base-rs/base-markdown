@@ -152,7 +152,7 @@ fn adjacent_attention_from_markdown() {
         ("*a*__b__", "*a*__b__\n"),
         ("**a***b*", "**a**_b_\n"),
         ("*a*_b_**c**", "*ab*__c__\n"),
-        ("*a*_**b**_", "*a**b***\n"),
+        ("*a*_**b**_", "_a**b**_\n"),
         ("[*a*](b)*c*", "[*a*](b)*c*\n"),
         ("> *a*_b_\n> - **c**__d__", "> *ab*\n>\n> - **cd**\n"),
         ("# *a*_b_", "# *ab*\n"),
@@ -231,22 +231,24 @@ fn merge_attention() {
 #[test]
 fn join_opening() {
     for (children, options, expected) in [
+        // Attention starting attention takes the other marker, so the runs stay apart.
         (
             vec![emphasis(vec![emphasis(vec![text("a")]), text(" b")])],
             markers('*', '*'),
-            "**a* b*\n",
+            "*_a_ b*\n",
         ),
         (
             vec![emphasis(vec![emphasis(vec![text("a")]), text(".")])],
             markers('*', '*'),
-            "**a*.*\n",
+            "*_a_.*\n",
         ),
-        // The closing sequence could also open, so the rule of 3 keeps it from the run of 2 its opening sequence joins.
+        // `_` cannot close between letters, so the inner emphasis takes `*`.
         (
             vec![emphasis(vec![emphasis(vec![text("a")]), text("b")])],
             markers('*', '*'),
-            "*_&#x61;_&#x62;*\n",
+            "_*a*b_\n",
         ),
+        // `*` cannot close between punctuation and a letter either, so the letter is encoded.
         (
             vec![emphasis(vec![emphasis(vec![text(".")]), text("b")])],
             markers('*', '*'),
@@ -257,7 +259,8 @@ fn join_opening() {
             markers('_', '_'),
             "_*.*._\n",
         ),
-        // Emphasis starting the inner emphasis joins the run too, so the closing sequences pair.
+        // Apart, the innermost opening sequence could close the outermost, so the three join one
+        // run, whose closing sequences each pair with it in turn.
         (
             vec![emphasis(vec![
                 emphasis(vec![emphasis(vec![text("[")]), text("(")]),
@@ -269,7 +272,7 @@ fn join_opening() {
         (
             vec![strong(vec![strong(vec![text("a")]), text(" b")])],
             markers('*', '*'),
-            "****a** b**\n",
+            "**__a__ b**\n",
         ),
     ] {
         assert_eq!(serialize(children, &options), expected);
@@ -338,20 +341,20 @@ fn attention() {
 
     assert_eq!(
         serialize(vec![emphasis(vec![strong(text_a())])], &Options::default()),
-        "***a***\n",
-        "should use the same marker for strong in emphasis, as that forms"
+        "*__a__*\n",
+        "should use the other marker for strong in emphasis, so the runs stay apart"
     );
 
     assert_eq!(
         serialize(vec![emphasis(vec![strong(text_a())])], &markers('_', '_')),
-        "___a___\n",
-        "should use the same marker for strong in emphasis w/ `_`"
+        "_**a**_\n",
+        "should use the other marker for strong in emphasis w/ `_`, so the runs stay apart"
     );
 
     assert_eq!(
         serialize(vec![strong(vec![strong(text_a())])], &Options::default()),
-        "****a****\n",
-        "should use the same marker for strong in strong, as that forms"
+        "**__a__**\n",
+        "should use the other marker for strong in strong, so the runs stay apart"
     );
 
     assert_eq!(
@@ -359,8 +362,8 @@ fn attention() {
             vec![emphasis(vec![emphasis(text_a()), text(" b")])],
             &Options::default()
         ),
-        "**a* b*\n",
-        "should join the opening sequence of enclosing attention if the closing sequences are apart"
+        "*_a_ b*\n",
+        "should use the other marker for attention starting attention, rather than join the runs"
     );
 
     assert_eq!(
@@ -368,8 +371,8 @@ fn attention() {
             vec![emphasis(vec![emphasis(text_a()), text("b")])],
             &Options::default()
         ),
-        "*_&#x61;_&#x62;*\n",
-        "should not join the opening sequence of enclosing attention if the rule of 3 keeps the runs apart"
+        "_*a*b_\n",
+        "should use `*` inside, where `_` would be between letters"
     );
 
     assert_eq!(
@@ -438,11 +441,12 @@ fn attention() {
     for _ in 0..5 {
         nested = emphasis(vec![nested]);
     }
-    // Emphasis nested this deeply with nothing between cannot be written by looking at neighbours only, so this does not round-trip.
+    // Emphasis nested this deeply with nothing between has no spelling: apart, a third opening
+    // run could close the first of its marker, and joined, the closing runs take the wrong sizes.
     assert_eq!(
-        to(&nested).unwrap(),
-        "*_***_x_***_*\n",
-        "should keep the preferred marker if neither marker forms"
+        to(&nested).unwrap_err().rule_id,
+        "unwritable-node",
+        "should fail on emphasis nested deeply with nothing between"
     );
 
     assert_eq!(
@@ -530,8 +534,8 @@ fn encode() {
             ])],
             &Options::default()
         ),
-        "*&#x61;_&#x62; &#x63;_&#x64;*\n",
-        "should encode letters around emphasis using `_` between letters"
+        "_a*b c*d_\n",
+        "should use `*` between letters, where it needs nothing encoded"
     );
 
     // Empty attention cannot be written, so normalizing removes it and joins the text around it.
@@ -600,37 +604,46 @@ fn encode() {
 
     assert_eq!(
         serialize(
-            vec![emphasis(vec![text("d"), emphasis(vec![text("a_bc")])])],
+            vec![emphasis(vec![text(".")]), text("a_bc")],
             &Options::default()
         ),
-        "*&#x64;_&#x61;\\_bc_*\n",
+        "*.*&#x61;\\_bc\n",
         "should escape `_` after a letter that is encoded for attention"
     );
 
     assert_eq!(
         serialize(
-            vec![emphasis(vec![emphasis(vec![text("ab_c")]), text("d")])],
+            vec![
+                text("y"),
+                emphasis(vec![text("ab_c"), emphasis(vec![text("x")])])
+            ],
             &Options::default()
         ),
-        "*_ab\\_&#x63;_&#x64;*\n",
+        "y*ab\\_&#x63;_x_*\n",
         "should escape `_` before a letter that is encoded for attention"
     );
 
     assert_eq!(
         serialize(
-            vec![emphasis(vec![text("a__b"), emphasis(vec![text("x")])])],
+            vec![
+                text("y"),
+                emphasis(vec![text("a__b"), emphasis(vec![text("x")])])
+            ],
             &Options::default()
         ),
-        "*a\\_\\_&#x62;_&#x78;_*\n",
+        "y*a\\_\\_&#x62;_x_*\n",
         "should escape an underscore run before a letter encoded for attention"
     );
 
     assert_eq!(
         serialize(
-            vec![emphasis(vec![text("a\\_b"), emphasis(vec![text("x")])])],
+            vec![
+                text("y"),
+                emphasis(vec![text("a\\_b"), emphasis(vec![text("x")])])
+            ],
             &Options::default()
         ),
-        "*a\\\\\\_&#x62;_&#x78;_*\n",
+        "y*a\\\\\\_&#x62;_x_*\n",
         "should not escape an escaped underscore before a letter encoded for attention again"
     );
 
@@ -676,10 +689,10 @@ fn encode() {
 fn encode_split_text() {
     // Unmatched delimiter runs stay in text next to attention, whose boundary escaping cannot see when the text is written.
     for (source, expected) in [
-        ("_x*a_b*_", "*&#x78;_&#x61;\\_b_*\n"),
-        ("_x*ab_c*d_", "*&#x78;_&#x61;b\\_&#x63;_&#x64;*\n"),
-        ("_a_b*x*_", "*a\\_&#x62;_&#x78;_*\n"),
-        ("_a\\_b*x*_", "*a\\_&#x62;_&#x78;_*\n"),
+        ("_x*a_b*_", "_x*a_b*_\n"),
+        ("_x*ab_c*d_", "_x*ab_c*d_\n"),
+        ("_a_b*x*_", "_a_b*x*_\n"),
+        ("_a\\_b*x*_", "_a_b*x*_\n"),
     ] {
         assert_eq!(
             roundtrip(source, &Options::default()),
@@ -940,7 +953,7 @@ fn roundtrip_documents() {
 
     assert_eq!(
         roundtrip("***x**__y__*", &Options::default()),
-        "***xy***\n",
+        "*__xy__*\n",
         "should merge strong in emphasis"
     );
 
@@ -991,7 +1004,7 @@ fn nested_attention_sharing_an_edge() {
         ("**a*~**", "*_a_\\~*\\*\n"),
         ("**a*.**", "*_a_.*\\*\n"),
         ("**a*.**.", "*_a_.*\\*.\n"),
-        ("*.*a**.", "*.*a**.\n"),
+        ("*.*a**.", "*._a_*.\n"),
     ] {
         assert_eq!(
             exact_roundtrip(source, &Options::default()),
@@ -1028,27 +1041,27 @@ fn nested_attention_sharing_an_edge() {
             ],
             ".**.__a__**.\n",
         ),
-        // Where the rule of 3 does not apply, the sequences still join.
+        // Where the rule of 3 would not keep them apart either, the runs stay apart.
         (
             vec![emphasis(vec![emphasis(vec![text("a")]), text(" b")])],
-            "**a* b*\n",
+            "*_a_ b*\n",
         ),
         (
             vec![emphasis(vec![text("a "), strong(vec![text("b")])])],
-            "*a **b***\n",
+            "*a __b__*\n",
         ),
         (
             vec![
                 emphasis(vec![strong(vec![text("a")]), text(".")]),
                 text("."),
             ],
-            "***a**.*.\n",
+            "*__a__.*.\n",
         ),
     ] {
         assert_eq!(serialize(children, &Options::default()), expected);
     }
 
-    // Once a child joins the opening run, the parent checks its closing sequence against the longer run.
+    // Attention at both edges of attention takes the other marker, and attention in it the first.
     let children = vec![
         emphasis(vec![strong(vec![
             emphasis(vec![text("c")]),
@@ -1059,7 +1072,7 @@ fn nested_attention_sharing_an_edge() {
     ];
     assert_eq!(
         exact(children, &markers('*', '*')),
-        ("****c* __.__***&#x61;\n".to_string(), true)
+        ("*__*c* **.**__*&#x61;\n".to_string(), true)
     );
 }
 

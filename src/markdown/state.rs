@@ -8,7 +8,7 @@
 //! JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L195>.
 use crate::block_parser::{indentation_width, HtmlBlockShape};
 use crate::markdown::{
-    attention::{self, Edge, Parent, Surroundings},
+    attention::{self, Edge, Piece},
     construct_name::ConstructName,
     util::{
         format_code_as_indented::format_code_as_indented,
@@ -18,6 +18,8 @@ use crate::markdown::{
     },
     LineWrapping, Options,
 };
+use crate::util::attention::{pairs, Run as AttentionRun};
+use crate::util::char::{classify, Kind};
 use crate::{
     bindings::{Lookup, Scratch},
     message::Message,
@@ -26,6 +28,7 @@ use crate::{
     AlignKind, Document, NodeId, NodeSyntax, ParseOptions, ReferenceKind,
 };
 use alloc::{string::String, vec::Vec};
+use core::ops::Range;
 
 pub struct Info<'a> {
     pub after: &'a str,
@@ -68,10 +71,12 @@ pub struct State<'a> {
     /// Whether the text being written leaves literal autolinks to its caller, which edits its
     /// start first.
     defer_literals: bool,
-    /// How many attention nodes are open, by marker (`*`, `_`) and sequence size (1, 2).
-    attention_open: [[usize; 2]; 2],
-    /// The attention whose children are being written.
-    parent: Parent,
+    /// By node index, what the plan of the scope being written chose for attention and the text
+    /// next to it (`attention::plan`).
+    attention_plan: Vec<attention::Choice>,
+    /// The runs of attention written in the scopes being written, in order, which `check_runs`
+    /// checks once their scope is written.
+    runs: Vec<WrittenRun>,
     pub bullet_current: Option<char>,
     pub bullet_last_used: Option<char>,
     /// The bullets that each list of a run of adjacent lists can take, worked out at the run's
@@ -612,7 +617,7 @@ impl<'a> State<'a> {
         };
         let verifying = self.verifying;
         self.verifying |= checked;
-        self.phrasing(document, &children, info, &Edge::default())?;
+        self.phrasing(document, &children, info)?;
         if block {
             if let Some(colon) = self.definition_colon.take() {
                 if crate::block_parser::starts_definition(&self.output[start..], &self.parse) {
@@ -909,108 +914,344 @@ impl<'a> State<'a> {
         })
     }
 
-    /// Write attention, returning the edits for the text after it.
+    /// Write attention with the sequence its scope's plan chose, returning the edits for the text
+    /// after it.
     ///
-    /// Text written directly before may be edited so the opening sequence forms.
+    /// Text written directly before may have its tildes escaped, as a tilde sequence follows.
     fn attention<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         id: NodeId,
         sequences: &'static [&'static str],
-        info: &Info,
         previous: &Previous,
-        next: Option<NodeId>,
     ) -> Result<Edge, Message> {
         if !self.open() {
             return Err(nesting_too_deep());
         }
-        let children: Vec<NodeId> = flow_children(document, id).collect();
-        let [lead, before] = info.before(&self.output);
-        let before = before
-            .chars()
-            .next_back()
-            .or_else(|| lead.chars().next_back());
-        let first = children
-            .first()
-            .and_then(|&child| edge_character(document, child, true));
-        let last = children
-            .last()
-            .and_then(|&child| edge_character(document, child, false));
-        let after = info.after.chars().next();
-        let surroundings = Surroundings {
-            before,
-            before_closes: matches!(previous, Previous::Attention),
-            before_opens: matches!(previous, Previous::Start),
-            first,
-            first_size: children
-                .first()
-                .map_or(0, |&child| sequence_size(document, child)),
-            last,
-            last_size: children
-                .last()
-                .map_or(0, |&child| sequence_size(document, child)),
-            after,
-            after_closes: next.is_none(),
-            first_language: children
-                .first()
-                .is_some_and(|&child| language(document, child)),
-            after_language: next.is_some_and(|next| language(document, next)),
-            parent: self.parent,
-            enclosing: [
-                [self.attention_open[0][0] > 0, self.attention_open[0][1] > 0],
-                [self.attention_open[1][0] > 0, self.attention_open[1][1] > 0],
-            ],
-        };
-        let choice = attention::choose(sequences, &surroundings).unwrap_or_else(|| {
-            self.no_spelling_of(id);
-            let sequence = sequences[0];
-            attention::encoding(
-                sequence,
-                sequence.chars().next().expect("sequences are not empty"),
-                &surroundings,
-            )
-        });
-        let sequence = choice.sequence;
+        let spelling = attention::Spelling::of(self.planned(id));
+        let sequence = sequences[spelling.sequence.min(sequences.len() - 1)];
         let tilde = sequence.starts_with('~');
-        if let (Previous::Text(start), Some(character)) = (previous, before) {
-            let start = *start;
-            if choice.encode_before {
-                self.encode_end(start, character);
+        let marker = char::from(sequence.as_bytes()[0]);
+        // Attention joined into this node's opening run writes no opening run, and attention
+        // closed in its closing run no closing run, as this node writes them in its own: the
+        // sizes of a run's levels, the outermost first.
+        let levels = |last: bool, flag: fn(attention::Spelling) -> bool| {
+            let mut sizes = alloc::vec![sequence.len()];
+            let mut at = id;
+            loop {
+                let mut written =
+                    flow_children(document, at).filter(|&child| self.writes(document, child));
+                let child = if last { written.last() } else { written.next() };
+                let Some(child) = child.filter(|&child| {
+                    is_attention(document, child)
+                        && flag(attention::Spelling::of(self.planned(child)))
+                }) else {
+                    break;
+                };
+                sizes.push(match document.node(child).unwrap().kind {
+                    EventKind::Start(Tag::Strong) => 2,
+                    _ => 1,
+                });
+                at = child;
             }
-            if tilde {
-                self.escape_tilde_end(start);
-            }
+            sizes
+        };
+        let opening: usize = levels(false, |spelling| spelling.joined).iter().sum();
+        let mut closing = levels(true, |spelling| spelling.closed);
+        closing.reverse();
+        let children: Vec<NodeId> = flow_children(document, id).collect();
+        if let (Previous::Text(start), true) = (previous, tilde) {
+            self.escape_tilde_end(*start);
         }
-        self.output.push_str(sequence);
-        // Strikethrough has one sequence, so enclosing strikethrough is not tracked.
-        let open = (!tilde).then(|| usize::from(sequence.starts_with('_')));
-        if let Some(open) = open {
-            self.attention_open[open][sequence.len() - 1] += 1;
+        if !spelling.joined {
+            let run: String = core::iter::repeat_n(marker, opening).collect();
+            self.written_run(id, &run, Side::Opening);
         }
         let edge = Edge {
-            encode: first.filter(|_| choice.encode_first),
+            encode: None,
             tilde: true,
         };
-        let parent = core::mem::replace(&mut self.parent, Parent::new(&choice, &surroundings));
         let last_text =
-            self.phrasing(document, &children, &Info::new(sequence, sequence), &edge)?;
-        let child = core::mem::replace(&mut self.parent, parent);
-        self.parent.extend(&child);
-        if let Some(open) = open {
-            self.attention_open[open][sequence.len() - 1] -= 1;
-        }
+            self.phrasing_children(document, &children, &Info::new(sequence, sequence), &edge)?;
         if let Some(start) = last_text {
             self.escape_tilde_end(start);
-            if let Some(character) = last.filter(|_| choice.encode_last) {
-                self.encode_end(start, character);
-            }
         }
-        self.output.push_str(sequence);
+        if !spelling.closed {
+            let run: String = core::iter::repeat_n(marker, closing.iter().sum()).collect();
+            self.written_run(id, &run, Side::Closing(closing));
+        }
         self.depth -= 1;
         Ok(Edge {
-            encode: after.filter(|_| choice.encode_after),
+            encode: None,
             tilde,
         })
+    }
+
+    /// The choice the plan of the scope being written made for `id` (`attention::plan`).
+    fn planned(&self, id: NodeId) -> attention::Choice {
+        self.attention_plan.get(id.index()).copied().unwrap_or(0)
+    }
+
+    /// Write the opening or closing sequence of attention `id`, recording where it is so that
+    /// `check_runs` can check it once its scope is written.
+    fn written_run(&mut self, id: NodeId, sequence: &str, side: Side) {
+        self.runs.push(WrittenRun {
+            id,
+            start: self.output.len(),
+            marker: sequence.as_bytes()[0],
+            size: sequence.len(),
+            side,
+        });
+        self.output.push_str(sequence);
+    }
+
+    /// Plan the attention in the phrasing `children` of a scope (`attention::plan`): a
+    /// paragraph, heading, table cell or link text, or attention written on its own, whose
+    /// runs pair within it. The plan is kept per node, as each node is in one scope.
+    fn plan_attention<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        children: &[NodeId],
+        before: Option<char>,
+        after: Option<char>,
+    ) -> Result<(), Message> {
+        if !children.iter().any(|&child| is_attention(document, child)) {
+            return Ok(());
+        }
+        let mut pieces = Vec::new();
+        let mut ids = Vec::new();
+        let root = self.pieces(document, children, 0, &mut pieces, &mut ids)?;
+        let before = before.map_or(Kind::Whitespace, classify);
+        let after = after.map_or(Kind::Whitespace, classify);
+        let reference = self.literal().reference;
+        // Where no character can be encoded, the plan that would encode some is written anyway,
+        // with the characters as they are, and the block is checked as for other characters
+        // written so (`raw_literal`).
+        let choices =
+            attention::plan(&pieces, root.clone(), before, after, reference).or_else(|| {
+                (!reference)
+                    .then(|| attention::plan(&pieces, root.clone(), before, after, true))
+                    .flatten()
+            });
+        let Some(choices) = choices else {
+            let first = children
+                .iter()
+                .copied()
+                .find(|&child| is_attention(document, child))
+                .expect("the scope has attention");
+            self.no_spelling_of(first);
+            for id in ids {
+                if let Some(plan) = self.attention_plan.get_mut(id.index()) {
+                    *plan = 0;
+                }
+            }
+            return Ok(());
+        };
+        for (id, choice) in ids.into_iter().zip(choices) {
+            let index = id.index();
+            if self.attention_plan.len() <= index {
+                self.attention_plan.resize(index + 1, 0);
+            }
+            self.attention_plan[index] = choice;
+        }
+        Ok(())
+    }
+
+    /// Add the pieces of `children`, at attention `depth` in the scope, to `pieces`, with their
+    /// nodes in `ids`, returning where they are. The pieces of each attention node's children
+    /// follow its siblings'.
+    fn pieces<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        children: &[NodeId],
+        depth: usize,
+        pieces: &mut Vec<Piece>,
+        ids: &mut Vec<NodeId>,
+    ) -> Result<Range<usize>, Message> {
+        let start = pieces.len();
+        for &child in children {
+            let kind = &document.node(child).unwrap().kind;
+            let piece = match kind {
+                // Empty text writes nothing, so what is around it touches.
+                EventKind::Text(value) => {
+                    let value = value.resolve(document.source()).unwrap();
+                    let (Some(first), Some(last)) =
+                        (value.chars().next(), value.chars().next_back())
+                    else {
+                        continue;
+                    };
+                    Piece::Text {
+                        first: classify(first),
+                        last: classify(last),
+                        single: first.len_utf8() == value.len(),
+                    }
+                }
+                // Deeper attention is an error, which the writer returns.
+                EventKind::Start(Tag::Emphasis | Tag::Strong | Tag::Delete)
+                    if depth < MAX_NESTING =>
+                {
+                    Piece::Attention {
+                        sequences: self
+                            .attention_sequences(document, child)?
+                            .expect("attention has sequences"),
+                        children: 0..0,
+                    }
+                }
+                _ => {
+                    let (first, last, language) = Self::edges(document, child);
+                    Piece::Other {
+                        first,
+                        last,
+                        language,
+                    }
+                }
+            };
+            pieces.push(piece);
+            ids.push(child);
+        }
+        let end = pieces.len();
+        for index in start..end {
+            if matches!(pieces[index], Piece::Attention { .. }) {
+                let children: Vec<NodeId> = flow_children(document, ids[index]).collect();
+                let range = self.pieces(document, &children, depth + 1, pieces, ids)?;
+                let empty = pieces[range.clone()]
+                    .iter()
+                    .all(|piece| matches!(piece, Piece::Empty));
+                match &mut pieces[index] {
+                    Piece::Attention { children, .. } if !empty => *children = range,
+                    piece => *piece = Piece::Empty,
+                }
+            }
+        }
+        Ok(start..end)
+    }
+
+    /// The kinds of the characters phrasing node `id`, which is neither text nor attention, is
+    /// written to start and end with, and whether it starts with the language of code, as far
+    /// as they are known without writing it. Links, images and footnote calls start and end
+    /// with punctuation, but for a bare link, which is written only between whitespace, never
+    /// next to attention. What this gets wrong, `check_runs` finds.
+    fn edges<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> (Kind, Kind, bool) {
+        let punctuation = (Kind::Punctuation, Kind::Punctuation, false);
+        let ends = |value: &str| {
+            (
+                value.chars().next().map_or(Kind::Punctuation, classify),
+                value
+                    .chars()
+                    .next_back()
+                    .map_or(Kind::Punctuation, classify),
+                false,
+            )
+        };
+        match &document.node(id).unwrap().kind {
+            EventKind::Code {
+                language: Some(language),
+                ..
+            } => {
+                let language = language.resolve(document.source()).unwrap();
+                (
+                    language.chars().next().map_or(Kind::Punctuation, classify),
+                    Kind::Punctuation,
+                    !language.is_empty(),
+                )
+            }
+            EventKind::Html { value, .. } => ends(value.resolve(document.source()).unwrap()),
+            // A hard break ends in a line ending, and a soft break is one, or a space.
+            EventKind::HardBreak => (Kind::Punctuation, Kind::Whitespace, false),
+            EventKind::SoftBreak(_) => (Kind::Whitespace, Kind::Whitespace, false),
+            _ => punctuation,
+        }
+    }
+
+    /// Check the runs of attention written in the scope from `runs[first..]` against the
+    /// characters now next to them, as `attention::plan` chose them for the characters it
+    /// expected: that no two join, that each opens or closes, and that no opening run that can
+    /// also close would close enclosing attention. `before` and `after` are the characters
+    /// around the scope, which starts at `start`. Where the plan expected a character that is
+    /// written otherwise, such as whitespace written as a reference, the node has no spelling,
+    /// unless the block is read back anyway (`raw_literal`).
+    fn check_runs(
+        &mut self,
+        first: usize,
+        start: usize,
+        before: Option<char>,
+        after: Option<char>,
+    ) {
+        let runs = self.runs.split_off(first);
+        // The opening runs the parser would hold, by marker, how many markers are left, how many
+        // there were modulo 3, and whether they can close, as it resolves attention.
+        let mut open: Vec<(u8, usize, AttentionRun)> = Vec::new();
+        let mut previous_end = None;
+        let mut failed = None;
+        for run in &runs {
+            let byte = run.marker;
+            let size = run.size;
+            let end = run.start + size;
+            let before = if run.start == start {
+                before
+            } else {
+                self.output[..run.start].chars().next_back()
+            };
+            let next = self.output[end..].chars().next().or(after);
+            let (opens, closes) = attention_sides(byte, before, next);
+            let joins = previous_end == Some((run.start, byte));
+            let whole = AttentionRun::whole(size, opens, closes);
+            let forms = match &run.side {
+                Side::Opening => {
+                    // A run that can close is tried as a closing run first.
+                    let closes_open = closes
+                        && open.iter().any(|&(marker, remaining, opening)| {
+                            let opening = AttentionRun {
+                                size: remaining,
+                                ..opening
+                            };
+                            marker == byte && pairs(byte, opening, whole)
+                        });
+                    open.push((byte, size, whole));
+                    opens && !closes_open
+                }
+                Side::Closing(sizes) => {
+                    // Each level takes two markers or one from the opening run on top, which
+                    // must pair with this one, the innermost first.
+                    let mut left = size;
+                    closes
+                        && sizes.iter().all(|&level| {
+                            // Runs nest as their nodes do, so the levels' opening run is held.
+                            let &mut (marker, ref mut remaining, opening) =
+                                open.last_mut().expect("an opening run is held");
+                            let opening = AttentionRun {
+                                size: *remaining,
+                                ..opening
+                            };
+                            let closing = AttentionRun {
+                                size: left,
+                                ..whole
+                            };
+                            if marker != byte
+                                || !pairs(byte, opening, closing)
+                                || (*remaining).min(left).min(2) != level
+                            {
+                                return false;
+                            }
+                            *remaining -= level;
+                            left -= level;
+                            if *remaining == 0 {
+                                open.pop();
+                            }
+                            true
+                        })
+                }
+            };
+            if (!forms || joins) && failed.is_none() {
+                failed = Some(run.id);
+            }
+            previous_end = Some((end, byte));
+        }
+        if let Some(id) = failed {
+            if !self.raw_literals {
+                self.no_spelling_of(id);
+            }
+        }
     }
 
     /// Encode the last character of text written at `output[start..]` if it is `character`, as
@@ -1160,10 +1401,35 @@ impl<'a> State<'a> {
         }
     }
 
+    /// Serialize the phrasing children of a scope, whose attention pairs within it: a paragraph,
+    /// heading, table cell or link text, or attention written on its own. The attention is
+    /// planned first (`plan_attention`) and its runs checked once written (`check_runs`).
+    fn phrasing<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        children: &[NodeId],
+        info: &Info,
+    ) -> Result<(), Message> {
+        let [lead, before] = info.before(&self.output);
+        let before = before
+            .chars()
+            .next_back()
+            .or_else(|| lead.chars().next_back());
+        let after = info.after.chars().next();
+        self.plan_attention(document, children, before, after)?;
+        let first = self.runs.len();
+        let start = self.output.len();
+        self.phrasing_children(document, children, info, &Edge::default())?;
+        if self.runs.len() > first {
+            self.check_runs(first, start, before, after);
+        }
+        Ok(())
+    }
+
     /// Serialize phrasing children, returning where the last one begins if it is text.
     ///
     /// `edge` edits the first child if it is text.
-    fn phrasing<S: AsRef<str>>(
+    fn phrasing_children<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         children: &[NodeId],
@@ -1192,7 +1458,12 @@ impl<'a> State<'a> {
             .is_some_and(|parent| self.is_task_paragraph(document, parent));
         for (position, &child) in children.iter().enumerate() {
             let kind = &document.node(child).unwrap().kind;
-            let sequences = self.attention_sequences(document, child)?;
+            // Planning the attention above has checked its options.
+            let sequences = self.attention_sequences(document, child).ok().flatten();
+            if sequences.is_some() && self.planned(child) == attention::EMPTY {
+                index += 1;
+                continue;
+            }
             if after_hard_break && matches!(kind, EventKind::SoftBreak(_)) {
                 after_hard_break = false;
                 continue;
@@ -1258,7 +1529,7 @@ impl<'a> State<'a> {
                 text_run: run.filter(|_| text),
             };
             if let Some(sequences) = sequences {
-                pending = self.attention(document, child, sequences, &info, &previous, next)?;
+                pending = self.attention(document, child, sequences, &previous)?;
                 previous = Previous::Attention;
             } else {
                 if let (
@@ -1282,10 +1553,25 @@ impl<'a> State<'a> {
                 }
                 self.write_node(document, child, &info)?;
                 self.defer_literals = false;
-                if text {
+                if let EventKind::Text(value) = kind {
+                    // The plan encodes the characters of text next to attention
+                    // (`attention::plan`).
+                    let value = value.resolve(document.source()).unwrap();
+                    let plan = self.planned(child);
+                    pending.encode = value
+                        .chars()
+                        .next()
+                        .filter(|_| plan & attention::ENCODE_FIRST != 0);
                     self.edit_start(length, &pending);
                     if self.literals() {
                         self.escape_literals(length, &info);
+                    }
+                    if let Some(character) = value
+                        .chars()
+                        .next_back()
+                        .filter(|_| plan & attention::ENCODE_LAST != 0)
+                    {
+                        self.encode_end(length, character);
                     }
                 }
                 // Any node can write the `:`, such as inline HTML (#146).
@@ -1511,7 +1797,7 @@ impl<'a> State<'a> {
                     // `attention`, so it is not counted twice.
                     self.depth -= 1;
                     self.enter(ConstructName::Phrasing);
-                    self.phrasing(document, &[id], info, &Edge::default())?;
+                    self.phrasing(document, &[id], info)?;
                     self.exit();
                     self.depth += 1;
                     Ok(())
@@ -1998,8 +2284,8 @@ impl<'a> State<'a> {
             literal_markers: Vec::new(),
             alt_start: None,
             defer_literals: false,
-            attention_open: [[0; 2]; 2],
-            parent: Parent::NONE,
+            attention_plan: Vec::new(),
+            runs: Vec::new(),
             bullet_current: None,
             bullet_last_used: None,
             bullet_plan: Vec::new(),
@@ -2445,40 +2731,54 @@ enum Previous {
     Other,
 }
 
-/// The sequence size of emphasis (1) or strong (2), or 0 for other nodes.
-fn sequence_size<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> usize {
-    match document.node(id).unwrap().kind {
-        EventKind::Start(Tag::Emphasis) => 1,
-        EventKind::Start(Tag::Strong) => 2,
-        _ => 0,
+/// An opening or closing run of attention, written at `start` in the output.
+struct WrittenRun {
+    id: NodeId,
+    start: usize,
+    marker: u8,
+    size: usize,
+    side: Side,
+}
+
+/// Which run of attention a `WrittenRun` is: an opening run, or a closing run with the sizes of
+/// the levels of attention it closes, the innermost first (`attention::Spelling`).
+enum Side {
+    Opening,
+    Closing(Vec<usize>),
+}
+
+impl State<'_> {
+    /// Whether phrasing node `id` writes anything: empty text and attention planned empty do not.
+    fn writes<S: AsRef<str>>(&self, document: &Document<S>, id: NodeId) -> bool {
+        !is_empty_text(document, id)
+            && !(is_attention(document, id) && self.planned(id) == attention::EMPTY)
     }
 }
 
-/// The first or last character a phrasing node is written with, as far as attention next to it needs: text is approximated by its value and other nodes by punctuation.
-/// Whether `id` is code with a language, which is written first, as it is.
-fn language<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
+/// Whether `id` is text with an empty value, which writes nothing.
+fn is_empty_text<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
     matches!(
-        document.node(id).unwrap().kind,
-        EventKind::Code {
-            language: Some(_),
-            ..
-        }
+        &document.node(id).unwrap().kind,
+        EventKind::Text(value) if value.resolve(document.source()).unwrap().is_empty()
     )
 }
 
-fn edge_character<S: AsRef<str>>(document: &Document<S>, id: NodeId, first: bool) -> Option<char> {
-    match &document.node(id).unwrap().kind {
-        EventKind::Text(value) => {
-            let value = value.resolve(document.source()).unwrap();
-            if first {
-                value.chars().next()
-            } else {
-                value.chars().next_back()
-            }
-        }
-        // Other nodes start and end with punctuation, such as the backslash a hard break starts with. Normalized attention does not end with a hard break, or start or end with a soft break.
-        _ => Some('.'),
-    }
+/// Whether `id` is emphasis, strong or strikethrough.
+fn is_attention<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
+    matches!(
+        document.node(id).unwrap().kind,
+        EventKind::Start(Tag::Emphasis | Tag::Strong | Tag::Delete)
+    )
+}
+
+/// Whether a run of `marker` between `before` and `after` can open and close, where `None` is
+/// the edge of a block, which counts as whitespace.
+fn attention_sides(marker: u8, before: Option<char>, after: Option<char>) -> (bool, bool) {
+    crate::util::attention::sides(
+        marker,
+        before.map_or(Kind::Whitespace, classify),
+        after.map_or(Kind::Whitespace, classify),
+    )
 }
 
 pub(crate) fn is_phrasing(kind: &EventKind<'_>) -> bool {

@@ -386,11 +386,14 @@ fn literals_in_image_text() {
 #[test]
 fn literals_are_judged_after_attention_encodes_the_first_character() {
     // The `w` next to the closing sequence is written as a reference, which leaves no `www`.
-    for source in ["***.***&#x77;ww.a.b\n", "**.**&#x77;ww.a.b\n"] {
+    for (source, expected) in [
+        ("***.***&#x77;ww.a.b\n", "*__.__*&#x77;ww.a.b\n"),
+        ("**.**&#x77;ww.a.b\n", "**.**&#x77;ww.a.b\n"),
+    ] {
         let mut document = parse(source);
         document.normalize();
         let markdown = to_markdown(&document).unwrap();
-        assert_eq!(markdown, source, "{:?}", source);
+        assert_eq!(markdown, expected, "{:?}", source);
         assert_round_trip(&document, &markdown);
         // Without normalizing, the reference splits the text, which is written the same.
         let reparsed = parse(&markdown);

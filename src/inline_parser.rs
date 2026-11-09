@@ -4,7 +4,8 @@
 //! Compact inline candidates, resolved in reusable storage for the active block.
 use crate::definitions::Definitions;
 use crate::stream::{Event, EventKind, Tag, TagKind, Target, Text};
-use crate::util::char::{classify_opt, Kind as CharacterKind};
+use crate::util::attention::{pairs, Run};
+use crate::util::char::classify_opt;
 use crate::util::character_reference::{scan as scan_character_reference, Reference};
 use crate::util::normalize_identifier::{
     normalize_identifier_into, normalize_reference_identifier_into,
@@ -204,15 +205,22 @@ impl InlineParser {
                         let open = self.attention_stack[slot];
                         let candidate = &self.delimiters[open];
                         if candidate.marker == marker
-                            && (!EXTENSIONS
-                                || marker != b'~'
-                                || self.nodes[candidate.node].end
-                                    - self.nodes[candidate.node].start
-                                    == size)
-                            && ((EXTENSIONS && marker == b'~')
-                                || !((candidate.close || self.delimiters[close].open)
-                                    && (candidate.run_modulo + closer_modulo).is_multiple_of(3)
-                                    && (candidate.run_modulo != 0 || closer_modulo != 0)))
+                            && pairs(
+                                marker,
+                                Run {
+                                    size: self.nodes[candidate.node].end
+                                        - self.nodes[candidate.node].start,
+                                    modulo: candidate.run_modulo,
+                                    open: candidate.open,
+                                    close: candidate.close,
+                                },
+                                Run {
+                                    size,
+                                    modulo: closer_modulo,
+                                    open: self.delimiters[close].open,
+                                    close: true,
+                                },
+                            )
                         {
                             found = Some((slot, open));
                             break;
@@ -582,12 +590,7 @@ impl InlineParser {
                         let after_char = source[at..range.end].chars().next();
                         let before = classify_opt(before_char);
                         let after = classify_opt(after_char);
-                        let left = after != CharacterKind::Whitespace
-                            && (after != CharacterKind::Punctuation
-                                || before != CharacterKind::Other);
-                        let right = before != CharacterKind::Whitespace
-                            && (before != CharacterKind::Punctuation
-                                || after != CharacterKind::Other);
+                        let (open, close) = crate::util::attention::sides(marker, before, after);
                         let node = self.append(start, at, Kind::Text);
                         if EXTENSIONS
                             && marker == b'~'
@@ -601,10 +604,8 @@ impl InlineParser {
                             marker,
                             // Rule three uses the original run length, even after a partial match consumes delimiters.
                             run_modulo: u8::try_from((at - start) % 3).unwrap(),
-                            open: left
-                                && (marker != b'_' || !right || before != CharacterKind::Other),
-                            close: right
-                                && (marker != b'_' || !left || after != CharacterKind::Other),
+                            open,
+                            close,
                         });
                     }
                     b'[' | b'!' => {

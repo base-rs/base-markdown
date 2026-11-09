@@ -192,8 +192,16 @@ fn content_at_the_limit_serializes_and_deeper_content_is_an_error() {
         .chain(shapes(LIMIT + 2))
         .map(|(label, tags)| (label, nest(&tags)))
         .collect();
+    // Attention nested in attention with nothing between the runs has no spelling past a few
+    // levels, as each opening run then can close an enclosing one of its marker.
+    let unwritable = ["emphasis and strong", "strikethrough and emphasis"];
     for (label, document) in &at_limit {
-        assert!(to_markdown(document).is_ok(), "{}", label);
+        match to_markdown(document) {
+            Err(error) if unwritable.contains(label) => {
+                assert_eq!(error.rule_id, "unwritable-node", "{}", label);
+            }
+            result => assert!(result.is_ok(), "{}", label),
+        }
     }
     for (label, document) in &deeper {
         assert_too_deep(to_markdown(document), label);
@@ -289,13 +297,15 @@ fn descend(document: &Document<String>, depth: usize) -> NodeId {
 #[test]
 fn levels_count_from_the_serialized_node() {
     let options = Default::default();
-    let attention = || vec![Tag::Emphasis, Tag::Strong].into_iter().cycle();
-    // Text `2 * LIMIT` levels deep, under quotes, a paragraph and attention.
+    // Emphasis in links in emphasis, each link text its own scope, so that any depth of it has a
+    // spelling.
+    let attention = || vec![link(), Tag::Emphasis].into_iter().cycle();
+    // Text `2 * LIMIT` levels deep, under quotes, a paragraph, links and emphasis.
     let mut tags = vec![Tag::BlockQuote; LIMIT];
     tags.push(paragraph());
     tags.extend(attention().take(LIMIT - 2));
     let quotes = nest(&tags);
-    // Text `2 * LIMIT + 1` levels deep, under a paragraph and attention.
+    // Text `2 * LIMIT + 1` levels deep, under a paragraph, links and emphasis.
     let mut tags = vec![paragraph()];
     tags.extend(attention().take(2 * LIMIT - 1));
     let attention = nest(&tags);

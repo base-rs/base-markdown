@@ -170,7 +170,7 @@ fn inline_code_info() {
             "- [ ] a\\_b:`c`",
             "- [ ] a_b\\:`c`\n",
         ),
-        (&["inline_code_info"], "_a_**a**x:`v`", "*a***a**x:`v`\n"),
+        (&["inline_code_info"], "_a_**a**x:`v`", "_a_**a**x:`v`\n"),
     ]);
 }
 
@@ -253,7 +253,7 @@ fn attention_next_to_a_language() {
     };
     for (source, expected) in [
         ("*a*rust:`v`", "*a*rust:`v`\n"),
-        ("xa*rust:`v`*", "x&#x61;*rust:`v`*\n"),
+        ("xa*rust:`v`*", "xa*rust:`v`*\n"),
     ] {
         let mut document = Document::parse(source, &options).unwrap();
         document.normalize();
@@ -688,17 +688,22 @@ fn unclosed_html_blocks() {
 /// join it (#185).
 #[test]
 fn emphasis_before_a_language() {
-    let mut document =
-        Document::<String>::parse(String::from("*a*rust:`v`"), &options(&["inline_code_info"]))
+    // Without escapes too, where the block it is in is read back instead.
+    for names in [
+        &["inline_code_info"][..],
+        &["inline_code_info", "!character_escape"],
+    ] {
+        let mut document =
+            Document::<String>::parse(String::from("*a*rust:`v`"), &options(names)).unwrap();
+        let text = document
+            .descendants(document.root())
+            .find(|&id| matches!(document.node(id).unwrap().kind, EventKind::Text(_)))
             .unwrap();
-    let text = document
-        .descendants(document.root())
-        .find(|&id| matches!(document.node(id).unwrap().kind, EventKind::Text(_)))
-        .unwrap();
-    document
-        .set_kind(text, EventKind::Text(Text::from(String::from("a."))))
-        .unwrap();
-    assert!(unwritable(&document));
+        document
+            .set_kind(text, EventKind::Text(Text::from(String::from("a."))))
+            .unwrap();
+        assert!(unwritable(&document), "{:?}", names);
+    }
 }
 
 /// Without `\` hard breaks, trailing spaces alone on a line make it blank, so a hard break after

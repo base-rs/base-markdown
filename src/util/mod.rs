@@ -3,6 +3,7 @@
 // Copyright, 2026, by Samuel Williams.
 
 //! Utilities used when processing markdown.
+pub mod attention;
 pub(crate) mod autolink;
 pub mod char;
 pub mod character_reference;

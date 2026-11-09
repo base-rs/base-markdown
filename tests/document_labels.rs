@@ -168,7 +168,8 @@ fn every_parsed_label_is_valid() {
             )
         });
         if !footnote_like {
-            let normalized = to_markdown(&document).unwrap();
+            let normalized =
+                to_markdown(&document).unwrap_or_else(|e| panic!("{:?} {:?}", source, e));
             let mut reparsed = parse(&normalized);
             reparsed.normalize();
             assert_eq!(
@@ -251,7 +252,7 @@ fn labels_parsed_with_any_options_are_valid() {
             document.normalize();
             assert!(document.is_normalized(), "{:?} {:?}", options, source);
             reassign(&mut document, &source);
-            to_markdown(&document).unwrap();
+            to_markdown(&document).unwrap_or_else(|e| panic!("{:?} {:?}", source, e));
         }
     }
     assert!(seen > 2000, "{}", seen);
