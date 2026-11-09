@@ -785,3 +785,120 @@ fn html_block_plans_cover_every_container() {
         Outcome::Unwritable(_)
     ));
 }
+
+#[test]
+fn an_html_block_whose_last_line_is_blank_keeps_it_in_an_item() {
+    // The last line of the HTML block is blank but for the item's indentation, which is kept, so
+    // the item stays tight (third review, R1).
+    assert_written(
+        "- a\n  [^l]: <!--\n      \n  b",
+        "- a\n  [^l]: <!--\n      \n  b\n",
+    );
+    assert_written(
+        "- :\n  [^l]:<!--\n \n  h",
+        "- :\n  [^l]: <!--\n      \n  h\n",
+    );
+    assert_written(
+        "- [^b]:[^b]:<?\n\n      [^a]:\n  f",
+        "- [^b]: [^b]: <?\n          \n      [^a]:\n  f\n",
+    );
+}
+
+#[test]
+fn a_kept_blank_line_before_a_block_in_an_item_shows_the_list_loose() {
+    use base_markdown::IndentOptions::{Mixed, One, Tab};
+    // Under `html_block_blank_lines`, an HTML block keeps the blank line after it, which shows
+    // the list loose where a block follows in the same item, so the list is writable (R2).
+    let kept = parse_options(true, true, false);
+    let unfenced = ParseOptions {
+        constructs: base_markdown::Constructs {
+            code_fenced: false,
+            ..kept.constructs.clone()
+        },
+        ..kept.clone()
+    };
+    let plain = ParseOptions {
+        constructs: base_markdown::Constructs {
+            code_indented: false,
+            ..unfenced.constructs.clone()
+        },
+        ..unfenced.clone()
+    };
+    let footnotes = |options: &ParseOptions| ParseOptions {
+        constructs: base_markdown::Constructs {
+            footnote_definition: true,
+            label_start_footnote: true,
+            ..options.constructs.clone()
+        },
+        ..options.clone()
+    };
+    for options in [
+        &kept,
+        &unfenced,
+        &plain,
+        &footnotes(&kept),
+        &footnotes(&plain),
+    ] {
+        let indentable = options.constructs.footnote_definition || options.constructs.code_indented;
+        for source in [
+            "- <e>\n- <e>\n\n  h",
+            "- <div>\n- <div>\n\n  a",
+            "9. <div>\n9.\t<a f=\"\">\n\n    y",
+            ">- <y>\n>\n>   <e>\n>-",
+            "- 9. <!x\n  <y>\n\n  .",
+            // Without footnotes, `[^b]:<y>` is a definition, and the paragraph after it, whose
+            // line would start an HTML block, has no spelling where `code_indented` is off.
+            "*\t[^b]:<y>\n    <v>\n\n    >",
+        ]
+        .iter()
+        .filter(|source| indentable || !source.contains("[^b]"))
+        {
+            for indent_option in [One, Tab, Mixed] {
+                assert_writes(source, options, &indent(indent_option));
+            }
+        }
+    }
+}
+
+#[test]
+fn nested_items_that_start_blank_are_no_thematic_break() {
+    // Items that each start with a blank line would write `- - -`, a thematic break, so the
+    // innermost takes another bullet (R3).
+    assert_written("-\n  -\n    -\n      \t<y>", "- - *\n      \t<y>\n");
+    assert_written("-\n  -\n    -\n        <y>", "- - *\n        <y>\n");
+    assert_writes(
+        "[^bb]:[^a]:[^n]:\n+  [^bb]:\n      +   [^bb]:\n             +   [^n]:\n                \t<y>",
+        &parse_options(true, false, true),
+        &indent(base_markdown::IndentOptions::Mixed),
+    );
+}
+
+#[test]
+fn containers_serialized_on_their_own_plan_only_themselves() {
+    // A serialized node is planned without the blocks after it, which are not written.
+    let options = MarkdownOptions::default();
+    let document = Document::parse("- <div>\n\n  a\n- b\n\nc\n", &ParseOptions::default()).unwrap();
+    let list = document.children(document.root()).next().unwrap();
+    let item = document.children(list).next().unwrap();
+    assert_eq!(
+        base_markdown::to_markdown_node(&document, item, &options).unwrap(),
+        "- <div>\n\n  a\n"
+    );
+    assert_eq!(
+        base_markdown::to_markdown_node(&document, list, &options).unwrap(),
+        "- <div>\n\n  a\n\n- b\n"
+    );
+    // The last item's width reaches no block after the serialized list.
+    let document = Document::parse("- <div>\n\n<div>\n", &ParseOptions::default()).unwrap();
+    let list = document.children(document.root()).next().unwrap();
+    assert_eq!(
+        base_markdown::to_markdown_node(&document, list, &options).unwrap(),
+        "- <div>\n"
+    );
+    let document = Document::parse("> <div>\n\nc\n", &ParseOptions::default()).unwrap();
+    let quote = document.children(document.root()).next().unwrap();
+    assert_eq!(
+        base_markdown::to_markdown_node(&document, quote, &options).unwrap(),
+        "> <div>\n"
+    );
+}

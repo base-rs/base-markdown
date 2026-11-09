@@ -129,11 +129,16 @@ pub fn to_markdown_node<S: AsRef<str>>(
     if !inline
         && !result.is_empty()
         && (!result.ends_with('\n')
-            || state::trailing_html(document, node)
+            || state
+                .trailing_html(document, node)
                 .is_some_and(|(shape, _)| shape.ends_in_empty_line || shape.keeps_line_ending))
     {
         result.push('\n');
     }
+    debug_assert!(
+        !state.misfit || state.unwritable.is_some(),
+        "a container that no plan fits holds or precedes a block that does not fit"
+    );
     if let Some(id) = state.unwritable {
         return Err(state::unwritable_node(document, id));
     }

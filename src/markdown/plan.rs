@@ -23,14 +23,13 @@
 //! search recurses only into the nesting, not along a run of siblings.
 
 use super::state::{
-    flow_children, html_spaces, left_width, marker_spaces, writes_blank_line, After, Position,
-    State, MAX_NESTING,
+    flow_children, left_width, writes_blank_line, After, Position, State, MAX_NESTING,
 };
 use crate::{
     stream::{EventKind, Tag},
     Document, NodeId,
 };
-use alloc::{collections::BTreeMap, vec, vec::Vec};
+use alloc::{vec, vec::Vec};
 
 /// How an item is written: the spaces before its marker, the padding after it, and whether it
 /// starts with a blank line, after which its content starts one column after the marker.
@@ -71,6 +70,37 @@ impl ItemPlan {
             },
             quoted: position.quoted,
         }
+    }
+}
+
+/// The plans an item can be written with, in order of preference: at most 4 spaces before its
+/// marker, each with 5 paddings, and then 4 that start with a blank line.
+#[derive(Default)]
+pub(super) struct ItemPlans {
+    /// Each plan's spaces, padding and whether it starts blank, which are small.
+    plans: [(u8, u8, bool); 24],
+    len: usize,
+}
+
+impl ItemPlans {
+    pub(super) fn push(&mut self, plan: ItemPlan) {
+        self.plans[self.len] = (plan.spaces as u8, plan.padding as u8, plan.blank);
+        self.len += 1;
+    }
+
+    pub(super) fn iter(&self) -> impl Iterator<Item = ItemPlan> + '_ {
+        self.plans[..self.len]
+            .iter()
+            .map(|&(spaces, padding, blank)| ItemPlan {
+                spaces: usize::from(spaces),
+                padding: usize::from(padding),
+                blank,
+            })
+    }
+
+    /// The preferred plan, which an item is written with where none can be.
+    pub(super) fn first(&self) -> ItemPlan {
+        self.iter().next().unwrap()
     }
 }
 
@@ -131,13 +161,63 @@ const MAX_WIDTH: usize = 3 + 10 + 4;
 pub(super) struct Plans {
     /// By node index, whether it or a flow sibling after it holds an HTML block.
     html: Option<Vec<bool>>,
-    /// Whether a node and the flow siblings after it can be written, by node index and position
-    /// (`key`).
-    known: BTreeMap<(usize, u16), bool>,
+    /// By node index, the last entry of `entries` for it, plus one, or 0 for none.
+    known: Vec<u32>,
+    /// Whether a node and the flow siblings after it can be written, by position (`key`), with
+    /// the entry before it for the same node, plus one. A node is asked at few positions, so
+    /// each has a short chain, and all share one allocation.
+    entries: Vec<(u16, bool, u32)>,
 }
 
-/// The part of `position` that whether a node can be written there depends on.
-fn key(position: Position) -> u16 {
+impl Plans {
+    fn get(&self, node: NodeId, key: u16) -> Option<bool> {
+        let mut at = *self.known.get(node.index())?;
+        while let Some(&(known, result, before)) =
+            at.checked_sub(1).map(|at| &self.entries[at as usize])
+        {
+            if known == key {
+                return Some(result);
+            }
+            at = before;
+        }
+        None
+    }
+
+    fn set(&mut self, node: NodeId, key: u16, result: bool) {
+        if self.known.len() <= node.index() {
+            self.known.resize(node.index() + 1, 0);
+        }
+        let before = self.known[node.index()];
+        self.entries.push((key, result, before));
+        self.known[node.index()] = self.entries.len() as u32;
+    }
+}
+
+/// The widths of the item before `node` that whether `node` can be written depends on, after
+/// `None`, which the others are worked out with too (`prev`): an item, list or block quote
+/// takes fewer spaces before its marker than the width, and at most 3, so a width of 4 or more
+/// is the same as none, and an HTML block is indented less than the width. The flow siblings
+/// after `node` depend on the width that it leaves, not on this one.
+fn widths<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> usize {
+    match document.node(node).unwrap().kind {
+        EventKind::Start(Tag::Item { .. } | Tag::List { .. } | Tag::BlockQuote) => 3,
+        EventKind::Html { block: true, .. } => MAX_WIDTH + 1,
+        _ => 0,
+    }
+}
+
+/// `position.prev` as far as whether `node` can be written there depends on it (`widths`).
+fn prev<S: AsRef<str>>(document: &Document<S>, node: NodeId, position: Position) -> u16 {
+    position
+        .prev
+        .filter(|&prev| prev <= widths(document, node))
+        .map_or(0, |prev| prev as u16)
+}
+
+/// The part of `position` that whether `node` can be written there depends on: its columns
+/// modulo 4, as a tab reaches the next multiple of 4, what it follows on its line, whether its
+/// lines can take spaces before a `>`, and the width of the item before it (`prev`).
+fn key<S: AsRef<str>>(document: &Document<S>, node: NodeId, position: Position) -> u16 {
     let after = match position.after {
         After::Line => 0,
         After::Marker => 1,
@@ -148,7 +228,7 @@ fn key(position: Position) -> u16 {
         | after << 4
         | u16::from(position.shift) << 6
         | u16::from(position.quoted) << 7
-        | (position.prev.map_or(0, |prev| prev.min(MAX_WIDTH + 1) + 1) as u16) << 8
+        | prev(document, node, position) << 8
 }
 
 fn next_flow<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> Option<NodeId> {
@@ -176,10 +256,21 @@ fn ends_empty<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> bool {
     last.is_some_and(|last| flow_children(document, last).next().is_none())
 }
 
+/// The width of an item's marker: a bullet, or `number` and its delimiter.
+pub(super) fn marker_width(number: Option<u64>) -> usize {
+    number.map_or(1, |number| {
+        number.checked_ilog10().unwrap_or(0) as usize + 2
+    })
+}
+
 impl State<'_> {
     /// Whether `node` or a flow sibling after it holds an HTML block, or, for an item, a block
     /// after its list does. Without one, the first plan of each container is written.
-    fn holds_html<S: AsRef<str>>(&mut self, document: &Document<S>, node: NodeId) -> bool {
+    pub(super) fn holds_html<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        node: NodeId,
+    ) -> bool {
         let root = self.serialization_root.unwrap_or(document.root());
         let html = self.plans.html.get_or_insert_with(|| {
             let order: Vec<NodeId> = document.descendants(root).collect();
@@ -194,16 +285,13 @@ impl State<'_> {
                     holds[parent.index()] = true;
                 }
             }
+            // Each node's next sibling is after it in document order, and its children too, so
+            // the walk back has them all.
             let mut after = holds.clone();
-            let mut children = Vec::new();
-            for &id in &order {
-                children.clear();
-                children.extend(document.children(id));
-                let mut any = false;
-                for child in children.iter().rev() {
-                    any |= holds[child.index()];
-                    after[child.index()] = any;
-                }
+            for &id in order.iter().rev() {
+                let next = document.node(id).unwrap().next_sibling();
+                let later = next.is_some_and(|next| after.get(next.index()) == Some(&true));
+                after[id.index()] |= later;
             }
             after
         });
@@ -233,16 +321,19 @@ impl State<'_> {
         if !self.holds_html(document, node) || self.depth + depth > MAX_NESTING {
             return true;
         }
-        if let Some(&known) = self.plans.known.get(&(node.index(), key(position))) {
+        if let Some(known) = self.plans.get(node, key(document, node, position)) {
             return known;
         }
         // The siblings after `node` are worked out first, last first, at each `Position::prev`
-        // they can be given, as far as one is not known yet.
+        // they can be given, as far as one is not known yet. Every sibling after one that is
+        // known is known too, at every `prev`, as `fill` works them out together, so the answer
+        // for a sibling is known when the one before it asks (`after_writable`), and the
+        // recursion goes only into the nesting.
         let mut after = Vec::new();
         let mut current = node;
         while let Some(next) = next_flow(document, current) {
             let rest = Position::after(position, current, None);
-            if self.plans.known.contains_key(&(next.index(), key(rest))) {
+            if self.plans.get(next, key(document, next, rest)).is_some() {
                 break;
             }
             after.push((current, next));
@@ -266,15 +357,17 @@ impl State<'_> {
             self.fill(document, node, position, index, depth);
         } else {
             let result = self.writable_here(document, node, position, index, depth);
-            self.plans
-                .known
-                .insert((node.index(), key(position)), result);
+            self.plans.set(node, key(document, node, position), result);
         }
-        self.plans.known[&(node.index(), key(position))]
+        self.plans
+            .get(node, key(document, node, position))
+            .expect("fill works out every prev")
     }
 
     /// Work out whether `node` can be written at `position`, with each `Position::prev` that
-    /// the block before it can leave.
+    /// the block before it can leave. A narrower item before leaves fewer spaces before a marker
+    /// and less indentation for an HTML block, never more, so the answer is no for every width
+    /// where it is no for none, and otherwise yes from the narrowest width that it is yes for.
     fn fill<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
@@ -286,13 +379,34 @@ impl State<'_> {
         let widths = position
             .before
             .filter(|&before| leaves_width(document, before))
-            .map_or(0, |_| MAX_WIDTH);
-        for prev in core::iter::once(None).chain((1..=widths).map(Some)) {
-            let position = Position { prev, ..position };
-            let result = self.writable_here(document, node, position, index, depth);
-            self.plans
-                .known
-                .insert((node.index(), key(position)), result);
+            .map_or(0, |_| widths(document, node));
+        let alone = Position {
+            prev: None,
+            ..position
+        };
+        // An item that needs no spaces before its marker is written the same after any width.
+        let (none, free) = match document.node(node).unwrap().kind {
+            EventKind::Start(Tag::Item { .. }) => {
+                let marker = self.item_marker(document, node, index);
+                let plan = self.item_choice(document, node, alone, marker, depth);
+                (plan.is_some(), plan.is_some_and(|plan| plan.spaces == 0))
+            }
+            _ => (
+                self.writable_here(document, node, alone, index, depth),
+                false,
+            ),
+        };
+        self.plans.set(node, key(document, node, alone), none);
+        let mut result = free;
+        for prev in 1..=widths {
+            let position = Position {
+                prev: Some(prev),
+                ..position
+            };
+            if none && !result {
+                result = self.writable_here(document, node, position, index, depth);
+            }
+            self.plans.set(node, key(document, node, position), result);
         }
     }
 
@@ -323,16 +437,15 @@ impl State<'_> {
         match document.node(node).unwrap().kind {
             EventKind::Start(Tag::Item { .. }) => {
                 let marker = self.item_marker(document, node, index);
-                self.item_plans(document, node, position, marker)
-                    .into_iter()
-                    .any(|plan| self.item_writable(document, node, position, plan, marker, depth))
+                self.item_choice(document, node, position, marker, depth)
+                    .is_some()
             }
             EventKind::Start(Tag::List { .. }) => match flow_children(document, node).next() {
                 Some(item) => self.writable(document, item, position, depth + 1),
                 None => self.after_writable(document, node, position, None, depth),
             },
             EventKind::Html { block: true, .. } => {
-                html_spaces(document, node, position).is_some()
+                self.html_spaces(document, node, position).is_some()
                     && self.after_writable(document, node, position, None, depth)
             }
             EventKind::Start(Tag::BlockQuote) => {
@@ -377,6 +490,23 @@ impl State<'_> {
         self.writable(document, next, Position::after(position, node, prev), depth)
     }
 
+    /// The first plan under which item `node` at `position`, with a marker `marker` wide, can be
+    /// written, with what its width reaches after it, or `None` where none can.
+    pub(super) fn item_choice<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        node: NodeId,
+        position: Position,
+        marker: usize,
+        depth: usize,
+    ) -> Option<ItemPlan> {
+        let plans = self.item_plans(document, node, position, marker);
+        let plan = plans
+            .iter()
+            .find(|&plan| self.item_writable(document, node, position, plan, marker, depth));
+        plan
+    }
+
     /// Whether item `node` at `position`, with a marker `marker` wide, can be written with `plan`,
     /// with the items and blocks after it that its width reaches.
     pub(super) fn item_writable<S: AsRef<str>>(
@@ -413,20 +543,24 @@ impl State<'_> {
         index: usize,
     ) -> usize {
         let list = document.node(node).unwrap().parent();
-        match list.map(|list| &document.node(list).unwrap().kind) {
-            Some(EventKind::Start(Tag::List {
+        marker_width(match list.map(|list| &document.node(list).unwrap().kind) {
+            Some(&EventKind::Start(Tag::List {
                 start: Some(start), ..
-            })) => {
-                let position = if self.options.increment_list_marker {
-                    index
-                } else {
-                    0
-                };
-                let number = u64::from(*start).saturating_add(position as u64);
-                number.checked_ilog10().unwrap_or(0) as usize + 2
-            }
-            _ => 1,
-        }
+            })) => Some(self.item_number(start, || index)),
+            _ => None,
+        })
+    }
+
+    /// The number of the `index`th item of an ordered list that starts at `start`, which is the
+    /// start unless `increment_list_marker`, so `index` is worked out only then. `u64` holds any
+    /// `u32` start plus any item position without wrapping.
+    pub(super) fn item_number(&self, start: u32, index: impl FnOnce() -> usize) -> u64 {
+        let position = if self.options.increment_list_marker {
+            index()
+        } else {
+            0
+        };
+        u64::from(start).saturating_add(position as u64)
     }
 
     /// The first plan, of the spaces before its `>` or a line of `>` alone, under which block
@@ -441,7 +575,7 @@ impl State<'_> {
         let Some(first) = flow_children(document, node).next() else {
             return Some(QuotePlan::Spaces(0));
         };
-        let most = marker_spaces(document, position, false);
+        let most = self.marker_spaces(document, position, false);
         (0..=most)
             .map(QuotePlan::Spaces)
             .chain([QuotePlan::Alone])
@@ -500,8 +634,10 @@ impl State<'_> {
             })
     }
 
-    /// Whether the join between `left`, a list or item, and the flow sibling after it, `right`,
-    /// is a blank line, which ends an empty item.
+    /// Whether `left`, a list or item that ends in an empty item, and the flow sibling after it,
+    /// `right`, are joined by a blank line, which ends the empty item, as `container_flow` joins
+    /// them (`flow_join`). The block before `left` counts only where `left` is code, so none is
+    /// given.
     fn blank_between<S: AsRef<str>>(
         &self,
         document: &Document<S>,
@@ -509,17 +645,6 @@ impl State<'_> {
         right: NodeId,
     ) -> bool {
         let parent = document.node(left).unwrap().parent().unwrap();
-        // The block before a list or item counts only for code after code.
-        let before = None;
-        let records = self.records_spread(document, parent);
-        let spread = self.spreads_item(document, parent, records);
-        writes_blank_line(self.default_separator(
-            document,
-            before,
-            left,
-            right,
-            parent,
-            records || spread,
-        ))
+        writes_blank_line(self.flow_join(document, parent, None, left, right))
     }
 }
