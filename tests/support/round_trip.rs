@@ -4,9 +4,7 @@
 //! The round trip that the fuzz and the contract tests check: normalize, serialize, parse, normalize, compare.
 
 use super::fixture::canonical;
-use base_markdown::{
-    to_markdown_with_options, CompileOptions, Document, MarkdownOptions, ParseOptions,
-};
+use base_markdown::{to_markdown_with_options, CompileOptions, Document, MarkdownOptions};
 
 pub struct Failure {
     pub kind: &'static str,
@@ -44,7 +42,7 @@ pub fn fail(kind: &'static str, output: String, before: String, after: String) -
     })
 }
 
-/// Normalize, serialize, parse and normalize `document`, and compare. A hand-built tree, which a serializer error rejects rather than fails, is `built`.
+/// Normalize, serialize, parse under the document's own options and normalize `document`, and compare. A hand-built tree, which a serializer error rejects rather than fails, is `built`.
 pub fn round_trip<S: AsRef<str>>(
     mut document: Document<S>,
     options: &MarkdownOptions,
@@ -60,7 +58,8 @@ pub fn round_trip<S: AsRef<str>>(
         Err(_) if built => return Outcome::Rejected,
         Err(error) => return fail("error", error.to_string(), before, String::new()),
     };
-    let mut reparsed = Document::parse(output.as_str(), &ParseOptions::default()).unwrap();
+    // The output reads back under the document's own options (contract 3.3).
+    let mut reparsed = Document::parse(output.as_str(), document.parse_options()).unwrap();
     reparsed.normalize();
     let after = html(&reparsed, false);
     if !reparsed.is_normalized() {

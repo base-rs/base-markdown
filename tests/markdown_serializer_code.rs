@@ -700,8 +700,8 @@ fn parsed_code_blocks_are_valid_and_read_back() {
     let mut neither = ParseOptions::default();
     neither.constructs.character_escape = false;
     neither.constructs.character_reference = false;
-    // The serializer writes for a parser with escapes and references, so every block reads back
-    // with the default options.
+    // Each block reads back under the options it was read with, which the copy records, though
+    // with escapes on: the writer escapes with backslashes where they are off.
     let parses = [
         ParseOptions::default(),
         ParseOptions::gfm(),
@@ -752,7 +752,9 @@ fn parsed_code_blocks_are_valid_and_read_back() {
             }
             written += 1;
             let markdown = to_markdown(&document).unwrap();
-            let reparsed = Document::parse(markdown.clone(), &ParseOptions::default()).unwrap();
+            let mut read = parse.clone();
+            read.constructs.character_escape = true;
+            let reparsed = Document::parse(markdown.clone(), &read).unwrap();
             assert_eq!(
                 infos(&reparsed),
                 infos(&document),

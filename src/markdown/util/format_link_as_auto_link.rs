@@ -30,6 +30,12 @@ pub enum WrittenLink<'a> {
 /// text outside link text are boundaries too, as the parser forms literals there. `after_boundary`
 /// says whether the output before the link ends at one. Anywhere else it is written as `<…>` when
 /// that reads back as the same link, and explicitly otherwise.
+///
+/// Only forms whose constructs the document's options turn on are written (contract 3.3): without
+/// `Constructs::autolink` no `<…>`, without `Constructs::autolink_literal` no bare link, and
+/// without a label start and `Constructs::label_end` no explicit link, for which a link is written
+/// as `<…>` when that reads back as it, and bare otherwise, where a bare link would be. Any other
+/// link has no spelling there, and is written explicitly.
 pub fn written_link<'a, S: AsRef<str>>(
     document: &'a Document<S>,
     id: NodeId,
@@ -38,28 +44,43 @@ pub fn written_link<'a, S: AsRef<str>>(
     after_boundary: bool,
     state: &State,
 ) -> WrittenLink<'a> {
-    match document.syntax(id) {
+    let constructs = &state.parse.constructs;
+    let bare = || {
+        link_text(document, id).filter(|text| {
+            constructs.autolink_literal
+                && reads_back_bare(text, destination)
+                && after_boundary
+                && !state.stack.contains(&ConstructName::Label)
+                && boundary_after(document, id)
+                && !(text.contains('|') && state.stack.contains(&ConstructName::TableCell))
+        })
+    };
+    let angle = || {
+        auto_link_text(document, id, destination, has_title, state)
+            .filter(|_| constructs.autolink && !state.options.resource_link)
+    };
+    let stored = match document.syntax(id) {
         Some(NodeSyntax::Link {
             form: LinkForm::Bare,
-        }) if !state.options.resource_link && !has_title => match link_text(document, id) {
-            Some(text)
-                if reads_back_bare(text, destination)
-                    && after_boundary
-                    && !state.stack.contains(&ConstructName::Label)
-                    && boundary_after(document, id)
-                    && !(text.contains('|') && state.stack.contains(&ConstructName::TableCell)) =>
-            {
-                WrittenLink::Bare(text)
-            }
-            _ => auto_link_text(document, id, destination, has_title, state)
-                .map_or(WrittenLink::Explicit, WrittenLink::Angle),
-        },
+        }) if !state.options.resource_link && !has_title => bare()
+            .map(WrittenLink::Bare)
+            .or_else(|| angle().map(WrittenLink::Angle)),
         Some(NodeSyntax::Link {
             form: LinkForm::Angle,
-        }) => auto_link_text(document, id, destination, has_title, state)
-            .map_or(WrittenLink::Explicit, WrittenLink::Angle),
-        _ => WrittenLink::Explicit,
-    }
+        }) => angle().map(WrittenLink::Angle),
+        _ => None,
+    };
+    stored
+        .or_else(|| {
+            if constructs.label_start_link && constructs.label_end {
+                return None;
+            }
+            auto_link_text(document, id, destination, has_title, state)
+                .filter(|_| constructs.autolink)
+                .map(WrittenLink::Angle)
+                .or_else(|| bare().map(WrittenLink::Bare))
+        })
+        .unwrap_or(WrittenLink::Explicit)
 }
 
 /// Whether the parser reads `text`, written alone, back as one literal autolink to `destination`.
@@ -142,7 +163,8 @@ fn link_text<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> Option<&str> 
     Some(text.resolve(document.source()).unwrap())
 }
 
-/// The text to write between angle brackets, when an autolink can hold the link.
+/// The text to write between angle brackets, when an autolink can hold the link, whatever the
+/// options.
 fn auto_link_text<'a, S: AsRef<str>>(
     document: &'a Document<S>,
     id: NodeId,
@@ -150,7 +172,7 @@ fn auto_link_text<'a, S: AsRef<str>>(
     has_title: bool,
     state: &State,
 ) -> Option<&'a str> {
-    if state.options.resource_link || destination.is_empty() || has_title {
+    if destination.is_empty() || has_title {
         return None;
     }
     let text = link_text(document, id)?;

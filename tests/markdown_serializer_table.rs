@@ -294,15 +294,23 @@ fn delimiter_row_escapes_scale_linearly() {
     }
 }
 
-/// Output is read with the default options, which have tables, so a table parsed as text without
-/// them is written with its delimiter row escaped, as it would otherwise read back as a table.
+/// Output is read with the document's own options (#257), so a table parsed as text without
+/// them is written as it is, and reads back as text under them; under options with tables, its
+/// delimiter row is escaped, as it would otherwise read back as a table.
 #[test]
 fn tables_parsed_as_text_stay_text() {
     let source = "| a | b |\n| --- | :-: |\n| c | d |\n";
     let document = Document::parse(source, &ParseOptions::commonmark()).unwrap();
     let markdown = to_markdown(&document).unwrap();
-    assert_eq!(markdown, "| a | b |\n\\| --- | :-: |\n| c | d |\n");
+    assert_eq!(markdown, source);
+    let html = to_html_with_options(&markdown, &Options::commonmark());
+    assert!(!html.contains("<table>"), "{}", html);
+
+    let source = "| a | b |\n\\| --- | :-: |\n";
+    let mut document = Document::parse(source, &ParseOptions::default()).unwrap();
+    document.normalize();
+    let markdown = to_markdown(&document).unwrap();
+    assert_eq!(markdown, "| a | b |\n\\| --- | :-: |\n");
     let html = to_html_with_options(&markdown, &Options::default());
     assert!(!html.contains("<table>"), "{}", html);
-    assert_eq!(html, to_html_with_options(source, &Options::commonmark()));
 }

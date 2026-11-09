@@ -863,11 +863,11 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
     let mut after_hard_break = false;
     // Whether the last events start a task item, and then its first paragraph.
     let mut after_task: Option<bool> = None;
-    // The signature of the last node of the document so far, when it is a code block without a final line ending, with that line ending added. The serializer closes every fence, so a last block that the parser stores without one, from an unclosed fence or indented code at the end of the source, reads back with one.
+    // The signature of the last node of the document so far, when it is a code block, or an HTML block under `html_block_blank_lines`, without a final line ending, with that line ending added. The serializer closes every fence, so a last block that the parser stores without one, from an unclosed fence or indented code at the end of the source, reads back with one.
     let mut last_code: Option<(usize, String)> = None;
     for event in document.events() {
         let event = event.unwrap();
-        if !matches!(event.kind, EventKind::End(_)) {
+        if !matches!(event.kind, EventKind::End(_) | EventKind::Separator { .. }) {
             last_code = None;
         }
         // A task's checkbox is followed by a space or tab, or by a line ending that a soft break
@@ -952,7 +952,20 @@ pub fn canonical<S: AsRef<str>>(document: &Document<S>) -> Vec<String> {
                 }
                 format!("CodeBlock:{body:?}:{info:?}")
             }
-            EventKind::Html { value, .. } => format!("Html:{:?}", text(&value)),
+            // Under `html_block_blank_lines`, an HTML block of kind 6 or 7 keeps its final line
+            // ending, which one at the end of the source has none of, and the writer ends the
+            // document with one, as for code.
+            EventKind::Html { value, block } => {
+                let body = text(&value);
+                if block
+                    && document.parse_options().html_block_blank_lines
+                    && !body.is_empty()
+                    && !body.ends_with('\n')
+                {
+                    last_code = Some((output.len(), format!("Html:{:?}", format!("{body}\n"))));
+                }
+                format!("Html:{body:?}")
+            }
             EventKind::Definition {
                 label,
                 destination,

@@ -951,10 +951,10 @@ impl<'a, S: AsRef<str>> DocumentEvents<'a, S> {
         let kind = match &node.kind {
             EventKind::FootnoteReference { .. } if definition.is_some() => borrow_kind(&node.kind),
             EventKind::FootnoteReference { identifier, label } => {
-                EventKind::Text(Text::from(crate::bindings::unbound_footnote_text(text(
-                    label.as_ref().unwrap_or(identifier),
-                    source,
-                ))))
+                EventKind::Text(Text::from(crate::bindings::unbound_footnote_text(
+                    text(label.as_ref().unwrap_or(identifier), source),
+                    self.document.parse_options(),
+                )))
             }
             EventKind::Start(
                 tag @ (Tag::Link(Target::Reference(reference))
@@ -1011,8 +1011,12 @@ impl<'a, S: AsRef<str>> DocumentEvents<'a, S> {
             };
         }
         let label = text(&reference.label, self.document.source());
-        let (_, close) =
-            crate::bindings::unbound_text(reference.kind, label, matches!(tag, Tag::Image(_)));
+        let (_, close) = crate::bindings::unbound_text(
+            reference.kind,
+            label,
+            matches!(tag, Tag::Image(_)),
+            self.document.parse_options(),
+        );
         Event {
             kind: EventKind::Text(Text::from(close)),
             span,
@@ -4792,6 +4796,7 @@ impl<S: AsRef<str>> Document<S> {
     // back as, as `unbind` does.
     fn unbind_node(&mut self, id: NodeId) {
         let source = self.source.as_ref();
+        let options = &self.options;
         let nodes = &mut self.nodes;
         let resolve = |value: &Text<'_>| -> String {
             String::from(value.resolve(source).expect("document text is validated"))
@@ -4799,8 +4804,9 @@ impl<S: AsRef<str>> Document<S> {
         match &nodes[id.index()].kind {
             EventKind::FootnoteReference { identifier, label } => {
                 let label = resolve(label.as_ref().unwrap_or(identifier));
-                nodes[id.index()].kind =
-                    EventKind::Text(Text::from(crate::bindings::unbound_footnote_text(&label)));
+                nodes[id.index()].kind = EventKind::Text(Text::from(
+                    crate::bindings::unbound_footnote_text(&label, options),
+                ));
             }
             EventKind::Start(tag @ (Tag::Link(target) | Tag::Image(target))) => {
                 let reference = target.reference().expect("only a reference is unbound");
@@ -4808,6 +4814,7 @@ impl<S: AsRef<str>> Document<S> {
                     reference.kind,
                     &resolve(&reference.label),
                     matches!(tag, Tag::Image(_)),
+                    options,
                 );
                 let parent = nodes[id.index()]
                     .parent
