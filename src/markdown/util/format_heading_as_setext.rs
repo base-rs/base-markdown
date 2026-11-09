@@ -24,7 +24,7 @@ pub fn format_heading_as_setext<S: AsRef<str>>(
 }
 
 /// Whether heading `id` must be written as a setext heading, when `unwrap` is whether soft breaks
-/// are written as spaces. Headings are written ATX, but only a setext heading can hold a line
+/// are written as spaces, under the document's options. Headings are written ATX, but only a setext heading can hold a line
 /// ending, so a heading of rank 1 or 2 with text that holds one is written setext. `encode` is
 /// whether a line ending in text, at any depth, is written in an ATX heading as `&#xA;`,
 /// which reads back as the same text, rather than making the heading setext. Only a heading that
@@ -43,8 +43,15 @@ pub(crate) fn heading_as_setext<S: AsRef<str>>(
     ) {
         return false;
     }
+    // The document's options decide when one kind is off (contract 3.3): without ATX headings,
+    // any heading with content is written setext, and without setext headings, none is, a line
+    // ending in text being written as `&#xA;`, as a break cannot be in one (1.2).
+    let constructs = &document.parse_options().constructs;
+    if !constructs.heading_setext {
+        return false;
+    }
     let mut nonempty = false;
-    let mut setext = false;
+    let mut setext = !constructs.heading_atx;
     // Unwrapping writes soft breaks and line endings in text as spaces, so they no longer need a multi-line heading. Inline code holds no line ending ([`EventKind::Code`]), and a code block cannot be written in a heading.
     // Walk the descendants in document order.
     let mut current = document.node(id).unwrap().first_child();

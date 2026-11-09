@@ -241,7 +241,7 @@ fn language_after_text_reads_back_alone() {
         ("a__b", "a\\_\\_&#x62;rust:`v`\n"),
         ("1.", "1&#x2E;rust:`v`\n"),
         ("x\\a", "x\\\\&#x61;rust:`v`\n"),
-        ("x\\", "x\\\\rust:`v`\n"),
+        ("x\\", "x\\rust:`v`\n"),
         ("~~a", "\\~\\~&#x61;rust:`v`\n"),
         ("x+", "x&#x2B;rust:`v`\n"),
         ("x#", "x&#x23;rust:`v`\n"),

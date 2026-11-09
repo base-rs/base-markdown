@@ -205,7 +205,9 @@ fn delimiter_row(line: &[u8]) -> bool {
 
 // Whether `line`, a line of a label after its first, without its line ending, continues the
 // label's paragraph, or its `definition`, at every column where it could be written, as the
-// parser reads it with the default options, `last` when the closing bracket follows it.
+// parser reads it with the default options, `last` when the closing bracket follows it. The
+// defaults read every block start that options can turn on, so a line that continues the label
+// under them continues it under any options; a label's shape does not depend on the document's.
 fn continuation_writable(line: &[u8], last: bool, definition: bool) -> bool {
     let indent = leading_whitespace(line);
     if indentation(&line[..indent]).0 >= 4 {
@@ -214,7 +216,11 @@ fn continuation_writable(line: &[u8], last: bool, definition: bool) -> bool {
     let mut rest = alloc::vec::Vec::with_capacity(line.len() - indent + 1);
     rest.extend_from_slice(&line[indent..]);
     rest.push(if last { b']' } else { b'\n' });
-    !crate::block_parser::continuation_starts_block(&rest, definition)
+    !crate::block_parser::continuation_starts_block(
+        &rest,
+        definition,
+        &crate::ParseOptions::default(),
+    )
 }
 
 // How many spaces and tabs `line` starts with.
