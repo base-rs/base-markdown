@@ -397,7 +397,9 @@ fn virtual_container_spaces_keep_authored_values_and_nul_is_replaced() {
         ("   ```\n\tx\n   ```", "<pre><code> x\n</code></pre>"),
         ("- `a\n\tb`", "<ul>\n<li><code>a b</code></li>\n</ul>"),
         ("- `\n\t`", "<ul>\n<li><code> </code></li>\n</ul>"),
-        (">\t</b>", "<blockquote>\n&lt;/b&gt;\n</blockquote>"),
+        // The 2 columns of the tab after the marker's space are the HTML block's, as in cmark
+        // (#263).
+        (">\t</b>", "<blockquote>\n  &lt;/b&gt;\n</blockquote>"),
         (
             "https://x.org\0",
             "<p><a href=\"https://x.org%EF%BF%BD\">https://x.org�</a></p>",

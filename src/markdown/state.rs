@@ -6,6 +6,7 @@
 //! State.
 //!
 //! JS equivalent: <https://github.com/syntax-tree/mdast-util-to-markdown/blob/fd6a508/lib/types.js#L195>.
+use crate::block_parser::{indentation_width, HtmlBlockShape};
 use crate::markdown::{
     attention::{self, Edge, Parent, Surroundings},
     construct_name::ConstructName,
@@ -140,6 +141,52 @@ pub struct State<'a> {
     /// with, which a block written first in them follows on its line, and what its other lines
     /// start with, innermost last.
     pub(super) prefixes: Vec<(String, String)>,
+    /// Where the flow child being written starts. Set before each flow child is written, and
+    /// read first by the child, as the children of a container overwrite it.
+    pub(super) position: Position,
+    /// Where the children of each open list, item, block quote and footnote definition start,
+    /// innermost last. The root's start at column 0.
+    pub(super) frames: Vec<Position>,
+    /// The item written last, and the width of its content, which a later line indented that far
+    /// would continue: an item or block quote written after it, at that line's start, has fewer
+    /// spaces before its marker.
+    pub(super) last_item: Option<(NodeId, usize)>,
+    /// The lines of the block quotes being written that start an HTML block after their first,
+    /// by where they are in the output, with the spaces to write before their `>` so that the
+    /// block's first line starts at a column where it is no indented code, innermost last.
+    pub(super) quote_lines: Vec<(usize, usize)>,
+    /// For each list being written, whether one of its joins, or one of its items', is written
+    /// as a blank line, and whether one that would be is not, as an HTML block of kinds 1–5 that
+    /// no line closes before it would take it.
+    pub(super) looseness: Vec<(bool, bool)>,
+}
+
+/// Where a flow child starts: the absolute columns of its content on its first line and on its
+/// other lines, as the prefixes of the containers it is in reach them, and what is before it on
+/// its first line.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct Position {
+    pub(super) first: usize,
+    pub(super) rest: usize,
+    pub(super) after: After,
+    /// The flow child before it, or for the first item of a list, the one before the list, whose
+    /// last item a line indented as wide as its content would continue.
+    pub(super) before: Option<NodeId>,
+}
+
+/// What a flow child follows on its first line.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum After {
+    /// The start of a line, or a block quote's marker, after which spaces before a marker are
+    /// indentation.
+    #[default]
+    Line,
+    /// An item's marker, whose padding would take spaces before a marker as more padding, which
+    /// widens the item.
+    Marker,
+    /// A footnote definition's label, which takes every space after it, so spaces before an
+    /// item's marker would not count towards its width.
+    Label,
 }
 
 impl<'a> Info<'a> {
@@ -313,6 +360,19 @@ impl<'a> State<'a> {
                 self.no_spelling_of(child);
             }
             let start = self.output.len();
+            let frame = self.frames.last().copied().unwrap_or_default();
+            // The first child starts on its container's first line, after what is before it there,
+            // and the first item of a list where the list does.
+            self.position = if index == 0 {
+                frame
+            } else {
+                Position {
+                    first: frame.rest,
+                    rest: frame.rest,
+                    after: After::Line,
+                    before,
+                }
+            };
             self.write_node(document, child, &Info::new("\n", "\n"))?;
             self.joined_definition = None;
             if let Some(&next) = children.peek() {
@@ -321,14 +381,14 @@ impl<'a> State<'a> {
                 // `html_block_blank_lines`, one of kind 6 or 7 takes them too, and keeps the blank
                 // line before them, so one that keeps a final line ending without a blank line,
                 // which only the end of the document gives, has none either.
-                if let EventKind::Html { value, block: true } = &document.node(child).unwrap().kind
-                {
+                if let Some(shape) = html_shape(document, child) {
+                    let EventKind::Html { value, .. } = &document.node(child).unwrap().kind else {
+                        unreachable!("only an HTML block has a shape")
+                    };
                     let value = value.resolve(document.source()).unwrap();
-                    let kept =
-                        crate::block_parser::html_block_keeps_line_ending(value, &self.parse);
                     let last_line = value.trim_end_matches('\n').rsplit('\n').next();
-                    if crate::block_parser::html_block_unclosed(value)
-                        || kept
+                    if shape.unclosed
+                        || shape.keeps_line_ending
                             && !value.ends_with("\n\n")
                             && last_line
                                 .is_some_and(|line| !line.trim_matches([' ', '\t']).is_empty())
@@ -358,6 +418,33 @@ impl<'a> State<'a> {
                     )
                 };
                 self.output.push_str(separator);
+                if let (true, Some(looseness)) =
+                    (in_list(document, parent), self.looseness.last_mut())
+                {
+                    if writes_blank_line(separator) {
+                        looseness.0 = true;
+                    } else if (records_spread || spread) && ends_unclosed(document, child) {
+                        looseness.1 = true;
+                    }
+                }
+                // A list whose first item starts with a blank line before an HTML block with
+                // indentation (`item_starts_blank`) cannot interrupt a paragraph, which
+                // `Document::normalize` leaves, unlike an empty one.
+                if matches!(
+                    document.node(child).unwrap().kind,
+                    EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. }
+                ) && !writes_blank_line(separator)
+                    && matches!(
+                        document.node(next).unwrap().kind,
+                        EventKind::Start(Tag::List { .. })
+                    )
+                    && flow_children(document, next).next().is_some_and(|item| {
+                        item_starts_blank(document, item)
+                            && flow_children(document, item).next().is_some()
+                    })
+                {
+                    self.no_spelling_of(next);
+                }
                 // Without HTML blocks, the comment that ends a list or code before indented code
                 // is a paragraph, and no other line ends them.
                 if separator.contains("<!---->") && !self.parse.constructs.html_flow {
@@ -1375,7 +1462,21 @@ impl<'a> State<'a> {
                     self.output.push_str("]:");
                     if let Some(first) = flow_children(document, id).next() {
                         // Indented code cannot start on the label's line, where it would read back as a paragraph, so it starts on the next line, indented like the lines after it.
-                        let next_line = self.indented_code(document, id, false, None, first);
+                        // Nor can an HTML block with indentation, which the label takes, or one
+                        // that is indented code at the column after the label.
+                        let position = self.position;
+                        let column = position.first + label.len() + 5;
+                        let next_line = self.indented_code(document, id, false, None, first)
+                            || matches!(&document.node(first).unwrap().kind,
+                                EventKind::Html { value, block: true }
+                                    if value.resolve(source).unwrap().starts_with([' ', '\t']))
+                            || html_shape(document, first).is_some_and(|shape| !shape.fits(column));
+                        self.frames.push(Position {
+                            first: if next_line { position.rest + 4 } else { column },
+                            rest: position.rest + 4,
+                            after: if next_line { After::Line } else { After::Label },
+                            before: None,
+                        });
                         self.output.push(if next_line { '\n' } else { ' ' });
                         let start = self.output.len();
                         let prefix = if next_line {
@@ -1386,6 +1487,7 @@ impl<'a> State<'a> {
                         self.prefixes.push((prefix, "    ".into()));
                         let result = self.container_flow(document, id);
                         self.prefixes.pop();
+                        self.frames.pop();
                         result?;
                         self.indent_lines(start, |line, index, blank, output| {
                             if (next_line || index > 0) && !blank {
@@ -1437,17 +1539,22 @@ impl<'a> State<'a> {
                 let value = value.resolve(source).unwrap();
                 let info = info.as_ref().map(|info| info.resolve(source).unwrap());
                 let fence = core::mem::take(&mut self.fence_code);
+                // Code that only a fence keeps apart from the block before it, such as an HTML
+                // block that keeps its blank lines (#265), has no spelling without fences.
+                if fence && !self.parse.constructs.code_fenced {
+                    self.no_spelling_of(id);
+                }
                 self.code(value, info, fence)
             }
             EventKind::Html { value, block: true } => {
                 let value = value.resolve(source).unwrap();
-                self.output.push_str(
-                    if crate::block_parser::html_block_keeps_line_ending(value, &self.parse) {
-                        &value[..value.len() - 1]
-                    } else {
-                        value
-                    },
-                );
+                let shape = html_shape(document, id).expect("a document's HTML block starts one");
+                self.html_block(document, id, shape);
+                self.output.push_str(if shape.keeps_line_ending {
+                    &value[..value.len() - 1]
+                } else {
+                    value
+                });
                 Ok(())
             }
             EventKind::Html { value, .. } => {
@@ -1480,6 +1587,65 @@ impl<'a> State<'a> {
         };
         self.depth -= 1;
         result
+    }
+
+    /// Check that HTML block `id`, of shape `shape`, starts where it is written at a column
+    /// where its first line is no indented code (#266). After the first line of a block quote,
+    /// its line is written with the spaces before `>` that put it at the first such column,
+    /// which `blockquote` writes, so only one that starts its container, after what is before
+    /// it there, can have none.
+    fn html_block<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        id: NodeId,
+        shape: HtmlBlockShape,
+    ) {
+        let mut column = self.position.first;
+        let quoted = document.node(id).unwrap().parent().is_some_and(|parent| {
+            matches!(
+                document.node(parent).unwrap().kind,
+                EventKind::Start(Tag::BlockQuote)
+            )
+        });
+        if quoted && self.position.before.is_some() {
+            let spaces = quote_spaces(shape, column, 3);
+            if spaces > 0 {
+                self.quote_lines.push((self.output.len(), spaces));
+            }
+            column += spaces;
+        }
+        if !shape.fits(column) {
+            self.no_spelling_of(id);
+        }
+    }
+
+    /// The most spaces that an item or block quote starting at `position` can be written with
+    /// before its marker: up to three, but none after an item's marker, whose padding would take
+    /// them, or after a footnote definition's label for an item, which would not count them in
+    /// its width (`After`), and fewer than the width of the item before it, which a line indented
+    /// that far would continue.
+    pub(super) fn marker_spaces<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        position: Position,
+        item: bool,
+    ) -> usize {
+        match position.after {
+            After::Marker => return 0,
+            After::Label if item => return 0,
+            _ => {}
+        }
+        let before = position
+            .before
+            .and_then(|before| match document.node(before).unwrap().kind {
+                EventKind::Start(Tag::Item { .. }) => Some(before),
+                EventKind::Start(Tag::List { .. }) => flow_children(document, before).last(),
+                _ => None,
+            });
+        match (before, self.last_item) {
+            (Some(before), Some((item, width))) if item == before => width.saturating_sub(1).min(3),
+            _ => 3,
+        }
     }
 
     fn render_table<S: AsRef<str>>(
@@ -1605,16 +1771,17 @@ impl<'a> State<'a> {
     ) -> &'static str {
         let left_kind = &document.node(left).unwrap().kind;
         let right_kind = &document.node(right).unwrap().kind;
-        // The HTML block that `left` ends in holds the blank lines after it, which its containers
-        // continue over, and is written without the line ending that this one gives back (#265).
-        if ends_in_kept_line_ending(document, left, false) {
+        // The HTML block that `left` ends in, outside any block quote, which a line without `>`
+        // ends, blank or not.
+        let trailing = trailing_html(document, left)
+            .filter(|&(_, quoted)| !quoted)
+            .map(|(shape, _)| shape);
+        // It holds the blank lines after it, which its containers continue over, and is written
+        // without the line ending that this one gives back (#265).
+        if trailing.is_some_and(|shape| shape.keeps_line_ending) {
             return "\n";
         }
-        // A list or footnote definition whose last block is an HTML block of kinds 1–5 that no
-        // line closes would take a blank line after it as more of that block, which a
-        // line indented less than that item ends instead, as the parser reads it: `- <pre>\nx`, and
-        // `- - <pre>\n  x` in an item (#191).
-        let unclosed = ends_in_unclosed_html(document, left);
+        let unclosed = ends_unclosed(document, left);
         if self.indented_code(document, parent, spread, Some(left), right)
             && (matches!(left_kind, EventKind::Start(Tag::List { .. }))
                 || self.indented_code(document, parent, spread, before, left))
@@ -1794,6 +1961,11 @@ impl<'a> State<'a> {
             raw_literals: false,
             verifying: false,
             prefixes: Vec::new(),
+            position: Position::default(),
+            frames: Vec::new(),
+            last_item: None,
+            quote_lines: Vec::new(),
+            looseness: Vec::new(),
         }
     }
 
@@ -2255,21 +2427,41 @@ pub(crate) fn is_phrasing(kind: &EventKind<'_>) -> bool {
 }
 
 /// Whether `id`, if it is a list, can interrupt a paragraph: it starts with an item that is not
-/// empty, not counting separators and empty paragraphs, and, if ordered, starts at 1. A node that
-/// is not a list counts as one that can.
+/// empty, not counting separators and empty paragraphs, and not written with a blank line first,
+/// as `item_starts_blank` says, and, if ordered, starts at 1. A node that is not a list counts as
+/// one that can.
 fn list_interrupts_paragraph<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
     let EventKind::Start(Tag::List { start, .. }) = document.node(id).unwrap().kind else {
         return true;
     };
     start.is_none_or(|start| start == 1)
         && flow_children(document, id).next().is_none_or(|item| {
-            flow_children(document, item).any(|block| {
-                !matches!(
-                    document.node(block).unwrap().kind,
-                    EventKind::Start(Tag::Paragraph { .. })
-                ) || document.children(block).next().is_some()
-            })
+            !item_starts_blank(document, item)
+                && flow_children(document, item).any(|block| {
+                    !matches!(
+                        document.node(block).unwrap().kind,
+                        EventKind::Start(Tag::Paragraph { .. })
+                    ) || document.children(block).next().is_some()
+                })
         })
+}
+
+/// Whether item `item` is written with a blank line after its marker: it is empty, or starts with
+/// an HTML block with indentation that the marker's padding would take. Without indented code,
+/// the parser reads a padding of one after a marker and whitespace of 5 columns or more, so an
+/// HTML block indented 4 columns or more at some column is written after the marker, at such a
+/// column (`State::plan_item`). Its content then starts one column after the marker.
+pub(super) fn item_starts_blank<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> bool {
+    let Some(first) = flow_children(document, item).next() else {
+        return true;
+    };
+    let EventKind::Html { value, block: true } = &document.node(first).unwrap().kind else {
+        return false;
+    };
+    let value = value.resolve(document.source()).unwrap().as_bytes();
+    matches!(value.first(), Some(b' ' | b'\t'))
+        && (document.parse_options().constructs.code_indented
+            || (0..4).all(|column| indentation_width(value, column) < 4))
 }
 
 /// Whether code as a flow child of `parent` after flow child `before`, if any, needs a fence
@@ -2294,7 +2486,11 @@ fn fences_code<S: AsRef<str>>(
     before.is_some_and(|before| match document.node(before).unwrap().kind {
         // The HTML block that `before` ends in would take indented lines after its blank lines,
         // unless a block quote, which a blank line ends, holds it.
-        _ if ends_in_kept_line_ending(document, before, false) => true,
+        _ if trailing_html(document, before)
+            .is_some_and(|(shape, quoted)| shape.keeps_line_ending && !quoted) =>
+        {
+            true
+        }
         EventKind::Start(Tag::FootnoteDefinition { .. }) => true,
         EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. } => {
             !spread && in_list(document, parent)
@@ -2483,10 +2679,8 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
             continues_text(document, right, &setext)
                 || matches!(right_kind, EventKind::Start(Tag::Table))
         }
-        EventKind::Html { value, block: true } => {
-            !crate::block_parser::html_block_ends_on_last_line(
-                value.resolve(document.source()).unwrap(),
-            )
+        EventKind::Html { block: true, .. } => {
+            !html_shape(document, left).is_some_and(HtmlBlockShape::ends_on_last_line)
         }
         EventKind::Start(Tag::BlockQuote) => {
             matches!(right_kind, EventKind::Start(Tag::BlockQuote))
@@ -2497,65 +2691,62 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
     }
 }
 
-/// Whether `node` is, or ends in, through the last blocks of the containers in it, and through
-/// block quotes only when `quotes`, an HTML block written without the line ending that
-/// `html_block_keeps_line_ending` keeps in its value, which the line ending after it gives back.
-pub(super) fn ends_in_kept_line_ending<S: AsRef<str>>(
+/// The shape of HTML block `id`'s value under the options of `document`, or `None` where `id` is
+/// no HTML block or its value starts none, which only a hand-built tree has.
+pub(super) fn html_shape<S: AsRef<str>>(
     document: &Document<S>,
-    node: NodeId,
-    quotes: bool,
-) -> bool {
-    let mut node = node;
-    while let Some(last) = flow_children(document, node).last() {
-        if !quotes
-            && matches!(
-                document.node(node).unwrap().kind,
-                EventKind::Start(Tag::BlockQuote)
-            )
-        {
-            return false;
-        }
-        node = last;
+    id: NodeId,
+) -> Option<HtmlBlockShape> {
+    match &document.node(id).unwrap().kind {
+        EventKind::Html { value, block: true } => HtmlBlockShape::of(
+            value.resolve(document.source()).unwrap(),
+            document.parse_options(),
+        ),
+        _ => None,
     }
-    matches!(
-        &document.node(node).unwrap().kind,
-        EventKind::Html { value, block: true }
-            if crate::block_parser::html_block_keeps_line_ending(
-                value.resolve(document.source()).unwrap(),
-                document.parse_options(),
-            )
-    )
 }
 
-/// Whether `node` is a list or footnote definition whose last block, through the last blocks of
-/// the items, lists and footnote definitions in it, is an HTML block of kinds 1–5 that no line
-/// closes. Such a block takes the blank lines after it that its containers continue over, but not
-/// an unindented line, which ends them. A block quote ends at a line without `>`, blank or not,
-/// so one in the way ends the search.
-fn ends_in_unclosed_html<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> bool {
-    if !matches!(
+/// The shape of the HTML block that `node` is or ends in, through the last blocks of the
+/// containers in it, and whether a block quote holds it, which a line without `>` ends, blank or
+/// not. This is the one walk for what the end of a block leaves open: the blank lines an HTML
+/// block of kinds 1–5 that no line closes would take (#191, #273), the line ending that
+/// `ParseOptions::html_block_blank_lines` keeps in a block of kind 6 or 7 (#265), and the empty
+/// line a block ends in, which the final line ending must not take.
+pub(super) fn trailing_html<S: AsRef<str>>(
+    document: &Document<S>,
+    mut node: NodeId,
+) -> Option<(HtmlBlockShape, bool)> {
+    let mut quoted = false;
+    while let Some(last) = flow_children(document, node).last() {
+        quoted |= matches!(
+            document.node(node).unwrap().kind,
+            EventKind::Start(Tag::BlockQuote)
+        );
+        node = last;
+    }
+    html_shape(document, node).map(|shape| (shape, quoted))
+}
+
+/// The fewest spaces, at most `most`, before a block quote's `>` that put HTML block of shape
+/// `shape`, whose line it starts at `column` without them, at a column where its first line is
+/// no indented code, or none where no such count does.
+pub(super) fn quote_spaces(shape: HtmlBlockShape, column: usize, most: usize) -> usize {
+    (0..=most)
+        .find(|&spaces| shape.fits(column + spaces))
+        .unwrap_or(0)
+}
+
+/// Whether `node` is a list, item or footnote definition whose last block, outside any block
+/// quote, is an HTML block of kinds 1–5 that no line closes. It would take a blank line after it as
+/// more of that block, which a line indented less than that item ends instead, as the parser reads
+/// it: `- <pre>\nx`, `- - <pre>\n  x` in an item (#191), and `1. <!--x\n2. a` between items
+/// (#273). So the join after it is a single line ending, and a list it is in shows that it is
+/// loose only by another join.
+fn ends_unclosed<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> bool {
+    matches!(
         document.node(node).unwrap().kind,
-        EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition { .. })
-    ) {
-        return false;
-    }
-    let mut node = node;
-    loop {
-        match &document.node(node).unwrap().kind {
-            EventKind::Start(
-                Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition { .. },
-            ) => match flow_children(document, node).last() {
-                Some(last) => node = last,
-                None => return false,
-            },
-            EventKind::Html { value, block: true } => {
-                return crate::block_parser::html_block_unclosed(
-                    value.resolve(document.source()).unwrap(),
-                )
-            }
-            _ => return false,
-        }
-    }
+        EventKind::Start(Tag::List { .. } | Tag::Item { .. } | Tag::FootnoteDefinition { .. })
+    ) && trailing_html(document, node).is_some_and(|(shape, quoted)| shape.unclosed && !quoted)
 }
 
 /// Whether flow child `right` is a paragraph, link reference definition or a heading written as a

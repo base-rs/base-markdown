@@ -268,3 +268,37 @@ fn serializes_table_cells_with_escaped_pipes() {
     state.render_table_row(&document, row).unwrap();
     assert_eq!(state.output, "| plain α | ``a`b`` | a\\|b | `a\\|b` |  |");
 }
+
+#[test]
+fn html_block_shapes_record_the_columns_their_first_line_starts_at() {
+    use crate::block_parser::HtmlBlockShape;
+    let options = ParseOptions::default();
+    let mut unindented = ParseOptions::default();
+    unindented.constructs.code_indented = false;
+    // Spaces alone fit every column up to three, and a tab fits only where it is at most three
+    // columns wide, to the next multiple of four (#263, #266).
+    for (value, residues) in [
+        ("<div>", 0b1111),
+        ("   <div>", 0b1111),
+        ("    <div>", 0),
+        ("\t<div>", 0b1110),
+        (" \t<div>", 0b0110),
+        ("  \t<div>", 0b0010),
+        ("   \t<div>", 0),
+        ("\t <div>", 0b1100),
+    ] {
+        let shape = HtmlBlockShape::of(value, &options).unwrap();
+        assert_eq!(shape.residues, residues, "{:?}", value);
+        assert_eq!(
+            (0..8).filter(|&column| shape.fits(column)).count(),
+            2 * residues.count_ones() as usize,
+            "{:?}",
+            value
+        );
+        assert_eq!(
+            HtmlBlockShape::of(value, &unindented).unwrap().residues,
+            0b1111
+        );
+    }
+    assert!(HtmlBlockShape::of("  text", &options).is_none());
+}
