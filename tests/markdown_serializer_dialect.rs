@@ -23,6 +23,7 @@ fn options(changes: &[&str]) -> ParseOptions {
         match name {
             "autolink" => constructs.autolink = on,
             "autolink_literal" => constructs.autolink_literal = on,
+            "character_reference" => constructs.character_reference = on,
             "code_fenced" => constructs.code_fenced = on,
             "hard_break_escape" => constructs.hard_break_escape = on,
             "hard_break_trailing" => constructs.hard_break_trailing = on,
@@ -106,6 +107,15 @@ fn code() {
     check(&[
         (&[], "    x\n", "```\nx\n```\n"),
         (&["!code_fenced"], "    x\n", "    x\n"),
+        // An item's indented code that a dash marker would turn into a rule keeps its marker.
+        (&["!code_fenced"], "*     --\n", "*     --\n"),
+        (&["!code_fenced"], "*     - -\n", "*     - -\n"),
+        // A backtick in the info string makes the fence tildes where references are off.
+        (
+            &["!character_reference"],
+            "~~~[ `\nx\n~~~\n",
+            "~~~[ `\nx\n~~~\n",
+        ),
     ]);
 }
 

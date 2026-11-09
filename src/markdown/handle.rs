@@ -20,7 +20,7 @@ use crate::{
     util::line_ending::trim_terminal_ending,
     CodeFence, Document, NodeId, NodeSyntax, ReferenceKind,
 };
-use alloc::{borrow::Cow, string::String};
+use alloc::{borrow::Cow, string::String, vec::Vec};
 use core::{fmt::Write, mem};
 
 impl State<'_> {
@@ -90,7 +90,15 @@ impl State<'_> {
         fence: bool,
     ) -> Result<(), Message> {
         let content = trim_terminal_ending(value);
-        let marker = self.options.check_fence()?;
+        let mut marker = self.options.check_fence()?;
+        // A backtick fence's info holds no backtick, which is encoded as a reference, so where
+        // the options read no references the fence is tildes.
+        if marker == '`'
+            && !self.parse.constructs.character_reference
+            && info.is_some_and(|info| info.contains('`'))
+        {
+            marker = '~';
+        }
         let start = self.output.len();
         if !fence && format_code_as_indented(content, info.is_none(), self) {
             self.output.push_str(content);
@@ -498,15 +506,33 @@ impl State<'_> {
         };
         let mut first_empty = false;
         let mut has_rule = false;
+        // The first line of code that an item starts with, which written indented is on the
+        // marker's line.
+        let mut code_lines = Vec::new();
         // The content model holds only items in a list.
         for (index, child) in flow_children(document, node).enumerate() {
             let first = flow_children(document, child).next();
             if index == 0 {
                 first_empty = first.is_none();
             }
-            has_rule |= first
-                .is_some_and(|first| matches!(document.node(first).unwrap().kind, EventKind::Rule));
+            if let Some(first) = first {
+                match &document.node(first).unwrap().kind {
+                    EventKind::Rule => has_rule = true,
+                    EventKind::CodeBlock { value, .. } => {
+                        let value = value.resolve(document.source()).unwrap();
+                        code_lines.push(value.split('\n').next().unwrap_or_default());
+                    }
+                    _ => {}
+                }
+            }
         }
+        // Indented code of `--` after a `-` marker would make the line a thematic break.
+        let breaks = |marker: char| {
+            code_lines.iter().any(|line| {
+                line.chars().all(|c| c == marker || c == ' ' || c == '\t')
+                    && line.chars().filter(|&c| c == marker).count() >= 2
+            })
+        };
         let mut different = self.bullet_last_used == Some(bullet);
         if !ordered {
             let depth = self.stack.len();
@@ -525,7 +551,7 @@ impl State<'_> {
             {
                 different = true;
             }
-            if self.options.check_rule()? == bullet && has_rule {
+            if self.options.check_rule()? == bullet && has_rule || breaks(bullet) {
                 different = true;
             }
         }

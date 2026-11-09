@@ -181,7 +181,7 @@ fn describe(options: &ParseOptions) -> String {
 /// Whether `output` holds a spelling that the dialect of `options` does not read, which the writer
 /// falls back to for a shape that has no other: step 4 of #257 makes those `unwritable-node`.
 /// - Without `Constructs::character_reference`, what the writer encodes as a reference, such as
-///   a space at the end of a line or a backtick in a backtick fence's info string.
+///   a space at the end of a line.
 /// - Without a label start or `Constructs::label_end`, a link that neither autolink can hold, such
 ///   as one with a title or a bare one next to text, written `[text](destination)`.
 /// - Without `Constructs::code_fenced`, indented code after a list or other indented code, which

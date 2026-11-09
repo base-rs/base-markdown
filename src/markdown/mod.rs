@@ -71,8 +71,10 @@ pub fn normalize_markdown_with_options(
 ///
 /// The output is written for the options the document records, [`Document::parse_options`], and
 /// reads back under them: where they turn a construct off, another that reads back the same is
-/// written, such as a setext heading without [`crate::Constructs::heading_atx`], and escapes are
-/// those that they need. Output read with other options may read differently.
+/// written, such as a setext heading without [`crate::Constructs::heading_atx`], and escapes that
+/// only constructs they turn off would need, such as a table's delimiter row without
+/// [`crate::Constructs::table`], are left out, though some that they read back the same remain.
+/// Output read with other options may read differently.
 ///
 /// The output uses LF line endings. The parser stores every source line ending as LF in node values, so a CR in a value is a character: it is written as `&#xD;` where character references are decoded, such as in text and titles, and as it is in code, HTML and frontmatter, where a parsed value never has one.
 ///

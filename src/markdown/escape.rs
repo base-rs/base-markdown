@@ -147,8 +147,15 @@ static RULES: &[Rule] = &[
     rule!(b'_', Line, A, 0, bit(TableCell)),
     rule!(b'_', EncodedLine, A, 0, bit(TableCell)),
     rule!(b'_', B, A, PHRASING, FULL_SPANS),
-    rule!(b'`', Line, A, 0, bit(TableCell)),
-    rule!(b'`', EncodedLine, A, 0, bit(TableCell)),
+    // A tilde fence's info string holds backticks, and starts no line.
+    rule!(b'`', Line, A, 0, bit(TableCell) | bit(CodeFencedInfoTilde)),
+    rule!(
+        b'`',
+        EncodedLine,
+        A,
+        0,
+        bit(TableCell) | bit(CodeFencedInfoTilde)
+    ),
     rule!(b'`', B, A, bit(CodeFencedInfoGraveAccent), 0),
     rule!(b'`', B, A, PHRASING, FULL_SPANS),
     rule!(b'~', Line, A, 0, bit(TableCell)),
