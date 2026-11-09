@@ -940,6 +940,7 @@ pub(crate) fn unbound_text(
     kind: ReferenceKind,
     label: &str,
     image: bool,
+    options: &crate::ParseOptions,
 ) -> (&'static str, String) {
     let open = if image { "![" } else { "[" };
     let close = match kind {
@@ -947,7 +948,7 @@ pub(crate) fn unbound_text(
         ReferenceKind::Collapsed => String::from("][]"),
         ReferenceKind::Full => {
             let mut close = String::from("][");
-            push_label(&mut close, label);
+            push_label(&mut close, label, options);
             close.push(']');
             close
         }
@@ -956,22 +957,18 @@ pub(crate) fn unbound_text(
 }
 
 // What an unbound footnote call reads back as, as text.
-pub(crate) fn unbound_footnote_text(label: &str) -> String {
+pub(crate) fn unbound_footnote_text(label: &str, options: &crate::ParseOptions) -> String {
     let mut text = String::from("[^");
-    push_label(&mut text, label);
+    push_label(&mut text, label, options);
     text.push(']');
     text
 }
 
-// Push a label as the text it reads back as: with its character escapes and references decoded,
-// and each run of whitespace that holds a line ending as one space, which renders the same and
+// Push a label as the text it reads back as under `options`: with its character escapes and
+// references decoded, where they are on, and each run of whitespace that holds a line ending as one space, which renders the same and
 // can be written in any text.
-fn push_label(output: &mut String, label: &str) {
-    let decoded = crate::value_builder::decode_string_with_options(
-        label,
-        0..label.len(),
-        &crate::ParseOptions::default(),
-    );
+fn push_label(output: &mut String, label: &str, options: &crate::ParseOptions) {
+    let decoded = crate::value_builder::decode_string_with_options(label, 0..label.len(), options);
     let decoded = text(&decoded, label);
     let mut pending = String::new();
     let mut broken = false;

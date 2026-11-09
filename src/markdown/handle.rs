@@ -20,7 +20,7 @@ use crate::{
     util::line_ending::trim_terminal_ending,
     CodeFence, Document, NodeId, NodeSyntax, ReferenceKind,
 };
-use alloc::{borrow::Cow, string::String};
+use alloc::{borrow::Cow, string::String, vec::Vec};
 use core::{fmt::Write, mem};
 
 impl State<'_> {
@@ -47,8 +47,37 @@ impl State<'_> {
     /// holds a break ([`crate::stream::Tag::Heading`]), and a heading of rank 1 or 2 that holds one
     /// is written setext (`format_heading_as_setext`), so a break is never written in an ATX
     /// heading, where a line ending would end it.
+    ///
+    /// The break is written as `\` before the line ending, or, where the document's options turn
+    /// `Constructs::hard_break_escape` off, as two spaces, after `before_hard_break` has encoded
+    /// a space or tab that the text before it ends in.
     pub(super) fn hard_break(&mut self) {
-        self.output.push_str("\\\n");
+        if self.parse.constructs.hard_break_escape {
+            self.output.push_str("\\\n");
+            return;
+        }
+        self.output.push_str("  \n");
+    }
+
+    /// Encode the space or tab that the output ends in, before a hard break written with trailing
+    /// spaces: the parser drops the spaces and tabs before the break, so the text's last one is
+    /// encoded. This is done before the break is written, rather than as it is, because the break
+    /// is also written to see its first character, and only what it writes is then removed.
+    pub(super) fn before_hard_break(&mut self) {
+        if self.parse.constructs.hard_break_escape {
+            return;
+        }
+        // A backslash before the space would escape the reference's `&`, so it is escaped.
+        let end = self.output.len().saturating_sub(1);
+        if self.output.ends_with([' ', '\t']) && super::attention::escapes_next(&self.output[..end])
+        {
+            self.output.insert(end, '\\');
+        }
+        match self.output.chars().next_back() {
+            Some(' ') => self.output.replace_range(self.output.len() - 1.., "&#x20;"),
+            Some('\t') => self.output.replace_range(self.output.len() - 1.., "&#x9;"),
+            _ => {}
+        }
     }
 
     /// `value` is the stored value, whose lines each end in a line ending except perhaps the last, so a body of one blank line is `"\n"` and an empty body is `""`.
@@ -61,7 +90,15 @@ impl State<'_> {
         fence: bool,
     ) -> Result<(), Message> {
         let content = trim_terminal_ending(value);
-        let marker = self.options.check_fence()?;
+        let mut marker = self.options.check_fence()?;
+        // A backtick fence's info holds no backtick, which is encoded as a reference, so where
+        // the options read no references the fence is tildes.
+        if marker == '`'
+            && !self.parse.constructs.character_reference
+            && info.is_some_and(|info| info.contains('`'))
+        {
+            marker = '~';
+        }
         let start = self.output.len();
         if !fence && format_code_as_indented(content, info.is_none(), self) {
             self.output.push_str(content);
@@ -223,6 +260,21 @@ impl State<'_> {
         node: NodeId,
         info: &Info,
     ) -> Result<(), Message> {
+        if self.is_task_paragraph(document, node) {
+            let item = document.node(node).unwrap().parent().unwrap();
+            if flow_children(document, item).next() != Some(node) {
+                let checked = matches!(
+                    document.node(item).unwrap().kind,
+                    EventKind::Start(Tag::Item {
+                        checked: Some(true),
+                        ..
+                    })
+                );
+                let (task, separator) = checkbox(document, node, checked);
+                self.output.push_str(task);
+                self.output.push(separator);
+            }
+        }
         self.enter(ConstructName::Phrasing);
         self.container_phrasing(document, node, info)?;
         self.exit();
@@ -416,8 +468,16 @@ impl State<'_> {
         let result = self.container_phrasing(document, node, &info);
         self.alt_start = alt_start;
         result?;
-        // `![^` starts no image, as `[^` reads as a footnote call or text instead.
-        if image && self.output[text_start..].starts_with('^') {
+        // `![^` starts no image, as `[^` reads as a footnote call or text instead, and link text
+        // that starts with `^` would read back as a footnote call where a definition binds it,
+        // in a dialect with footnote calls and definitions (#215). Without
+        // `Constructs::label_start_link`, only `[^` starts a link, one that no definition binds,
+        // so it is not escaped there.
+        let constructs = &self.parse.constructs;
+        let footnotes = constructs.label_start_footnote && constructs.footnote_definition;
+        if (image || footnotes && constructs.label_start_link)
+            && self.output[text_start..].starts_with('^')
+        {
             crate::work::step!(self.output.len() - text_start);
             self.output.insert(text_start, '\\');
         }
@@ -449,20 +509,60 @@ impl State<'_> {
         };
         let mut first_empty = false;
         let mut has_rule = false;
+        // The first line of code that an item starts with and that is written indented, which is
+        // then on the marker's line.
+        let mut code_lines = Vec::new();
         // The content model holds only items in a list.
         for (index, child) in flow_children(document, node).enumerate() {
             let first = flow_children(document, child).next();
             if index == 0 {
                 first_empty = first.is_none();
             }
-            has_rule |= first
-                .is_some_and(|first| matches!(document.node(first).unwrap().kind, EventKind::Rule));
+            if let Some(first) = first {
+                match &document.node(first).unwrap().kind {
+                    EventKind::Rule => has_rule = true,
+                    EventKind::CodeBlock { value, info, .. } => {
+                        let value = trim_terminal_ending(value.resolve(document.source()).unwrap());
+                        if format_code_as_indented(value, info.is_none(), self) {
+                            code_lines
+                                .push((index == 0, value.split('\n').next().unwrap_or_default()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
-        let mut different = self.bullet_last_used == Some(bullet);
-        if !ordered {
+        if ordered {
+            if self.bullet_last_used == Some(bullet) {
+                bullet = bullet_other;
+            }
+        } else {
+            // The markers of the items this list starts, which are written but not yet followed
+            // by their spaces, are on the line of the first item's marker too.
+            let line = &self.output[self.output.rfind('\n').map_or(0, |index| index + 1)..];
+            // A `-` or `*` marker would make a line of indented code such as `--` a thematic
+            // break with it.
+            let breaks = |marker: char| {
+                marker != '+'
+                    && code_lines.iter().any(|&(first, code)| {
+                        let mut count = 1;
+                        // A thematic break is read in any of the containers whose markers are on
+                        // the line, so the markers count back to the first that is not `marker`.
+                        let before = if first { line } else { "" };
+                        let before = before
+                            .char_indices()
+                            .rfind(|&(_, c)| c != marker && c != ' ' && c != '\t')
+                            .map_or(before, |(index, c)| &before[index + c.len_utf8()..]);
+                        before.chars().chain(code.chars()).all(|c| {
+                            count += usize::from(c == marker);
+                            c == marker || c == ' ' || c == '\t'
+                        }) && count >= 3
+                    })
+            };
             let depth = self.stack.len();
             let positions = self.index_stack.len();
-            if matches!(bullet, '*' | '-')
+            // An empty first item in an empty first item would read as a thematic break.
+            let nested_empty = matches!(bullet, '*' | '-')
                 && depth >= 4
                 && positions >= 3
                 && first_empty
@@ -472,16 +572,38 @@ impl State<'_> {
                 && self.stack[depth - 4] == ConstructName::ListItem
                 && self.index_stack[positions - 1] == 0
                 && self.index_stack[positions - 2] == 0
-                && self.index_stack[positions - 3] == 0
-            {
-                different = true;
-            }
-            if self.options.check_rule()? == bullet && has_rule {
-                different = true;
-            }
-        }
-        if different {
-            bullet = bullet_other;
+                && self.index_stack[positions - 3] == 0;
+            let rule = self.options.check_rule()?;
+            let preferred = bullet;
+            // The preferred bullet is ruled out where it would join the list before, or start a
+            // thematic break of empty items or of a rule as the item's first child.
+            let different = self.bullet_last_used == Some(preferred)
+                || nested_empty
+                || rule == preferred && has_rule;
+            // Each bullet is ruled out where it would join the list before or make a line a
+            // thematic break; the preferred one is tried first, then the one that alternates
+            // with it, then the third.
+            let excluded = |marker: char| {
+                breaks(marker)
+                    || if marker == preferred {
+                        different
+                    } else {
+                        self.bullet_last_used == Some(marker) || rule == marker && has_rule
+                    }
+            };
+            let third = ['-', '*', '+']
+                .iter()
+                .copied()
+                .find(|&marker| marker != preferred && marker != bullet_other)
+                .unwrap_or(bullet_other);
+            // Where every bullet is ruled out, the choice ignores the thematic breaks that
+            // indented code would make, as #257 step 4 leaves to `unwritable-node`.
+            let fallback = if different { bullet_other } else { preferred };
+            bullet = [preferred, bullet_other, third]
+                .iter()
+                .copied()
+                .find(|&marker| !excluded(marker))
+                .unwrap_or(fallback);
         }
         self.bullet_current = Some(bullet);
         self.container_flow(document, node)?;
@@ -529,20 +651,12 @@ impl State<'_> {
         self.output.push(bullet);
         // The checkbox starts the item's content, as in `mdast-util-gfm-task-list-item`, so continuation lines indent to the content start the parser uses, which excludes the checkbox.
         // The text after the marker starts with the space or tab that separates them, which the text writer drops, so the marker is written with that character and a tab reads back as one.
+        // A paragraph after definitions writes its checkbox itself, on its own line, as the
+        // parser reads no definition after a checkbox.
         let item_task = item_task(document, node);
-        let task = item_task.map(|(paragraph, checked)| {
-            let separator = document
-                .node(paragraph)
-                .unwrap()
-                .first_child()
-                .and_then(|id| match &document.node(id).unwrap().kind {
-                    EventKind::Text(text) => text.resolve(document.source()).ok(),
-                    _ => None,
-                })
-                .filter(|value| value.starts_with('\t'))
-                .map_or(' ', |_| '\t');
-            (if checked { "[x]" } else { "[ ]" }, separator)
-        });
+        let task = item_task
+            .filter(|&(paragraph, _)| flow_children(document, node).next() == Some(paragraph))
+            .map(|(paragraph, checked)| checkbox(document, paragraph, checked));
         let prefix_size = self.output.len() - prefix_start;
         let mut size = prefix_size + 1;
         let expand = match self.options.list_item_indent {
@@ -561,6 +675,13 @@ impl State<'_> {
         if expand {
             size = size.div_ceil(4) * 4;
         }
+        // An HTML block keeps up to three spaces of indentation, which after a marker would move
+        // the content's column, so an item that starts with one starts with a blank line, and the
+        // block is written on the next, indented as the lines after it.
+        let blank_start = flow_children(document, node).next().is_some_and(|first| {
+            matches!(&document.node(first).unwrap().kind, EventKind::Html { value, block: true }
+                if value.resolve(document.source()).unwrap().starts_with(' '))
+        });
         self.enter(ConstructName::ListItem);
         let start = self.output.len();
         let task_item = self
@@ -580,7 +701,14 @@ impl State<'_> {
                 }
             }
             if !blank {
-                let indent = if index == 0 { size - prefix_size } else { size };
+                let indent = if index > 0 {
+                    size
+                } else if blank_start {
+                    output.push('\n');
+                    size
+                } else {
+                    size - prefix_size
+                };
                 output.extend(core::iter::repeat_n(' ', indent));
             }
             output.push_str(line);
@@ -675,6 +803,26 @@ impl State<'_> {
 
 // The paragraph that the checkbox of task item `item` is written before, its first block other
 // than definitions, and whether it is checked.
+/// The checkbox of a task item whose task paragraph is `paragraph`, and the space or tab after it,
+/// which is the one the paragraph's text starts with.
+fn checkbox<S: AsRef<str>>(
+    document: &Document<S>,
+    paragraph: NodeId,
+    checked: bool,
+) -> (&'static str, char) {
+    let separator = document
+        .node(paragraph)
+        .unwrap()
+        .first_child()
+        .and_then(|id| match &document.node(id).unwrap().kind {
+            EventKind::Text(text) => text.resolve(document.source()).ok(),
+            _ => None,
+        })
+        .filter(|value| value.starts_with('\t'))
+        .map_or(' ', |_| '\t');
+    (if checked { "[x]" } else { "[ ]" }, separator)
+}
+
 fn item_task<S: AsRef<str>>(document: &Document<S>, item: NodeId) -> Option<(NodeId, bool)> {
     let EventKind::Start(Tag::Item {
         checked: Some(checked),

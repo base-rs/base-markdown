@@ -35,6 +35,12 @@ pub(super) struct Surroundings {
     pub after: Option<char>,
     /// Whether `after` starts the closing sequence of enclosing attention.
     pub after_closes: bool,
+    /// Whether `first` and `after` start the language of code (#185): a language is written as it
+    /// is, so the character cannot be encoded, and `_` next to it would join the run the parser
+    /// reads the language from.
+    pub first_language: bool,
+    /// See `first_language`.
+    pub after_language: bool,
     /// The attention directly enclosing this one.
     pub parent: Parent,
     /// Whether enclosing attention is open, by marker (`*`, `_`) and sequence size (1, 2).
@@ -141,6 +147,11 @@ pub(super) fn choose(sequences: &'static [&'static str], surroundings: &Surround
     for &sequence in sequences {
         let marker = sequence.chars().next().expect("sequences are not empty");
         let choice = encoding(sequence, marker, surroundings);
+        if (marker == '_' || choice.encode_first) && surroundings.first_language
+            || (marker == '_' || choice.encode_after) && surroundings.after_language
+        {
+            continue;
+        }
         let joins_before = surroundings.before == Some(marker);
         let joins_after = surroundings.after_closes && surroundings.after == Some(marker);
         let forms = if surroundings.before_opens && joins_before {

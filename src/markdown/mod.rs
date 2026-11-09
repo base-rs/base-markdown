@@ -71,6 +71,13 @@ pub fn normalize_markdown_with_options(
 
 /// Serialize an arena document to Markdown.
 ///
+/// The output is written for the options the document records, [`Document::parse_options`], and
+/// reads back under them: where they turn a construct off, another that reads back the same is
+/// written, such as a setext heading without [`crate::Constructs::heading_atx`], and escapes that
+/// only constructs they turn off would need, such as a table's delimiter row without
+/// [`crate::Constructs::table`], are left out, though some that they read back the same remain.
+/// Output read with other options may read differently.
+///
 /// The output uses LF line endings. The parser stores every source line ending as LF in node values, so a CR in a value is a character: it is written as `&#xD;` where character references are decoded, such as in text and titles, and as it is in code, HTML and frontmatter, where a parsed value never has one.
 ///
 /// Call [`Document::normalize`] on a parsed or edited tree first: a normalized tree serializes correctly and stably, and other trees are written without panicking, but possibly incorrectly or unstably, as [the contract](crate::contract), section 5, states.
@@ -113,13 +120,16 @@ pub fn to_markdown_node<S: AsRef<str>>(
     let kind = &document.node(node).unwrap().kind;
     let inline = state::is_phrasing(kind);
     let mut state = State::new(options);
+    state.parse = document.parse_options().clone();
     state.serialization_root = Some(node);
     let mut result = state.handle(document, node, &Info::new("\n", "\n"))?;
     // Only block output is line-terminated, matching cmark's renderer. An HTML block whose last
     // line is empty ends with that line's line ending, which is not the final one.
     if !inline
         && !result.is_empty()
-        && (!result.ends_with('\n') || ends_in_empty_line(document, node))
+        && (!result.ends_with('\n')
+            || ends_in_empty_line(document, node)
+            || state::ends_in_kept_line_ending(document, node, true))
     {
         result.push('\n');
     }

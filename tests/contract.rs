@@ -2181,20 +2181,6 @@ fn known_gap(
     {
         return Some("#199 a task item starting with a break");
     }
-    let leading_definition = all(document, is_item).into_iter().any(|item| {
-        document
-            .children(item)
-            .find(|&id| !matches!(document.node(id).unwrap().kind, EventKind::Separator { .. }))
-            .is_some_and(|id| {
-                matches!(
-                    document.node(id).unwrap().kind,
-                    EventKind::Definition { .. }
-                )
-            })
-    });
-    if leading_definition && involves(&["[", "<input", "<li", "Item", "Definition", "<a href"]) {
-        return Some("#200 a leading definition in an item");
-    }
     if html && rules.star_rule.is_match(output) && involves(&["<hr", "<li", "<ul"]) {
         return Some("#227 a * marker before a rule");
     }
@@ -2235,14 +2221,12 @@ fn gap_rules() -> GapRules {
 fn clause_3_3_blocky_round_trip_failures_are_known_gaps() {
     let rules = gap_rules();
     let mut random = Random(5u64.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
-    let mut failures = 0;
     for _ in 0..SAMPLES {
         let source = corpus::blocky(&mut random);
         let document = normalized(&source);
         if let Outcome::Fail(failure) =
             round_trip(document.clone(), &MarkdownOptions::default(), false)
         {
-            failures += 1;
             assert!(
                 known_gap(&document, &failure, &rules).is_some(),
                 "not a known gap: {} {:?}: {:?}\n{}\n{}",
@@ -2276,7 +2260,9 @@ fn clause_3_3_blocky_round_trip_failures_are_known_gaps() {
             );
         }
     }
-    assert!(failures > 0, "the corpus still finds the gaps");
+    // The corpus found #199 and #200 here until #257 wrote a task item's leading line ending
+    // and leading definitions, and now finds no gap at this size: the rules still attribute what
+    // larger runs find.
 }
 
 #[test]

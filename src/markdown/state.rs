@@ -22,7 +22,7 @@ use crate::{
     message::Message,
     stream::{EventKind, Tag, Target},
     util::line_ending::{line_endings, trim_terminal_ending},
-    AlignKind, Document, NodeId, NodeSyntax, ReferenceKind,
+    AlignKind, Document, NodeId, NodeSyntax, ParseOptions, ReferenceKind,
 };
 use alloc::{string::String, vec::Vec};
 
@@ -75,6 +75,9 @@ pub struct State<'a> {
     pub bullet_last_used: Option<char>,
     pub index_stack: Vec<usize>,
     pub options: &'a Options,
+    /// The options of the document being written, which its output reads back under (contract
+    /// 3.3): escapes and fallbacks follow the constructs they turn on.
+    pub(super) parse: ParseOptions,
     pub stack: Vec<ConstructName>,
     pub serialization_root: Option<NodeId>,
     /// The bindings of what is being written, built at the first reference written.
@@ -331,7 +334,7 @@ impl<'a> State<'a> {
         self.phrasing(document, &children, info, &Edge::default())?;
         if block {
             if let Some(colon) = self.definition_colon.take() {
-                if crate::block_parser::starts_definition(&self.output[start..]) {
+                if crate::block_parser::starts_definition(&self.output[start..], &self.parse) {
                     crate::work::step!(self.output.len() - colon);
                     self.output.insert(colon, '\\');
                 }
@@ -339,7 +342,10 @@ impl<'a> State<'a> {
             // Escaped, the character reads back as text that starts the block (#173).
             if let Some((definition, true)) = joined_definition {
                 if self.output[start..].starts_with(['"', '\'', '('])
-                    && crate::block_parser::definition_has_title(&self.output[definition..])
+                    && crate::block_parser::definition_has_title(
+                        &self.output[definition..],
+                        &self.parse,
+                    )
                 {
                     crate::work::step!(self.output.len() - start);
                     self.output.insert(start, '\\');
@@ -379,7 +385,10 @@ impl<'a> State<'a> {
         };
         let end = start + value.resolve(document.source()).unwrap().len();
         if self.output.as_bytes().get(end) == Some(&b'\n')
-            && crate::block_parser::complete_tag_starts_html_block(&self.output.as_bytes()[start..])
+            && crate::block_parser::complete_tag_starts_html_block(
+                &self.output.as_bytes()[start..],
+                &self.parse,
+            )
         {
             crate::work::step!(self.output.len() - end);
             self.output.replace_range(end..end + 1, "&#xA;");
@@ -391,11 +400,12 @@ impl<'a> State<'a> {
     /// last line of a definition the block follows across a line ending when `after_definition`.
     /// Text writes such a line as it is, and it reads back as text where it is a lazy line in
     /// the source, but not where a container prefix is written before it (#146). An escaped
-    /// line is the head the next line is judged under.
+    /// line is the head the next line is judged under. Without `Constructs::table`, no line is.
     fn escape_delimiter_rows(&mut self, start: usize, after_definition: bool) {
         // The block is scanned for a line ending, and then line by line when it has one.
         crate::work::step!(self.output.len() - start);
-        if !after_definition && !self.output[start..].contains('\n') {
+        if !self.parse.constructs.table || !after_definition && !self.output[start..].contains('\n')
+        {
             return;
         }
         let mut header = after_definition.then(|| {
@@ -478,7 +488,7 @@ impl<'a> State<'a> {
         sequences: &'static [&'static str],
         info: &Info,
         previous: &Previous,
-        last_child: bool,
+        next: Option<NodeId>,
     ) -> Result<Edge, Message> {
         if !self.open() {
             return Err(nesting_too_deep());
@@ -509,7 +519,11 @@ impl<'a> State<'a> {
                 .last()
                 .map_or(0, |&child| sequence_size(document, child)),
             after,
-            after_closes: last_child,
+            after_closes: next.is_none(),
+            first_language: children
+                .first()
+                .is_some_and(|&child| language(document, child)),
+            after_language: next.is_some_and(|next| language(document, next)),
             parent: self.parent,
             enclosing: [
                 [self.attention_open[0][0] > 0, self.attention_open[0][1] > 0],
@@ -597,6 +611,52 @@ impl<'a> State<'a> {
             self.output.remove(end - 1);
         }
         self.encode_end(start, char::from(last));
+    }
+
+    /// Write inline HTML, indenting each line after a line ending in it that would otherwise start
+    /// a block, such as `</div>` or `# h` in a tag's attribute, or make a table's delimiter row
+    /// after the line before it, so that it continues the paragraph: the parser strips the
+    /// indentation of a paragraph's continuation lines, and indented code cannot interrupt a
+    /// paragraph. The escape `escape_delimiter_rows` writes before other rows would be content
+    /// here.
+    fn inline_html(&mut self, value: &str) {
+        let mut lines = value.split('\n');
+        self.output.push_str(lines.next().unwrap_or_default());
+        let mut at = 0;
+        for line in lines {
+            at += value[at..].find('\n').unwrap() + 1;
+            let header = self.output.rfind('\n').map_or(0, |index| index + 1);
+            let row = self.parse.constructs.table
+                && crate::block_parser::starts_table(&self.output[header..], line);
+            self.output.push('\n');
+            if row
+                || crate::block_parser::continuation_starts_block(
+                    &value.as_bytes()[at..],
+                    false,
+                    &self.parse,
+                )
+            {
+                self.output.push_str("    ");
+            }
+            self.output.push_str(line);
+        }
+    }
+
+    /// Escape the `:` that text written last ends in when, with `ParseOptions::inline_code_info`,
+    /// the code written next would read back with the language characters before it as its
+    /// language (#180). Escaped, the `:` is still the character before the code, but the run
+    /// before it ends at the backslash, which no language holds.
+    ///
+    /// The run is judged within the phrasing written at `output[start..]`: what is before it in
+    /// the output, such as a list item's marker, is separated from it by whitespace once the
+    /// output is complete.
+    fn separate_colon(&mut self, start: usize) {
+        let phrasing = &self.output.as_bytes()[start..];
+        if self.parse.inline_code_info
+            && crate::util::inline_code_info::before(phrasing, phrasing.len()).is_some()
+        {
+            self.output.insert(self.output.len() - 1, '\\');
+        }
     }
 
     /// Apply `edge` to text written at `output[start..]`, as `attention::edit_start` does. When
@@ -695,7 +755,8 @@ impl<'a> State<'a> {
             } else if self.output.ends_with('\n')
                 && matches!(kind, EventKind::Html { value, .. }
                 if crate::block_parser::html_interrupts_paragraph(
-                    value.resolve(document.source()).unwrap().as_bytes()
+                    value.resolve(document.source()).unwrap().as_bytes(),
+                    &self.parse,
                 ))
             {
                 // Indent the line so it continues the paragraph, keeping the soft or hard break
@@ -720,8 +781,7 @@ impl<'a> State<'a> {
                 text_run: run.filter(|_| text),
             };
             if let Some(sequences) = sequences {
-                pending =
-                    self.attention(document, child, sequences, &info, &previous, next.is_none())?;
+                pending = self.attention(document, child, sequences, &info, &previous, next)?;
                 previous = Previous::Attention;
             } else {
                 if let (
@@ -732,10 +792,17 @@ impl<'a> State<'a> {
                 ) = (&previous, kind)
                 {
                     self.separate_language(*start);
+                } else if let (Previous::Text(_), EventKind::Code { language: None, .. }) =
+                    (&previous, kind)
+                {
+                    self.separate_colon(start);
                 }
                 // Attention can encode the first character of text, which ends a literal
                 // there, so literals are escaped once it has.
                 self.defer_literals = text;
+                if matches!(kind, EventKind::HardBreak) {
+                    self.before_hard_break();
+                }
                 self.write_node(document, child, &info)?;
                 self.defer_literals = false;
                 if text {
@@ -982,6 +1049,17 @@ impl<'a> State<'a> {
                 self.text(value, info)
             }
             // A soft break is a line ending, which is LF whatever value a constructed one has.
+            // First in a task item's paragraph, it follows the checkbox and its space, which the
+            // parser reads as text before the line ending, so it is written as it is.
+            EventKind::SoftBreak(_)
+                if node.parent().is_some_and(|parent| {
+                    document.node(parent).unwrap().first_child() == Some(id)
+                        && self.is_task_paragraph(document, parent)
+                }) =>
+            {
+                self.output.push('\n');
+                Ok(())
+            }
             EventKind::SoftBreak(_) => self.text("\n", info),
             EventKind::HardBreak => {
                 self.hard_break();
@@ -1000,8 +1078,19 @@ impl<'a> State<'a> {
                 let fence = core::mem::take(&mut self.fence_code);
                 self.code(value, info, fence)
             }
+            EventKind::Html { value, block: true } => {
+                let value = value.resolve(source).unwrap();
+                self.output.push_str(
+                    if crate::block_parser::html_block_keeps_line_ending(value, &self.parse) {
+                        &value[..value.len() - 1]
+                    } else {
+                        value
+                    },
+                );
+                Ok(())
+            }
             EventKind::Html { value, .. } => {
-                self.output.push_str(value.resolve(source).unwrap());
+                self.inline_html(value.resolve(source).unwrap());
                 Ok(())
             }
             EventKind::Definition {
@@ -1156,6 +1245,11 @@ impl<'a> State<'a> {
     ) -> &'static str {
         let left_kind = &document.node(left).unwrap().kind;
         let right_kind = &document.node(right).unwrap().kind;
+        // The HTML block that `left` ends in holds the blank lines after it, which its containers
+        // continue over, and is written without the line ending that this one gives back (#265).
+        if ends_in_kept_line_ending(document, left, false) {
+            return "\n";
+        }
         // A list or footnote definition whose last block is an HTML block of kinds 1–5 that no
         // line closes would take a blank line after it as more of that block, which a
         // line indented less than that item ends instead, as the parser reads it: `- <pre>\nx`, and
@@ -1298,6 +1392,7 @@ impl<'a> State<'a> {
             bullet_last_used: None,
             index_stack: Vec::new(),
             options,
+            parse: ParseOptions::default(),
             stack: Vec::new(),
             serialization_root: None,
             bindings: None,
@@ -1420,7 +1515,15 @@ impl<'a> State<'a> {
                 },
             ),
             EventKind::Html { .. } => Some('<'),
-            EventKind::Code { .. } => Some('`'),
+            // Code with a language starts with it (#185), which attention next to it judges.
+            EventKind::Code { language, .. } => Some(
+                language
+                    .as_ref()
+                    .and_then(|language| {
+                        language.resolve(document.source()).unwrap().chars().next()
+                    })
+                    .unwrap_or('`'),
+            ),
             _ => None,
         }
     }
@@ -1657,6 +1760,17 @@ fn sequence_size<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> usize {
 }
 
 /// The first or last character a phrasing node is written with, as far as attention next to it needs: text is approximated by its value and other nodes by punctuation.
+/// Whether `id` is code with a language, which is written first, as it is.
+fn language<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
+    matches!(
+        document.node(id).unwrap().kind,
+        EventKind::Code {
+            language: Some(_),
+            ..
+        }
+    )
+}
+
 fn edge_character<S: AsRef<str>>(document: &Document<S>, id: NodeId, first: bool) -> Option<char> {
     match &document.node(id).unwrap().kind {
         EventKind::Text(value) => {
@@ -1705,7 +1819,8 @@ fn list_interrupts_paragraph<S: AsRef<str>>(document: &Document<S>, id: NodeId) 
 }
 
 /// Whether code as a flow child of `parent` after flow child `before`, if any, needs a fence
-/// whatever the options. Directly after a footnote definition, indented code would continue the
+/// whatever the options. After an HTML block that keeps its blank lines (#265), indented code
+/// would continue it. Directly after a footnote definition, indented code would continue the
 /// definition, which takes in indented lines after a blank line.
 ///
 /// In a list or item whose blocks are not joined by blank lines (`spread` is false: it records no
@@ -1723,6 +1838,9 @@ fn fences_code<S: AsRef<str>>(
     spread: bool,
 ) -> bool {
     before.is_some_and(|before| match document.node(before).unwrap().kind {
+        // The HTML block that `before` ends in would take indented lines after its blank lines,
+        // unless a block quote, which a blank line ends, holds it.
+        _ if ends_in_kept_line_ending(document, before, false) => true,
         EventKind::Start(Tag::FootnoteDefinition { .. }) => true,
         EventKind::Start(Tag::Paragraph { .. }) | EventKind::Definition { .. } => {
             !spread && in_list(document, parent)
@@ -1754,8 +1872,9 @@ fn starts_with_block_html<S: AsRef<str>>(document: &Document<S>, id: NodeId, unw
         return false;
     };
     let value = value.resolve(source).unwrap().as_bytes();
-    crate::block_parser::html_interrupts_paragraph(value)
-        || crate::block_parser::complete_tag_starts_html_block(value)
+    let options = document.parse_options();
+    crate::block_parser::html_interrupts_paragraph(value, options)
+        || crate::block_parser::complete_tag_starts_html_block(value, options)
             && match children
                 .next()
                 .map(|next| &document.node(next).unwrap().kind)
@@ -1885,7 +2004,8 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
                 || matches!(right_kind, EventKind::Html { value, block: true }
                 if !crate::block_parser::html_interrupts_paragraph(
                     value.resolve(document.source()).unwrap()
-                        .trim_start_matches([' ', '\t']).as_bytes()
+                        .trim_start_matches([' ', '\t']).as_bytes(),
+                    document.parse_options(),
                 ))
         }
         // A definition is read from the front of a paragraph, which the next line continues
@@ -1894,7 +2014,8 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
             matches!(right_kind, EventKind::Html { value, block: true }
             if !crate::block_parser::html_interrupts_paragraph(
                 value.resolve(document.source()).unwrap()
-                    .trim_start_matches([' ', '\t']).as_bytes()
+                    .trim_start_matches([' ', '\t']).as_bytes(),
+                document.parse_options(),
             ))
         }
         EventKind::Start(Tag::Table) => {
@@ -1913,6 +2034,36 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
         EventKind::Start(Tag::List { .. } | Tag::FootnoteDefinition { .. }) => lazy(),
         _ => false,
     }
+}
+
+/// Whether `node` is, or ends in, through the last blocks of the containers in it, and through
+/// block quotes only when `quotes`, an HTML block written without the line ending that
+/// `html_block_keeps_line_ending` keeps in its value, which the line ending after it gives back.
+pub(super) fn ends_in_kept_line_ending<S: AsRef<str>>(
+    document: &Document<S>,
+    node: NodeId,
+    quotes: bool,
+) -> bool {
+    let mut node = node;
+    while let Some(last) = flow_children(document, node).last() {
+        if !quotes
+            && matches!(
+                document.node(node).unwrap().kind,
+                EventKind::Start(Tag::BlockQuote)
+            )
+        {
+            return false;
+        }
+        node = last;
+    }
+    matches!(
+        &document.node(node).unwrap().kind,
+        EventKind::Html { value, block: true }
+            if crate::block_parser::html_block_keeps_line_ending(
+                value.resolve(document.source()).unwrap(),
+                document.parse_options(),
+            )
+    )
 }
 
 /// Whether `node` is a list or footnote definition whose last block, through the last blocks of

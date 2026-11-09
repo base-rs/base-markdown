@@ -1123,26 +1123,22 @@ pub(crate) fn frontmatter_extent(source: &str) -> Option<core::ops::Range<usize>
 }
 
 /// Whether `source`, which starts with `[` at the start of a paragraph and has no container
-/// prefixes, starts with a definition.
-pub(crate) fn starts_definition(source: &str) -> bool {
-    definition::scan(
-        source,
-        core::iter::once((0..source.len(), 0)),
-        &ParseOptions::default(),
-    )
-    .is_some()
+/// prefixes, starts with a definition under `options`.
+pub(crate) fn starts_definition(source: &str, options: &ParseOptions) -> bool {
+    options.constructs.definition
+        && definition::scan(source, core::iter::once((0..source.len(), 0)), options).is_some()
 }
 
 /// Whether `source`, a definition without a title on its first line and the lines of a block
-/// after it, with no container prefixes, reads back as a definition with a title from those lines.
-pub(crate) fn definition_has_title(source: &str) -> bool {
+/// after it, with no container prefixes, reads back under `options` as a definition with a title
+/// from those lines.
+pub(crate) fn definition_has_title(source: &str, options: &ParseOptions) -> bool {
     let lines = source.split_inclusive('\n').scan(0, |at, line| {
         let range = *at..*at + line.len();
         *at = range.end;
         Some((range, 0))
     });
-    definition::scan(source, lines, &ParseOptions::default())
-        .is_some_and(|definition| definition.title.is_some())
+    definition::scan(source, lines, options).is_some_and(|definition| definition.title.is_some())
 }
 
 /// Whether `bytes`, at the start of a line, starts a footnote definition, which can interrupt a
@@ -1199,17 +1195,37 @@ pub(crate) fn starts_table(header: &str, delimiter: &str) -> bool {
 /// Whether `bytes`, at the start of a block, would start an HTML block only because the rest
 /// of its first line is blank (kind 7), so that a line ending written as a character reference
 /// keeps it from starting one.
-pub(crate) fn complete_tag_starts_html_block(bytes: &[u8]) -> bool {
-    bytes.first() == Some(&b'<')
-        && html::Html::start(bytes, false, false).is_none()
-        && html::Html::start(bytes, false, true).is_some()
+///
+/// Under `options`, only where `Constructs::html_flow` is on, and with namespaced tag names
+/// where `ParseOptions::html_tag_namespaces` is.
+pub(crate) fn complete_tag_starts_html_block(bytes: &[u8], options: &ParseOptions) -> bool {
+    let namespaces = options.html_tag_namespaces;
+    options.constructs.html_flow
+        && bytes.first() == Some(&b'<')
+        && html::Html::start(bytes, namespaces, false).is_none()
+        && html::Html::start(bytes, namespaces, true).is_some()
 }
 
-/// Whether HTML at the start of a line would start an HTML block inside a paragraph (kinds 1–6).
-/// Only a value that starts with `<` can: a hand-built value need not, and an empty one has no
-/// name to read.
-pub(crate) fn html_interrupts_paragraph(bytes: &[u8]) -> bool {
-    bytes.first() == Some(&b'<') && html::Html::start(bytes, false, false).is_some()
+/// Whether HTML at the start of a line would start an HTML block inside a paragraph (kinds 1–6),
+/// under `options`, where `Constructs::html_flow` is on. Only a value that starts with `<` can: a
+/// hand-built value need not, and an empty one has no name to read.
+pub(crate) fn html_interrupts_paragraph(bytes: &[u8], options: &ParseOptions) -> bool {
+    options.constructs.html_flow
+        && bytes.first() == Some(&b'<')
+        && html::Html::start(bytes, false, false).is_some()
+}
+
+/// Whether `value`, an HTML block's under `options`, ends with the line ending of its last line,
+/// which `ParseOptions::html_block_blank_lines` keeps in a block of kind 6 or 7, after the blank
+/// lines it takes, those that every container continues over before a line that does not
+/// continue it. The writer writes the value without that line ending, which the line ending
+/// after the block gives back (#265).
+pub(crate) fn html_block_keeps_line_ending(value: &str, options: &ParseOptions) -> bool {
+    let bytes = value.trim_start_matches([' ', '\t']).as_bytes();
+    options.html_block_blank_lines
+        && value.ends_with('\n')
+        && html::Html::start(bytes, options.html_tag_namespaces, true)
+            .is_some_and(html::Html::blank_terminated)
 }
 
 /// Whether an HTML block whose value is `value` ends with its last line, so that the line after
@@ -1399,14 +1415,19 @@ fn list_interrupts(options: &ParseOptions, bytes: &[u8], current_container: bool
 }
 
 /// Whether a line that continues a paragraph in the same containers, from its first byte other
-/// than a space or tab, starts a block instead, as `paragraph` decides with the default
-/// constructs: a setext underline, or a block that interrupts a paragraph. A line that continues
+/// than a space or tab, starts a block instead, as `paragraph` decides under `options`: a setext
+/// underline, or a block that interrupts a paragraph. A line that continues
 /// a `definition` counts any list item as interrupting it. The parser reads a definition from a
 /// paragraph's text, where only a list item that may interrupt a paragraph does (#249), so this
 /// is the stricter reading, which rejects a label that either would end. Indentation, which keeps
 /// any of these from starting, is not counted here.
-pub(crate) fn continuation_starts_block(bytes: &[u8], definition: bool) -> bool {
-    let options = ParseOptions::default();
-    (matches!(bytes.first(), Some(b'=' | b'-')) && scan_setext_heading(bytes).is_some())
-        || interrupts(&options, bytes, !definition)
+pub(crate) fn continuation_starts_block(
+    bytes: &[u8],
+    definition: bool,
+    options: &ParseOptions,
+) -> bool {
+    (options.constructs.heading_setext
+        && matches!(bytes.first(), Some(b'=' | b'-'))
+        && scan_setext_heading(bytes).is_some())
+        || interrupts(options, bytes, !definition)
 }
