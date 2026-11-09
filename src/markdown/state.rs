@@ -402,7 +402,8 @@ impl<'a> State<'a> {
     /// the source, but not where a container prefix is written before it (#146). An escaped
     /// line is the head the next line is judged under. Without `Constructs::table`, no line is.
     fn escape_delimiter_rows(&mut self, start: usize, after_definition: bool) {
-        // The block is scanned for a line ending, and then line by line when it has one.
+        // The block is scanned for a line ending, and then line by line when it has one, where
+        // tables are read, and counted as scanned where they are not.
         crate::work::step!(self.output.len() - start);
         if !self.parse.constructs.table || !after_definition && !self.output[start..].contains('\n')
         {
@@ -624,8 +625,11 @@ impl<'a> State<'a> {
         self.output.push_str(lines.next().unwrap_or_default());
         let mut at = 0;
         for line in lines {
-            at += value[at..].find('\n').unwrap() + 1;
-            let header = self.output.rfind('\n').map_or(0, |index| index + 1);
+            at += crate::work::searched!(value[at..].find('\n'), value.len() - at).unwrap() + 1;
+            let header = crate::work::searched_back!(self.output.rfind('\n'), self.output.len())
+                .map_or(0, |index| index + 1);
+            // The line before is read as a table's head.
+            crate::work::step!(self.output.len() - header);
             let row = self.parse.constructs.table
                 && crate::block_parser::starts_table(&self.output[header..], line);
             self.output.push('\n');
@@ -655,6 +659,7 @@ impl<'a> State<'a> {
         if self.parse.inline_code_info
             && crate::util::inline_code_info::before(phrasing, phrasing.len()).is_some()
         {
+            crate::work::step!(1);
             self.output.insert(self.output.len() - 1, '\\');
         }
     }

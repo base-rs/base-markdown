@@ -260,37 +260,47 @@ fn encoding_line_endings_is_linear() {
 #[test]
 fn edits_of_written_output_are_linear() {
     type Build = fn(usize) -> String;
-    let cases: [(&str, Build); 14] = [
+    let gfm = ParseOptions {
+        inline_code_info: true,
+        ..ParseOptions::gfm()
+    };
+    let mut no_hard_break_escape = ParseOptions::default();
+    no_hard_break_escape.constructs.hard_break_escape = false;
+    let mut no_fences = ParseOptions::default();
+    no_fences.constructs.code_fenced = false;
+    let cases: [(&str, &ParseOptions, Build); 17] = [
         // A label followed by a colon that would read back as a definition (`\:`), and the same
         // for a footnote call.
-        ("definition colons", |count| {
+        ("definition colons", &gfm, |count| {
             "[r]\\: x\n\n".repeat(count) + "[r]: /u\n"
         }),
-        ("footnote colons", |count| {
+        ("footnote colons", &gfm, |count| {
             "[^1]\\: x\n\n".repeat(count) + "[^1]: n\n"
         }),
         // A paragraph after a definition without a title, which starts with a quote, and one
         // that starts with HTML, which is indented.
-        ("quotes after definitions", |count| {
+        ("quotes after definitions", &gfm, |count| {
             (0..count)
                 .map(|index| format!("- [c{index}]: /u\n  \\\"x\"\n"))
                 .collect()
         }),
-        ("HTML after definitions", |count| {
+        ("HTML after definitions", &gfm, |count| {
             (0..count)
                 .map(|index| format!("[a{index}]: /u\n<b>\n\n"))
                 .collect()
         }),
-        // HTML that would start an HTML block, whose line ending is encoded.
-        ("HTML starts", |count| "<b>&#xA;x\n\n".repeat(count)),
+        // HTML that would start an HTML block, whose line ending is encoded, and inline HTML
+        // with a line ending in it, whose next line is checked for starting a block.
+        ("HTML starts", &gfm, |count| "<b>&#xA;x\n\n".repeat(count)),
+        ("inline HTML lines", &gfm, |count| "a <b\nc> ".repeat(count)),
         // A setext heading, whose last line is found to underline, and an ATX heading whose
         // content starts with a tab, which is encoded.
-        ("setext headings", |count| "a\nb\n=\n\n".repeat(count)),
-        ("ATX headings", |count| "# &#x9;\ta\n\n".repeat(count)),
+        ("setext headings", &gfm, |count| "a\nb\n=\n\n".repeat(count)),
+        ("ATX headings", &gfm, |count| "# &#x9;\ta\n\n".repeat(count)),
         // Image text that starts with `^`.
-        ("image text", |count| "![\\^a](/i) ".repeat(count)),
+        ("image text", &gfm, |count| "![\\^a](/i) ".repeat(count)),
         // A reference with a `|` in its label, in a table cell.
-        ("pipes in labels", |count| {
+        ("pipes in labels", &gfm, |count| {
             format!(
                 "{}|\n{}|\n\n[a\\|b]: c\n",
                 "| [x][a\\|b] ".repeat(count),
@@ -298,26 +308,35 @@ fn edits_of_written_output_are_linear() {
             )
         }),
         // A table whose head row is a delimiter row.
-        ("delimiter heads", |count| "| - |\n| - |\n\n".repeat(count)),
+        ("delimiter heads", &gfm, |count| {
+            "| - |\n| - |\n\n".repeat(count)
+        }),
         // Characters encoded at the edges of text beside attention, and at the end of text before
         // a language prefix, escaped or not.
-        ("attention edges", |count| "_x~~y*a_b*_ ".repeat(count)),
-        ("language prefixes", |count| {
+        ("attention edges", &gfm, |count| {
+            "_x~~y*a_b*_ ".repeat(count)
+        }),
+        ("language prefixes", &gfm, |count| {
             "a&#x2D;rust:`x` ".repeat(count)
         }),
-        ("escaped language prefixes", |count| {
-            "a&#x5F;rust:`x` ".repeat(count)
+        ("escaped language prefixes", &gfm, |count| {
+            "a &#x5F;rust:`x` ".repeat(count)
         }),
         // Escapes before email autolinks that a literal is in.
-        ("escaped emails", |count| "<1\\@b.c> ".repeat(count)),
+        ("escaped emails", &gfm, |count| "<1\\@b.c> ".repeat(count)),
+        // A backslash before the space that a hard break of trailing spaces follows, where an
+        // escape is no hard break.
+        ("hard breaks", &no_hard_break_escape, |count| {
+            "a\\\\&#x20;  \n".repeat(count) + "b\n"
+        }),
+        // Items that start with indented code, which a bullet could make a thematic break.
+        ("bullets before code", &no_fences, |count| {
+            "+     **\n".repeat(count)
+        }),
     ];
-    let options = ParseOptions {
-        inline_code_info: true,
-        ..ParseOptions::gfm()
-    };
-    for (label, build) in cases {
+    for (label, options, build) in cases {
         assert_linear(label, 1 << 6, |count| {
-            let mut document = Document::parse(build(count), &options).unwrap();
+            let mut document = Document::parse(build(count), options).unwrap();
             document.normalize();
             counted(|| {
                 to_markdown(&document).unwrap();

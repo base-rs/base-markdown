@@ -71,6 +71,7 @@ impl State<'_> {
         let end = self.output.len().saturating_sub(1);
         if self.output.ends_with([' ', '\t']) && super::attention::escapes_next(&self.output[..end])
         {
+            crate::work::step!(self.output.len() - end);
             self.output.insert(end, '\\');
         }
         match self.output.chars().next_back() {
@@ -539,12 +540,19 @@ impl State<'_> {
         } else {
             // The markers of the items this list starts, which are written but not yet followed
             // by their spaces, are on the line of the first item's marker too.
-            let line = &self.output[self.output.rfind('\n').map_or(0, |index| index + 1)..];
+            let line = &self.output[crate::work::searched_back!(
+                self.output.rfind('\n'),
+                self.output.len()
+            )
+            .map_or(0, |index| index + 1)..];
             // A `-` or `*` marker would make a line of indented code such as `--` a thematic
             // break with it.
             let breaks = |marker: char| {
                 marker != '+'
                     && code_lines.iter().any(|&(first, code)| {
+                        // The line of markers, for the first item, and the line of code are
+                        // scanned.
+                        crate::work::step!(usize::from(first) * line.len() + code.len() + 1);
                         let mut count = 1;
                         // A thematic break is read in any of the containers whose markers are on
                         // the line, so the markers count back to the first that is not `marker`.
