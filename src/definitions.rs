@@ -278,6 +278,7 @@ impl<'a> Definitions<'a> {
 pub(crate) fn build_index<T>(order: &mut Vec<usize>, values: &[T], key: impl Fn(&T) -> &str) {
     order.clear();
     order.extend(0..values.len());
+    crate::work::step!(values.len());
     order.sort_unstable_by(|&a, &b| key(&values[a]).cmp(key(&values[b])).then(a.cmp(&b)));
     order.dedup_by(|a, b| key(&values[*a]) == key(&values[*b]));
 }

@@ -8,7 +8,9 @@ extern crate std;
 use core::alloc::{GlobalAlloc, Layout};
 use core::cell::Cell;
 use core::fmt::{self, Debug};
+use core::ops::RangeFull;
 use std::alloc::System;
+use std::collections::VecDeque;
 
 /// A kind of work, counted on its own, so that a lot of one kind does not hide another kind growing faster.
 #[derive(Clone, Copy)]
@@ -62,6 +64,48 @@ unsafe impl GlobalAlloc for Counting {
 
 #[global_allocator]
 static ALLOCATOR: Counting = Counting;
+
+/// A `VecDeque` that counts as steps the elements each of its operations visits or moves, which [`super::Deque`] is in tests. It has only the operations the crate uses, so that one that shifts the queue, such as `make_contiguous`, is added here with its count before it can be used.
+#[derive(Clone, Debug)]
+pub(crate) struct Deque<T>(VecDeque<T>);
+
+impl<T> Deque<T> {
+    pub(crate) fn new() -> Self {
+        Self(VecDeque::new())
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub(crate) fn push_back(&mut self, value: T) {
+        add(Kind::Steps, 1);
+        self.0.push_back(value);
+    }
+
+    pub(crate) fn pop_front(&mut self) -> Option<T> {
+        add(Kind::Steps, 1);
+        self.0.pop_front()
+    }
+
+    /// The elements in order, counting each one visited.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &T> {
+        self.0.iter().inspect(|_| add(Kind::Steps, 1))
+    }
+
+    /// Remove the element at `at`, counting the elements moved to close the gap, those on the shorter side, as `VecDeque::remove` moves, and the one removed.
+    pub(crate) fn remove(&mut self, at: usize) -> Option<T> {
+        let length = self.0.len();
+        add(Kind::Steps, at.min(length.saturating_sub(at + 1)) + 1);
+        self.0.remove(at)
+    }
+
+    /// Remove all the elements, counting each one.
+    pub(crate) fn drain(&mut self, range: RangeFull) -> impl Iterator<Item = T> + '_ {
+        add(Kind::Steps, self.0.len());
+        self.0.drain(range)
+    }
+}
 
 /// The work of each kind that something counted.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -173,31 +217,31 @@ pub(crate) fn assert_against_control(
 fn counts_work_on_this_thread() {
     let counts = counted(|| {
         super::read();
-        super::step(3);
+        super::step!(3);
         drop(std::vec![0_u8; 5]);
     });
     assert_eq!(counts, Counts([1, 3, 5]));
     assert_eq!(std::format!("{counts:?}"), "1 reads, 3 steps, 5 bytes");
     // Spawning the thread allocates on this one, but counts none of the thread's work.
     let counts = counted(|| {
-        std::thread::spawn(|| super::step(3)).join().unwrap();
+        std::thread::spawn(|| super::step!(3)).join().unwrap();
     });
     assert_eq!(counts.0[Kind::Steps as usize], 0);
 }
 
 #[test]
 fn linear_work_passes() {
-    assert_linear("linear", 16, |size| counted(|| super::step(size + 4)));
+    assert_linear("linear", 16, |size| counted(|| super::step!(size + 4)));
     assert_against_control(
         "linear",
         16,
         |size| {
             counted(|| {
-                super::step(2 * size);
+                super::step!(2 * size);
                 super::read();
             })
         },
-        |size| counted(|| super::step(size)),
+        |size| counted(|| super::step!(size)),
     );
 }
 
@@ -205,7 +249,7 @@ fn linear_work_passes() {
 #[should_panic(expected = "8x the input counted")]
 fn quadratic_work_fails() {
     assert_linear("quadratic", 16, |size| {
-        counted(|| super::step(size * size / 8 + size))
+        counted(|| super::step!(size * size / 8 + size))
     });
 }
 
@@ -215,8 +259,8 @@ fn quadratic_work_fails_against_a_control() {
     assert_against_control(
         "quadratic",
         16,
-        |size| counted(|| super::step(size * size)),
-        |size| counted(|| super::step(size)),
+        |size| counted(|| super::step!(size * size)),
+        |size| counted(|| super::step!(size)),
     );
 }
 
@@ -233,6 +277,49 @@ fn no_work_fails_against_a_control() {
         "none",
         16,
         |_| counted(|| {}),
-        |size| counted(|| super::step(size)),
+        |size| counted(|| super::step!(size)),
     );
+}
+
+#[test]
+fn searches_count_the_bytes_they_read() {
+    let steps = |search: &dyn Fn()| counted(search).0[Kind::Steps as usize];
+    assert_eq!(
+        steps(&|| assert_eq!(super::searched!(Some(2), 8), Some(2))),
+        3
+    );
+    assert_eq!(steps(&|| assert_eq!(super::searched!(None, 8), None)), 8);
+    assert_eq!(
+        steps(&|| assert_eq!(super::searched_back!(Some(2), 8), Some(2))),
+        6
+    );
+    assert_eq!(
+        steps(&|| assert_eq!(super::searched_back!(None, 8), None)),
+        8
+    );
+}
+
+#[test]
+fn a_deque_counts_the_elements_it_visits_or_moves() {
+    let steps = |run: &mut dyn FnMut()| counted(run).0[Kind::Steps as usize];
+    let mut deque = super::Deque::new();
+    assert!(deque.is_empty());
+    assert_eq!(
+        steps(&mut || (0..8).for_each(|value| deque.push_back(value))),
+        8
+    );
+    assert_eq!(steps(&mut || assert_eq!(deque.pop_front(), Some(0))), 1);
+    assert_eq!(
+        steps(&mut || assert_eq!(deque.iter().position(|&value| value == 3), Some(2))),
+        3
+    );
+    // Removing the third of seven moves the two before it.
+    assert_eq!(steps(&mut || assert_eq!(deque.remove(2), Some(3))), 3);
+    // Removing the second to last of six moves the last.
+    assert_eq!(steps(&mut || assert_eq!(deque.remove(4), Some(6))), 2);
+    let mut drained = std::vec::Vec::new();
+    assert_eq!(steps(&mut || drained.extend(deque.drain(..))), 5);
+    assert_eq!(drained, [1, 2, 4, 5, 7]);
+    assert!(deque.is_empty());
+    assert_eq!(std::format!("{:?}", deque.clone()), "Deque([])");
 }

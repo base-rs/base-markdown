@@ -177,7 +177,8 @@ impl State<'_> {
             self.container_phrasing(document, node, &Info::new("\n", "\n"))?;
             self.exit();
             let content = &self.output[start..];
-            let last_line = content.rfind('\n').map_or(0, |index| index + 1);
+            let last_line = crate::work::searched_back!(content.rfind('\n'), content.len())
+                .map_or(0, |index| index + 1);
             let size = content.len() - last_line;
             self.output.push('\n');
             self.output.extend(core::iter::repeat_n(
@@ -200,6 +201,7 @@ impl State<'_> {
             .next()
             .filter(|c| matches!(c, ' ' | '\t'))
         {
+            crate::work::step!(self.output.len() - content_start);
             self.output.replace_range(
                 content_start..content_start + 1,
                 if character == ' ' { "&#x20;" } else { "&#x9;" },
@@ -416,6 +418,7 @@ impl State<'_> {
         result?;
         // `![^` starts no image, as `[^` reads as a footnote call or text instead.
         if image && self.output[text_start..].starts_with('^') {
+            crate::work::step!(self.output.len() - text_start);
             self.output.insert(text_start, '\\');
         }
         self.exit();
@@ -732,13 +735,19 @@ fn unwrap_soft_line_breaks(value: &str) -> Cow<'_, str> {
 /// Escape each pipe after `start` that an even run of backslashes leaves splitting a table cell.
 fn escape_table_pipes(output: &mut String, start: usize) {
     let mut position = start;
-    while let Some(offset) = memchr::memchr(b'|', &output.as_bytes()[position..]) {
+    while let Some(offset) = crate::work::searched!(
+        memchr::memchr(b'|', &output.as_bytes()[position..]),
+        output.len() - position,
+    ) {
         let pipe = position + offset;
         let backslashes = output.as_bytes()[start..pipe]
             .iter()
             .rev()
             .take_while(|&&byte| byte == b'\\')
             .count();
+        // The backslashes before the pipe are scanned, and what follows it moved when it is
+        // escaped.
+        crate::work::step!(backslashes + output.len() - pipe);
         if backslashes % 2 == 0 {
             output.insert(pipe, '\\');
             position = pipe + 2;

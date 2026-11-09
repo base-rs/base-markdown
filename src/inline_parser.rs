@@ -201,7 +201,7 @@ impl InlineParser {
                     let bound = lower[marker_index][bucket].min(self.attention_stack.len());
                     let mut found = None;
                     for slot in (bound..self.attention_stack.len()).rev() {
-                        crate::work::step(1);
+                        crate::work::step!(1);
                         let open = self.attention_stack[slot];
                         let candidate = &self.delimiters[open];
                         if candidate.marker == marker
@@ -258,10 +258,14 @@ impl InlineParser {
         self.tick_heads.clear();
         self.ticks.clear();
         let mut at = range.end;
-        while let Some(index) = memchr::memrchr(b'`', &bytes[range.start..at]) {
+        while let Some(index) = crate::work::searched_back!(
+            memchr::memrchr(b'`', &bytes[range.start..at]),
+            at - range.start,
+        ) {
             let end = range.start + index + 1;
             at = end - 1;
             while at > range.start && bytes[at - 1] == b'`' {
+                crate::work::step!(1);
                 at -= 1;
             }
             let count = end - at;
@@ -771,6 +775,7 @@ impl InlineParser {
         if EXTENSIONS && options.constructs.autolink_literal && saw_email {
             self.resolve_email(source);
         }
+        crate::work::step!(self.labels.len());
         self.labels.sort_unstable_by_key(|&(node, ..)| node);
         self.cursor = self.nodes[0].next;
         true
@@ -828,8 +833,10 @@ impl InlineParser {
                         end = self.nodes[next].end;
                         next = self.nodes[next].next;
                     }
-                    let Some(first) = memchr::memchr(b'@', &source.as_bytes()[run_start..end])
-                    else {
+                    let Some(first) = crate::work::searched!(
+                        memchr::memchr(b'@', &source.as_bytes()[run_start..end]),
+                        end - run_start,
+                    ) else {
                         cursor = next;
                         continue;
                     };
@@ -851,7 +858,10 @@ impl InlineParser {
                     let mut at = run_start + first;
                     let mut min = run_start;
                     let mut tail = cursor;
-                    while let Some(offset) = memchr::memchr(b'@', &source.as_bytes()[at..end]) {
+                    while let Some(offset) = crate::work::searched!(
+                        memchr::memchr(b'@', &source.as_bytes()[at..end]),
+                        end - at,
+                    ) {
                         let marker = at + offset;
                         if let Some(found) = autolink::email(source, min, marker, end) {
                             self.nodes[tail].end = found.start;
@@ -982,7 +992,11 @@ impl InlineParser {
     #[inline]
     fn raw_text(&self, source: &str, mut range: Range<usize>) -> Text<'static> {
         let bytes = source.as_bytes();
-        let needs_normalization = memchr::memchr2(b'\r', b'\n', &bytes[range.clone()]).is_some()
+        let needs_normalization = crate::work::searched!(
+            memchr::memchr2(b'\r', b'\n', &bytes[range.clone()]),
+            range.len(),
+        )
+        .is_some()
             || (self.table && source[range.clone()].contains("\\|"));
         if needs_normalization {
             return self.normalized_raw_text(source, range);

@@ -11,7 +11,11 @@ pub(crate) fn line_endings(value: &str) -> impl Iterator<Item = Range<usize>> + 
     let bytes = value.as_bytes();
     let mut at = 0;
     core::iter::from_fn(move || {
-        let start = at + memchr::memchr2(b'\r', b'\n', &bytes[at..])?;
+        let start = at
+            + crate::work::searched!(
+                memchr::memchr2(b'\r', b'\n', &bytes[at..]),
+                bytes.len() - at,
+            )?;
         at = start + 1;
         if bytes[start] == b'\r' && bytes.get(at) == Some(&b'\n') {
             at += 1;
@@ -24,7 +28,9 @@ pub(crate) fn line_endings(value: &str) -> impl Iterator<Item = Range<usize>> + 
 /// written as LF, as line endings are structure, and each NUL as U+FFFD, as `CommonMark` asks.
 pub(crate) fn push_normalized(output: &mut String, value: &str) {
     let mut rest = value;
-    while let Some(index) = memchr::memchr2(b'\r', 0, rest.as_bytes()) {
+    while let Some(index) =
+        crate::work::searched!(memchr::memchr2(b'\r', 0, rest.as_bytes()), rest.len())
+    {
         output.push_str(&rest[..index]);
         let nul = rest.as_bytes()[index] == 0;
         output.push(if nul { '\u{FFFD}' } else { '\n' });
@@ -41,7 +47,7 @@ pub(crate) fn push_normalized(output: &mut String, value: &str) {
 /// Whether source text holds a CR or NUL, which the parser does not store as they are, so that a
 /// value pointing into it may need copying into the form it stores ([`push_normalized`]).
 pub(crate) fn needs_normalizing(value: &str) -> bool {
-    crate::work::step(value.len());
+    crate::work::step!(value.len());
     memchr::memchr2(b'\r', 0, value.as_bytes()).is_some()
 }
 

@@ -170,7 +170,7 @@ struct Context<'a>([&'a [u8]; 4]);
 
 impl Context<'_> {
     fn get(self, mut position: usize) -> Option<u8> {
-        crate::work::step(1);
+        crate::work::step!(1);
         for part in self.0 {
             if position < part.len() {
                 return Some(part[position]);
@@ -186,7 +186,7 @@ impl Context<'_> {
             let from = start.saturating_sub(offset);
             if from < part.len() {
                 let found = memchr::memchr(byte, &part[from..]);
-                crate::work::step(found.map_or(part.len() - from, |index| index + 1));
+                crate::work::step!(found.map_or(part.len() - from, |index| index + 1));
                 if let Some(index) = found {
                     return Some(offset + from + index);
                 }
@@ -205,7 +205,7 @@ impl Context<'_> {
             let to = high.saturating_sub(offset).min(part.len());
             if from < to {
                 let found = memchr::memrchr(byte, &part[from..to]);
-                crate::work::step(found.map_or(to - from, |index| to - from - index));
+                crate::work::step!(found.map_or(to - from, |index| to - from - index));
                 if let Some(index) = found {
                     return Some(offset + from + index);
                 }
@@ -488,7 +488,7 @@ pub(super) fn tildes(
     // Queries rise, so membership needs one pass over the existing positions.
     let contains = |applied: &[usize], cursor: &mut usize, position: usize| {
         while *cursor < existing && applied[*cursor] < position {
-            crate::work::step(1);
+            crate::work::step!(1);
             *cursor += 1;
         }
         *cursor < existing && applied[*cursor] == position
@@ -532,6 +532,7 @@ pub(super) fn tildes(
         }
     }
     if applied.len() > existing {
+        crate::work::step!(applied.len());
         applied.sort_unstable();
     }
 }

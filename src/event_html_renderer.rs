@@ -734,7 +734,10 @@ impl<'a, W: Write> EventHtmlRenderer<'a, W> {
         let index = self
             .calls
             .iter()
-            .position(|call| call.key == key)
+            .position(|call| {
+                crate::work::step!(1);
+                call.key == key
+            })
             .unwrap_or_else(|| {
                 self.calls.push(FootnoteCall {
                     key: key.into(),

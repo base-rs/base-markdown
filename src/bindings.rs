@@ -6,13 +6,7 @@ use crate::definitions::scratch_reference_key;
 use crate::document::{next_descendant, Node, NodeId};
 use crate::stream::{Content, EventKind, Tag, Target, Text};
 use crate::ReferenceKind;
-use alloc::{
-    boxed::Box,
-    collections::{BTreeMap, VecDeque},
-    string::String,
-    vec,
-    vec::Vec,
-};
+use alloc::{boxed::Box, collections::BTreeMap, string::String, vec, vec::Vec};
 
 /// The definition each label of the attached document names, built in one pass in document
 /// order.
@@ -54,7 +48,7 @@ pub(crate) struct Scratch {
 #[derive(Clone, Debug)]
 struct Entry {
     first: NodeId,
-    more: VecDeque<NodeId>,
+    more: crate::work::Deque<NodeId>,
 }
 
 impl Entry {
@@ -164,7 +158,7 @@ impl KeyMap {
             return None;
         }
         for slot in self.group(hash) {
-            crate::work::step(1);
+            crate::work::step!(1);
             let (at, low) = self.slots[slot];
             if at == EMPTY {
                 break;
@@ -219,7 +213,7 @@ impl KeyMap {
             name: start..self.names.len(),
             entry: Entry {
                 first: id,
-                more: VecDeque::new(),
+                more: crate::work::Deque::new(),
             },
         });
         self.place(at);
@@ -231,7 +225,7 @@ impl KeyMap {
         let index: u32 = core::convert::TryFrom::try_from(at).expect("fewer keys than u32::MAX");
         let hash = self.entries[at].hash;
         if let Some(slot) = self.group(hash).find(|&slot| {
-            crate::work::step(1);
+            crate::work::step!(1);
             self.slots[slot].0 == EMPTY
         }) {
             self.slots[slot] = (index, low_bits(hash));

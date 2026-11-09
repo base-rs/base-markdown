@@ -178,7 +178,10 @@ impl<'a> IncrementalParser<'a> {
         } else {
             (1..tops.len())
                 .rev()
-                .find(|&next| tops[next].clean)
+                .find(|&next| {
+                    crate::work::step!(1);
+                    tops[next].clean
+                })
                 .map(|next| next - 1)
         };
         let Some(last) = last.filter(|&last| last >= self.emitted) else {
@@ -187,7 +190,10 @@ impl<'a> IncrementalParser<'a> {
         // The first prepared block always begins at the clean anchor.
         let anchor = (0..=last)
             .rev()
-            .find(|&index| tops[index].clean)
+            .find(|&index| {
+                crate::work::step!(1);
+                tops[index].clean
+            })
             .unwrap_or(0);
         let authored = definitions.before(tops[anchor].line);
         let parser = EventParser::from_blocks(source, self.options, blocks, definitions, self.raw);
@@ -210,7 +216,7 @@ impl<'a> IncrementalParser<'a> {
 fn complete_lines(source: &str, from: usize) -> usize {
     let bytes = source.as_bytes();
     let end = bytes.len() - usize::from(bytes.last() == Some(&b'\r'));
-    crate::work::step(end - from.min(end));
+    crate::work::step!(end - from.min(end));
     bytes[from.min(end)..end]
         .iter()
         .rposition(|&byte| matches!(byte, b'\n' | b'\r'))

@@ -55,7 +55,10 @@ impl Iterator for Cells<'_> {
         }
         let mut cursor = self.start;
         let pipe = loop {
-            let Some(offset) = memchr::memchr(b'|', &self.bytes[cursor..self.end]) else {
+            let Some(offset) = crate::work::searched!(
+                memchr::memchr(b'|', &self.bytes[cursor..self.end]),
+                self.end - cursor,
+            ) else {
                 break None;
             };
             let pipe = cursor + offset;

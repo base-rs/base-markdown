@@ -253,6 +253,79 @@ fn encoding_line_endings_is_linear() {
     }
 }
 
+/// Each edit the serializer makes to what it has written, such as an escape or an indent inserted
+/// before a block or a label, or a character encoded at the end of a text, scans and moves only
+/// the block or text it edits, so many of them in a row do work linear in the document. Each shape
+/// is repeated in one block where the edit is in phrasing, and as many blocks otherwise.
+#[test]
+fn edits_of_written_output_are_linear() {
+    type Build = fn(usize) -> String;
+    let cases: [(&str, Build); 14] = [
+        // A label followed by a colon that would read back as a definition (`\:`), and the same
+        // for a footnote call.
+        ("definition colons", |count| {
+            "[r]\\: x\n\n".repeat(count) + "[r]: /u\n"
+        }),
+        ("footnote colons", |count| {
+            "[^1]\\: x\n\n".repeat(count) + "[^1]: n\n"
+        }),
+        // A paragraph after a definition without a title, which starts with a quote, and one
+        // that starts with HTML, which is indented.
+        ("quotes after definitions", |count| {
+            (0..count)
+                .map(|index| format!("- [c{index}]: /u\n  \\\"x\"\n"))
+                .collect()
+        }),
+        ("HTML after definitions", |count| {
+            (0..count)
+                .map(|index| format!("[a{index}]: /u\n<b>\n\n"))
+                .collect()
+        }),
+        // HTML that would start an HTML block, whose line ending is encoded.
+        ("HTML starts", |count| "<b>&#xA;x\n\n".repeat(count)),
+        // A setext heading, whose last line is found to underline, and an ATX heading whose
+        // content starts with a tab, which is encoded.
+        ("setext headings", |count| "a\nb\n=\n\n".repeat(count)),
+        ("ATX headings", |count| "# &#x9;\ta\n\n".repeat(count)),
+        // Image text that starts with `^`.
+        ("image text", |count| "![\\^a](/i) ".repeat(count)),
+        // A reference with a `|` in its label, in a table cell.
+        ("pipes in labels", |count| {
+            format!(
+                "{}|\n{}|\n\n[a\\|b]: c\n",
+                "| [x][a\\|b] ".repeat(count),
+                "| - ".repeat(count)
+            )
+        }),
+        // A table whose head row is a delimiter row.
+        ("delimiter heads", |count| "| - |\n| - |\n\n".repeat(count)),
+        // Characters encoded at the edges of text beside attention, and at the end of text before
+        // a language prefix, escaped or not.
+        ("attention edges", |count| "_x~~y*a_b*_ ".repeat(count)),
+        ("language prefixes", |count| {
+            "a&#x2D;rust:`x` ".repeat(count)
+        }),
+        ("escaped language prefixes", |count| {
+            "a&#x5F;rust:`x` ".repeat(count)
+        }),
+        // Escapes before email autolinks that a literal is in.
+        ("escaped emails", |count| "<1\\@b.c> ".repeat(count)),
+    ];
+    let options = ParseOptions {
+        inline_code_info: true,
+        ..ParseOptions::gfm()
+    };
+    for (label, build) in cases {
+        assert_linear(label, 1 << 6, |count| {
+            let mut document = Document::parse(build(count), &options).unwrap();
+            document.normalize();
+            counted(|| {
+                to_markdown(&document).unwrap();
+            })
+        });
+    }
+}
+
 fn parse(source: &str) -> Document<String> {
     Document::parse(source.to_owned(), &ParseOptions::default()).unwrap()
 }

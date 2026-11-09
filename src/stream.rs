@@ -813,7 +813,11 @@ impl<'s> EventKind<'s> {
         // checked once its source is known.
         let check = |value: &Text<'_>, valid: &dyn Fn(&str) -> bool| match resolved(value, source)?
         {
-            Some(value) if memchr::memchr(0, value.as_bytes()).is_some() || !valid(value) => {
+            Some(value)
+                if crate::work::searched!(memchr::memchr(0, value.as_bytes()), value.len())
+                    .is_some()
+                    || !valid(value) =>
+            {
                 Err(StreamError::InvalidValue)
             }
             _ => Ok(()),

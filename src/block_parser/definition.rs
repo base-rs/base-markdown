@@ -51,7 +51,7 @@ impl<'a, I: Iterator<Item = (Range<usize>, usize)> + Clone> Cursor<'a, I> {
         self.advance(1);
     }
     fn advance(&mut self, count: usize) {
-        crate::work::step(count);
+        crate::work::step!(count);
         self.at += count;
         self.consumed = self.at;
         while self.at == self.range.end {
