@@ -1043,9 +1043,17 @@ impl<'a> State<'a> {
             if grouped && !self.open() || !self.open() {
                 return Err(nesting_too_deep());
             }
+            let start = self.output.len();
             self.render_table_row(document, row)?;
             self.depth -= 1 + usize::from(grouped);
             if header && index == 0 {
+                // A head row shaped like a delimiter row would read back as the delimiter row of
+                // a table headed by the line before it, which a paragraph or definition can
+                // continue to, so its first cell starts with an escape. Every cell of such a row
+                // is `-` with optional colons, so the first starts after `| `.
+                if crate::block_parser::delimiter_row(&self.output.as_bytes()[start..]) {
+                    self.output.insert(start + 2, '\\');
+                }
                 self.output.push_str("\n| ");
                 for (index, cell) in flow_children(document, row).enumerate() {
                     if index > 0 {
@@ -1818,8 +1826,8 @@ fn ends_in_list_or_footnote_definition<S: AsRef<str>>(
 /// - A link reference definition is read from the front of a paragraph when the paragraph
 ///   closes, so the line after it continues that paragraph unless it interrupts one (#249). A
 ///   paragraph, definition or setext heading after it is read as before, but an HTML block of
-///   kind 7 would be inline HTML in the paragraph's text, and a table's head row would be read
-///   as the delimiter row of a table whose head is the definition's last line.
+///   kind 7 would be inline HTML in the paragraph's text. A table after it is read as before, as
+///   the writer escapes a head row that would be read as a delimiter row under the line before.
 /// - An HTML block of kind 6 or 7 ends only at a blank line, and one of kinds 1–5 at the line
 ///   that holds its end condition, so unless that is its last line, it would take any block
 ///   after it as more of its lines (#191).
@@ -1853,17 +1861,13 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
                 ))
         }
         // A definition is read from the front of a paragraph, which the next line continues
-        // unless it interrupts it. An HTML block of kind 7 written there does not, and a table
-        // whose head row is shaped like a delimiter row would take the definition's last line
-        // as its head.
+        // unless it interrupts it, as an HTML block of kind 7 written there does not.
         EventKind::Definition { .. } => {
-            (matches!(right_kind, EventKind::Start(Tag::Table))
-                && head_reads_as_delimiter_row(document, left, right))
-                || matches!(right_kind, EventKind::Html { value, block: true }
-                if !crate::block_parser::html_interrupts_paragraph(
-                    value.resolve(document.source()).unwrap()
-                        .trim_start_matches([' ', '\t']).as_bytes()
-                ))
+            matches!(right_kind, EventKind::Html { value, block: true }
+            if !crate::block_parser::html_interrupts_paragraph(
+                value.resolve(document.source()).unwrap()
+                    .trim_start_matches([' ', '\t']).as_bytes()
+            ))
         }
         EventKind::Start(Tag::Table) => {
             continues_text(document, right, &setext)
@@ -1885,55 +1889,6 @@ pub(crate) fn needs_blank_line<S: AsRef<str>>(
 
 /// Whether flow child `right` is a paragraph, link reference definition or a heading written as a
 /// setext heading, as `setext` says, none of which can interrupt a paragraph.
-/// Whether the head row of `table`, written on the line after definition `definition`, could
-/// read back as a delimiter row under the definition's last line: each head cell holds only text
-/// of `-` with an optional `:` at either end. Without a `|` in the definition, its last line is
-/// one cell, so a head of more than one cell cannot be its delimiter row.
-fn head_reads_as_delimiter_row<S: AsRef<str>>(
-    document: &Document<S>,
-    definition: NodeId,
-    table: NodeId,
-) -> bool {
-    let source = document.source();
-    let EventKind::Definition {
-        label,
-        destination,
-        title,
-    } = &document.node(definition).unwrap().kind
-    else {
-        return false;
-    };
-    let pipe = core::iter::once(label)
-        .chain(core::iter::once(destination))
-        .chain(title)
-        .any(|value| value.resolve(source).unwrap().contains('|'));
-    let Some(row) = document
-        .children(table)
-        .next()
-        .and_then(|head| document.children(head).next())
-    else {
-        return false;
-    };
-    let mut cells = 0;
-    for cell in document.children(row) {
-        cells += 1;
-        let mut children = document.children(cell);
-        let (Some(text), None) = (children.next(), children.next()) else {
-            return false;
-        };
-        let EventKind::Text(value) = &document.node(text).unwrap().kind else {
-            return false;
-        };
-        let value = value.resolve(source).unwrap().trim_matches([' ', '\t']);
-        let inner = value.strip_prefix(':').unwrap_or(value);
-        let inner = inner.strip_suffix(':').unwrap_or(inner);
-        if inner.is_empty() || !inner.bytes().all(|byte| byte == b'-') {
-            return false;
-        }
-    }
-    cells > 0 && (cells == 1 || pipe)
-}
-
 fn continues_text<S: AsRef<str>>(
     document: &Document<S>,
     right: NodeId,

@@ -2002,22 +2002,43 @@ fn clause_3_4_tight_items_loosen_where_a_block_needs_a_blank_line() {
         assert!(document.is_normalized(), "{:?}", input);
         assert_eq!(to_markdown(&document).unwrap(), input);
     }
-    // A table after a definition stays tight unless its head row is shaped like a delimiter
-    // row, which would make the definition's last line the table's head.
-    for input in [
-        "- [a]: /u\n  | a |\n  | --- |\n- z\n",
-        "- [h]: /h\n  | 'h |\n  | --- |\n- z\n",
-        "- [a]: /u\n  | - | - |\n  | --- | --- |\n- z\n",
+    // A table after a paragraph or definition stays tight. A head row shaped like a delimiter
+    // row, which would make the line before the table's head, is written with an escape.
+    for (input, output) in [
+        ("- [a]: /u\n  | a |\n  | --- |\n- z\n", None),
+        ("- [h]: /h\n  | 'h |\n  | --- |\n- z\n", None),
+        (
+            "- [a]: /u\n  | - | - |\n  | --- | --- |\n- z\n",
+            Some("- [a]: /u\n  | \\- | - |\n  | --- | --- |\n- z\n"),
+        ),
+        ("- [a]: /u\n  | \\- |\n  | --- |\n- z\n", None),
+        ("- a\n  | \\- |\n  | --- |\n- z\n", None),
+        (
+            "- [a]: /u\n  | &#45; |\n  | --- |\n- z\n",
+            Some("- [a]: /u\n  | \\- |\n  | --- |\n- z\n"),
+        ),
+        (
+            "- [a]: /u\n  | :\\- |\n  | --- |\n- z\n",
+            Some("- [a]: /u\n  | \\:- |\n  | --- |\n- z\n"),
+        ),
+        (
+            "- [a]: /u 'x|y'\n  | - | -\\- |\n  | - | - |\n- z\n",
+            Some("- [a]: /u \"x|y\"\n  | \\- | -- |\n  | --- | --- |\n- z\n"),
+        ),
     ] {
-        let document = parse(input);
-        assert!(document.is_normalized(), "{:?}", input);
-        assert_eq!(to_markdown(&document).unwrap(), input);
+        let mut document = parse(input);
+        let before = html(&document);
+        document.normalize();
+        assert_eq!(html(&document), before, "{:?}", input);
+        let written = to_markdown(&document).unwrap();
+        assert_eq!(written, output.unwrap_or(input), "{:?}", input);
+        assert_eq!(html(&parse(&written)), before, "{:?}", input);
     }
     let (mut document, _) = tight_item("- p\n- q\n", &["[a]: /u", "| - |\n| - |"]);
     document.normalize();
     assert_eq!(
         to_markdown(&document).unwrap(),
-        "- [a]: /u\n\n  | - |\n  | --- |\n\n- q\n"
+        "- [a]: /u\n  | \\- |\n  | --- |\n- q\n"
     );
     // Two tables, which would read back as one.
     let (mut document, _) = tight_item("- p\n- q\n", &["| a |\n| - |", "| b |\n| - |"]);
