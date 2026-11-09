@@ -1707,7 +1707,7 @@ impl<S: AsRef<str>> Document<S> {
     /// identifier a definition of its kind in the document already has, and moving a subtree
     /// within the document when it holds a definition or footnote definition of a label or
     /// identifier that the document defines more than once, which [`Document::normalize`] makes
-    /// once: the document's index keeps a label's definitions in document order, the first
+    /// once except where it keeps a copy that carries a caret definition: the document's index keeps a label's definitions in document order, the first
     /// binding, so such a move could reorder them and change which one binds. Detaching a
     /// definition first unbinds it, so the only definition of its label can be detached and
     /// attached again, but one that has a copy elsewhere cannot. Moving a subtree out of its
