@@ -705,7 +705,7 @@ pub enum EventKind<'a> {
     ///
     /// An HTML block, with `block` true, is one block as the block parser reads it, by its start
     /// and end conditions: the indentation the parser keeps before a block, at most three spaces,
-    /// or one to three spaces then a tab and spaces where the tab is at least one column wide,
+    /// or one or two spaces then a tab and spaces, where those spaces and the tab, counted as one column, are at most three,
     /// then HTML that starts a block, and the lines the block takes, without the final line
     /// ending, as `<div>`, `<div>\na` or `<!-- a\n\nb -->`. A block of kinds 1–5 holds no line
     /// after the one that holds its end condition; one that no line closes may end in the blank

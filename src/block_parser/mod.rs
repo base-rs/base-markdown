@@ -1262,9 +1262,9 @@ fn html_indent_width(spaces: usize, bytes: &[u8]) -> usize {
 
 /// Whether `value`, which holds no CR, is the value of one HTML block as the parser stores it.
 ///
-/// It starts with the indentation the parser keeps before a block: up to three spaces, or one to
-/// three spaces, then a tab and spaces where the tab is at least one column wide, as a tab first
-/// is not kept. HTML that starts a block follows, then the lines the block takes, with no line
+/// It starts with the indentation the parser keeps before a block: up to three spaces, or one or
+/// two spaces then a tab and spaces, where those spaces and the tab, counted as one column, are at
+/// most three, as a tab first is not kept. HTML that starts a block follows, then the lines the block takes, with no line
 /// ending after the last. A block of kinds 1–5 ends at the first line that holds its end
 /// condition, so no line before its last holds it; one that no line closes takes every line to
 /// the end of its container, blank or not, so its last line may be blank. A block of kind 6 or 7

@@ -1140,9 +1140,10 @@ impl<'a> State<'a> {
         let left_kind = &document.node(left).unwrap().kind;
         let right_kind = &document.node(right).unwrap().kind;
         // A list or footnote definition whose last block is an HTML block of kinds 1–5 that no
-        // line closes would take a blank line after it as more of that block, which an
-        // unindented line ends instead, as the parser reads it: `- <pre>\nx` (#191).
-        let unclosed = !in_list(document, parent) && ends_in_unclosed_html(document, left);
+        // line closes would take a blank line after it as more of that block, which a
+        // line indented less than that item ends instead, as the parser reads it: `- <pre>\nx`, and
+        // `- - <pre>\n  x` in an item (#191).
+        let unclosed = ends_in_unclosed_html(document, left);
         if self.indented_code(document, parent, spread, Some(left), right)
             && (matches!(left_kind, EventKind::Start(Tag::List { .. }))
                 || self.indented_code(document, parent, spread, before, left))

@@ -437,6 +437,11 @@ fn clause_3_3_a_block_after_a_list_ending_in_an_unclosed_html_block_round_trips(
         "> - <pre>\n> x",
         "[^a]: <pre>\nx\n\n[^a]",
         "- <pre>\n* b",
+        // In an item too.
+        "- - <pre>\n\n  x",
+        "- a\n\n  - <pre>\n  x",
+        "- a\n\n  - <pre>\n\n  x",
+        "- > - <pre>\n  > x",
     ] {
         assert_round_trips(source);
         let document = normalized(source);
@@ -458,27 +463,48 @@ fn clause_3_3_a_block_after_a_list_ending_in_an_unclosed_html_block_round_trips(
     }
     // Indented code after such a list, which only an edit gives, is kept apart by an empty
     // comment, written on the next line too.
-    let mut document = parse("- <pre>\n<!---->\n\n    code\n");
-    let root = document.root();
-    let comment = document
-        .children(root)
-        .find(|&id| {
-            matches!(
-                document.node(id).unwrap().kind,
-                EventKind::Html { block: true, .. }
-            )
-        })
-        .unwrap();
-    document.detach(comment).unwrap();
-    document.normalize();
     let options = MarkdownOptions {
         fences: false,
         ..MarkdownOptions::default()
     };
-    assert_eq!(
-        to_markdown_with_options(&document, &options).unwrap(),
-        "- <pre>\n<!---->\n\n    code\n"
-    );
+    for (source, expected) in [
+        (
+            "- <pre>\n<!---->\n\n    code\n",
+            "- <pre>\n<!---->\n\n    code\n",
+        ),
+        (
+            "- a\n  - <pre>\n  <!---->\n\n      code\n",
+            // Normalizing makes the item loose, as indented code needs a blank line before it.
+            "- a\n\n  - <pre>\n  <!---->\n\n      code\n",
+        ),
+    ] {
+        let mut document = parse(source);
+        // The comment is the block after the list, in the root or in the outer item.
+        let mut parent = document.root();
+        let comment = loop {
+            let mut blocks = document.children(parent).filter(|&id| {
+                !matches!(document.node(id).unwrap().kind, EventKind::Separator { .. })
+            });
+            let first = blocks.next().unwrap();
+            match blocks.find(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Html { block: true, .. }
+                )
+            }) {
+                Some(comment) => break comment,
+                None => parent = document.children(first).next().unwrap(),
+            }
+        };
+        document.detach(comment).unwrap();
+        document.normalize();
+        assert_eq!(
+            to_markdown_with_options(&document, &options).unwrap(),
+            expected,
+            "{source:?}"
+        );
+        assert_round_trips_with(expected, &options);
+    }
 }
 
 #[test]
