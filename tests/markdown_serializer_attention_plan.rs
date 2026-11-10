@@ -138,6 +138,100 @@ fn repeated_shapes_share_no_budget() {
 }
 
 #[test]
+fn whitespace_at_the_start_of_a_line() {
+    // A space after a hard break starts a line, where it is written as a reference, which is
+    // punctuation next to the runs after it.
+    same_tree("*a\\\n&#x20;_._ b*");
+    same_tree("*~~a\\\n&#x20;_._~~*");
+}
+
+/// Assert that `tree` reads back as itself, with either marker preferred.
+fn writes(name: &str, tree: &Node) {
+    for marker in ['*', '_'] {
+        let options = MarkdownOptions {
+            emphasis: marker,
+            strong: marker,
+            ..MarkdownOptions::default()
+        };
+        assert!(
+            matches!(round_trip(tree.document(), &options, true), Outcome::Pass),
+            "{} with {:?} should read back as itself",
+            name,
+            marker
+        );
+    }
+}
+
+#[test]
+fn chains_of_any_depth() {
+    // Each level holds the one inside it and then text, so each shares its opening run with
+    // the levels inside it, as `***a* b** c`.
+    for (inner, after) in [("a", [" b", " c"]), (".", [".", "."])] {
+        for strong_first in [false, true] {
+            let mut node = text(inner);
+            for depth in 1..=30 {
+                let level = depth % 2 == usize::from(strong_first);
+                node = if level {
+                    emphasis(vec![node, text(after[0])])
+                } else {
+                    strong(vec![node, text(after[1])])
+                };
+                writes(
+                    &format!("a chain {depth} deep on {inner:?}"),
+                    &root(vec![node.clone()]),
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn only_children_alternating_around_strong() {
+    // Six deep around strong, each the only child of the next, has a spelling, though six deep
+    // around emphasis has none (`unwritable_shapes`).
+    let mut node = text("a");
+    for level in 0..6 {
+        node = if level % 2 == 0 {
+            strong(vec![node])
+        } else {
+            emphasis(vec![node])
+        };
+    }
+    writes(
+        "strong and emphasis alternating six deep",
+        &root(vec![node]),
+    );
+}
+
+#[test]
+fn runs_shared_with_a_child_and_a_parent() {
+    // The inner emphasis shares its opening run with the strong inside it and its closing run
+    // with the emphasis around it.
+    same_tree("*x ***a b**_\\*`a`a!_**");
+    writes(
+        "emphasis sharing a run with its child and its parent",
+        &root(vec![emphasis(vec![
+            text("x "),
+            emphasis(vec![
+                strong(vec![text("a b")]),
+                emphasis(vec![
+                    text("*"),
+                    Node::InlineCode(support::fixture::InlineCode {
+                        value: "a".into(),
+                        lang: None,
+                        position: None,
+                    }),
+                    text("a!"),
+                ]),
+            ]),
+        ])]),
+    );
+    // Strong sharing its opening run with the emphasis inside it and its closing run with the
+    // strong inside it.
+    same_tree("a&***\\*b**_-\\*_**b***-");
+}
+
+#[test]
 fn unwritable_shapes() {
     let nest = |depth: usize, inner: Node, wrap: &dyn Fn(usize, Node) -> Node| {
         (0..depth).fold(inner, |node, level| wrap(level, node))
@@ -166,7 +260,7 @@ fn unwritable_shapes() {
             root(vec![emphasis(vec![nest(2, text("."), &em), text("a")])]),
         ),
         (
-            "emphasis and strong alternating six deep",
+            "emphasis and strong alternating six deep around emphasis, each the only child of the next",
             root(vec![nest(6, text("a"), &alternate)]),
         ),
     ];

@@ -965,7 +965,7 @@ impl<'a> State<'a> {
         }
         if !spelling.joined {
             let run: String = core::iter::repeat_n(marker, opening).collect();
-            self.written_run(id, &run, Side::Opening);
+            self.written_run(&run, Side::Opening);
         }
         let edge = Edge {
             encode: None,
@@ -978,7 +978,7 @@ impl<'a> State<'a> {
         }
         if !spelling.closed {
             let run: String = core::iter::repeat_n(marker, closing.iter().sum()).collect();
-            self.written_run(id, &run, Side::Closing(closing));
+            self.written_run(&run, Side::Closing(closing));
         }
         self.depth -= 1;
         Ok(Edge {
@@ -992,11 +992,9 @@ impl<'a> State<'a> {
         self.attention_plan.get(id.index()).copied().unwrap_or(0)
     }
 
-    /// Write the opening or closing sequence of attention `id`, recording where it is so that
-    /// `check_runs` can check it once its scope is written.
-    fn written_run(&mut self, id: NodeId, sequence: &str, side: Side) {
+    /// Write an opening or closing sequence of attention, recording where it is so that `check_runs` can check it once its scope is written.
+    fn written_run(&mut self, sequence: &str, side: Side) {
         self.runs.push(WrittenRun {
-            id,
             start: self.output.len(),
             marker: sequence.as_bytes()[0],
             size: sequence.len(),
@@ -1007,20 +1005,22 @@ impl<'a> State<'a> {
 
     /// Plan the attention in the phrasing `children` of a scope (`attention::plan`): a
     /// paragraph, heading, table cell or link text, or attention written on its own, whose
-    /// runs pair within it. The plan is kept per node, as each node is in one scope.
+    /// runs pair within it. The plan is kept per node, as each node is in one scope. Returns
+    /// whether there is one; where there is none, the node is recorded as having no spelling.
     fn plan_attention<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         children: &[NodeId],
         before: Option<char>,
         after: Option<char>,
-    ) -> Result<(), Message> {
+        end: (bool, bool),
+    ) -> Result<bool, Message> {
         if !children.iter().any(|&child| is_attention(document, child)) {
-            return Ok(());
+            return Ok(true);
         }
         let mut pieces = Vec::new();
         let mut ids = Vec::new();
-        let root = self.pieces(document, children, 0, &mut pieces, &mut ids)?;
+        let root = self.pieces(document, children, 0, end, &mut pieces, &mut ids)?;
         let before = before.map_or(Kind::Whitespace, classify);
         let after = after.map_or(Kind::Whitespace, classify);
         let reference = self.literal().reference;
@@ -1045,7 +1045,7 @@ impl<'a> State<'a> {
                     *plan = 0;
                 }
             }
-            return Ok(());
+            return Ok(false);
         };
         for (id, choice) in ids.into_iter().zip(choices) {
             let index = id.index();
@@ -1054,7 +1054,7 @@ impl<'a> State<'a> {
             }
             self.attention_plan[index] = choice;
         }
-        Ok(())
+        Ok(true)
     }
 
     /// Add the pieces of `children`, at attention `depth` in the scope, to `pieces`, with their
@@ -1065,12 +1065,29 @@ impl<'a> State<'a> {
         document: &Document<S>,
         children: &[NodeId],
         depth: usize,
+        scope_end: (bool, bool),
         pieces: &mut Vec<Piece>,
         ids: &mut Vec<NodeId>,
     ) -> Result<Range<usize>, Message> {
         let start = pieces.len();
-        for &child in children {
+        let split = self.lines_split();
+        let cell = self.stack.contains(&ConstructName::TableCell);
+        // How the output before the child ends: the first child of the scope follows what the
+        // scope follows, which is never an encoded line ending, and the first child of
+        // attention follows its opening run.
+        let mut line = if depth > 0 {
+            Line::Other
+        } else if self.output.len() == self.line_start || self.output.ends_with('\n') {
+            Line::Literal
+        } else {
+            Line::Other
+        };
+        for (position, &child) in children.iter().enumerate() {
             let kind = &document.node(child).unwrap().kind;
+            let line_after = self.line_after(document, children, position, depth, scope_end);
+            let closing = line_after && scope_end.1 && position + 1 == children.len();
+            let before = line;
+            line = Line::Other;
             let piece = match kind {
                 // Empty text writes nothing, so what is around it touches.
                 EventKind::Text(value) => {
@@ -1078,12 +1095,36 @@ impl<'a> State<'a> {
                     let (Some(first), Some(last)) =
                         (value.chars().next(), value.chars().next_back())
                     else {
+                        line = before;
                         continue;
                     };
+                    let single = first.len_utf8() == value.len();
+                    // Spaces, tabs and line endings that would be trimmed or read otherwise are
+                    // written as character references, which are punctuation.
+                    let cell = cell.then_some((
+                        depth == 0 && position == 0,
+                        depth == 0 && position + 1 == children.len(),
+                    ));
+                    let (first_encoded, last_encoded) =
+                        encoded_edges(value, (before, line_after, closing), split, cell);
+                    if last == '\n' && split {
+                        line = if last_encoded {
+                            Line::Encoded
+                        } else {
+                            Line::Literal
+                        };
+                    }
+                    let edge = |character, encoded| {
+                        if encoded && self.literal().reference {
+                            Kind::Punctuation
+                        } else {
+                            classify(character)
+                        }
+                    };
                     Piece::Text {
-                        first: classify(first),
-                        last: classify(last),
-                        single: first.len_utf8() == value.len(),
+                        first: edge(first, first_encoded),
+                        last: edge(last, last_encoded),
+                        single,
                     }
                 }
                 // Deeper attention is an error, which the writer returns.
@@ -1095,6 +1136,46 @@ impl<'a> State<'a> {
                             .attention_sequences(document, child)?
                             .expect("attention has sequences"),
                         children: 0..0,
+                    }
+                }
+                // A soft break after a hard break is not written: the hard break ends the line.
+                EventKind::SoftBreak(_)
+                    if position > 0
+                        && matches!(
+                            document.node(children[position - 1]).unwrap().kind,
+                            EventKind::HardBreak
+                        ) =>
+                {
+                    line = before;
+                    continue;
+                }
+                // A soft break is a line ending, written as a reference where text's would be.
+                EventKind::SoftBreak(_)
+                    if self.literal().reference
+                        && encoded_edges(
+                            "\n",
+                            (before, line_after, closing),
+                            true,
+                            cell.then_some((false, false)),
+                        )
+                        .0 =>
+                {
+                    line = Line::Encoded;
+                    Piece::Other {
+                        first: Kind::Punctuation,
+                        last: Kind::Punctuation,
+                        language: false,
+                    }
+                }
+                EventKind::SoftBreak(_) | EventKind::HardBreak => {
+                    if split || matches!(kind, EventKind::HardBreak) {
+                        line = Line::Literal;
+                    }
+                    let (first, last, language) = Self::edges(document, child);
+                    Piece::Other {
+                        first,
+                        last,
+                        language,
                     }
                 }
                 _ => {
@@ -1113,7 +1194,7 @@ impl<'a> State<'a> {
         for index in start..end {
             if matches!(pieces[index], Piece::Attention { .. }) {
                 let children: Vec<NodeId> = flow_children(document, ids[index]).collect();
-                let range = self.pieces(document, &children, depth + 1, pieces, ids)?;
+                let range = self.pieces(document, &children, depth + 1, scope_end, pieces, ids)?;
                 let empty = pieces[range.clone()]
                     .iter()
                     .all(|piece| matches!(piece, Piece::Empty));
@@ -1126,11 +1207,47 @@ impl<'a> State<'a> {
         Ok(start..end)
     }
 
+    /// Whether soft breaks and line endings in text are written as line endings, where the rules
+    /// for spaces and tabs next to a line ending apply: not in a table cell, where each is a
+    /// reference, and not when unwrapping, where each is a space.
+    fn lines_split(&self) -> bool {
+        self.options.line_wrapping != LineWrapping::Unwrap
+            && !self.stack.contains(&ConstructName::TableCell)
+    }
+    /// Whether a line ending follows phrasing child `position` of `children`, at `depth` in
+    /// the attention planned, before which spaces, tabs and line endings are encoded:
+    /// `scope_end` says whether the scope is followed by one, and by the one that ends the block.
+    fn line_after<S: AsRef<str>>(
+        &self,
+        document: &Document<S>,
+        children: &[NodeId],
+        position: usize,
+        depth: usize,
+        scope_end: (bool, bool),
+    ) -> bool {
+        let split = self.lines_split();
+        match children
+            .get(position + 1)
+            .map(|&next| &document.node(next).unwrap().kind)
+        {
+            // Spaces before a hard break of trailing spaces are encoded (`before_hard_break`).
+            Some(EventKind::HardBreak) => !self.parse.constructs.hard_break_escape,
+            Some(EventKind::SoftBreak(_)) => split,
+            Some(EventKind::Text(value)) => {
+                split && value.resolve(document.source()).unwrap().starts_with('\n')
+            }
+            Some(_) => false,
+            // The last child of the scope ends where the scope does, such as before the line
+            // ending after a paragraph.
+            None => depth == 0 && scope_end.0,
+        }
+    }
+
     /// The kinds of the characters phrasing node `id`, which is neither text nor attention, is
     /// written to start and end with, and whether it starts with the language of code, as far
     /// as they are known without writing it. Links, images and footnote calls start and end
     /// with punctuation, but for a bare link, which is written only between whitespace, never
-    /// next to attention. What this gets wrong, `check_runs` finds.
+    /// next to attention.
     fn edges<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> (Kind, Kind, bool) {
         let punctuation = (Kind::Punctuation, Kind::Punctuation, false);
         let ends = |value: &str| {
@@ -1163,27 +1280,27 @@ impl<'a> State<'a> {
         }
     }
 
-    /// Check the runs of attention written in the scope from `runs[first..]` against the
-    /// characters now next to them, as `attention::plan` chose them for the characters it
-    /// expected: that no two join, that each opens or closes, and that no opening run that can
-    /// also close would close enclosing attention. `before` and `after` are the characters
-    /// around the scope, which starts at `start`. Where the plan expected a character that is
-    /// written otherwise, such as whitespace written as a reference, the node has no spelling,
-    /// unless the block is read back anyway (`raw_literal`).
+    /// Whether the runs of attention written in the scope from `runs[first..]` read back as
+    /// `attention::plan` chose them for the characters it expected, against the characters now
+    /// next to them: that no two join, that each opens or closes, and that each closing run
+    /// takes its levels from the opening run it was written for. `before` and `after` are the
+    /// characters around the scope, which starts at `start`. The plan models every character
+    /// next to a run but for those of what the block is checked to read back for, so debug
+    /// builds assert this elsewhere.
     fn check_runs(
-        &mut self,
+        &self,
         first: usize,
         start: usize,
         before: Option<char>,
         after: Option<char>,
-    ) {
-        let runs = self.runs.split_off(first);
+    ) -> bool {
+        let runs = &self.runs[first..];
         // The opening runs the parser would hold, by marker, how many markers are left, how many
         // there were modulo 3, and whether they can close, as it resolves attention.
         let mut open: Vec<(u8, usize, AttentionRun)> = Vec::new();
         let mut previous_end = None;
-        let mut failed = None;
-        for run in &runs {
+        let mut failed = false;
+        for run in runs {
             let byte = run.marker;
             let size = run.size;
             let end = run.start + size;
@@ -1227,31 +1344,23 @@ impl<'a> State<'a> {
                                 size: left,
                                 ..whole
                             };
-                            if marker != byte
-                                || !pairs(byte, opening, closing)
-                                || (*remaining).min(left).min(2) != level
-                            {
-                                return false;
-                            }
-                            *remaining -= level;
-                            left -= level;
+                            let fits = marker == byte
+                                && pairs(byte, opening, closing)
+                                && (*remaining).min(left).min(2) == level;
+                            // Where it does not fit, the check fails, whatever is left.
+                            *remaining = remaining.saturating_sub(level);
+                            left = left.saturating_sub(level);
                             if *remaining == 0 {
                                 open.pop();
                             }
-                            true
+                            fits
                         })
                 }
             };
-            if (!forms || joins) && failed.is_none() {
-                failed = Some(run.id);
-            }
+            failed |= !forms || joins;
             previous_end = Some((end, byte));
         }
-        if let Some(id) = failed {
-            if !self.raw_literals {
-                self.no_spelling_of(id);
-            }
-        }
+        !failed
     }
 
     /// Encode the last character of text written at `output[start..]` if it is `character`, as
@@ -1403,7 +1512,8 @@ impl<'a> State<'a> {
 
     /// Serialize the phrasing children of a scope, whose attention pairs within it: a paragraph,
     /// heading, table cell or link text, or attention written on its own. The attention is
-    /// planned first (`plan_attention`) and its runs checked once written (`check_runs`).
+    /// planned first (`plan_attention`), and in debug builds its runs are checked once written
+    /// (`check_runs`).
     fn phrasing<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
@@ -1416,13 +1526,22 @@ impl<'a> State<'a> {
             .next_back()
             .or_else(|| lead.chars().next_back());
         let after = info.after.chars().next();
-        self.plan_attention(document, children, before, after)?;
+        let end = (info.after.starts_with('\n'), info.after == "\n");
+        let planned = self.plan_attention(document, children, before, after, end)?;
         let first = self.runs.len();
         let start = self.output.len();
         self.phrasing_children(document, children, info, &Edge::default())?;
-        if self.runs.len() > first {
-            self.check_runs(first, start, before, after);
-        }
+        // The plan holds for the characters written, unless the block is checked to read back
+        // anyway: where a character is written as it is, as the options read no escape for it,
+        // or a link is written bare next to what may change where it ends, and so does not
+        // start with the punctuation the plan expects.
+        debug_assert!(
+            !planned
+                || self.raw_literals
+                || self.loose_links
+                || self.check_runs(first, start, before, after)
+        );
+        self.runs.truncate(first);
         Ok(())
     }
 
@@ -2733,7 +2852,6 @@ enum Previous {
 
 /// An opening or closing run of attention, written at `start` in the output.
 struct WrittenRun {
-    id: NodeId,
     start: usize,
     marker: u8,
     size: usize,
@@ -2843,6 +2961,50 @@ pub(super) fn in_list<S: AsRef<str>>(document: &Document<S>, parent: NodeId) -> 
         document.node(parent).unwrap().kind,
         EventKind::Start(Tag::Item { .. } | Tag::List { .. })
     )
+}
+
+/// How the output written so far ends, for the rules that encode spaces, tabs and line endings
+/// next to line endings (`escape`).
+#[derive(Clone, Copy, PartialEq)]
+enum Line {
+    /// With a line ending.
+    Literal,
+    /// With a line ending written as `&#xA;`, after which spaces and tabs are encoded too.
+    Encoded,
+    Other,
+}
+
+/// Whether the first and last characters of text `value` are written as character references,
+/// by the rules for spaces, tabs and line endings (`escape`): after what `before` says the
+/// output ends with, before a line ending where `line_after`, before the one that ends the block
+/// where `closing`, with line endings written as such where `split`, and in a table cell where
+/// `cell` says whether the text starts it and ends it.
+fn encoded_edges(
+    value: &str,
+    (before, line_after, closing): (Line, bool, bool),
+    split: bool,
+    cell: Option<(bool, bool)>,
+) -> (bool, bool) {
+    let characters: Vec<char> = value.chars().collect();
+    let last = characters.len() - 1;
+    let encoded = |at: usize, character: char| {
+        let after_line = at
+            .checked_sub(1)
+            .map_or(before == Line::Literal, |previous| {
+                split && characters[previous] == '\n'
+            });
+        let before_line = characters
+            .get(at + 1)
+            .map_or(line_after, |&next| split && next == '\n');
+        match (character, cell) {
+            ('\r', _) | ('\n', Some(_)) => true,
+            ('\n', None) => after_line || at == last && closing,
+            (' ' | '\t', None) => after_line || before_line || at == 0 && before == Line::Encoded,
+            (' ' | '\t', Some((starts, ends))) => at == 0 && starts || at == last && ends,
+            _ => false,
+        }
+    };
+    (encoded(0, characters[0]), encoded(last, characters[last]))
 }
 
 /// Whether paragraph or heading `id` would start an HTML block if written at the start of a line:

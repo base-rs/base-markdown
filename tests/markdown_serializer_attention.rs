@@ -604,11 +604,29 @@ fn encode() {
 
     assert_eq!(
         serialize(
+            vec![emphasis(vec![text("d"), emphasis(vec![text("a_bc")])])],
+            &Options::default()
+        ),
+        "_d*a_bc*_\n",
+        "should write `*` inside `_` where that encodes no letter"
+    );
+
+    assert_eq!(
+        serialize(
             vec![emphasis(vec![text(".")]), text("a_bc")],
             &Options::default()
         ),
         "*.*&#x61;\\_bc\n",
         "should escape `_` after a letter that is encoded for attention"
+    );
+
+    assert_eq!(
+        serialize(
+            vec![emphasis(vec![emphasis(vec![text("ab_c")]), text("d")])],
+            &Options::default()
+        ),
+        "_*ab_c*d_\n",
+        "should write `*` inside `_`, between letters, where that encodes no letter"
     );
 
     assert_eq!(
@@ -625,6 +643,15 @@ fn encode() {
 
     assert_eq!(
         serialize(
+            vec![emphasis(vec![text("a__b"), emphasis(vec![text("x")])])],
+            &Options::default()
+        ),
+        "_a__b*x*_\n",
+        "should leave an underscore run between letters as it is where no letter is encoded"
+    );
+
+    assert_eq!(
+        serialize(
             vec![
                 text("y"),
                 emphasis(vec![text("a__b"), emphasis(vec![text("x")])])
@@ -633,6 +660,15 @@ fn encode() {
         ),
         "y*a\\_\\_&#x62;_x_*\n",
         "should escape an underscore run before a letter encoded for attention"
+    );
+
+    assert_eq!(
+        serialize(
+            vec![emphasis(vec![text("a\\_b"), emphasis(vec![text("x")])])],
+            &Options::default()
+        ),
+        "_a\\\\\\_b*x*_\n",
+        "should escape a backslash and the underscore after it, which can open there"
     );
 
     assert_eq!(
