@@ -283,10 +283,39 @@ fn emails_a_www_literal_would_take_are_written_as_autolinks() {
     for (source, expected) in [
         ("[ __www.xa@b.c\n", "\\[ <__www.xa@b.c>\n"),
         ("[ www.a@b.cd\n", "\\[ <www.a@b.cd>\n"),
+        ("[ _www.a@b.cd\n", "\\[ <_www.a@b.cd>\n"),
     ] {
         let mut document = parse(source);
         document.normalize();
         assert_round_trip(&document, expected);
+    }
+}
+
+#[test]
+fn emails_no_www_literal_takes_are_written_bare() {
+    // The `www.` literal in each would end in trailing punctuation or have an invalid domain, so
+    // the parser reads the email, and so does it when the email is written bare.
+    for source in [
+        "www.a.@b.cd\n",
+        "x www.a_@b.cd y\n",
+        "a_www.b.@c.de\n",
+        "www.a..@b.cd\n",
+        "x _www.a.@b.cd\n",
+        "x www.a_www.b_c@d.ef y\n",
+    ] {
+        let mut document = parse(source);
+        document.normalize();
+        let links = document
+            .descendants(document.root())
+            .filter(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Start(base_markdown::stream::Tag::Link(_))
+                )
+            })
+            .count();
+        assert_eq!(links, 1, "{source:?}");
+        assert_round_trip(&document, source);
     }
 }
 

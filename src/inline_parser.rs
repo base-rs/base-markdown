@@ -796,8 +796,12 @@ impl InlineParser {
 
     /// Email syntax is resolved after attention so unmatched underscores remain
     /// part of an address, while escapes, entities, and links bound each run. As in cmark-gfm,
-    /// which looks for emails in the text of the finished tree, none forms in the text of a link
-    /// or image; unlike URL literals, a pending opener that no `]` closes does not stop one.
+    /// which looks for emails in the text of the finished tree, none forms in link text, and,
+    /// unlike URL literals, a pending opener that no `]` closes does not stop one. cmark-gfm also
+    /// looks in image text, which its HTML never shows as a link; none forms there either, so that
+    /// image text, like link text, holds no literal and the writer need not escape it. cmark-gfm
+    /// marks link text with a flag that an autolink nested in it clears, so GitHub links `d@e.fg`
+    /// in `[<a@b.cd> d@e.fg](u)`; the depth counted here does not drop, so that is text.
     fn resolve_email(&mut self, source: &str) {
         let mut cursor = self.nodes[0].next;
         let mut links = 0usize;
