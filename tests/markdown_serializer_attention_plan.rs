@@ -456,3 +456,94 @@ fn attention_written_on_its_own_checks_its_options() {
         "*a*"
     );
 }
+
+/// Assert that `source` reads back as itself under `options`, and is written as `expected`.
+fn parsed_writes_as(source: &str, options: &MarkdownOptions, expected: &str) {
+    let document = Document::parse(source, &ParseOptions::default()).unwrap();
+    assert!(
+        matches!(round_trip(document.clone(), options, false), Outcome::Pass),
+        "{:?} should read back as itself",
+        source
+    );
+    let mut document = document;
+    document.normalize();
+    assert_eq!(
+        base_markdown::to_markdown_with_options(&document, options).unwrap(),
+        expected
+    );
+}
+
+#[test]
+fn the_next_child_is_judged_after_this_one() {
+    // A soft break is written after the text before it, not at the start of the heading, so
+    // unwrapped it is a space that the `\` before it does not escape.
+    let unwrap = markers('*', '*', LineWrapping::Unwrap);
+    let unwrap = MarkdownOptions {
+        close_atx: false,
+        ..unwrap
+    };
+    parsed_writes_as("\\\\\na\n===", &unwrap, "# \\ a\n");
+    parsed_writes_as("_\\\\\n_\n===", &unwrap, "# \\_\\ \\_\n");
+    let heading = |depth, value: &str| {
+        Node::Heading(Heading {
+            depth,
+            position: None,
+            children: vec![text(value)],
+        })
+    };
+    let block = |child| {
+        Node::Root(Root {
+            children: vec![child],
+            position: None,
+        })
+    };
+    writes_as(&block(heading(1, "a\\\nb")), &unwrap, "# a\\ b\n");
+    writes_as(&block(heading(2, "\\\n#")), &unwrap, "## \\ \\#\n");
+    let item = block(Node::List(List {
+        ordered: false,
+        start: None,
+        spread: false,
+        position: None,
+        children: vec![Node::ListItem(ListItem {
+            spread: false,
+            checked: None,
+            position: None,
+            children: vec![heading(1, "\\\na")],
+        })],
+    }));
+    writes_as(&item, &unwrap, "- # \\ a\n");
+}
+
+#[test]
+fn setext_headings_unwrapped_are_stable() {
+    // Every heading of up to four of these characters, under each pair of markers.
+    let alphabet = ['*', '_', 'a', '\\', ' ', '\n', '#'];
+    for (emphasis, strong) in [('*', '*'), ('_', '_'), ('*', '_'), ('_', '*')] {
+        let options = MarkdownOptions {
+            emphasis,
+            strong,
+            line_wrapping: LineWrapping::Unwrap,
+            ..MarkdownOptions::default()
+        };
+        for length in 0..=4u32 {
+            for code in 0..alphabet.len().pow(length) {
+                let mut rest = code;
+                let mut source = String::new();
+                for _ in 0..length {
+                    source.push(alphabet[rest % alphabet.len()]);
+                    rest /= alphabet.len();
+                }
+                source.push_str("\n===");
+                let document = Document::parse(source.as_str(), &ParseOptions::default()).unwrap();
+                let outcome = round_trip(document, &options, false);
+                assert!(
+                    matches!(outcome, Outcome::Pass | Outcome::Unwritable(_)),
+                    "{:?} with {:?} and {:?} should read back as itself",
+                    source,
+                    emphasis,
+                    strong
+                );
+            }
+        }
+    }
+}

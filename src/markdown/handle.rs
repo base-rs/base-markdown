@@ -399,6 +399,13 @@ impl State<'_> {
         Ok(())
     }
 
+    /// Whether the output ends at a boundary that a bare link may be written after.
+    pub(super) fn after_boundary(&self) -> bool {
+        self.output.len() == self.line_start
+            || self.alt_start == Some(self.output.len())
+            || self.output.chars().next_back().is_none_or(boundary)
+    }
+
     pub(super) fn resource<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
@@ -410,9 +417,7 @@ impl State<'_> {
         let quote = self.options.check_quote()?;
         let start = self.output.len();
         if !image {
-            let after_boundary = self.output.len() == self.line_start
-                || self.alt_start == Some(self.output.len())
-                || self.output.chars().next_back().is_none_or(boundary);
+            let after_boundary = self.after_boundary();
             match written_link(
                 document,
                 node,

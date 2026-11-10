@@ -44,6 +44,25 @@ enum Before<'a> {
     Output(&'a str, core::ops::Range<usize>),
 }
 
+/// What `State::trial` keeps to put back.
+#[derive(Clone, Copy)]
+struct Trial {
+    output: usize,
+    unwritable: Option<NodeId>,
+    loose_links: bool,
+    raw_literals: bool,
+    loose_end: Option<usize>,
+    label_end: Option<(usize, bool)>,
+    definition_colon: Option<usize>,
+    alt_start: Option<usize>,
+    defer_literals: bool,
+    current: Option<NodeId>,
+    depth: usize,
+    stack: usize,
+    index_stack: (usize, Option<usize>),
+    runs: usize,
+}
+
 /// The bindings of the tree that holds what is being written, the document when it is
 /// attached, and of the subtree being written when it is not that whole tree: a reference is
 /// written as one only when the definition it is bound to is the one it would read back bound to.
@@ -1106,97 +1125,153 @@ impl<'a> State<'a> {
             ids.push(child);
         }
         let end = pieces.len();
-        for index in start..end {
-            if let Piece::Attention { sequences, .. } = &pieces[index] {
-                let marker = String::from(&sequences[0][..1]);
-                let children: Vec<NodeId> = flow_children(document, ids[index]).collect();
-                let info = Info::new(&marker, &marker);
-                let range = self.pieces(document, &children, depth + 1, &info, pieces, ids)?;
-                let empty = pieces[range.clone()]
-                    .iter()
-                    .all(|piece| matches!(piece, Piece::Empty));
-                match &mut pieces[index] {
-                    Piece::Attention { children, .. } if !empty => *children = range,
-                    piece => *piece = Piece::Empty,
-                }
-            }
-        }
-        // What the children written so far end with, once one is written.
-        let mut previous: Option<String> = None;
+        // The children are written on trial one after another, as the writer writes them, so
+        // that each is written after what is written before it; attention, whose children are
+        // planned with it, is written as the closing run it ends with.
+        let scope = self.trial();
+        let lead = match &info.before {
+            Before::Literal(value) => *value,
+            Before::Output(..) => "",
+        };
         let mut after_hard_break = false;
         for (position, &child) in children.iter().enumerate() {
             let index = start + position;
             let kind = &document.node(child).unwrap().kind;
-            match &pieces[index] {
+            let leaf = match &pieces[index] {
                 Piece::Attention { sequences, .. } => {
-                    previous = Some(String::from(&sequences[0][..1]));
+                    // Its children are planned with it, written after its opening run.
+                    let marker = String::from(&sequences[0][..1]);
+                    let children: Vec<NodeId> = flow_children(document, child).collect();
+                    self.output.push_str(&marker);
+                    let info = Info::new(&marker, &marker);
+                    let range = self.pieces(document, &children, depth + 1, &info, pieces, ids);
+                    let Ok(range) = range else {
+                        self.restore(scope);
+                        return range;
+                    };
+                    self.output.push_str(&marker);
+                    let empty = pieces[range.clone()]
+                        .iter()
+                        .all(|piece| matches!(piece, Piece::Empty));
+                    match &mut pieces[index] {
+                        Piece::Attention { children, .. } if !empty => *children = range,
+                        piece => *piece = Piece::Empty,
+                    }
                     after_hard_break = false;
                     continue;
                 }
-                Piece::Other { .. } => {
-                    previous = Some(String::from(")"));
-                    after_hard_break = false;
-                    continue;
+                Piece::Other { language, .. } => {
+                    let language = *language;
+                    if let Some([first, last]) = self.link_ends(document, child) {
+                        self.output.extend([first, last]);
+                        pieces[index] = Piece::Other {
+                            first: classify(first),
+                            last: classify(last),
+                            language,
+                        };
+                        after_hard_break = false;
+                        continue;
+                    }
+                    false
                 }
-                Piece::Empty if is_attention(document, child) => continue,
-                _ => {}
-            }
+                _ => true,
+            };
             // A soft break after a hard break is not written: the hard break ends the line.
             if core::mem::replace(&mut after_hard_break, matches!(kind, EventKind::HardBreak))
                 && matches!(kind, EventKind::SoftBreak(_))
             {
                 continue;
             }
-            let before = match &previous {
-                Some(value) => Before::Literal(value),
-                None => info.before.clone(),
+            let before = if self.output.len() == scope.output {
+                info.before.clone()
+            } else {
+                Before::Output(lead, scope.output..self.output.len())
             };
+            // The sibling written next, which can edit the end of this one.
+            let next = (position + 1..children.len())
+                .find(|&next| {
+                    !is_empty_text(document, children[next])
+                        && !(is_attention(document, children[next])
+                            && matches!(pieces[start + next], Piece::Empty))
+                })
+                .map(|next| children[next]);
+            // The child as the writer writes it, before `after`: text and breaks with the edits
+            // the sibling after them makes, and other nodes as they are.
+            let write = |state: &mut Self, before: Before, after: &str| {
+                let info = Info {
+                    before,
+                    after,
+                    text_run: None,
+                };
+                if leaf {
+                    state.write_leaf(document, child, &info, &Edge::default(), 0, next)
+                } else {
+                    state.write_node(document, child, &info)
+                }
+            };
+            // The child and the next are written `depth` levels below the scope, so that they
+            // stop at the limit as the writer does.
+            let scope_depth = self.depth;
+            self.depth += depth;
             let mut buffer = [0u8; 5];
             // An error writing the next child or this one is the writer's too, which it returns
             // when it writes them, so the plan does without what it would tell.
             let after = self
-                .after_child(document, children, position, info.after, &mut buffer)
+                .after_child(
+                    document,
+                    children,
+                    position,
+                    &Info {
+                        before: before.clone(),
+                        after: info.after,
+                        text_run: None,
+                    },
+                    &mut buffer,
+                    |state| write(state, before.clone(), "\0"),
+                )
                 .unwrap_or(info.after);
-            let info = Info {
-                before,
-                after,
-                text_run: None,
-            };
-            // The sibling written next, which can edit the end of this one.
-            let next = (position + 1..children.len()).find(|&next| {
-                !is_empty_text(document, children[next])
-                    && !(is_attention(document, children[next])
-                        && matches!(pieces[start + next], Piece::Empty))
-            });
-            let checkpoint = self.output.len();
-            let marks = (self.unwritable, self.loose_links, self.raw_literals);
-            let next = next.map(|next| children[next]);
-            let result = self.write_leaf(document, child, &info, &Edge::default(), 0, next);
-            let written = self.output.split_off(checkpoint);
-            (self.unwritable, self.loose_links, self.raw_literals) = marks;
+            let trial = self.trial();
+            let checkpoint = trial.output;
+            let result = write(self, before, after);
+            self.depth = scope_depth;
+            if result.is_err() {
+                // The writer returns the error when it writes the child, which it reaches as
+                // the child is not empty.
+                self.restore(trial);
+                self.depth = scope_depth;
+                pieces[index] = Piece::Other {
+                    first: Kind::Punctuation,
+                    last: Kind::Punctuation,
+                    language: false,
+                };
+                continue;
+            }
+            let written = &self.output[checkpoint..];
             // Empty text writes nothing, and so can the first text of a task item's paragraph.
-            let (true, Some(first), Some(last)) = (
-                result.is_ok(),
-                written.chars().next(),
-                written.chars().next_back(),
-            ) else {
+            let (Some(first), Some(last)) = (written.chars().next(), written.chars().next_back())
+            else {
                 continue;
             };
-            pieces[index] = if matches!(kind, EventKind::Text(_)) {
-                Piece::Text {
+            pieces[index] = match pieces[index] {
+                // Code with a language keeps it, which the plan separates from text before it.
+                Piece::Other { language, .. } => Piece::Other {
+                    first: classify(first),
+                    last: classify(last),
+                    language,
+                },
+                _ if matches!(kind, EventKind::Text(_)) => Piece::Text {
                     first: classify(first),
                     last: classify(last),
                     single: first.len_utf8() == written.len(),
-                }
-            } else {
-                Piece::Other {
+                },
+                _ => Piece::Other {
                     first: classify(first),
                     last: classify(last),
                     language: false,
-                }
+                },
             };
-            previous = Some(written);
         }
+        self.restore(scope);
         Ok(start..end)
     }
 
@@ -1498,30 +1573,91 @@ impl<'a> State<'a> {
         Ok(())
     }
 
+    /// What writing on trial can change, to put back once the trial is read (`restore`).
+    fn trial(&self) -> Trial {
+        Trial {
+            output: self.output.len(),
+            unwritable: self.unwritable,
+            loose_links: self.loose_links,
+            raw_literals: self.raw_literals,
+            loose_end: self.loose_end,
+            label_end: self.label_end,
+            definition_colon: self.definition_colon,
+            alt_start: self.alt_start,
+            defer_literals: self.defer_literals,
+            current: self.current,
+            depth: self.depth,
+            stack: self.stack.len(),
+            index_stack: (self.index_stack.len(), self.index_stack.last().copied()),
+            runs: self.runs.len(),
+        }
+    }
+
+    /// Put back what was written on trial since `trial`, whether or not it was written without an
+    /// error, which leaves nodes open, and return what was written.
+    fn restore(&mut self, trial: Trial) -> String {
+        let written = self.output.split_off(trial.output);
+        self.unwritable = trial.unwritable;
+        self.loose_links = trial.loose_links;
+        self.raw_literals = trial.raw_literals;
+        self.loose_end = trial.loose_end;
+        self.label_end = trial.label_end;
+        self.definition_colon = trial.definition_colon;
+        self.alt_start = trial.alt_start;
+        self.defer_literals = trial.defer_literals;
+        self.current = trial.current;
+        self.depth = trial.depth;
+        self.stack.truncate(trial.stack);
+        let (length, last) = trial.index_stack;
+        self.index_stack.truncate(length);
+        if let (Some(slot), Some(last)) = (self.index_stack.last_mut(), last) {
+            *slot = last;
+        }
+        self.runs.truncate(trial.runs);
+        written
+    }
+
     /// What phrasing child `position` of `children` is written before, as escapes judge it: the
-    /// first character the next child is written with, or `after`, what the scope is written
-    /// before, for the last child. A node without a fixed first character is written to see it,
-    /// and then removed.
+    /// first character the next child is written with, or the `after` of `context`, what the
+    /// scope is written before, for the last child. A node without a fixed first character is
+    /// written to see it, after the child, which `current` writes as the writer writes it after
+    /// the `before` of `context`, so that the next child is written where the writer writes it;
+    /// both are then removed.
     fn after_child<'b, S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         children: &[NodeId],
         position: usize,
-        after: &'b str,
+        context: &Info<'b>,
         buffer: &'b mut [u8; 5],
+        current: impl FnOnce(&mut Self) -> Result<(), Message>,
     ) -> Result<&'b str, Message> {
         let Some(&next) = children.get(position + 1) else {
-            return Ok(after);
+            return Ok(context.after);
         };
         if let Some(first) = self.peek_node(document, next, children[position]) {
             return Ok(first.encode_utf8(buffer));
         }
-        let checkpoint = self.output.len();
-        let marks = (self.unwritable, self.loose_links, self.raw_literals);
-        self.write_node(document, next, &Info::new("", ""))?;
-        let first = self.output[checkpoint..].chars().next().unwrap_or_default();
-        self.output.truncate(checkpoint);
-        (self.unwritable, self.loose_links, self.raw_literals) = marks;
+        let trial = self.trial();
+        let start = trial.output;
+        let result = current(self).and_then(|()| {
+            let end = self.output.len();
+            let before = match &context.before {
+                Before::Literal(value) => Before::Output(value, start..end),
+                Before::Output(lead, range) => Before::Output(lead, range.start..end),
+            };
+            let info = Info {
+                before,
+                after: "",
+                text_run: None,
+            };
+            self.write_node(document, next, &info).map(|()| end)
+        });
+        let written = self.restore(trial);
+        let first = written[result? - start..]
+            .chars()
+            .next()
+            .unwrap_or_default();
         // A line ending there is not the one that ends the block, so the NUL that follows it in
         // the buffer stands for the rest of the next node and after.
         let length = first.encode_utf8(buffer).len();
@@ -1629,8 +1765,6 @@ impl<'a> State<'a> {
             }
             after_hard_break = matches!(kind, EventKind::HardBreak);
             *self.index_stack.last_mut().unwrap() = index;
-            let mut buffer = [0u8; 5];
-            let after = self.after_child(document, children, position, info.after, &mut buffer)?;
             let before = if self.output.len() == start {
                 match &info.before {
                     Before::Literal(value) => Before::Literal(value),
@@ -1661,8 +1795,57 @@ impl<'a> State<'a> {
                 };
                 Before::Output(lead, start..self.output.len())
             };
-            let length = self.output.len();
             let text = matches!(kind, EventKind::Text(_));
+            let leaf = matches!(
+                kind,
+                EventKind::Text(_) | EventKind::SoftBreak(_) | EventKind::HardBreak
+            );
+            let next = children[position + 1..]
+                .iter()
+                .copied()
+                .find(|&next| self.writes(document, next));
+            let mut buffer = [0u8; 5];
+            // The next child is written after this one as it is written here, but for the edits
+            // this one makes to what is before it, which the next child is not written after.
+            let after = self.after_child(
+                document,
+                children,
+                position,
+                &Info {
+                    before: before.clone(),
+                    after: info.after,
+                    text_run: None,
+                },
+                &mut buffer,
+                |state| {
+                    let info = Info {
+                        before: before.clone(),
+                        after: "\0",
+                        text_run: run.filter(|_| text),
+                    };
+                    match sequences {
+                        // Attention that is not the last child writes its own closing run last.
+                        Some(sequences) => {
+                            let spelling = attention::Spelling::of(state.planned(child));
+                            let sequence = sequences[spelling.sequence.min(sequences.len() - 1)];
+                            state.output.push(char::from(sequence.as_bytes()[0]));
+                            Ok(())
+                        }
+                        None if leaf => {
+                            let plan = state.planned(child);
+                            state.write_leaf(document, child, &info, &pending, plan, next)
+                        }
+                        None => match state.link_ends(document, child) {
+                            Some(ends) => {
+                                state.output.extend(ends);
+                                Ok(())
+                            }
+                            None => state.write_node(document, child, &info),
+                        },
+                    }
+                },
+            )?;
+            let length = self.output.len();
             let info = Info {
                 before,
                 after,
@@ -1684,10 +1867,6 @@ impl<'a> State<'a> {
                             self.before_hard_break();
                         }
                         let plan = self.planned(child);
-                        let next = children[position + 1..]
-                            .iter()
-                            .copied()
-                            .find(|&next| self.writes(document, next));
                         self.write_leaf(document, child, &info, &pending, plan, next)?;
                     }
                     _ => self.write_node(document, child, &info)?,
@@ -2561,6 +2740,50 @@ impl<'a> State<'a> {
             ),
             _ => None,
         }
+    }
+
+    /// The first and last characters the writer writes link or image `id` with, after the
+    /// output, by the choices it writes it by: its target, a reference or a resource, and the
+    /// form of the link (`written_link`). Trial writes take them without writing its text, which
+    /// plans and writes the links in it again at every level.
+    fn link_ends<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        id: NodeId,
+    ) -> Option<[char; 2]> {
+        let (EventKind::Start(Tag::Link(target)) | EventKind::Start(Tag::Image(target))) =
+            &document.node(id).unwrap().kind
+        else {
+            return None;
+        };
+        let image = matches!(
+            document.node(id).unwrap().kind,
+            EventKind::Start(Tag::Image(_))
+        );
+        let start = if image { '!' } else { '[' };
+        Some(match self.written_target(document, id, target) {
+            Ok((destination, title)) if !image => {
+                let after_boundary = self.after_boundary();
+                match written_link(
+                    document,
+                    id,
+                    destination,
+                    title.is_some(),
+                    after_boundary,
+                    self,
+                ) {
+                    WrittenLink::Bare(text) | WrittenLink::Loose(text) => [
+                        text.chars().next().unwrap_or(start),
+                        text.chars().next_back().unwrap_or(')'),
+                    ],
+                    WrittenLink::Angle(_) => ['<', '>'],
+                    WrittenLink::Explicit => [start, ')'],
+                }
+            }
+            Ok(_) => [start, ')'],
+            // A reference ends with its label.
+            Err(_) => [start, ']'],
+        })
     }
 
     pub fn write_safe(&mut self, input: &str, info: &Info, encode: Option<char>) {

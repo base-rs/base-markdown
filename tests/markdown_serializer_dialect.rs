@@ -812,3 +812,31 @@ fn bare_links_with_footnote_calls() {
         "[^1] <https://a.b>x\n\n[^1]: n\n"
     ));
 }
+
+/// Strikethrough between a letter and punctuation opens and closes only after a letter written as
+/// a character reference, so where the options read none, the node has no spelling.
+#[test]
+fn attention_without_references() {
+    for (changes, expected) in [
+        (&[][..], Some("# &#x61;~~.b.~~&#x63;\n")),
+        (&["!character_reference"], None),
+    ] {
+        let options = options(changes);
+        let mut document = heading(&options, vec![EventKind::Text(Text::Literal("a"))]);
+        let root = document.root();
+        let heading = document.node(root).unwrap().first_child().unwrap();
+        let delete = document
+            .append_child(heading, EventKind::Start(Tag::Delete))
+            .unwrap();
+        document
+            .append_child(delete, EventKind::Text(Text::Literal(".b.")))
+            .unwrap();
+        document
+            .append_child(heading, EventKind::Text(Text::Literal("c")))
+            .unwrap();
+        match expected {
+            Some(expected) => assert_eq!(to_markdown(&document).unwrap(), expected),
+            None => assert!(unwritable(&document)),
+        }
+    }
+}
