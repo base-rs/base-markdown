@@ -170,7 +170,7 @@ fn inline_code_info() {
             "- [ ] a\\_b:`c`",
             "- [ ] a_b\\:`c`\n",
         ),
-        (&["inline_code_info"], "_a_**a**x:`v`", "*a***a**x:`v`\n"),
+        (&["inline_code_info"], "_a_**a**x:`v`", "_a_**a**x:`v`\n"),
     ]);
 }
 
@@ -253,7 +253,7 @@ fn attention_next_to_a_language() {
     };
     for (source, expected) in [
         ("*a*rust:`v`", "*a*rust:`v`\n"),
-        ("xa*rust:`v`*", "x&#x61;*rust:`v`*\n"),
+        ("xa*rust:`v`*", "xa*rust:`v`*\n"),
     ] {
         let mut document = Document::parse(source, &options).unwrap();
         document.normalize();
@@ -688,17 +688,22 @@ fn unclosed_html_blocks() {
 /// join it (#185).
 #[test]
 fn emphasis_before_a_language() {
-    let mut document =
-        Document::<String>::parse(String::from("*a*rust:`v`"), &options(&["inline_code_info"]))
+    // Without escapes too, where the block it is in is read back instead.
+    for names in [
+        &["inline_code_info"][..],
+        &["inline_code_info", "!character_escape"],
+    ] {
+        let mut document =
+            Document::<String>::parse(String::from("*a*rust:`v`"), &options(names)).unwrap();
+        let text = document
+            .descendants(document.root())
+            .find(|&id| matches!(document.node(id).unwrap().kind, EventKind::Text(_)))
             .unwrap();
-    let text = document
-        .descendants(document.root())
-        .find(|&id| matches!(document.node(id).unwrap().kind, EventKind::Text(_)))
-        .unwrap();
-    document
-        .set_kind(text, EventKind::Text(Text::from(String::from("a."))))
-        .unwrap();
-    assert!(unwritable(&document));
+        document
+            .set_kind(text, EventKind::Text(Text::from(String::from("a."))))
+            .unwrap();
+        assert!(unwritable(&document), "{:?}", names);
+    }
 }
 
 /// Without `\` hard breaks, trailing spaces alone on a line make it blank, so a hard break after
@@ -806,4 +811,32 @@ fn bare_links_with_footnote_calls() {
         bare,
         "[^1] <https://a.b>x\n\n[^1]: n\n"
     ));
+}
+
+/// Strikethrough between a letter and punctuation opens and closes only after a letter written as
+/// a character reference, so where the options read none, the node has no spelling.
+#[test]
+fn attention_without_references() {
+    for (changes, expected) in [
+        (&[][..], Some("# &#x61;~~.b.~~&#x63;\n")),
+        (&["!character_reference"], None),
+    ] {
+        let options = options(changes);
+        let mut document = heading(&options, vec![EventKind::Text(Text::Literal("a"))]);
+        let root = document.root();
+        let heading = document.node(root).unwrap().first_child().unwrap();
+        let delete = document
+            .append_child(heading, EventKind::Start(Tag::Delete))
+            .unwrap();
+        document
+            .append_child(delete, EventKind::Text(Text::Literal(".b.")))
+            .unwrap();
+        document
+            .append_child(heading, EventKind::Text(Text::Literal("c")))
+            .unwrap();
+        match expected {
+            Some(expected) => assert_eq!(to_markdown(&document).unwrap(), expected),
+            None => assert!(unwritable(&document)),
+        }
+    }
 }

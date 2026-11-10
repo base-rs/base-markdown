@@ -31,18 +31,29 @@ fn nest_bare(tags: &[Tag<'static>]) -> Document<String> {
     build(tags, false)
 }
 
+/// A document of `tags` nested in each other, outermost first, around text `a`, where each
+/// emphasis or strong holds text ` b` after the node in it.
+fn nest_with_tails(tags: &[Tag<'static>]) -> Document<String> {
+    build_events(tags, true, true)
+}
+
 fn build(tags: &[Tag<'static>], text: bool) -> Document<String> {
+    build_events(tags, text, false)
+}
+
+fn build_events(tags: &[Tag<'static>], text: bool, tails: bool) -> Document<String> {
     let mut events = vec![event(EventKind::Start(Tag::Document {
         line_ending: None,
         frontmatter: None,
     }))];
     events.extend(tags.iter().map(|tag| event(EventKind::Start(tag.clone()))));
     events.extend(text.then(|| event(EventKind::Text(Text::Literal("a")))));
-    events.extend(
-        tags.iter()
-            .rev()
-            .map(|tag| event(EventKind::End(tag.kind()))),
-    );
+    for (index, tag) in tags.iter().enumerate().rev() {
+        events.push(event(EventKind::End(tag.kind())));
+        if tails && index > 0 && matches!(tags[index - 1], Tag::Emphasis | Tag::Strong) {
+            events.push(event(EventKind::Text(Text::Literal(" b"))));
+        }
+    }
     events.push(event(EventKind::End(TagKind::Document)));
     let mut builder = AstBuilder::new();
     builder
@@ -192,8 +203,16 @@ fn content_at_the_limit_serializes_and_deeper_content_is_an_error() {
         .chain(shapes(LIMIT + 2))
         .map(|(label, tags)| (label, nest(&tags)))
         .collect();
+    // Attention nested in attention with nothing between the runs has no spelling past a few
+    // levels, as each opening run then can close an enclosing one of its marker.
+    let unwritable = ["emphasis and strong", "strikethrough and emphasis"];
     for (label, document) in &at_limit {
-        assert!(to_markdown(document).is_ok(), "{}", label);
+        match to_markdown(document) {
+            Err(error) if unwritable.contains(label) => {
+                assert_eq!(error.rule_id, "unwritable-node", "{}", label);
+            }
+            result => assert!(result.is_ok(), "{}", label),
+        }
     }
     for (label, document) in &deeper {
         assert_too_deep(to_markdown(document), label);
@@ -289,13 +308,15 @@ fn descend(document: &Document<String>, depth: usize) -> NodeId {
 #[test]
 fn levels_count_from_the_serialized_node() {
     let options = Default::default();
-    let attention = || vec![Tag::Emphasis, Tag::Strong].into_iter().cycle();
-    // Text `2 * LIMIT` levels deep, under quotes, a paragraph and attention.
+    // Emphasis in links in emphasis, each link text its own scope, so that any depth of it has a
+    // spelling.
+    let attention = || vec![link(), Tag::Emphasis].into_iter().cycle();
+    // Text `2 * LIMIT` levels deep, under quotes, a paragraph, links and emphasis.
     let mut tags = vec![Tag::BlockQuote; LIMIT];
     tags.push(paragraph());
     tags.extend(attention().take(LIMIT - 2));
     let quotes = nest(&tags);
-    // Text `2 * LIMIT + 1` levels deep, under a paragraph and attention.
+    // Text `2 * LIMIT + 1` levels deep, under a paragraph, links and emphasis.
     let mut tags = vec![paragraph()];
     tags.extend(attention().take(2 * LIMIT - 1));
     let attention = nest(&tags);
@@ -309,6 +330,23 @@ fn levels_count_from_the_serialized_node() {
     assert!(to_markdown_node(&attention, node, &options).is_ok());
     let node = descend(&attention, LIMIT);
     assert_too_deep(to_markdown_node(&attention, node, &options), "attention");
+    // Emphasis and strong nested directly in each other, each holding text after the node in
+    // it, as `***a* b** b`, which has a spelling at any depth.
+    let mut tags = vec![paragraph()];
+    tags.extend(
+        vec![Tag::Emphasis, Tag::Strong]
+            .into_iter()
+            .cycle()
+            .take(2 * LIMIT - 1),
+    );
+    let direct = nest_with_tails(&tags);
+    let node = descend(&direct, LIMIT + 1);
+    assert!(to_markdown_node(&direct, node, &options).is_ok());
+    let node = descend(&direct, LIMIT);
+    assert_too_deep(
+        to_markdown_node(&direct, node, &options),
+        "attention in attention",
+    );
 }
 
 #[test]

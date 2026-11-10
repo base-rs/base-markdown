@@ -4,10 +4,12 @@
 //! The round trip that the fuzz and the contract tests check: normalize, serialize, parse, normalize, compare.
 
 use super::fixture::canonical;
-use base_markdown::stream::EventKind;
+use base_markdown::stream::{EventKind, Text};
 use base_markdown::{
-    render_events, to_markdown_with_options, CompileOptions, Document, MarkdownOptions,
+    render_events, to_markdown_with_options, CompileOptions, Document, LineWrapping,
+    MarkdownOptions,
 };
+use regex::Regex;
 
 pub struct Failure {
     pub kind: &'static str,
@@ -63,7 +65,7 @@ pub fn fail(kind: &'static str, output: String, before: String, after: String) -
 }
 
 /// Normalize, serialize, parse under the document's own options and normalize `document`, and compare. A hand-built tree, which a serializer error rejects rather than fails, is `built`.
-pub fn round_trip<S: AsRef<str>>(
+pub fn round_trip<S: AsRef<str> + Clone>(
     mut document: Document<S>,
     options: &MarkdownOptions,
     built: bool,
@@ -73,6 +75,12 @@ pub fn round_trip<S: AsRef<str>>(
     if !document.is_normalized() {
         return fail("normalized", String::new(), before, String::new());
     }
+    // Unwrapped, the output reads back as the tree with its line endings as spaces.
+    let expected = (options.line_wrapping == LineWrapping::Unwrap).then(|| unwrapped(&document));
+    let (before, canonical_before) = match &expected {
+        Some(expected) => (html(expected), canonical(expected)),
+        None => (before, canonical(&document)),
+    };
     let output = match to_markdown_with_options(&document, options) {
         Ok(output) => output,
         Err(_) if built => return Outcome::Rejected,
@@ -90,7 +98,7 @@ pub fn round_trip<S: AsRef<str>>(
         return fail("html", output, before, after);
     }
     // The HTML ignores line endings after hard breaks and at the end; the canonical trees do not, so dropping one is not a fix.
-    let (canonical_before, canonical_after) = (canonical(&document), canonical(&reparsed));
+    let canonical_after = canonical(&reparsed);
     if canonical_after != canonical_before {
         return fail(
             "tree",
@@ -104,4 +112,37 @@ pub fn round_trip<S: AsRef<str>>(
         Ok(again) => fail("unstable", output, before, again),
         Err(error) => fail("error", output, before, error.to_string()),
     }
+}
+
+/// `document` with each soft break but the line ending of a hard break, and each run of line endings, spaces and tabs in a text value that holds a line ending, one space, as `LineWrapping::Unwrap` writes them (3.3).
+pub fn unwrapped<S: AsRef<str> + Clone>(document: &Document<S>) -> Document<S> {
+    let line_endings = Regex::new(r"[ \t]*\n[ \t\n]*").unwrap();
+    let mut unwrapped = document.clone();
+    let mut after_hard_break = false;
+    for id in document.descendants(document.root()) {
+        let kind = &document.node(id).unwrap().kind;
+        let after = core::mem::replace(&mut after_hard_break, matches!(kind, EventKind::HardBreak));
+        match kind {
+            // The line ending of a hard break is part of it.
+            EventKind::SoftBreak(_) if after => {}
+            EventKind::SoftBreak(_) => {
+                let parent = document.node(id).unwrap().parent().unwrap();
+                let space = unwrapped
+                    .append_child(parent, EventKind::Text(Text::Literal(" ")))
+                    .unwrap();
+                unwrapped.attach(parent, space, Some(id)).unwrap();
+                unwrapped.detach(id).unwrap();
+            }
+            EventKind::Text(value) => {
+                let value = value.resolve(document.source()).unwrap();
+                if value.contains('\n') {
+                    *unwrapped.text_mut(id).unwrap() =
+                        line_endings.replace_all(value, " ").into_owned();
+                }
+            }
+            _ => {}
+        }
+    }
+    unwrapped.normalize();
+    unwrapped
 }
