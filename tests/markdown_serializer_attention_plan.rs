@@ -5,8 +5,11 @@
 //! tree, and the shapes that have no spelling under its invariants, which it rejects.
 
 mod support;
-use base_markdown::{Document, MarkdownOptions, ParseOptions};
-use support::fixture::{to_markdown, Emphasis, Node, Paragraph, Root, Strong, Text};
+use base_markdown::{Document, LineWrapping, MarkdownOptions, ParseOptions};
+use support::fixture::{
+    to_markdown, Break, Emphasis, Heading, Html, InlineCode, List, ListItem, Node, Paragraph, Root,
+    Strong, Text,
+};
 use support::round_trip::{round_trip, Outcome};
 
 fn check(source: &str, options: &ParseOptions, marker: char) -> Outcome {
@@ -160,6 +163,143 @@ fn writes(name: &str, tree: &Node) {
             marker
         );
     }
+}
+
+/// Assert that `tree` reads back as itself under `options` and is written as `expected`.
+fn writes_as(tree: &Node, options: &MarkdownOptions, expected: &str) {
+    assert!(
+        matches!(round_trip(tree.document(), options, true), Outcome::Pass),
+        "{:?} should read back as the tree",
+        expected
+    );
+    let mut document = tree.document();
+    document.normalize();
+    assert_eq!(
+        base_markdown::to_markdown_with_options(&document, options).unwrap(),
+        expected
+    );
+}
+
+fn hard_break() -> Node {
+    Node::Break(Break { position: None })
+}
+
+fn code(value: &str, language: &str) -> Node {
+    Node::InlineCode(InlineCode {
+        value: value.into(),
+        lang: Some(language.into()),
+        position: None,
+    })
+}
+
+fn markers(emphasis: char, strong: char, line_wrapping: LineWrapping) -> MarkdownOptions {
+    MarkdownOptions {
+        emphasis,
+        strong,
+        line_wrapping,
+        close_atx: true,
+        ..MarkdownOptions::default()
+    }
+}
+
+#[test]
+fn text_is_planned_as_it_is_written() {
+    // Unwrapped, a line ending and the spaces after it are one space, which after a hard break
+    // starts a line and is encoded, so it is punctuation next to the runs after it.
+    let unwrap = |emphasis, strong| markers(emphasis, strong, LineWrapping::Unwrap);
+    writes_as(
+        &root(vec![
+            strong(vec![hard_break()]),
+            strong(vec![strong(vec![text("\n .")]), text("c")]),
+        ]),
+        &unwrap('_', '*'),
+        "**\\\n&#x20;__.__&#x63;**\n",
+    );
+    let tree = root(vec![emphasis(vec![strong(vec![
+        hard_break(),
+        emphasis(vec![text("\n "), text("`")]),
+    ])])]);
+    writes_as(&tree, &unwrap('_', '*'), "_**\\\n&#x20;*\\`***_\n");
+    writes_as(&tree, &unwrap('*', '_'), "*__\\\n&#x20;_\\`___*\n");
+    let item = Node::Root(Root {
+        children: vec![Node::List(List {
+            ordered: true,
+            start: Some(1),
+            spread: false,
+            position: None,
+            children: vec![Node::ListItem(ListItem {
+                spread: false,
+                checked: None,
+                position: None,
+                children: vec![Node::Paragraph(Paragraph {
+                    position: None,
+                    children: vec![strong(vec![
+                        strong(vec![text(" \n"), strong(vec![text("_"), text("\n")])]),
+                        Node::Html(Html {
+                            value: "<!-- c -->".into(),
+                            position: None,
+                        }),
+                    ])],
+                })],
+            })],
+        })],
+        position: None,
+    });
+    writes_as(
+        &item,
+        &unwrap('_', '_'),
+        "1. &#x20;**____\\_____ <!-- c -->**\n",
+    );
+    // A space before the line ending at the end of the paragraph is written as it is, before the
+    // line ending, which is encoded.
+    writes_as(
+        &root(vec![
+            emphasis(vec![
+                hard_break(),
+                emphasis(vec![text("y"), emphasis(vec![hard_break(), text("b")])]),
+            ]),
+            text(" \n"),
+        ]),
+        &MarkdownOptions::default(),
+        "*\\\n*&#x79;_\\\nb_** &#xA;\n",
+    );
+    // A language character before code with a language is encoded, which keeps it out of the
+    // language, so it is punctuation next to the run before it.
+    writes_as(
+        &root(vec![text("a"), strong(vec![text("a"), code("*", "rust")])]),
+        &MarkdownOptions::default(),
+        "&#x61;**&#x61;rust:`*`**\n",
+    );
+    writes_as(
+        &root(vec![
+            text("b"),
+            emphasis(vec![text("a"), code(" a ", "rust")]),
+        ]),
+        &MarkdownOptions::default(),
+        "&#x62;*&#x61;rust:`  a  `*\n",
+    );
+    // A space at the start of the content of an ATX heading would be stripped, so it is encoded,
+    // which makes it punctuation next to the runs after it.
+    let heading = Node::Root(Root {
+        children: vec![Node::Heading(Heading {
+            depth: 2,
+            position: None,
+            children: vec![strong(vec![
+                text(" \n"),
+                strong(vec![strong(vec![strong(vec![
+                    strong(vec![text("a"), text("(")]),
+                    text(" \n"),
+                ])])]),
+                text("[."),
+            ])],
+        })],
+        position: None,
+    });
+    writes_as(
+        &heading,
+        &unwrap('_', '_'),
+        "## &#x20;__**____**a(**____** \\[.__ ##\n",
+    );
 }
 
 #[test]

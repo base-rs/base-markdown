@@ -17,7 +17,7 @@ use regex::Regex;
 use support::corpus::{self, Random};
 use support::fixture::canonical;
 use support::linear::{assert_linear, timed};
-use support::round_trip::{self, round_trip, Failure, Outcome};
+use support::round_trip::{self, round_trip, unwrapped, Failure, Outcome};
 
 /// How many inputs each corpus test takes from each corpus; the fuzz in `roundtrip_fuzz.rs` takes many more.
 const SAMPLES: usize = 3000;
@@ -1978,37 +1978,6 @@ fn clause_3_3_a_dash_rule_fails_nothing_a_star_rule_writes() {
             );
         }
     });
-}
-
-/// `document` with each soft break but the line ending of a hard break, and each run of line endings, spaces and tabs in a text value that holds a line ending, one space, as `LineWrapping::Unwrap` writes them (3.3).
-fn unwrapped<'s>(document: &Document<&'s str>) -> Document<&'s str> {
-    let line_endings = Regex::new(r"[ \t]*\n[ \t\n]*").unwrap();
-    let mut unwrapped = document.clone();
-    let mut after_hard_break = false;
-    for id in document.descendants(document.root()) {
-        let kind = &document.node(id).unwrap().kind;
-        let after = core::mem::replace(&mut after_hard_break, matches!(kind, EventKind::HardBreak));
-        match kind {
-            // The line ending of a hard break is part of it.
-            EventKind::SoftBreak(_) if after => {}
-            EventKind::SoftBreak(_) => {
-                let parent = document.node(id).unwrap().parent().unwrap();
-                let space = unwrapped.append_child(parent, text(" ")).unwrap();
-                unwrapped.attach(parent, space, Some(id)).unwrap();
-                unwrapped.detach(id).unwrap();
-            }
-            EventKind::Text(value) => {
-                let value = value.resolve(document.source()).unwrap();
-                if value.contains('\n') {
-                    *unwrapped.text_mut(id).unwrap() =
-                        line_endings.replace_all(value, " ").into_owned();
-                }
-            }
-            _ => {}
-        }
-    }
-    unwrapped.normalize();
-    unwrapped
 }
 
 /// The canonical tree of `document` without whether each reference is full, as a shortcut or collapsed reference whose text no longer matches its label once unwrapped is written full.

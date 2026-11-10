@@ -37,6 +37,7 @@ pub struct Info<'a> {
     text_run: Option<usize>,
 }
 
+#[derive(Clone)]
 enum Before<'a> {
     Literal(&'a str),
     /// Output, after the text that the construct the output belongs to was written after.
@@ -1011,16 +1012,16 @@ impl<'a> State<'a> {
         &mut self,
         document: &Document<S>,
         children: &[NodeId],
+        info: &Info,
         before: Option<char>,
         after: Option<char>,
-        end: (bool, bool),
     ) -> Result<bool, Message> {
         if !children.iter().any(|&child| is_attention(document, child)) {
             return Ok(true);
         }
         let mut pieces = Vec::new();
         let mut ids = Vec::new();
-        let root = self.pieces(document, children, 0, end, &mut pieces, &mut ids)?;
+        let root = self.pieces(document, children, 0, info, &mut pieces, &mut ids)?;
         let before = before.map_or(Kind::Whitespace, classify);
         let after = after.map_or(Kind::Whitespace, classify);
         let reference = self.literal().reference;
@@ -1059,74 +1060,29 @@ impl<'a> State<'a> {
 
     /// Add the pieces of `children`, at attention `depth` in the scope, to `pieces`, with their
     /// nodes in `ids`, returning where they are. The pieces of each attention node's children
-    /// follow its siblings'.
+    /// follow its siblings'. `info` says what the children are written between, as for
+    /// `phrasing_children`.
+    ///
+    /// Text and breaks are written as the writer writes them (`write_leaf`), next to what is
+    /// written around them, and then removed, so the characters at their edges are those that
+    /// will be written there: the plan and the writer get them from one function. What they are
+    /// written next to is modelled only as far as escapes judge it: a run is its marker, as no
+    /// escape of a space, tab or line ending depends on which marker is next to it, and a node
+    /// other than text and breaks is punctuation, as each but text ends in punctuation.
     fn pieces<S: AsRef<str>>(
         &mut self,
         document: &Document<S>,
         children: &[NodeId],
         depth: usize,
-        scope_end: (bool, bool),
+        info: &Info,
         pieces: &mut Vec<Piece>,
         ids: &mut Vec<NodeId>,
     ) -> Result<Range<usize>, Message> {
         let start = pieces.len();
-        let split = self.lines_split();
-        let cell = self.stack.contains(&ConstructName::TableCell);
-        // How the output before the child ends: the first child of the scope follows what the
-        // scope follows, which is never an encoded line ending, and the first child of
-        // attention follows its opening run.
-        let mut line = if depth > 0 {
-            Line::Other
-        } else if self.output.len() == self.line_start || self.output.ends_with('\n') {
-            Line::Literal
-        } else {
-            Line::Other
-        };
-        for (position, &child) in children.iter().enumerate() {
-            let kind = &document.node(child).unwrap().kind;
-            let line_after = self.line_after(document, children, position, depth, scope_end);
-            let closing = line_after && scope_end.1 && position + 1 == children.len();
-            let before = line;
-            line = Line::Other;
-            let piece = match kind {
-                // Empty text writes nothing, so what is around it touches.
-                EventKind::Text(value) => {
-                    let value = value.resolve(document.source()).unwrap();
-                    let (Some(first), Some(last)) =
-                        (value.chars().next(), value.chars().next_back())
-                    else {
-                        line = before;
-                        continue;
-                    };
-                    let single = first.len_utf8() == value.len();
-                    // Spaces, tabs and line endings that would be trimmed or read otherwise are
-                    // written as character references, which are punctuation.
-                    let cell = cell.then_some((
-                        depth == 0 && position == 0,
-                        depth == 0 && position + 1 == children.len(),
-                    ));
-                    let (first_encoded, last_encoded) =
-                        encoded_edges(value, (before, line_after, closing), split, cell);
-                    if last == '\n' && split {
-                        line = if last_encoded {
-                            Line::Encoded
-                        } else {
-                            Line::Literal
-                        };
-                    }
-                    let edge = |character, encoded| {
-                        if encoded && self.literal().reference {
-                            Kind::Punctuation
-                        } else {
-                            classify(character)
-                        }
-                    };
-                    Piece::Text {
-                        first: edge(first, first_encoded),
-                        last: edge(last, last_encoded),
-                        single,
-                    }
-                }
+        for &child in children {
+            pieces.push(match &document.node(child).unwrap().kind {
+                // Written below, once what is written around them is known.
+                EventKind::Text(_) | EventKind::SoftBreak(_) | EventKind::HardBreak => Piece::Empty,
                 // Deeper attention is an error, which the writer returns.
                 EventKind::Start(Tag::Emphasis | Tag::Strong | Tag::Delete)
                     if depth < MAX_NESTING =>
@@ -1138,46 +1094,6 @@ impl<'a> State<'a> {
                         children: 0..0,
                     }
                 }
-                // A soft break after a hard break is not written: the hard break ends the line.
-                EventKind::SoftBreak(_)
-                    if position > 0
-                        && matches!(
-                            document.node(children[position - 1]).unwrap().kind,
-                            EventKind::HardBreak
-                        ) =>
-                {
-                    line = before;
-                    continue;
-                }
-                // A soft break is a line ending, written as a reference where text's would be.
-                EventKind::SoftBreak(_)
-                    if self.literal().reference
-                        && encoded_edges(
-                            "\n",
-                            (before, line_after, closing),
-                            true,
-                            cell.then_some((false, false)),
-                        )
-                        .0 =>
-                {
-                    line = Line::Encoded;
-                    Piece::Other {
-                        first: Kind::Punctuation,
-                        last: Kind::Punctuation,
-                        language: false,
-                    }
-                }
-                EventKind::SoftBreak(_) | EventKind::HardBreak => {
-                    if split || matches!(kind, EventKind::HardBreak) {
-                        line = Line::Literal;
-                    }
-                    let (first, last, language) = Self::edges(document, child);
-                    Piece::Other {
-                        first,
-                        last,
-                        language,
-                    }
-                }
                 _ => {
                     let (first, last, language) = Self::edges(document, child);
                     Piece::Other {
@@ -1186,15 +1102,16 @@ impl<'a> State<'a> {
                         language,
                     }
                 }
-            };
-            pieces.push(piece);
+            });
             ids.push(child);
         }
         let end = pieces.len();
         for index in start..end {
-            if matches!(pieces[index], Piece::Attention { .. }) {
+            if let Piece::Attention { sequences, .. } = &pieces[index] {
+                let marker = String::from(&sequences[0][..1]);
                 let children: Vec<NodeId> = flow_children(document, ids[index]).collect();
-                let range = self.pieces(document, &children, depth + 1, scope_end, pieces, ids)?;
+                let info = Info::new(&marker, &marker);
+                let range = self.pieces(document, &children, depth + 1, &info, pieces, ids)?;
                 let empty = pieces[range.clone()]
                     .iter()
                     .all(|piece| matches!(piece, Piece::Empty));
@@ -1204,46 +1121,86 @@ impl<'a> State<'a> {
                 }
             }
         }
+        // What the children written so far end with, once one is written.
+        let mut previous: Option<String> = None;
+        let mut after_hard_break = false;
+        for (position, &child) in children.iter().enumerate() {
+            let index = start + position;
+            let kind = &document.node(child).unwrap().kind;
+            match &pieces[index] {
+                Piece::Attention { sequences, .. } => {
+                    previous = Some(String::from(&sequences[0][..1]));
+                    after_hard_break = false;
+                    continue;
+                }
+                Piece::Other { .. } => {
+                    previous = Some(String::from(")"));
+                    after_hard_break = false;
+                    continue;
+                }
+                Piece::Empty if is_attention(document, child) => continue,
+                _ => {}
+            }
+            // A soft break after a hard break is not written: the hard break ends the line.
+            if core::mem::replace(&mut after_hard_break, matches!(kind, EventKind::HardBreak))
+                && matches!(kind, EventKind::SoftBreak(_))
+            {
+                continue;
+            }
+            let before = match &previous {
+                Some(value) => Before::Literal(value),
+                None => info.before.clone(),
+            };
+            let mut buffer = [0u8; 5];
+            // An error writing the next child or this one is the writer's too, which it returns
+            // when it writes them, so the plan does without what it would tell.
+            let after = self
+                .after_child(document, children, position, info.after, &mut buffer)
+                .unwrap_or(info.after);
+            let info = Info {
+                before,
+                after,
+                text_run: None,
+            };
+            // The sibling written next, which can edit the end of this one.
+            let next = (position + 1..children.len()).find(|&next| {
+                !is_empty_text(document, children[next])
+                    && !(is_attention(document, children[next])
+                        && matches!(pieces[start + next], Piece::Empty))
+            });
+            let checkpoint = self.output.len();
+            let marks = (self.unwritable, self.loose_links, self.raw_literals);
+            let next = next.map(|next| children[next]);
+            let result = self.write_leaf(document, child, &info, &Edge::default(), 0, next);
+            let written = self.output.split_off(checkpoint);
+            (self.unwritable, self.loose_links, self.raw_literals) = marks;
+            // Empty text writes nothing, and so can the first text of a task item's paragraph.
+            let (true, Some(first), Some(last)) = (
+                result.is_ok(),
+                written.chars().next(),
+                written.chars().next_back(),
+            ) else {
+                continue;
+            };
+            pieces[index] = if matches!(kind, EventKind::Text(_)) {
+                Piece::Text {
+                    first: classify(first),
+                    last: classify(last),
+                    single: first.len_utf8() == written.len(),
+                }
+            } else {
+                Piece::Other {
+                    first: classify(first),
+                    last: classify(last),
+                    language: false,
+                }
+            };
+            previous = Some(written);
+        }
         Ok(start..end)
     }
 
-    /// Whether soft breaks and line endings in text are written as line endings, where the rules
-    /// for spaces and tabs next to a line ending apply: not in a table cell, where each is a
-    /// reference, and not when unwrapping, where each is a space.
-    fn lines_split(&self) -> bool {
-        self.options.line_wrapping != LineWrapping::Unwrap
-            && !self.stack.contains(&ConstructName::TableCell)
-    }
-    /// Whether a line ending follows phrasing child `position` of `children`, at `depth` in
-    /// the attention planned, before which spaces, tabs and line endings are encoded:
-    /// `scope_end` says whether the scope is followed by one, and by the one that ends the block.
-    fn line_after<S: AsRef<str>>(
-        &self,
-        document: &Document<S>,
-        children: &[NodeId],
-        position: usize,
-        depth: usize,
-        scope_end: (bool, bool),
-    ) -> bool {
-        let split = self.lines_split();
-        match children
-            .get(position + 1)
-            .map(|&next| &document.node(next).unwrap().kind)
-        {
-            // Spaces before a hard break of trailing spaces are encoded (`before_hard_break`).
-            Some(EventKind::HardBreak) => !self.parse.constructs.hard_break_escape,
-            Some(EventKind::SoftBreak(_)) => split,
-            Some(EventKind::Text(value)) => {
-                split && value.resolve(document.source()).unwrap().starts_with('\n')
-            }
-            Some(_) => false,
-            // The last child of the scope ends where the scope does, such as before the line
-            // ending after a paragraph.
-            None => depth == 0 && scope_end.0,
-        }
-    }
-
-    /// The kinds of the characters phrasing node `id`, which is neither text nor attention, is
+    /// The kinds of the characters phrasing node `id`, which is neither text, a break nor attention, is
     /// written to start and end with, and whether it starts with the language of code, as far
     /// as they are known without writing it. Links, images and footnote calls start and end
     /// with punctuation, but for a bare link, which is written only between whitespace, never
@@ -1273,9 +1230,6 @@ impl<'a> State<'a> {
                 )
             }
             EventKind::Html { value, .. } => ends(value.resolve(document.source()).unwrap()),
-            // A hard break ends in a line ending, and a soft break is one, or a space.
-            EventKind::HardBreak => (Kind::Punctuation, Kind::Whitespace, false),
-            EventKind::SoftBreak(_) => (Kind::Whitespace, Kind::Whitespace, false),
             _ => punctuation,
         }
     }
@@ -1526,8 +1480,7 @@ impl<'a> State<'a> {
             .next_back()
             .or_else(|| lead.chars().next_back());
         let after = info.after.chars().next();
-        let end = (info.after.starts_with('\n'), info.after == "\n");
-        let planned = self.plan_attention(document, children, before, after, end)?;
+        let planned = self.plan_attention(document, children, info, before, after)?;
         let first = self.runs.len();
         let start = self.output.len();
         self.phrasing_children(document, children, info, &Edge::default())?;
@@ -1542,6 +1495,93 @@ impl<'a> State<'a> {
                 || self.check_runs(first, start, before, after)
         );
         self.runs.truncate(first);
+        Ok(())
+    }
+
+    /// What phrasing child `position` of `children` is written before, as escapes judge it: the
+    /// first character the next child is written with, or `after`, what the scope is written
+    /// before, for the last child. A node without a fixed first character is written to see it,
+    /// and then removed.
+    fn after_child<'b, S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        children: &[NodeId],
+        position: usize,
+        after: &'b str,
+        buffer: &'b mut [u8; 5],
+    ) -> Result<&'b str, Message> {
+        let Some(&next) = children.get(position + 1) else {
+            return Ok(after);
+        };
+        if let Some(first) = self.peek_node(document, next, children[position]) {
+            return Ok(first.encode_utf8(buffer));
+        }
+        let checkpoint = self.output.len();
+        let marks = (self.unwritable, self.loose_links, self.raw_literals);
+        self.write_node(document, next, &Info::new("", ""))?;
+        let first = self.output[checkpoint..].chars().next().unwrap_or_default();
+        self.output.truncate(checkpoint);
+        (self.unwritable, self.loose_links, self.raw_literals) = marks;
+        // A line ending there is not the one that ends the block, so the NUL that follows it in
+        // the buffer stands for the rest of the next node and after.
+        let length = first.encode_utf8(buffer).len();
+        Ok(core::str::from_utf8(&buffer[..length + 1]).expect("NUL is a character"))
+    }
+
+    /// Write phrasing child `child`, text or a soft or hard break, as phrasing writes it: with
+    /// `info`, then for text the edits attention makes to its edges, `edge` at its start and
+    /// those `plan` chooses (`attention::plan`), and then the edits that `next`, the sibling
+    /// written after it, makes to its end: a hard break written as trailing spaces encodes a
+    /// space or tab before it (`before_hard_break`), and code with a language encodes a language
+    /// character before it (`separate_language`).
+    ///
+    /// The plan learns the characters at the edges of text and breaks by writing them with this
+    /// and no edits of its own (`pieces`), so that it plans for the characters written.
+    fn write_leaf<S: AsRef<str>>(
+        &mut self,
+        document: &Document<S>,
+        child: NodeId,
+        info: &Info,
+        edge: &Edge,
+        plan: attention::Choice,
+        next: Option<NodeId>,
+    ) -> Result<(), Message> {
+        let start = self.output.len();
+        let kind = &document.node(child).unwrap().kind;
+        let text = matches!(kind, EventKind::Text(_));
+        // Attention can encode the first character of text, which ends a literal there, so
+        // literals are escaped once it has.
+        self.defer_literals = text;
+        self.write_node(document, child, info)?;
+        self.defer_literals = false;
+        if text {
+            // The characters the plan encodes are those written, which it was planned for.
+            let written = &self.output[start..];
+            let first = written.chars().next();
+            let last = written.chars().next_back();
+            let edge = Edge {
+                encode: first.filter(|_| plan & attention::ENCODE_FIRST != 0),
+                tilde: edge.tilde,
+            };
+            self.edit_start(start, &edge);
+            if self.literals() {
+                self.escape_literals(start, info);
+            }
+            if let Some(character) = last.filter(|_| plan & attention::ENCODE_LAST != 0) {
+                self.encode_end(start, character);
+            }
+        }
+        // What is written before the child is not the child's to edit.
+        match next
+            .filter(|_| self.output.len() > start)
+            .map(|next| &document.node(next).unwrap().kind)
+        {
+            Some(EventKind::HardBreak) => self.before_hard_break(),
+            Some(EventKind::Code {
+                language: Some(_), ..
+            }) if text => self.separate_language(start),
+            _ => {}
+        }
         Ok(())
     }
 
@@ -1590,26 +1630,7 @@ impl<'a> State<'a> {
             after_hard_break = matches!(kind, EventKind::HardBreak);
             *self.index_stack.last_mut().unwrap() = index;
             let mut buffer = [0u8; 5];
-            let next = children.get(position + 1).copied();
-            let after = if let Some(next) = next {
-                if let Some(first) = self.peek_node(document, next, child) {
-                    first.encode_utf8(&mut buffer) as &str
-                } else {
-                    // Render nodes without a fixed prefix to determine the next character.
-                    let checkpoint = self.output.len();
-                    let marks = (self.unwritable, self.loose_links, self.raw_literals);
-                    self.write_node(document, next, &Info::new("", ""))?;
-                    let first = self.output[checkpoint..].chars().next().unwrap_or_default();
-                    self.output.truncate(checkpoint);
-                    (self.unwritable, self.loose_links, self.raw_literals) = marks;
-                    // A line ending there is not the one that ends the block, so the NUL that
-                    // follows it in the buffer stands for the rest of the next node and after.
-                    let length = first.encode_utf8(&mut buffer).len();
-                    core::str::from_utf8(&buffer[..length + 1]).expect("NUL is a character")
-                }
-            } else {
-                info.after
-            };
+            let after = self.after_child(document, children, position, info.after, &mut buffer)?;
             let before = if self.output.len() == start {
                 match &info.before {
                     Before::Literal(value) => Before::Literal(value),
@@ -1651,47 +1672,25 @@ impl<'a> State<'a> {
                 pending = self.attention(document, child, sequences, &previous)?;
                 previous = Previous::Attention;
             } else {
-                if let (
-                    Previous::Text(start),
-                    EventKind::Code {
-                        language: Some(_), ..
-                    },
-                ) = (&previous, kind)
-                {
-                    self.separate_language(*start);
-                } else if let (Previous::Text(_), EventKind::Code { language: None, .. }) =
+                if let (Previous::Text(_), EventKind::Code { language: None, .. }) =
                     (&previous, kind)
                 {
                     self.separate_colon(start);
                 }
-                // Attention can encode the first character of text, which ends a literal
-                // there, so literals are escaped once it has.
-                self.defer_literals = text;
-                if matches!(kind, EventKind::HardBreak) {
-                    self.before_hard_break();
-                }
-                self.write_node(document, child, &info)?;
-                self.defer_literals = false;
-                if let EventKind::Text(value) = kind {
-                    // The plan encodes the characters of text next to attention
-                    // (`attention::plan`).
-                    let value = value.resolve(document.source()).unwrap();
-                    let plan = self.planned(child);
-                    pending.encode = value
-                        .chars()
-                        .next()
-                        .filter(|_| plan & attention::ENCODE_FIRST != 0);
-                    self.edit_start(length, &pending);
-                    if self.literals() {
-                        self.escape_literals(length, &info);
+                match kind {
+                    EventKind::Text(_) | EventKind::SoftBreak(_) | EventKind::HardBreak => {
+                        if matches!(kind, EventKind::HardBreak) {
+                            // What is written before the break, which need not be text.
+                            self.before_hard_break();
+                        }
+                        let plan = self.planned(child);
+                        let next = children[position + 1..]
+                            .iter()
+                            .copied()
+                            .find(|&next| self.writes(document, next));
+                        self.write_leaf(document, child, &info, &pending, plan, next)?;
                     }
-                    if let Some(character) = value
-                        .chars()
-                        .next_back()
-                        .filter(|_| plan & attention::ENCODE_LAST != 0)
-                    {
-                        self.encode_end(length, character);
-                    }
+                    _ => self.write_node(document, child, &info)?,
                 }
                 // Any node can write the `:`, such as inline HTML (#146).
                 if self.output[length..].starts_with(':') {
@@ -2961,50 +2960,6 @@ pub(super) fn in_list<S: AsRef<str>>(document: &Document<S>, parent: NodeId) -> 
         document.node(parent).unwrap().kind,
         EventKind::Start(Tag::Item { .. } | Tag::List { .. })
     )
-}
-
-/// How the output written so far ends, for the rules that encode spaces, tabs and line endings
-/// next to line endings (`escape`).
-#[derive(Clone, Copy, PartialEq)]
-enum Line {
-    /// With a line ending.
-    Literal,
-    /// With a line ending written as `&#xA;`, after which spaces and tabs are encoded too.
-    Encoded,
-    Other,
-}
-
-/// Whether the first and last characters of text `value` are written as character references,
-/// by the rules for spaces, tabs and line endings (`escape`): after what `before` says the
-/// output ends with, before a line ending where `line_after`, before the one that ends the block
-/// where `closing`, with line endings written as such where `split`, and in a table cell where
-/// `cell` says whether the text starts it and ends it.
-fn encoded_edges(
-    value: &str,
-    (before, line_after, closing): (Line, bool, bool),
-    split: bool,
-    cell: Option<(bool, bool)>,
-) -> (bool, bool) {
-    let characters: Vec<char> = value.chars().collect();
-    let last = characters.len() - 1;
-    let encoded = |at: usize, character: char| {
-        let after_line = at
-            .checked_sub(1)
-            .map_or(before == Line::Literal, |previous| {
-                split && characters[previous] == '\n'
-            });
-        let before_line = characters
-            .get(at + 1)
-            .map_or(line_after, |&next| split && next == '\n');
-        match (character, cell) {
-            ('\r', _) | ('\n', Some(_)) => true,
-            ('\n', None) => after_line || at == last && closing,
-            (' ' | '\t', None) => after_line || before_line || at == 0 && before == Line::Encoded,
-            (' ' | '\t', Some((starts, ends))) => at == 0 && starts || at == last && ends,
-            _ => false,
-        }
-    };
-    (encoded(0, characters[0]), encoded(last, characters[last]))
 }
 
 /// Whether paragraph or heading `id` would start an HTML block if written at the start of a line:

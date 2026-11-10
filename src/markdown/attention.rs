@@ -129,17 +129,8 @@ pub(super) fn plan(
     after: Kind,
     encode: bool,
 ) -> Option<Vec<Choice>> {
-    let start = state(edge(before), NONE);
-    let after = 1 + edge(after);
-    let mut ends = [INFEASIBLE; STATES];
-    for (end, cost) in ends.iter_mut().enumerate() {
-        let required = split(end).1;
-        if required == NONE || required == after {
-            *cost = 0;
-        }
-    }
     // Pieces not assigned are empty attention, which only empty pieces hold.
-    let mut choices: Vec<Choice> = pieces
+    let choices: Vec<Choice> = pieces
         .iter()
         .map(|piece| {
             if matches!(piece, Piece::Empty) {
@@ -149,6 +140,36 @@ pub(super) fn plan(
             }
         })
         .collect();
+    let mut simplest = choices.clone();
+    if simple(pieces, root.clone(), before, after, &mut simplest) {
+        // The stages choose it too.
+        debug_assert!(
+            plan_stages(pieces, root, before, after, encode, choices).as_ref() == Some(&simplest),
+            "the simple plan is the planned one"
+        );
+        return Some(simplest);
+    }
+    plan_stages(pieces, root, before, after, encode, choices)
+}
+
+/// `plan`, by the stages, from `choices` that hold `EMPTY` for empty attention.
+fn plan_stages(
+    pieces: &[Piece],
+    root: Range<usize>,
+    before: Kind,
+    after: Kind,
+    encode: bool,
+    mut choices: Vec<Choice>,
+) -> Option<Vec<Choice>> {
+    let start = state(edge(before), NONE);
+    let after = 1 + edge(after);
+    let mut ends = [INFEASIBLE; STATES];
+    for (end, cost) in ends.iter_mut().enumerate() {
+        let required = split(end).1;
+        if required == NONE || required == after {
+            *cost = 0;
+        }
+    }
     let scope = List {
         open: 0,
         first: None,
@@ -157,36 +178,184 @@ pub(super) fn plan(
     let mut planner = Planner {
         pieces,
         encode,
-        stage: Stage::Preferred,
-        costs: alloc::vec![Vec::new(); pieces.len()],
+        stage: Stage::Sequences,
+        tested: tested(pieces),
+        costs: Memo::default(),
         written: Vec::new(),
-        tables: alloc::vec![Vec::new(); (pieces.len() + 1) * STATES],
+        tables: Memo::default(),
+        computed: Vec::new(),
     };
-    for stage in [
-        Stage::Preferred,
-        Stage::Sequences,
-        Stage::Shared,
-        Stage::Full,
-    ] {
+    for stage in [Stage::Sequences, Stage::Shared, Stage::Full] {
         // What one stage works out holds for its choices alone.
         planner.stage = stage;
-        planner.costs.iter_mut().for_each(Vec::clear);
+        planner.costs.clear();
         planner.written.clear();
-        planner.tables.iter_mut().for_each(Vec::clear);
-        if planner.assign(root.clone(), &scope, start, &ends, &mut choices) {
+        planner.tables.clear();
+        planner.computed.clear();
+        if planner
+            .assign(root.clone(), &scope, start, &ends, &mut choices)
+            .is_some()
+        {
             return Some(choices);
         }
     }
     None
 }
 
-/// Which choices a plan considers: preferred sequences alone, then any sequences, then also runs
+/// Choose the plan for `pieces` from `root`, between characters of kinds `before` and `after`,
+/// in `choices`, where it costs least of all, writing each attention piece in runs of its own and
+/// encoding no character, with its preferred sequence or, in a scope of a few, all but one: most
+/// writing has such a plan, which is checked in one pass over the runs in the order they are
+/// written for each. Of those that cost as little, the one that changes the sequence of the
+/// latest attention in that order is the one the stages would choose, as each piece in turn takes
+/// its most preferred option. The pass checks what the stages do: that no two runs of a marker
+/// touch and no `_` run touches the language of code, that each opening run opens and, where it
+/// can also close, closes no enclosing run (`closes_open`), and that each closing run closes and
+/// pairs with its opening run.
+fn simple(
+    pieces: &[Piece],
+    root: Range<usize>,
+    before: Kind,
+    after: Kind,
+    choices: &mut [Choice],
+) -> bool {
+    /// A piece as written: the kinds of its first and last characters, whether it starts with
+    /// a language, and for a run, its attention piece and whether it opens.
+    struct Token {
+        first: Kind,
+        last: Kind,
+        language: bool,
+        run: Option<(usize, bool)>,
+    }
+    fn tokens(pieces: &[Piece], list: Range<usize>, out: &mut Vec<Token>) {
+        for index in list {
+            match &pieces[index] {
+                Piece::Text { first, last, .. } => out.push(Token {
+                    first: *first,
+                    last: *last,
+                    language: false,
+                    run: None,
+                }),
+                Piece::Other {
+                    first,
+                    last,
+                    language,
+                } => out.push(Token {
+                    first: *first,
+                    last: *last,
+                    language: *language,
+                    run: None,
+                }),
+                Piece::Empty => {}
+                Piece::Attention { children, .. } => {
+                    let run = |opens| Token {
+                        first: Kind::Punctuation,
+                        last: Kind::Punctuation,
+                        language: false,
+                        run: Some((index, opens)),
+                    };
+                    out.push(run(true));
+                    tokens(pieces, children.clone(), out);
+                    out.push(run(false));
+                }
+            }
+        }
+    }
+    let mut written = Vec::new();
+    tokens(pieces, root, &mut written);
+    let sequence = |index: usize, changed: Option<usize>| {
+        let Piece::Attention { sequences, .. } = &pieces[index] else {
+            unreachable!("runs are of attention");
+        };
+        sequences[usize::from(changed == Some(index))]
+    };
+    let keeps = |changed: Option<usize>| {
+        // The open runs, by size, whether they can close and the open set around them.
+        let mut open: Vec<(usize, bool, u16)> = Vec::new();
+        let mut bits = 0;
+        let byte = |token: &Token| {
+            token
+                .run
+                .map(|(index, _)| sequence(index, changed).as_bytes()[0])
+        };
+        for (index, token) in written.iter().enumerate() {
+            let Some((piece, opening)) = token.run else {
+                continue;
+            };
+            let sequence = sequence(piece, changed);
+            let (marker, byte_of) = marker(sequence);
+            let size = sequence.len();
+            let previous = index.checked_sub(1).map(|at| &written[at]);
+            let next = written.get(index + 1);
+            if previous.is_some_and(|previous| byte(previous) == Some(byte_of))
+                || byte_of == b'_' && next.is_some_and(|next| next.language)
+            {
+                return false;
+            }
+            let (opens, closes) = sides(
+                byte_of,
+                previous.map_or(before, |previous| previous.last),
+                next.map_or(after, |next| next.first),
+            );
+            if opening {
+                if !opens || closes && closes_open(bits, marker, size) {
+                    return false;
+                }
+                open.push((size, closes, bits));
+                bits |= bit(marker, size);
+            } else {
+                let (size, can_close, around) = open.pop().expect("runs nest");
+                bits = around;
+                if !closes
+                    || !pairs(
+                        byte_of,
+                        AttentionRun::whole(size, true, can_close),
+                        AttentionRun::whole(size, opens, true),
+                    )
+                {
+                    return false;
+                }
+            }
+        }
+        true
+    };
+    if keeps(None) {
+        return true;
+    }
+    let attention = written.iter().filter_map(|token| match token.run {
+        Some((index, true)) => Some(index),
+        _ => None,
+    });
+    if attention.clone().count() > FEW {
+        return false;
+    }
+    let attention: Vec<usize> = attention.collect();
+    for &index in attention.iter().rev() {
+        let Piece::Attention { sequences, .. } = &pieces[index] else {
+            unreachable!("runs are of attention");
+        };
+        if sequences.len() > 1 && keeps(Some(index)) {
+            choices[index] = Spelling {
+                sequence: 1,
+                joined: false,
+                closed: false,
+            }
+            .choice();
+            return true;
+        }
+    }
+    false
+}
+
+/// The most attention in a scope for which `simple` tries the plans that change one sequence.
+const FEW: usize = 8;
+
+/// Which choices a plan considers, after the few that write every node in runs of its own and
+/// encode nothing that `simple` checks: any sequences, then also runs
 /// written in one, then also encoded characters. Each costs less than any choice only a later
-/// stage considers, so the first stage with a choice finds the best, and the first, which most
-/// writing needs alone, considers one sequence for each node.
+/// stage considers, so the first stage with a choice finds the best.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Stage {
-    Preferred,
     Sequences,
     Shared,
     Full,
@@ -333,7 +502,42 @@ struct List {
     last: Option<(usize, Close)>,
 }
 
+/// The code of a run attention is written in, as a number below `1 << 8`, zero for none.
+fn code(join: Option<Join>, close: Option<Close>) -> u128 {
+    let join = join.map_or(0, |join| {
+        1 + ((usize::from(join.marker) * 3 + usize::from(join.size)) * 2 + usize::from(join.closes))
+            * 3
+            + usize::from(join.sizes)
+    });
+    let close = close.map_or(0, |close| 1 + usize::from(close.marker));
+    u128::try_from(join << 2 | close).expect("a code is small")
+}
+
+impl Context {
+    /// A key for attention piece `index` in this context, which tells them apart.
+    fn key(&self, index: usize) -> u128 {
+        let index = u128::try_from(index).expect("an index fits");
+        index << 32 | code(self.join, self.close) << 16 | u128::from(self.open)
+    }
+}
+
 impl List {
+    /// A key for `pieces` of this list from state `start`, which tells them apart: the pieces
+    /// of a list start with the first child of their attention, which says where its first
+    /// and last pieces are.
+    fn key(&self, pieces: Range<usize>, start: usize) -> u128 {
+        let at = |index: usize| u128::try_from(index).expect("an index fits");
+        let runs = code(
+            self.first.map(|first| first.1),
+            self.last.map(|last| last.1),
+        );
+        at(pieces.start) << 72
+            | at(pieces.end) << 40
+            | at(start) << 32
+            | runs << 16
+            | u128::from(self.open)
+    }
+
     fn context(&self, index: usize) -> Context {
         Context {
             open: self.open,
@@ -386,13 +590,103 @@ struct Planner<'p> {
     encode: bool,
     /// Which choices are considered.
     stage: Stage,
-    /// For each attention piece and context, where `written` holds the least cost of writing
-    /// it.
-    costs: Vec<Vec<(Context, usize)>>,
+    /// For each attention piece, the bits of the open attention around it that a run in it can
+    /// close (`tested`): the others do nothing to how it is written, so contexts and lists keep
+    /// only these, and attention inside runs that differ only in the others is planned once.
+    tested: Vec<u16>,
+    /// For each attention piece and context (`Context::key`), where `written` holds the least
+    /// cost of writing it.
+    costs: Memo,
     written: Vec<Costs>,
-    /// For each range of pieces, by its start and the state before it, then its end and list,
-    /// the least cost of writing them by the state they end in.
-    tables: Vec<Vec<((usize, List), Table)>>,
+    /// For each range of pieces, list and state before them (`List::key`), where `computed`
+    /// holds the least cost of writing them by the state they end in.
+    tables: Memo,
+    computed: Vec<Table>,
+}
+
+/// For each piece of `pieces`, the bits of a set of open attention (`bit`) that an opening run of
+/// it or of attention inside it, which can also close, may test (`closes_open`): for each of its
+/// markers, the size of its own sequence, or where it may hold its first child's sequence in its
+/// run, any size. Zero for other pieces.
+fn tested(pieces: &[Piece]) -> Vec<u16> {
+    let mut tested = alloc::vec![0; pieces.len()];
+    // Children come after their parent, so each is done before it.
+    for index in (0..pieces.len()).rev() {
+        let Piece::Attention {
+            sequences,
+            children,
+        } = &pieces[index]
+        else {
+            continue;
+        };
+        let joins = shares(&pieces[index])
+            && pieces[children.clone()]
+                .iter()
+                .find(|piece| !matches!(piece, Piece::Empty))
+                .is_some_and(shares);
+        let mut bits = tested[children.clone()]
+            .iter()
+            .fold(0, |bits, &tested| bits | tested);
+        for sequence in sequences.iter() {
+            let (marker, _) = marker(sequence);
+            for size in 0..3 {
+                if joins || size == sequence.len() % 3 {
+                    bits |= 1 << (usize::from(marker) * 3 + size);
+                }
+            }
+        }
+        tested[index] = bits;
+    }
+    tested
+}
+
+/// A map from keys to indexes, by open addressing, of what the planner works out once.
+#[derive(Default)]
+struct Memo {
+    /// Each key with its index plus one, zero for none.
+    slots: Vec<(u128, usize)>,
+    len: usize,
+}
+
+impl Memo {
+    fn slot(slots: &[(u128, usize)], key: u128) -> usize {
+        let mask = slots.len() - 1;
+        let low = (key as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        let high = ((key >> 64) as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
+        let mixed = (low ^ high.rotate_left(29)).wrapping_mul(0x1656_67B1_9E37_79F9);
+        let mut at = (mixed >> 32) as usize & mask;
+        while slots[at].1 != 0 && slots[at].0 != key {
+            at = (at + 1) & mask;
+        }
+        at
+    }
+
+    fn get(&self, key: u128) -> Option<usize> {
+        if self.slots.is_empty() {
+            return None;
+        }
+        let (_, value) = self.slots[Self::slot(&self.slots, key)];
+        value.checked_sub(1)
+    }
+
+    fn insert(&mut self, key: u128, value: usize) {
+        if (self.len + 1) * 2 > self.slots.len() {
+            let size = (self.slots.len() * 2).max(64);
+            let old = core::mem::replace(&mut self.slots, alloc::vec![(0, 0); size]);
+            for (key, value) in old.into_iter().filter(|entry| entry.1 != 0) {
+                let at = Self::slot(&self.slots, key);
+                self.slots[at] = (key, value);
+            }
+        }
+        let at = Self::slot(&self.slots, key);
+        self.slots[at] = (key, value + 1);
+        self.len += 1;
+    }
+
+    fn clear(&mut self) {
+        self.slots.iter_mut().for_each(|slot| slot.1 = 0);
+        self.len = 0;
+    }
 }
 
 /// Whether attention piece `piece` is emphasis or strong, which runs can hold together.
@@ -455,9 +749,6 @@ impl Planner<'_> {
         let closes = sharing && shares(&self.pieces[self.end(list.clone(), true)]);
         let mut ways = Vec::new();
         for (sequence, value) in sequences.iter().enumerate() {
-            if sequence > 0 && self.stage == Stage::Preferred {
-                break;
-            }
             let (marker, byte) = marker(value);
             let size = value.len();
             if context.join.is_some_and(|join| join.marker != marker)
@@ -539,6 +830,10 @@ impl Planner<'_> {
         } else {
             context.open | bit(way.marker, way.opening)
         };
+        let open = open
+            & self.tested[list.clone()]
+                .iter()
+                .fold(0, |bits, &tested| bits | tested);
         let small = |value: usize| u8::try_from(value).expect("a size is small");
         List {
             open,
@@ -561,16 +856,16 @@ impl Planner<'_> {
     /// The least cost of writing `pieces` of `list` from state `start`, by the state they end
     /// in, working it out the first time.
     fn table(&mut self, pieces: Range<usize>, list: &List, start: usize) -> Table {
-        let key = (pieces.end, *list);
-        let at = pieces.start * STATES + start;
-        if let Some((_, table)) = self.tables[at].iter().find(|entry| entry.0 == key) {
-            return *table;
+        let key = list.key(pieces.clone(), start);
+        if let Some(at) = self.tables.get(key) {
+            return self.computed[at];
         }
 
         let mut current = [INFEASIBLE; STATES];
         current[start] = 0;
         let table = self.sequence(pieces, list, current);
-        self.tables[at].push((key, table));
+        self.tables.insert(key, self.computed.len());
+        self.computed.push(table);
         table
     }
 
@@ -674,8 +969,10 @@ impl Planner<'_> {
 
     /// The least cost of writing attention piece `index` in `context`, working it out the first
     /// time.
-    fn costs(&mut self, index: usize, context: Context) -> usize {
-        if let Some(&(_, slot)) = self.costs[index].iter().find(|entry| entry.0 == context) {
+    fn costs(&mut self, index: usize, mut context: Context) -> usize {
+        context.open &= self.tested[index];
+        let key = context.key(index);
+        if let Some(slot) = self.costs.get(key) {
             return slot;
         }
 
@@ -683,18 +980,16 @@ impl Planner<'_> {
         for way in self.ways(index, context) {
             let marker = way.marker;
             self.outcomes(index, context, &way, &mut |before, after, tag, cost, _| {
-                let key = (before, marker, after, tag);
-                match costs
-                    .iter_mut()
-                    .find(|entry| (entry.0, entry.1, entry.2, entry.3) == key)
-                {
-                    Some(entry) => entry.4 = entry.4.min(cost),
-                    None => costs.push((before, marker, after, tag, cost)),
-                }
+                costs.push((before, marker, after, tag, cost));
             });
         }
+        // The least cost of each result.
+        costs.sort_unstable();
+        costs.dedup_by(|right, left| {
+            (right.0, right.1, right.2, right.3) == (left.0, left.1, left.2, left.3)
+        });
         self.written.push(costs);
-        self.costs[index].push((context, self.written.len() - 1));
+        self.costs.insert(key, self.written.len() - 1);
         self.written.len() - 1
     }
 
@@ -886,9 +1181,9 @@ impl Planner<'_> {
     }
 
     /// Record the choices that write `pieces` of `list` from `start` to a state that `ends`
-    /// costs other than `INFEASIBLE`, at least cost, or return `false` where there are none.
-    /// Where several cost the least, each piece in turn takes its most preferred option that
-    /// still can.
+    /// costs other than `INFEASIBLE`, at least cost, and return that state, or `None` where
+    /// there are none. Where several cost the least, each piece in turn takes its most
+    /// preferred option that still can.
     fn assign(
         &mut self,
         pieces: Range<usize>,
@@ -896,10 +1191,10 @@ impl Planner<'_> {
         start: usize,
         ends: &Table,
         choices: &mut [Choice],
-    ) -> bool {
+    ) -> Option<usize> {
         let rest = self.rest(pieces.clone(), list, ends);
         if rest[0][start] == INFEASIBLE {
-            return false;
+            return None;
         }
         let mut at = start;
         for (offset, index) in pieces.enumerate() {
@@ -925,7 +1220,7 @@ impl Planner<'_> {
                 choices[index] = choice;
             }
         }
-        true
+        Some(at)
     }
 
     /// Record the choices for attention piece `index` in `context` that reach `result`
@@ -943,21 +1238,29 @@ impl Planner<'_> {
             if way.marker != marker || way.cost > cost {
                 continue;
             }
-            let mut found = None;
+            // Each state the children reach the result from, so that they choose as each
+            // piece in turn prefers.
+            let mut ends = [INFEASIBLE; STATES];
+            let mut closed = Vec::new();
             self.outcomes(
                 index,
                 context,
                 &way,
                 &mut |kind, end, written, total, detail| {
-                    if found.is_none() && (kind, end, written, total) == (before, after, tag, cost)
-                    {
-                        found = Some(detail);
+                    if (kind, end, written, total) == (before, after, tag, cost) {
+                        match detail {
+                            Detail::End(end) => ends[end] = 0,
+                            Detail::Closed(from, entry) => {
+                                ends[from] = 0;
+                                closed.push((from, entry));
+                            }
+                        }
                     }
                 },
             );
-            let Some(detail) = found else {
+            if ends == [INFEASIBLE; STATES] {
                 continue;
-            };
+            }
             choices[index] = Spelling {
                 sequence: way.sequence,
                 joined: context.join.is_some(),
@@ -966,21 +1269,19 @@ impl Planner<'_> {
             .choice();
             let inside = self.inside(index, context, &way);
             let start = state(RUN + way.marker, 1 + way.first);
-            let mut ends = [INFEASIBLE; STATES];
-            let assigned = match detail {
-                Detail::End(end) => {
-                    ends[end] = 0;
-                    self.assign(list, &inside, start, &ends, choices)
-                }
-                Detail::Closed(from, entry) => {
-                    ends[from] = 0;
-                    let last = self.end(list.clone(), true);
-                    let assigned = self.assign(list.start..last, &inside, start, &ends, choices);
-                    self.assign_attention(last, inside.context(last), entry, choices);
-                    assigned
-                }
-            };
-            debug_assert!(assigned, "the way was costed");
+            if way.close {
+                let last = self.end(list.clone(), true);
+                let from = self.assign(list.start..last, &inside, start, &ends, choices);
+                let from = from.expect("the way was costed");
+                let &(_, entry) = closed
+                    .iter()
+                    .find(|&&(at, _)| at == from)
+                    .expect("the way was costed");
+                self.assign_attention(last, inside.context(last), entry, choices);
+            } else {
+                let assigned = self.assign(list, &inside, start, &ends, choices);
+                debug_assert!(assigned.is_some(), "the way was costed");
+            }
             return;
         }
         unreachable!("the attention was costed");

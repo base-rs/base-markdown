@@ -293,12 +293,11 @@ impl State<'_> {
             .extend(core::iter::repeat_n('#', usize::from(rank)));
         self.output.push(' ');
         let content_start = self.output.len();
-        self.container_phrasing(document, node, &Info::new("# ", "\n"))?;
+        // The content is written from the start of its context, where text writes a space or
+        // tab that the parser would strip as a reference.
+        self.container_phrasing(document, node, &Info::new("", "\n"))?;
         if self.output.len() == content_start {
             self.output.pop();
-        } else if self.output[content_start..].starts_with([' ', '\t']) {
-            // The parser strips the space or tab, so it is a reference, which nothing replaces.
-            self.escape_at(content_start);
         }
         if self.options.close_atx {
             self.output.push(' ');

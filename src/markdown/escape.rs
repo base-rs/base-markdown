@@ -168,8 +168,10 @@ static RULES: &[Rule] = &[
     rule!(b'\t', B, Set(b"\n"), PHRASING, bit(TableCell)),
     rule!(b'\t', Previous(b'\n'), A, PHRASING | TITLES, bit(TableCell)),
     rule!(b'\t', Encoded, A, PHRASING, bit(TableCell)),
-    // The parser trims spaces and tabs at the edges of a table cell and of a code info string.
-    rule!(b'\t', Before::Start, A, TRIMMED, 0),
+    // The parser trims spaces and tabs at the edges of a table cell and of a code info string,
+    // and at the start of the content of an ATX heading, which is written from the start of
+    // its context.
+    rule!(b'\t', Before::Start, A, TRIMMED | bit(HeadingAtx), 0),
     rule!(b'\t', B, After::End, TRIMMED, 0),
     // Line endings are LF, so a CR in a value is a character reference, and is written as one
     // wherever references are decoded.
@@ -184,7 +186,7 @@ static RULES: &[Rule] = &[
     rule!(b' ', B, Set(b"\n"), PHRASING, bit(TableCell)),
     rule!(b' ', Previous(b'\n'), A, PHRASING | TITLES, bit(TableCell)),
     rule!(b' ', Encoded, A, PHRASING, bit(TableCell)),
-    rule!(b' ', Before::Start, A, TRIMMED, 0),
+    rule!(b' ', Before::Start, A, TRIMMED | bit(HeadingAtx), 0),
     rule!(b' ', B, After::End, TRIMMED, 0),
     rule!(b'!', B, Set(b"["), PHRASING, FULL_SPANS, image),
     rule!(b'"', B, A, bit(TitleQuote), 0),
