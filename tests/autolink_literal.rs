@@ -373,10 +373,10 @@ a www.example.com& b
         ),
         r###"<p>[ www.example.com</p>
 <p>[ https://example.com</p>
-<p>[ contact@example.com</p>
+<p>[ <a href="mailto:contact@example.com">contact@example.com</a></p>
 <p>[ www.example.com ]</p>
 <p>[ https://example.com ]</p>
-<p>[ contact@example.com ]</p>
+<p>[ <a href="mailto:contact@example.com">contact@example.com</a> ]</p>
 <p><a href="#"> www.example.com </a></p>
 <p><a href="#"> https://example.com </a></p>
 <p><a href="#"> contact@example.com </a></p>
@@ -749,12 +749,12 @@ Autolink literal after image.
 <p>![https://a.com</p>
 <p>![http://a.com</p>
 <p>![www.a.com</p>
-<p>![a@b.c</p>
+<p>![<a href="mailto:a@b.c">a@b.c</a></p>
 <p>Image start and label end.</p>
 <p>![https://a.com]</p>
 <p>![http://a.com]</p>
 <p>![www.a.com]</p>
-<p>![a@b.c]</p>
+<p>![<a href="mailto:a@b.c">a@b.c</a>]</p>
 <p>Image label with reference (note: GH cleans hashes here, but we keep them in).</p>
 <p><img src="#" alt="https://a.com" /></p>
 <p><img src="#" alt="http://a.com" /></p>
@@ -891,7 +891,7 @@ Autolink literal after link.
 <p>[https://a.com</p>
 <p>[http://a.com</p>
 <p>[www.a.com</p>
-<p>[a@b.c</p>
+<p>[<a href="mailto:a@b.c">a@b.c</a></p>
 <p>Label end.</p>
 <p><a href="https://a.com">https://a.com</a>]</p>
 <p><a href="http://a.com">http://a.com</a>]</p>
@@ -901,7 +901,7 @@ Autolink literal after link.
 <p>[https://a.com]</p>
 <p>[http://a.com]</p>
 <p>[www.a.com]</p>
-<p>[a@b.c]</p>
+<p>[<a href="mailto:a@b.c">a@b.c</a>]</p>
 <p>What naïvely seems like a label end (A).</p>
 <p><a href="https://a.com%60%5D%60">https://a.com`]`</a></p>
 <p><a href="http://a.com%60%5D%60">http://a.com`]`</a></p>
@@ -911,7 +911,7 @@ Autolink literal after link.
 <p>[https://a.com<code>]</code></p>
 <p>[http://a.com<code>]</code></p>
 <p>[www.a.com<code>]</code></p>
-<p>[a@b.c<code>]</code></p>
+<p>[<a href="mailto:a@b.c">a@b.c</a><code>]</code></p>
 <p>What naïvely seems like a label end (C).</p>
 <p><a href="https://a.com">https://a.com</a> <code>]</code></p>
 <p><a href="http://a.com">http://a.com</a> <code>]</code></p>
@@ -921,7 +921,7 @@ Autolink literal after link.
 <p>[https://a.com <code>]</code></p>
 <p>[http://a.com <code>]</code></p>
 <p>[www.a.com <code>]</code></p>
-<p>[a@b.c <code>]</code></p>
+<p>[<a href="mailto:a@b.c">a@b.c</a> <code>]</code></p>
 <p>Link label with reference.</p>
 <p><a href="#">https://a.com</a></p>
 <p><a href="#">http://a.com</a></p>
@@ -3283,9 +3283,18 @@ fn literals_do_not_start_while_an_opener_is_pending() {
             "_http://a.b*a*_",
             r#"<p><em><a href="http://a.b*a">http://a.b*a</a>*</em></p>"#,
         ),
-        // Emails are found after attention, so they never took it, and form neither.
+        // Emails are found after attention, in the text of the finished tree, as in cmark-gfm: none
+        // forms in link text, but an opener that no `]` closes does not stop one.
         ("[a@b.c*d*](u)", r#"<p><a href="u">a@b.c<em>d</em></a></p>"#),
-        ("[a@b.c", "<p>[a@b.c</p>"),
+        (
+            "[*a@b.c*",
+            r#"<p>[<em><a href="mailto:a@b.c">a@b.c</a></em></p>"#,
+        ),
+        (
+            "[a [b](v) c@d.ef](u)",
+            r#"<p>[a <a href="v">b</a> <a href="mailto:c@d.ef">c@d.ef</a>](u)</p>"#,
+        ),
+        ("[a@b.c", r#"<p>[<a href="mailto:a@b.c">a@b.c</a></p>"#),
         (
             "[a] b@c.d",
             r#"<p>[a] <a href="mailto:b@c.d">b@c.d</a></p>"#,

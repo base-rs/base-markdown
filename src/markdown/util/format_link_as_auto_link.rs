@@ -30,8 +30,8 @@ pub enum WrittenLink<'a> {
 ///
 /// A bare link is written bare only between whitespace or line boundaries, where nothing next to
 /// it can change where it ends, and outside link and image text, where no literal forms.
-/// `after_boundary` says whether the output before the link ends at one. Anywhere else it is written as `<…>` when
-/// that reads back as the same link, and explicitly otherwise.
+/// `after_boundary` says whether the output before the link ends at one. Anywhere else it is
+/// written as `<…>` when that reads back as the same link, and explicitly otherwise.
 ///
 /// Only forms whose constructs the document's options turn on are written (contract 3.3): without
 /// `Constructs::autolink` no `<…>`, without `Constructs::autolink_literal` no bare link, and

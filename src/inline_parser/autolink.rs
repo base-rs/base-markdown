@@ -133,7 +133,9 @@ impl Host {
 }
 
 /// The prefix the parser adds to `text` to form its destination, when all of `text`, with
-/// nothing around it, is one GFM literal autolink.
+/// nothing around it, is one GFM literal autolink. A `www.` literal found first in what would be
+/// an email's local part, such as `www.a` in `__www.a@b.c`, takes it, so that is no email: one in
+/// link text reads as an email only because no `www.` literal starts while an opener is pending.
 pub(crate) fn literal_autolink_prefix(text: &str) -> Option<&'static str> {
     let whole = |found: Option<Match>| {
         found
@@ -149,8 +151,13 @@ pub(crate) fn literal_autolink_prefix(text: &str) -> Option<&'static str> {
     marker
         .and_then(|marker| whole(web(text, 0, marker, text.len(), &mut Trail::default())))
         .or_else(|| {
-            text.find('@')
-                .and_then(|at| whole(email(text, 0, at, text.len())))
+            let at = text.find('@')?;
+            let mut markers = Vec::new();
+            literal_markers(text, 0, true, &mut markers);
+            if markers.first() != Some(&at) {
+                return None;
+            }
+            whole(email(text, 0, at, text.len()))
         })
 }
 

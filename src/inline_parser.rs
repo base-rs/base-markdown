@@ -124,9 +124,6 @@ pub(crate) struct InlineParser {
     nodes: Vec<Node>,
     delimiters: Vec<Delimiter>,
     brackets: Vec<Bracket>,
-    // The `@` of each email candidate scanned while a link or image opener was pending, in
-    // order, where no email literal forms.
-    pending_emails: Vec<usize>,
     attention_stack: Vec<usize>,
     links: Vec<Link>,
     tick_heads: Vec<usize>,
@@ -376,7 +373,6 @@ impl InlineParser {
         self.nodes.clear();
         self.delimiters.clear();
         self.brackets.clear();
-        self.pending_emails.clear();
         self.links.clear();
         self.code_info.clear();
         self.labels.clear();
@@ -768,9 +764,6 @@ impl InlineParser {
                     _ => {
                         if EXTENSIONS && bytes[at] == b'@' {
                             saw_email = true;
-                            if !self.brackets.is_empty() {
-                                self.pending_emails.push(at);
-                            }
                         }
                         at += 1;
                         at += markers.find(&bytes[at..range.end]);
@@ -802,21 +795,24 @@ impl InlineParser {
     }
 
     /// Email syntax is resolved after attention so unmatched underscores remain
-    /// part of an address, while escapes, entities, and links bound each run. As with URL
-    /// literals, none forms at an `@` scanned while a link or image opener was pending, which
-    /// holds for all of link and image text: no `[` or `]` is in an address.
+    /// part of an address, while escapes, entities, and links bound each run. As in cmark-gfm,
+    /// which looks for emails in the text of the finished tree, none forms in the text of a link
+    /// or image; unlike URL literals, a pending opener that no `]` closes does not stop one.
     fn resolve_email(&mut self, source: &str) {
         let mut cursor = self.nodes[0].next;
-        let mut pending = 0;
+        let mut links = 0usize;
         while cursor != 0 {
             let node = self.nodes[cursor];
             match node.kind {
+                Kind::Start(TagKind::Link | TagKind::Image, _)
+                | Kind::Reference(TagKind::Link | TagKind::Image, _) => links += 1,
+                Kind::End(TagKind::Link | TagKind::Image) => links -= 1,
                 // An autolink's text and end follow it.
                 Kind::AngleLink(_) | Kind::Autolink(_) => {
                     cursor = self.nodes[self.nodes[node.next].next].next;
                     continue;
                 }
-                Kind::Text | Kind::EscapedText if node.start < node.end => {
+                Kind::Text | Kind::EscapedText if links == 0 && node.start < node.end => {
                     let run_start =
                         node.start + usize::from(matches!(node.kind, Kind::EscapedText));
                     let mut end = node.end;
@@ -853,17 +849,6 @@ impl InlineParser {
                     let mut tail = cursor;
                     while let Some(offset) = memchr::memchr(b'@', &source.as_bytes()[at..end]) {
                         let marker = at + offset;
-                        while self
-                            .pending_emails
-                            .get(pending)
-                            .is_some_and(|&pending| pending < marker)
-                        {
-                            pending += 1;
-                        }
-                        if self.pending_emails.get(pending) == Some(&marker) {
-                            at = marker + 1;
-                            continue;
-                        }
                         if let Some(found) = autolink::email(source, min, marker, end) {
                             self.nodes[tail].end = found.start;
                             let open = self.insert_after(

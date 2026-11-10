@@ -267,12 +267,26 @@ fn parsed_literals_are_links_and_are_written_as_they_were() {
         "mailto:a@b.co and xmpp:c@d.ef/g\n",
         "| a |\n| --- |\n| www.b.c |\n",
         "# see http://a.b\n",
-        // Image text is written as the text of its nodes, so a literal there stays one.
+        // Image text forms no literal, so its text is written as it is.
         "![www.a.b and c@d.ef](g)\n",
     ] {
         let mut document = parse(source);
         document.normalize();
         assert_eq!(to_markdown(&document).unwrap(), source);
+    }
+}
+
+#[test]
+fn emails_a_www_literal_would_take_are_written_as_autolinks() {
+    // No `www.` literal starts after a pending opener, so the email there takes `www.`, which
+    // would read as a `www.` literal written bare.
+    for (source, expected) in [
+        ("[ __www.xa@b.c\n", "\\[ <__www.xa@b.c>\n"),
+        ("[ www.a@b.cd\n", "\\[ <www.a@b.cd>\n"),
+    ] {
+        let mut document = parse(source);
+        document.normalize();
+        assert_round_trip(&document, expected);
     }
 }
 

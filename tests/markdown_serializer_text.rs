@@ -362,8 +362,7 @@ fn literal_autolinks_next_to_anything_else_are_written_as_autolinks_or_explicitl
         ),
         // The node after the one next to the link is looked at without the link beside it.
         (
-            // An unescaped `[` that no `]` closes would keep the email from forming.
-            "#/\\[$@--~_|;[a]/_|x@y.z(1~+\n",
+            "#/[$@--~_|;[a]/_|x@y.z(1~+\n",
             "\\#/\\[$@--~~*|;\\[a]/*|<x@y.z>(1~~+\n",
         ),
         ("http://b<!/ @\n", "<http://b>\\<!/ @\n"),
