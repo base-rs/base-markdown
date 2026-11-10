@@ -8,7 +8,7 @@ use base_markdown::{markdown::Options, Document, ParseOptions};
 use pretty_assertions::assert_eq;
 use support::fixture::{
     canonical, to_markdown as to, to_markdown_with_options as to_md_with_opts, Blockquote, Break,
-    Delete, Emphasis, InlineCode, Node, Paragraph, Root, Strong, Text,
+    Delete, Emphasis, InlineCode, Link, Node, Paragraph, Root, Strong, Text,
 };
 
 fn text(value: &str) -> Node {
@@ -1190,4 +1190,67 @@ fn nested_attention_edges() {
         "{} cases with character references",
         encoded
     );
+}
+
+fn link(children: Vec<Node>) -> Node {
+    Node::Link(Link {
+        children,
+        position: None,
+        url: "u".into(),
+        title: None,
+    })
+}
+
+#[test]
+fn attention_after_literal_shaped_link_text() {
+    // No literal forms in link text, so attention and code after text shaped like one are
+    // written with plain markers and read back (#295).
+    let code = |value: &str| {
+        Node::InlineCode(InlineCode {
+            value: value.into(),
+            lang: None,
+            position: None,
+        })
+    };
+    for (children, options, expected) in [
+        (
+            vec![link(vec![text("http://a.b"), strong(vec![text("b")])])],
+            markers('*', '*'),
+            "[http://a.b**b**](u)\n",
+        ),
+        (
+            vec![link(vec![text("www.a.b"), emphasis(vec![text("c")])])],
+            markers('*', '*'),
+            "[www.a.b*c*](u)\n",
+        ),
+        (
+            vec![link(vec![emphasis(vec![
+                text("http://a.b"),
+                emphasis(vec![text("a")]),
+            ])])],
+            markers('_', '*'),
+            "[_http://a.b*a*_](u)\n",
+        ),
+        (
+            vec![link(vec![emphasis(vec![text("http://b")]), text("a")])],
+            markers('*', '*'),
+            "[*http://b*a](u)\n",
+        ),
+        (
+            vec![link(vec![text("x http://a.b"), code("*")])],
+            markers('*', '*'),
+            "[x http://a.b`*`](u)\n",
+        ),
+        (
+            vec![link(vec![text("a@b.c"), emphasis(vec![text("d")])])],
+            markers('*', '*'),
+            "[a@b.c*d*](u)\n",
+        ),
+    ] {
+        assert_eq!(serialize(children, &options), expected);
+    }
+    // An escape after literal-shaped link text keeps the emphasis after it (#205).
+    for source in ["[www.x.com\\!_e_](/l)", "[![www.x.com\\!_e_](u)](/l)"] {
+        roundtrip(source, &Options::default());
+    }
 }

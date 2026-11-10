@@ -134,6 +134,12 @@ impl Host {
 
 /// The prefix the parser adds to `text` to form its destination, when all of `text`, with
 /// nothing around it, is one GFM literal autolink.
+///
+/// The parser looks for `www.` and scheme literals at each `.` and `:` before it looks for emails,
+/// so an email is one only where no such literal forms in its text, judged at each marker as the
+/// parser judges it, on the text as it is: `www.a` in `_www.a@b.cd` takes the `www.`, while
+/// `www.a.@b.cd`, whose `www.` domain `a.` ends in a dot and so is no host name, is an email. Such an
+/// email forms in phrasing only after an opener that no `]` closes, where no `www.` literal starts.
 pub(crate) fn literal_autolink_prefix(text: &str) -> Option<&'static str> {
     let whole = |found: Option<Match>| {
         found
@@ -149,8 +155,14 @@ pub(crate) fn literal_autolink_prefix(text: &str) -> Option<&'static str> {
     marker
         .and_then(|marker| whole(web(text, 0, marker, text.len(), &mut Trail::default())))
         .or_else(|| {
-            text.find('@')
-                .and_then(|at| whole(email(text, 0, at, text.len())))
+            let at = text.find('@')?;
+            let mut trail = Trail::default();
+            if memchr::memchr2_iter(b'.', b':', bytes)
+                .any(|marker| web(text, 0, marker, text.len(), &mut trail).is_some())
+            {
+                return None;
+            }
+            whole(email(text, 0, at, text.len()))
         })
 }
 
@@ -164,8 +176,7 @@ pub(crate) fn literal_autolink_prefix(text: &str) -> Option<&'static str> {
 /// node, which is written starting with punctuation. That ends a domain, except `_` from `_`
 /// attention, which a host name cannot have, so a domain that runs on into the next node is never
 /// valid, and `www.` or `https://` at the end of `text` needs no escape. A literal that would run on into a following text
-/// sibling, which only a tree that is not normalized has, is not found, nor in image alt one that
-/// would run on into the text of a link, which is written as it is. The scan
+/// sibling, which only a tree that is not normalized has, is not found. The scan
 /// is linear: domains are scanned once, except that a `www` after `_` within a scanned domain is
 /// taken to form, and an email's local part is scanned back to the byte before it.
 pub(crate) fn literal_markers(text: &str, from: usize, www_start: bool, markers: &mut Vec<usize>) {

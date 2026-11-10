@@ -159,7 +159,6 @@ Every open issue, classified: those where the implementation breaks a clause, wi
 | #193 | 3.3 | Inline HTML shapes that cannot be written. A paragraph or setext heading whose first line would start an HTML block with inline HTML, such as `<div>`, or `<b>` alone on its line, can be written only on the line after a definition, indented, and anywhere else reads back as an HTML block: one built by hand, or one left first in its container by a removed copy, `[x]: /1\n\n- [x]: /2\n      <div>\n`, or `> [x]: /1\n\n> [x]: /2\n> <b>\n`, where the parser reads `<b>` as text after a definition (#249). `<b>` before a soft break in the removed-copy shape, `[x]: /1\n\n- [x]: /2\n      <b>\n      c\n`, is written `- <b>&#xA;c`, which keeps it inline but makes the soft break text. |
 | #196 | 3.3 | Inline HTML with a line ending in a setext heading can start a line with a block marker. |
 | #199 | 3.3, 3.4 | A task item whose text starts with a hard break: normalizing adds a space before the break, which changes the parsed HTML, and the output reads back differently. One that starts with a line ending is written as it is since #257. |
-| #205 | 3.3 | An escape after literal-like text in link text is dropped. |
 | #206 | 3.3 | With `resource_link`, an autolink in link text is written as a nested link. |
 | #207 | 3.3 | With `LineWrapping::Unwrap`, a literal before a soft and a hard break writes unstably. |
 | #209 | 3.3 | Labels holding `\|` in table cells do not read back. |

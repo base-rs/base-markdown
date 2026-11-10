@@ -54,7 +54,6 @@ struct Trial {
     loose_end: Option<usize>,
     label_end: Option<(usize, bool)>,
     definition_colon: Option<usize>,
-    alt_start: Option<usize>,
     defer_literals: bool,
     current: Option<NodeId>,
     depth: usize,
@@ -84,10 +83,6 @@ pub struct State<'a> {
     email_escapes: Vec<usize>,
     /// Output offsets that make GFM literal autolinks of the text being written.
     literal_markers: Vec<usize>,
-    /// Where the text of the image being written starts, when literal autolinks form in it. A
-    /// bare link there reads back as one, as the parser reads the text after `![` like the
-    /// start of a line.
-    pub(super) alt_start: Option<usize>,
     /// Whether the text being written leaves literal autolinks to its caller, which edits its
     /// start first.
     defer_literals: bool,
@@ -1583,7 +1578,6 @@ impl<'a> State<'a> {
             loose_end: self.loose_end,
             label_end: self.label_end,
             definition_colon: self.definition_colon,
-            alt_start: self.alt_start,
             defer_literals: self.defer_literals,
             current: self.current,
             depth: self.depth,
@@ -1603,7 +1597,6 @@ impl<'a> State<'a> {
         self.loose_end = trial.loose_end;
         self.label_end = trial.label_end;
         self.definition_colon = trial.definition_colon;
-        self.alt_start = trial.alt_start;
         self.defer_literals = trial.defer_literals;
         self.current = trial.current;
         self.depth = trial.depth;
@@ -2579,7 +2572,6 @@ impl<'a> State<'a> {
             applied: Vec::new(),
             email_escapes: Vec::new(),
             literal_markers: Vec::new(),
-            alt_start: None,
             defer_literals: false,
             attention_plan: Vec::new(),
             runs: Vec::new(),

@@ -100,20 +100,21 @@ fn links_and_images_in_image_text_are_written() {
             "[a ![r]\\(x)](u)\n\n[r]: /a\n",
             "[a ![r]\\(x)](u)\n\n[r]: /a\n",
         ),
-        // Autolinks, and literals, which form in image text outside link text.
+        // Autolinks, but no literals, which do not form in image text, as in link text.
         ("![a <http://x.y> b](/i)", "![a <http://x.y> b](/i)\n"),
         ("![<x@y.z>](/i)", "![<x@y.z>](/i)\n"),
         ("![www.x.com](/i)", "![www.x.com](/i)\n"),
         ("![a www.x.com b](/i)", "![a www.x.com b](/i)\n"),
         ("![a https://x.y/z](/i)", "![a https://x.y/z](/i)\n"),
         ("![a x@y.z](/i)", "![a x@y.z](/i)\n"),
-        // Not bare where what follows would change where it ends, as in a paragraph.
+        ("![a www.x.com.](/i)", "![a www.x.com.](/i)\n"),
+        ("![a www.x.com*b*](/i)", "![a www.x.com*b*](/i)\n"),
+        ("![a https://x.y`b`](/i)", "![a https://x.y`b`](/i)\n"),
         (
-            "![a www.x.com.](/i)",
+            "![a [www.x.com](https://www.x.com).](/i)",
             "![a [www.x.com](https://www.x.com).](/i)\n",
         ),
         ("[![<http://x.y>](/i)](/l)", "[![<http://x.y>](/i)](/l)\n"),
-        // No literal forms in image text inside link text.
         ("[![www.x.com](/i)](/l)", "[![www.x.com](/i)](/l)\n"),
     ] {
         assert_eq!(round_trip(source), expected, "{source:?}");
@@ -139,9 +140,9 @@ fn other_phrasing_in_image_text_is_written() {
 }
 
 #[test]
-fn literals_before_the_end_of_image_text_stay_bare() {
-    // Image text keeps spaces at its end, so a literal before them is at a boundary, and one before
-    // a soft break, which unwrapping writes as a space, stays bare when it is written again.
+fn literal_shaped_text_before_the_end_of_image_text_is_text() {
+    // No literal forms in image text, so text shaped like one before its end, or before a soft
+    // break, which unwrapping writes as a space, is written as it is.
     for (source, expected) in [
         ("![x@y.z ](u)", "![x@y.z ](u)\n"),
         ("![www.x.com\t](u)", "![www.x.com\t](u)\n"),

@@ -67,8 +67,8 @@ pub enum ConstructName {
     ///     ^^^^^^^
     /// ```
     HeadingAtx,
-    /// Image text (occurs in image reference, image), where literal autolinks form unless the
-    /// image is in link text.
+    /// Image text (occurs in image reference, image), where no literal autolink forms, as in link
+    /// text.
     ///
     /// ```markdown
     /// > | a ![b][c] d
