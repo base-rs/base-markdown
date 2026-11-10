@@ -554,3 +554,24 @@ fn bare_links_are_bare_only_when_their_text_reads_back_as_the_same_literal() {
         assert_serializes(&document, expected);
     }
 }
+
+#[test]
+fn literal_autolinks_moved_into_image_text_are_written_explicitly() {
+    // No literal forms while a link or image opener is pending, so a bare link moved into image
+    // text keeps its form but is written explicitly, which reads back as the same link.
+    let mut document = parse("![x ](i)\n\nwww.a.b\n");
+    let image = document
+        .descendants(document.root())
+        .find(|&id| {
+            matches!(
+                document.node(id).unwrap().kind,
+                EventKind::Start(Tag::Image { .. })
+            )
+        })
+        .unwrap();
+    let link = links(&document)[0];
+    document.attach(image, link, None).unwrap();
+    document.detach(paragraphs(&document)[1]).unwrap();
+    assert_eq!(document.syntax(link), bare());
+    assert_serializes(&document, "![x [www.a.b](https://www.a.b)](i)\n");
+}

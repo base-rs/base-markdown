@@ -360,26 +360,25 @@ fn www_at_the_end_of_text_needs_no_escape() {
 
 #[test]
 fn literals_in_image_text() {
-    // Literals form in image text, so its text is escaped, but links in it, which parsing
-    // makes, are written as they are.
-    assert_round_trip(&edit("![x](u)\n", "x", "www.a.b"), "![www\\.a.b](u)\n");
+    // No literal forms in image text, as in link text, so its text is written as it is.
+    assert_round_trip(&edit("![x](u)\n", "x", "www.a.b"), "![www.a.b](u)\n");
     assert_round_trip(
         &edit("![x](u)\n", "x", "see https://a.b"),
-        "![see https\\://a.b](u)\n",
+        "![see https://a.b](u)\n",
     );
-    assert_round_trip(&edit("![a\\@b.c](u)\n", "a", "a"), "![a\\@b.c](u)\n");
+    assert_round_trip(&edit("![a\\@b.c](u)\n", "a", "a"), "![a@b.c](u)\n");
     assert_round_trip(
-        &edit("![x www.a.b y](u)\n", "x ", "c@d.ef "),
-        "![c\\@d.ef www.a.b y](u)\n",
+        &edit("![x](u)\n", "x", "c@d.ef www.a.b http://c.d"),
+        "![c@d.ef www.a.b http://c.d](u)\n",
     );
-    assert_round_trip(
-        &edit("![www.a.b x](u)\n", " x", " http://c.d"),
-        "![www.a.b http\\://c.d](u)\n",
-    );
-    // Not in link text, where no literal forms.
     assert_round_trip(
         &edit("[![x](i)](u)\n", "x", "www.a.b"),
         "[![www.a.b](i)](u)\n",
+    );
+    // Its bytes stay open to emphasis and code spans.
+    assert_round_trip(
+        &edit("![x *y*](u)\n", "x ", "http://a.b"),
+        "![http://a.b*y*](u)\n",
     );
 }
 

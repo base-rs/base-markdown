@@ -339,7 +339,9 @@ a www.example.com& b
         "should match “character references” like GitHub does"
     );
 
-    // Note: this deviates from GFM, as <https://github.com/github/cmark-gfm/issues/278> is fixed.
+    // As in cmark-gfm and comrak, no literal starts while a link or image opener is pending,
+    // whether or not a later `]` closes it, so its bytes stay open to emphasis and code spans
+    // (<https://github.com/github/cmark-gfm/issues/278>).
     assert_eq!(
         to_html_with_options(
             r###"
@@ -369,12 +371,12 @@ a www.example.com& b
 "###,
             &Options::gfm()
         ),
-        r###"<p>[ <a href="https://www.example.com">www.example.com</a></p>
-<p>[ <a href="https://example.com">https://example.com</a></p>
-<p>[ <a href="mailto:contact@example.com">contact@example.com</a></p>
-<p>[ <a href="https://www.example.com">www.example.com</a> ]</p>
-<p>[ <a href="https://example.com">https://example.com</a> ]</p>
-<p>[ <a href="mailto:contact@example.com">contact@example.com</a> ]</p>
+        r###"<p>[ www.example.com</p>
+<p>[ https://example.com</p>
+<p>[ contact@example.com</p>
+<p>[ www.example.com ]</p>
+<p>[ https://example.com ]</p>
+<p>[ contact@example.com ]</p>
 <p><a href="#"> www.example.com </a></p>
 <p><a href="#"> https://example.com </a></p>
 <p><a href="#"> contact@example.com </a></p>
@@ -382,7 +384,7 @@ a www.example.com& b
 <p><img src="#" alt=" https://example.com " /></p>
 <p><img src="#" alt=" contact@example.com " /></p>
 "###,
-        "should match interplay with brackets, links, and images, like GitHub does (but without the bugs)"
+        "should match interplay with brackets, links, and images, like GitHub does"
     );
 
     assert_eq!(
@@ -666,8 +668,8 @@ H5.
             &Options::gfm()
         ),
         r###"<p>H0.</p>
-<p>[<a href="https://a.com&amp;copy;b">https://a.com&amp;copy;b</a></p>
-<p>[<a href="https://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
+<p>[https://a.com©b</p>
+<p>[www.a.com©b</p>
 <p>H1.</p>
 <p>[]<a href="https://a.com&amp;copy;b">https://a.com&amp;copy;b</a></p>
 <p>[]<a href="https://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
@@ -675,20 +677,21 @@ H5.
 <p>[] <a href="https://a.com&amp;copy;b">https://a.com&amp;copy;b</a></p>
 <p>[] <a href="https://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
 <p>H3.</p>
-<p>[[<a href="https://a.com&amp;copy;b">https://a.com&amp;copy;b</a></p>
-<p>[[<a href="https://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
+<p>[[https://a.com©b</p>
+<p>[[www.a.com©b</p>
 <p>H4.</p>
-<p>[[]<a href="https://a.com&amp;copy;b">https://a.com&amp;copy;b</a></p>
-<p>[[]<a href="https://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
+<p>[[]https://a.com©b</p>
+<p>[[]www.a.com©b</p>
 <p>H5.</p>
 <p>[[]]<a href="https://a.com&amp;copy;b">https://a.com&amp;copy;b</a></p>
 <p>[[]]<a href="https://www.a.com&amp;copy;b">www.a.com&amp;copy;b</a></p>
 "###,
-        "should match brackets like GitHub does (except for the bracket bug)"
+        "should match brackets like GitHub does"
     );
 
     assert_eq!(
-        to_html_with_options(r###"Image start.
+        to_html_with_options(
+            r###"Image start.
 
 ![https://a.com
 
@@ -739,17 +742,19 @@ Autolink literal after image.
 ![a]() www.a.com
 
 ![a]() a@b.c
-"###, &Options::gfm()),
+"###,
+            &Options::gfm()
+        ),
         r###"<p>Image start.</p>
-<p>![<a href="https://a.com">https://a.com</a></p>
-<p>![<a href="http://a.com">http://a.com</a></p>
-<p>![<a href="https://www.a.com">www.a.com</a></p>
-<p>![<a href="mailto:a@b.c">a@b.c</a></p>
+<p>![https://a.com</p>
+<p>![http://a.com</p>
+<p>![www.a.com</p>
+<p>![a@b.c</p>
 <p>Image start and label end.</p>
-<p>![<a href="https://a.com">https://a.com</a>]</p>
-<p>![<a href="http://a.com">http://a.com</a>]</p>
-<p>![<a href="https://www.a.com">www.a.com</a>]</p>
-<p>![<a href="mailto:a@b.c">a@b.c</a>]</p>
+<p>![https://a.com]</p>
+<p>![http://a.com]</p>
+<p>![www.a.com]</p>
+<p>![a@b.c]</p>
 <p>Image label with reference (note: GH cleans hashes here, but we keep them in).</p>
 <p><img src="#" alt="https://a.com" /></p>
 <p><img src="#" alt="http://a.com" /></p>
@@ -766,7 +771,7 @@ Autolink literal after image.
 <p><img src="" alt="a" /> <a href="https://www.a.com">www.a.com</a></p>
 <p><img src="" alt="a" /> <a href="mailto:a@b.c">a@b.c</a></p>
 "###,
-        "should match autolink literals combined w/ images like GitHub does (except for the bracket bug)"
+        "should match autolink literals combined w/ images like GitHub does"
     );
 
     assert_eq!(
@@ -883,40 +888,40 @@ Autolink literal after link.
 [a]() a@b.c
 "###, &Options::gfm()),
         r###"<p>Link start.</p>
-<p>[<a href="https://a.com">https://a.com</a></p>
-<p>[<a href="http://a.com">http://a.com</a></p>
-<p>[<a href="https://www.a.com">www.a.com</a></p>
-<p>[<a href="mailto:a@b.c">a@b.c</a></p>
+<p>[https://a.com</p>
+<p>[http://a.com</p>
+<p>[www.a.com</p>
+<p>[a@b.c</p>
 <p>Label end.</p>
 <p><a href="https://a.com">https://a.com</a>]</p>
 <p><a href="http://a.com">http://a.com</a>]</p>
 <p><a href="https://www.a.com">www.a.com</a>]</p>
 <p><a href="mailto:a@b.c">a@b.c</a>]</p>
 <p>Link start and label end.</p>
-<p>[<a href="https://a.com">https://a.com</a>]</p>
-<p>[<a href="http://a.com">http://a.com</a>]</p>
-<p>[<a href="https://www.a.com">www.a.com</a>]</p>
-<p>[<a href="mailto:a@b.c">a@b.c</a>]</p>
+<p>[https://a.com]</p>
+<p>[http://a.com]</p>
+<p>[www.a.com]</p>
+<p>[a@b.c]</p>
 <p>What naïvely seems like a label end (A).</p>
 <p><a href="https://a.com%60%5D%60">https://a.com`]`</a></p>
 <p><a href="http://a.com%60%5D%60">http://a.com`]`</a></p>
 <p><a href="https://www.a.com%60%5D%60">www.a.com`]`</a></p>
 <p><a href="mailto:a@b.c">a@b.c</a><code>]</code></p>
 <p>Link start and what naïvely seems like a balanced brace (B).</p>
-<p>[<a href="https://a.com%60%5D%60">https://a.com`]`</a></p>
-<p>[<a href="http://a.com%60%5D%60">http://a.com`]`</a></p>
-<p>[<a href="https://www.a.com%60%5D%60">www.a.com`]`</a></p>
-<p>[<a href="mailto:a@b.c">a@b.c</a><code>]</code></p>
+<p>[https://a.com<code>]</code></p>
+<p>[http://a.com<code>]</code></p>
+<p>[www.a.com<code>]</code></p>
+<p>[a@b.c<code>]</code></p>
 <p>What naïvely seems like a label end (C).</p>
 <p><a href="https://a.com">https://a.com</a> <code>]</code></p>
 <p><a href="http://a.com">http://a.com</a> <code>]</code></p>
 <p><a href="https://www.a.com">www.a.com</a> <code>]</code></p>
 <p><a href="mailto:a@b.c">a@b.c</a> <code>]</code></p>
 <p>Link start and what naïvely seems like a balanced brace (D).</p>
-<p>[<a href="https://a.com">https://a.com</a> <code>]</code></p>
-<p>[<a href="http://a.com">http://a.com</a> <code>]</code></p>
-<p>[<a href="https://www.a.com">www.a.com</a> <code>]</code></p>
-<p>[<a href="mailto:a@b.c">a@b.c</a> <code>]</code></p>
+<p>[https://a.com <code>]</code></p>
+<p>[http://a.com <code>]</code></p>
+<p>[www.a.com <code>]</code></p>
+<p>[a@b.c <code>]</code></p>
 <p>Link label with reference.</p>
 <p><a href="#">https://a.com</a></p>
 <p><a href="#">http://a.com</a></p>
@@ -2207,7 +2212,7 @@ github.com: !<a href="mailto:a@b.c">a@b.c</a>, &quot;<a href="mailto:a@b.c">a@b.
 <h2>Commas</h2>
 <p>See <code>https://github.com/remarkjs/remark/discussions/678</code>.</p>
 <p>,<a href="https://github.com">https://github.com</a></p>
-<p>[ ,<a href="https://github.com">https://github.com</a></p>
+<p>[ ,https://github.com</p>
 <p>[asd] ,<a href="https://github.com">https://github.com</a></p>
 "###,
         "should match previous like GitHub does"
@@ -3234,6 +3239,140 @@ fn literal_autolinks_are_linear() {
                 let document =
                     base_markdown::Document::parse(source.as_str(), &ParseOptions::default())
                         .unwrap();
+                to_markdown(&document).unwrap();
+            })
+        });
+    }
+}
+
+#[test]
+fn literals_do_not_start_while_an_opener_is_pending() {
+    // As in cmark-gfm and comrak, no URL or `www.` literal starts while a link or image opener is
+    // pending, so the bytes it would span stay open to emphasis, code and references (#295).
+    for (source, expected) in [
+        (
+            "[*http://b*a](u)",
+            r#"<p><a href="u"><em>http://b</em>a</a></p>"#,
+        ),
+        (
+            "[http://b`*`](u)",
+            r#"<p><a href="u">http://b<code>*</code></a></p>"#,
+        ),
+        (
+            "[http://a.b**b**](u)",
+            r#"<p><a href="u">http://a.b<strong>b</strong></a></p>"#,
+        ),
+        (
+            "[www.a.b*c*](u)",
+            r#"<p><a href="u">www.a.b<em>c</em></a></p>"#,
+        ),
+        (
+            "[_http://a.b*a*_](u)",
+            r#"<p><a href="u"><em>http://a.b<em>a</em></em></a></p>"#,
+        ),
+        (
+            "[x http://a.b*a*](u)",
+            r#"<p><a href="u">x http://a.b<em>a</em></a></p>"#,
+        ),
+        (
+            "[x www.a.b*c*](u)",
+            r#"<p><a href="u">x www.a.b<em>c</em></a></p>"#,
+        ),
+        // Outside link text, the literal takes what follows it.
+        (
+            "_http://a.b*a*_",
+            r#"<p><em><a href="http://a.b*a">http://a.b*a</a>*</em></p>"#,
+        ),
+        // Emails are found after attention, so they never took it, and form neither.
+        ("[a@b.c*d*](u)", r#"<p><a href="u">a@b.c<em>d</em></a></p>"#),
+        ("[a@b.c", "<p>[a@b.c</p>"),
+        (
+            "[a] b@c.d",
+            r#"<p>[a] <a href="mailto:b@c.d">b@c.d</a></p>"#,
+        ),
+        // References in what would be the literal are decoded (#279).
+        (
+            "[https://a.b>&#x2A;a](u)",
+            r#"<p><a href="u">https://a.b&gt;*a</a></p>"#,
+        ),
+        // Image text.
+        (
+            "![http://a.b*a*](u)",
+            r#"<p><img src="u" alt="http://a.ba" /></p>"#,
+        ),
+        (
+            "![www.a.b*c*](u)",
+            r#"<p><img src="u" alt="www.a.bc" /></p>"#,
+        ),
+        (
+            "[a ![http://a.b*a*](i)](u)",
+            r#"<p><a href="u">a <img src="i" alt="http://a.ba" /></a></p>"#,
+        ),
+        // References, full, collapsed and shortcut.
+        (
+            "[http://a.b*a*][r]\n\n[r]: /x",
+            r#"<p><a href="/x">http://a.b<em>a</em></a></p>"#,
+        ),
+        (
+            "[http://a.b*a*][]\n\n[http://a.b*a*]: /x",
+            r#"<p><a href="/x">http://a.b<em>a</em></a></p>"#,
+        ),
+        (
+            "[http://a.b*a*]\n\n[http://a.b*a*]: /x",
+            r#"<p><a href="/x">http://a.b<em>a</em></a></p>"#,
+        ),
+        // Nested brackets.
+        (
+            "[[http://a.b*a*](u)](v)",
+            r#"<p>[<a href="u">http://a.b<em>a</em></a>](v)</p>"#,
+        ),
+        (
+            "[a [b](c) http://a.b*a*",
+            r#"<p>[a <a href="c">b</a> http://a.b<em>a</em></p>"#,
+        ),
+        // Openers that no `]` closes, or that close as no link.
+        ("[http://a.b*a*", "<p>[http://a.b<em>a</em></p>"),
+        ("[http://a.b*a*] x", "<p>[http://a.b<em>a</em>] x</p>"),
+        ("[http://a.b`x`", "<p>[http://a.b<code>x</code></p>"),
+        // Once the opener is gone, literals form again.
+        (
+            "[a](b) http://a.b*a*",
+            r#"<p><a href="b">a</a> <a href="http://a.b*a">http://a.b*a</a>*</p>"#,
+        ),
+        (
+            "[http://a.b](u) http://c.d",
+            r#"<p><a href="u">http://a.b</a> <a href="http://c.d">http://c.d</a></p>"#,
+        ),
+    ] {
+        assert_eq!(
+            to_html_with_options(source, &Options::gfm()).trim_end(),
+            expected,
+            "{source:?}"
+        );
+    }
+    // Without a label end no opener is pending, so literals form after `[`.
+    let mut options = Options::gfm();
+    options.parse.constructs.label_end = false;
+    assert_eq!(
+        to_html_with_options("[ www.a.b", &options),
+        r#"<p>[ <a href="https://www.a.b">www.a.b</a></p>"#
+    );
+}
+
+#[test]
+fn literals_in_link_text_are_linear() {
+    // Each opener's text is scanned once, however many URLs it holds or follow it.
+    for unit in [
+        "[http://a.b*a* ",
+        "[www.a.b`c` ](u)",
+        "[x http://a.b*a*](u) ",
+        "![a@b.c ",
+    ] {
+        assert_linear(unit, 1 << 8, |size| {
+            let source = unit.repeat(size) + "\n";
+            timed(|| {
+                let document =
+                    base_markdown::Document::parse(source.as_str(), &ParseOptions::gfm()).unwrap();
                 to_markdown(&document).unwrap();
             })
         });

@@ -124,6 +124,9 @@ pub(crate) struct InlineParser {
     nodes: Vec<Node>,
     delimiters: Vec<Delimiter>,
     brackets: Vec<Bracket>,
+    // The `@` of each email candidate scanned while a link or image opener was pending, in
+    // order, where no email literal forms.
+    pending_emails: Vec<usize>,
     attention_stack: Vec<usize>,
     links: Vec<Link>,
     tick_heads: Vec<usize>,
@@ -373,6 +376,7 @@ impl InlineParser {
         self.nodes.clear();
         self.delimiters.clear();
         self.brackets.clear();
+        self.pending_emails.clear();
         self.links.clear();
         self.code_info.clear();
         self.labels.clear();
@@ -446,10 +450,14 @@ impl InlineParser {
                         }
                         at = end;
                     }
+                    // As in cmark-gfm and comrak, no URL or `www.` literal starts while a link or
+                    // image opener is pending, whether or not a later `]` closes it: link text
+                    // cannot hold a link, and its bytes stay open to emphasis and code spans.
                     marker
                         if EXTENSIONS
                             && options.constructs.autolink_literal
-                            && matches!(marker, b':' | b'.') =>
+                            && matches!(marker, b':' | b'.')
+                            && self.brackets.is_empty() =>
                     {
                         if let Some(found) =
                             autolink::web(source, inline_start, at, range.end, &mut autolink_trail)
@@ -659,6 +667,11 @@ impl InlineParser {
                         }
                         at += 1 + usize::from(image);
                         let node = self.append(start, at, Kind::Text);
+                        // Without a label end no opener closes, so none is pending: it neither
+                        // waits for a `]` nor keeps a literal autolink from starting.
+                        if EXTENSIONS && !options.constructs.label_end {
+                            continue;
+                        }
                         if REFERENCES {
                             if let Some(parent) = self.brackets.last_mut() {
                                 // An unescaped nested bracket cannot occur in a definition label. Mark its parent now instead of rescanning nested labels at every close.
@@ -740,9 +753,6 @@ impl InlineParser {
                         }
                         if let Some((end, kind)) = resolved {
                             self.attention::<EXTENSIONS>(bracket.delimiters);
-                            if EXTENSIONS && options.constructs.autolink_literal && !bracket.image {
-                                self.suppress_autolinks(bracket.node);
-                            }
                             self.nodes[bracket.node].kind = kind;
                             self.nodes[bracket.node].end = end;
                             self.append(end, end, Kind::End(tag));
@@ -758,6 +768,9 @@ impl InlineParser {
                     _ => {
                         if EXTENSIONS && bytes[at] == b'@' {
                             saw_email = true;
+                            if !self.brackets.is_empty() {
+                                self.pending_emails.push(at);
+                            }
                         }
                         at += 1;
                         at += markers.find(&bytes[at..range.end]);
@@ -788,34 +801,22 @@ impl InlineParser {
         self.nodes[cursor].end = start;
     }
 
-    fn suppress_autolinks(&mut self, opener: usize) {
-        let mut cursor = self.nodes[opener].next;
-        while cursor != 0 {
-            if matches!(self.nodes[cursor].kind, Kind::Autolink(_)) {
-                self.nodes[cursor].end = self.nodes[cursor].start;
-                self.nodes[cursor].kind = Kind::Text;
-                let text = self.nodes[cursor].next;
-                let close = self.nodes[text].next;
-                self.nodes[close].kind = Kind::Text;
-            }
-            cursor = self.nodes[cursor].next;
-        }
-    }
-
     /// Email syntax is resolved after attention so unmatched underscores remain
-    /// part of an address, while escapes, entities, and links bound each run.
+    /// part of an address, while escapes, entities, and links bound each run. As with URL
+    /// literals, none forms at an `@` scanned while a link or image opener was pending, which
+    /// holds for all of link and image text: no `[` or `]` is in an address.
     fn resolve_email(&mut self, source: &str) {
         let mut cursor = self.nodes[0].next;
-        let mut links = 0;
+        let mut pending = 0;
         while cursor != 0 {
             let node = self.nodes[cursor];
             match node.kind {
-                Kind::Start(TagKind::Link, _)
-                | Kind::Reference(TagKind::Link, _)
-                | Kind::AngleLink(_)
-                | Kind::Autolink(_) => links += 1,
-                Kind::End(TagKind::Link) => links -= 1,
-                Kind::Text | Kind::EscapedText if links == 0 && node.start < node.end => {
+                // An autolink's text and end follow it.
+                Kind::AngleLink(_) | Kind::Autolink(_) => {
+                    cursor = self.nodes[self.nodes[node.next].next].next;
+                    continue;
+                }
+                Kind::Text | Kind::EscapedText if node.start < node.end => {
                     let run_start =
                         node.start + usize::from(matches!(node.kind, Kind::EscapedText));
                     let mut end = node.end;
@@ -852,6 +853,17 @@ impl InlineParser {
                     let mut tail = cursor;
                     while let Some(offset) = memchr::memchr(b'@', &source.as_bytes()[at..end]) {
                         let marker = at + offset;
+                        while self
+                            .pending_emails
+                            .get(pending)
+                            .is_some_and(|&pending| pending < marker)
+                        {
+                            pending += 1;
+                        }
+                        if self.pending_emails.get(pending) == Some(&marker) {
+                            at = marker + 1;
+                            continue;
+                        }
                         if let Some(found) = autolink::email(source, min, marker, end) {
                             self.nodes[tail].end = found.start;
                             let open = self.insert_after(

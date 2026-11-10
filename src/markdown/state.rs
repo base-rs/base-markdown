@@ -61,10 +61,6 @@ pub struct State<'a> {
     email_escapes: Vec<usize>,
     /// Output offsets that make GFM literal autolinks of the text being written.
     literal_markers: Vec<usize>,
-    /// Where the text of the image being written starts, when literal autolinks form in it. A
-    /// bare link there reads back as one, as the parser reads the text after `![` like the
-    /// start of a line.
-    pub(super) alt_start: Option<usize>,
     /// Whether the text being written leaves literal autolinks to its caller, which edits its
     /// start first.
     defer_literals: bool,
@@ -1996,7 +1992,6 @@ impl<'a> State<'a> {
             applied: Vec::new(),
             email_escapes: Vec::new(),
             literal_markers: Vec::new(),
-            alt_start: None,
             defer_literals: false,
             attention_open: [[0; 2]; 2],
             parent: Parent::NONE,

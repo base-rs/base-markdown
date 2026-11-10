@@ -164,8 +164,7 @@ pub(crate) fn literal_autolink_prefix(text: &str) -> Option<&'static str> {
 /// node, which is written starting with punctuation. That ends a domain, except `_` from `_`
 /// attention, which a host name cannot have, so a domain that runs on into the next node is never
 /// valid, and `www.` or `https://` at the end of `text` needs no escape. A literal that would run on into a following text
-/// sibling, which only a tree that is not normalized has, is not found, nor in image alt one that
-/// would run on into the text of a link, which is written as it is. The scan
+/// sibling, which only a tree that is not normalized has, is not found. The scan
 /// is linear: domains are scanned once, except that a `www` after `_` within a scanned domain is
 /// taken to form, and an email's local part is scanned back to the byte before it.
 pub(crate) fn literal_markers(text: &str, from: usize, www_start: bool, markers: &mut Vec<usize>) {

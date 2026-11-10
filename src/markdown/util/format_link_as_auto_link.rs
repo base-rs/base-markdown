@@ -29,9 +29,8 @@ pub enum WrittenLink<'a> {
 /// stored form is written explicitly.
 ///
 /// A bare link is written bare only between whitespace or line boundaries, where nothing next to
-/// it can change where it ends, and outside link text, where no literal forms. The edges of image
-/// text outside link text are boundaries too, as the parser forms literals there. `after_boundary`
-/// says whether the output before the link ends at one. Anywhere else it is written as `<…>` when
+/// it can change where it ends, and outside link and image text, where no literal forms.
+/// `after_boundary` says whether the output before the link ends at one. Anywhere else it is written as `<…>` when
 /// that reads back as the same link, and explicitly otherwise.
 ///
 /// Only forms whose constructs the document's options turn on are written (contract 3.3): without
@@ -55,6 +54,7 @@ pub fn written_link<'a, S: AsRef<str>>(
                 && !has_title
                 && reads_back_bare(text, destination)
                 && !state.stack.contains(&ConstructName::Label)
+                && !state.stack.contains(&ConstructName::ImageLabel)
                 && !(text.contains('|') && state.stack.contains(&ConstructName::TableCell))
         })
     };
@@ -116,10 +116,9 @@ pub fn ends_at_boundary<S: AsRef<str>>(document: &Document<S>, node: NodeId) -> 
 }
 
 /// Whether what follows the link starts at a boundary: whitespace before more content, a line
-/// ending, or the end of a paragraph, heading, table cell or image text. Spaces and tabs before a
-/// line ending or the end of a block are written as references, which a link would take, so they
-/// do not count, and neither does a node whose first character is only known once written. Image
-/// text keeps them raw at its end, so there they count.
+/// ending, or the end of a paragraph, heading or table cell. Spaces and tabs before a line ending
+/// or the end of a block are written as references, which a link would take, so they do not count,
+/// and neither does a node whose first character is only known once written.
 fn boundary_after<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
     let node = document.node(id).expect("link exists");
     let kind = |sibling: NodeId| &document.node(sibling).unwrap().kind;
@@ -141,17 +140,14 @@ fn boundary_after<S: AsRef<str>>(document: &Document<S>, id: NodeId) -> bool {
         Some(EventKind::SoftBreak(_)) => !spaces,
         Some(EventKind::HardBreak) => false,
         Some(_) => spaces,
-        None => node.parent().is_some_and(|parent| {
-            match document.node(parent).unwrap().kind {
-                // Image text keeps spaces and tabs at its end, written before `]`, which the parser
-                // reads as text after the literal.
-                EventKind::Start(Tag::Image { .. }) => true,
+        None => node
+            .parent()
+            .is_some_and(|parent| match document.node(parent).unwrap().kind {
                 EventKind::Start(
                     Tag::Paragraph { .. } | Tag::Heading(_) | Tag::TableCell { .. },
                 ) => !spaces,
                 _ => false,
-            }
-        }),
+            }),
     }
 }
 

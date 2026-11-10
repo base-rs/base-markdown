@@ -576,11 +576,10 @@ pub(super) fn strikethrough(stack: &[ConstructName]) -> bool {
     scopes & PHRASING != 0 && scopes & FULL_SPANS == 0
 }
 
-/// Whether text in `stack` can form GFM literal autolinks: parsed phrasing outside link text. No
-/// literal forms in link text, at any depth, while image text outside it forms them like the
-/// phrasing around it.
+/// Whether text in `stack` can form GFM literal autolinks: parsed phrasing outside link and image
+/// text. No literal starts while a link or image opener is pending, at any depth.
 pub(super) fn autolink_literals(stack: &[ConstructName]) -> bool {
-    strikethrough(stack) && scopes(stack) & bit(Label) == 0
+    strikethrough(stack) && scopes(stack) & (bit(Label) | bit(ImageLabel)) == 0
 }
 
 /// Add to `applied` the text `~` that could pair as strikethrough, so that none does.

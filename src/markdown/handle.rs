@@ -412,7 +412,6 @@ impl State<'_> {
         let start = self.output.len();
         if !image {
             let after_boundary = self.output.len() == self.line_start
-                || self.alt_start == Some(self.output.len())
                 || self.output.chars().next_back().is_none_or(boundary);
             match written_link(
                 document,
@@ -549,9 +548,6 @@ impl State<'_> {
         image: bool,
         after: &str,
     ) -> Result<core::ops::Range<usize>, Message> {
-        // Image text is phrasing like link text, but literals form in it, unless the image is in
-        // link text, and so does a bare link at its start, which reads back as the same link.
-        let literals = image && self.literals();
         self.enter(if image {
             ConstructName::ImageLabel
         } else {
@@ -560,14 +556,8 @@ impl State<'_> {
         let start = self.output.len();
         self.output.push_str(if image { "![" } else { "[" });
         let text_start = self.output.len();
-        let alt_start = mem::replace(
-            &mut self.alt_start,
-            if literals { Some(text_start) } else { None },
-        );
         let info = Info::at(start, text_start, after);
-        let result = self.container_phrasing(document, node, &info);
-        self.alt_start = alt_start;
-        result?;
+        self.container_phrasing(document, node, &info)?;
         // `![^` starts no image, as `[^` reads as a footnote call or text instead, and link text
         // that starts with `^` would read back as a footnote call where a definition binds it,
         // in a dialect with footnote calls and definitions (#215). Without
