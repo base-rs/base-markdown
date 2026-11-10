@@ -267,12 +267,57 @@ fn parsed_literals_are_links_and_are_written_as_they_were() {
         "mailto:a@b.co and xmpp:c@d.ef/g\n",
         "| a |\n| --- |\n| www.b.c |\n",
         "# see http://a.b\n",
-        // Image text is written as the text of its nodes, so a literal there stays one.
+        // Image text forms no literal, so its text is written as it is.
         "![www.a.b and c@d.ef](g)\n",
     ] {
         let mut document = parse(source);
         document.normalize();
         assert_eq!(to_markdown(&document).unwrap(), source);
+    }
+}
+
+#[test]
+fn emails_a_www_literal_would_take_are_written_as_autolinks() {
+    // No `www.` literal starts after a pending opener, so the email there takes `www.`, which
+    // would read as a `www.` literal written bare.
+    for (source, expected) in [
+        ("[ __www.xa@b.c\n", "\\[ <__www.xa@b.c>\n"),
+        ("[ www.a@b.cd\n", "\\[ <www.a@b.cd>\n"),
+        ("[ _www.a@b.cd\n", "\\[ <_www.a@b.cd>\n"),
+        // The same holds for a `www.` literal in an `xmpp:` resource.
+        ("[ xmpp:a@b.cd/_www.e.fg\n", "\\[ <xmpp:a@b.cd/_www.e.fg>\n"),
+    ] {
+        let mut document = parse(source);
+        document.normalize();
+        assert_round_trip(&document, expected);
+    }
+}
+
+#[test]
+fn emails_no_www_literal_takes_are_written_bare() {
+    // The `www.` domain in each is invalid, so no `www.` literal forms: the parser reads the
+    // email, and so does it when the email is written bare.
+    for source in [
+        "www.a.@b.cd\n",
+        "x www.a_@b.cd y\n",
+        "a_www.b.@c.de\n",
+        "www.a..@b.cd\n",
+        "x _www.a.@b.cd\n",
+        "x www.a_www.b_c@d.ef y\n",
+    ] {
+        let mut document = parse(source);
+        document.normalize();
+        let links = document
+            .descendants(document.root())
+            .filter(|&id| {
+                matches!(
+                    document.node(id).unwrap().kind,
+                    EventKind::Start(base_markdown::stream::Tag::Link(_))
+                )
+            })
+            .count();
+        assert_eq!(links, 1, "{source:?}");
+        assert_round_trip(&document, source);
     }
 }
 
@@ -360,26 +405,25 @@ fn www_at_the_end_of_text_needs_no_escape() {
 
 #[test]
 fn literals_in_image_text() {
-    // Literals form in image text, so its text is escaped, but links in it, which parsing
-    // makes, are written as they are.
-    assert_round_trip(&edit("![x](u)\n", "x", "www.a.b"), "![www\\.a.b](u)\n");
+    // No literal forms in image text, as in link text, so its text is written as it is.
+    assert_round_trip(&edit("![x](u)\n", "x", "www.a.b"), "![www.a.b](u)\n");
     assert_round_trip(
         &edit("![x](u)\n", "x", "see https://a.b"),
-        "![see https\\://a.b](u)\n",
+        "![see https://a.b](u)\n",
     );
-    assert_round_trip(&edit("![a\\@b.c](u)\n", "a", "a"), "![a\\@b.c](u)\n");
+    assert_round_trip(&edit("![a\\@b.c](u)\n", "a", "a"), "![a@b.c](u)\n");
     assert_round_trip(
-        &edit("![x www.a.b y](u)\n", "x ", "c@d.ef "),
-        "![c\\@d.ef www.a.b y](u)\n",
+        &edit("![x](u)\n", "x", "c@d.ef www.a.b http://c.d"),
+        "![c@d.ef www.a.b http://c.d](u)\n",
     );
-    assert_round_trip(
-        &edit("![www.a.b x](u)\n", " x", " http://c.d"),
-        "![www.a.b http\\://c.d](u)\n",
-    );
-    // Not in link text, where no literal forms.
     assert_round_trip(
         &edit("[![x](i)](u)\n", "x", "www.a.b"),
         "[![www.a.b](i)](u)\n",
+    );
+    // Its bytes stay open to emphasis and code spans.
+    assert_round_trip(
+        &edit("![x *y*](u)\n", "x ", "http://a.b"),
+        "![http://a.b*y*](u)\n",
     );
 }
 

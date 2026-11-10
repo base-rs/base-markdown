@@ -222,19 +222,6 @@ fn describe(options: &ParseOptions) -> String {
     changed.join(" ")
 }
 
-/// Whether `output` has link text with a reference after what starts a literal autolink, such as
-/// `[https://a.b>&#x2A;a](u)`, which the parser reads with the reference as text: a literal formed
-/// in link text keeps the references it spans, as markdown-rs does, though not the escapes, and
-/// comrak decodes both. That is a parser gap, which the writer meets where the options read no
-/// backslash escapes, so it writes a reference.
-fn literal_reference_in_label(output: &str) -> bool {
-    output.match_indices("](").any(|(end, _)| {
-        let label = &output[output[..end].rfind('[').map_or(0, |start| start + 1)..end];
-        label.contains("&#")
-            && (label.contains("://") || label.contains("www.") || label.contains('@'))
-    })
-}
-
 /// Whether `html` has emphasis or strong in emphasis or strong, which the writer can get wrong
 /// under any options (#110).
 fn nested_attention(html: &str) -> bool {
@@ -286,9 +273,7 @@ fn round_trip_under_every_dialect() {
         match round_trip(document, &markdown, false) {
             Outcome::Pass | Outcome::Rejected => {}
             Outcome::Unwritable(error) => unwritable.push((source, options, error)),
-            Outcome::Fail(failure)
-                if nested_attention(&failure.before)
-                    || literal_reference_in_label(&failure.output) => {}
+            Outcome::Fail(failure) if nested_attention(&failure.before) => {}
             Outcome::Fail(failure) => failures.push((source, options, failure)),
         }
     }

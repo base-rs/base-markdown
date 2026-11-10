@@ -446,10 +446,14 @@ impl InlineParser {
                         }
                         at = end;
                     }
+                    // As in cmark-gfm and comrak, no URL or `www.` literal starts while a link or
+                    // image opener is pending, whether or not a later `]` closes it: link text
+                    // cannot hold a link, and its bytes stay open to emphasis and code spans.
                     marker
                         if EXTENSIONS
                             && options.constructs.autolink_literal
-                            && matches!(marker, b':' | b'.') =>
+                            && matches!(marker, b':' | b'.')
+                            && self.brackets.is_empty() =>
                     {
                         if let Some(found) =
                             autolink::web(source, inline_start, at, range.end, &mut autolink_trail)
@@ -659,6 +663,11 @@ impl InlineParser {
                         }
                         at += 1 + usize::from(image);
                         let node = self.append(start, at, Kind::Text);
+                        // Without a label end no opener closes, so none is pending: it neither
+                        // waits for a `]` nor keeps a literal autolink from starting.
+                        if EXTENSIONS && !options.constructs.label_end {
+                            continue;
+                        }
                         if REFERENCES {
                             if let Some(parent) = self.brackets.last_mut() {
                                 // An unescaped nested bracket cannot occur in a definition label. Mark its parent now instead of rescanning nested labels at every close.
@@ -740,9 +749,6 @@ impl InlineParser {
                         }
                         if let Some((end, kind)) = resolved {
                             self.attention::<EXTENSIONS>(bracket.delimiters);
-                            if EXTENSIONS && options.constructs.autolink_literal && !bracket.image {
-                                self.suppress_autolinks(bracket.node);
-                            }
                             self.nodes[bracket.node].kind = kind;
                             self.nodes[bracket.node].end = end;
                             self.append(end, end, Kind::End(tag));
@@ -788,33 +794,28 @@ impl InlineParser {
         self.nodes[cursor].end = start;
     }
 
-    fn suppress_autolinks(&mut self, opener: usize) {
-        let mut cursor = self.nodes[opener].next;
-        while cursor != 0 {
-            if matches!(self.nodes[cursor].kind, Kind::Autolink(_)) {
-                self.nodes[cursor].end = self.nodes[cursor].start;
-                self.nodes[cursor].kind = Kind::Text;
-                let text = self.nodes[cursor].next;
-                let close = self.nodes[text].next;
-                self.nodes[close].kind = Kind::Text;
-            }
-            cursor = self.nodes[cursor].next;
-        }
-    }
-
     /// Email syntax is resolved after attention so unmatched underscores remain
-    /// part of an address, while escapes, entities, and links bound each run.
+    /// part of an address, while escapes, entities, and links bound each run. As in cmark-gfm,
+    /// which looks for emails in the text of the finished tree, none forms in link text, and,
+    /// unlike URL literals, a pending opener that no `]` closes does not stop one. cmark-gfm also
+    /// looks in image text, which its HTML never shows as a link; none forms there either, so that
+    /// image text, like link text, holds no literal and the writer need not escape it. cmark-gfm
+    /// marks link text with a flag that an autolink nested in it clears, so GitHub links `d@e.fg`
+    /// in `[<a@b.cd> d@e.fg](u)`; the depth counted here does not drop, so that is text.
     fn resolve_email(&mut self, source: &str) {
         let mut cursor = self.nodes[0].next;
-        let mut links = 0;
+        let mut links = 0usize;
         while cursor != 0 {
             let node = self.nodes[cursor];
             match node.kind {
-                Kind::Start(TagKind::Link, _)
-                | Kind::Reference(TagKind::Link, _)
-                | Kind::AngleLink(_)
-                | Kind::Autolink(_) => links += 1,
-                Kind::End(TagKind::Link) => links -= 1,
+                Kind::Start(TagKind::Link | TagKind::Image, _)
+                | Kind::Reference(TagKind::Link | TagKind::Image, _) => links += 1,
+                Kind::End(TagKind::Link | TagKind::Image) => links -= 1,
+                // An autolink's text and end follow it.
+                Kind::AngleLink(_) | Kind::Autolink(_) => {
+                    cursor = self.nodes[self.nodes[node.next].next].next;
+                    continue;
+                }
                 Kind::Text | Kind::EscapedText if links == 0 && node.start < node.end => {
                     let run_start =
                         node.start + usize::from(matches!(node.kind, Kind::EscapedText));
