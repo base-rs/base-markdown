@@ -547,3 +547,17 @@ fn setext_headings_unwrapped_are_stable() {
         }
     }
 }
+
+/// Attention in link text next to a URL literal, which no longer starts in link text while its
+/// opener is pending (#295), is written so that it reads back as the same tree.
+#[test]
+fn attention_next_to_urls_in_link_text() {
+    for source in [
+        "[*http://a.&#x62;_&#x61;_*](u)",
+        "[**http://a.&#x62;__&#x61;__**](u)",
+        "[*http://a.&#x62;*&#x61;](u)",
+        "[x http://a.&#x62;*&#x61;*](u)",
+    ] {
+        same_tree(source);
+    }
+}

@@ -401,8 +401,7 @@ impl State<'_> {
 
     /// Whether the output ends at a boundary that a bare link may be written after.
     pub(super) fn after_boundary(&self) -> bool {
-        self.output.len() == self.line_start
-            || self.output.chars().next_back().is_none_or(boundary)
+        self.output.len() == self.line_start || self.output.chars().next_back().is_none_or(boundary)
     }
 
     pub(super) fn resource<S: AsRef<str>>(
