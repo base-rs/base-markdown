@@ -284,6 +284,8 @@ fn emails_a_www_literal_would_take_are_written_as_autolinks() {
         ("[ __www.xa@b.c\n", "\\[ <__www.xa@b.c>\n"),
         ("[ www.a@b.cd\n", "\\[ <www.a@b.cd>\n"),
         ("[ _www.a@b.cd\n", "\\[ <_www.a@b.cd>\n"),
+        // The same holds for a `www.` literal in an `xmpp:` resource.
+        ("[ xmpp:a@b.cd/_www.e.fg\n", "\\[ <xmpp:a@b.cd/_www.e.fg>\n"),
     ] {
         let mut document = parse(source);
         document.normalize();
@@ -293,8 +295,8 @@ fn emails_a_www_literal_would_take_are_written_as_autolinks() {
 
 #[test]
 fn emails_no_www_literal_takes_are_written_bare() {
-    // The `www.` literal in each would end in trailing punctuation or have an invalid domain, so
-    // the parser reads the email, and so does it when the email is written bare.
+    // The `www.` domain in each is invalid, so no `www.` literal forms: the parser reads the
+    // email, and so does it when the email is written bare.
     for source in [
         "www.a.@b.cd\n",
         "x www.a_@b.cd y\n",

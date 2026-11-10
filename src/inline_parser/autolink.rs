@@ -138,7 +138,7 @@ impl Host {
 /// The parser looks for `www.` and scheme literals at each `.` and `:` before it looks for emails,
 /// so an email is one only where no such literal forms in its text, judged at each marker as the
 /// parser judges it, on the text as it is: `www.a` in `_www.a@b.cd` takes the `www.`, while
-/// `www.a.@b.cd`, whose `www.` literal would end in trailing punctuation, is an email. Such an
+/// `www.a.@b.cd`, whose `www.` domain `a.` ends in a dot and so is no host name, is an email. Such an
 /// email forms in phrasing only after an opener that no `]` closes, where no `www.` literal starts.
 pub(crate) fn literal_autolink_prefix(text: &str) -> Option<&'static str> {
     let whole = |found: Option<Match>| {
